@@ -1,0 +1,52 @@
+name: screenshots
+
+# Manual only: Mac minutes bill at ten times the Linux rate.
+on:
+  workflow_dispatch:
+
+jobs:
+  screenshots:
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v4
+      - run: ./gradlew :shared:assembleSharedDebugXCFramework
+      - run: brew install xcodegen
+        timeout-minutes: 5
+      - run: xcodegen generate --spec iosApp/project.yml
+        timeout-minutes: 4
+      - name: Boot an iPhone simulator
+        timeout-minutes: 6
+        run: |
+          id=$(xcrun simctl list devices available -j \
+            | jq -r '[.devices[][] | select(.name | test("^iPhone [0-9]+ Pro$"))] | last | .udid')
+          echo "Using $id"
+          echo "SIM=$id" >> "$GITHUB_ENV"
+          xcrun simctl boot "$id"
+          xcrun simctl bootstatus "$id"
+          xcrun simctl ui "$id" appearance dark
+          xcrun simctl status_bar "$id" override --time 9:41 --batteryState charged --batteryLevel 100 --cellularBars 4 --wifiBars 3
+      - name: Draw the screenshots
+        timeout-minutes: 15
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project iosApp/Agents.xcodeproj \
+            -scheme Screenshots \
+            -destination "id=$SIM" \
+            CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM= \
+            TEST_RUNNER_SCREENSHOT_DIR="$PWD/screenshots" \
+            | tee test.log | grep -E "error:|Test Case .*(passed|failed)|TEST (SUCCEEDED|FAILED)|\*\* " || true
+          grep -q "TEST SUCCEEDED" test.log
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots
+          path: |
+            screenshots
+            test.log

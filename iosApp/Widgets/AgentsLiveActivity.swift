@@ -46,7 +46,7 @@ struct AgentsLiveActivity: Widget {
     }
 }
 
-private struct LockScreenView: View {
+struct LockScreenView: View {
     let state: AgentsActivityAttributes.ContentState
 
     var body: some View {
@@ -67,7 +67,7 @@ private struct LockScreenView: View {
 
 /// The Live Activity only carries the top question's text, so it offers buttons just for yes-or-no questions.
 /// Anything else is one tap away in the app.
-private struct ConfirmButtons: View {
+struct ConfirmButtons: View {
     let state: AgentsActivityAttributes.ContentState
 
     var body: some View {

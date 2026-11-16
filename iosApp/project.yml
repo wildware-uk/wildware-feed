@@ -142,6 +142,34 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.wildware.agents.notifications
 
+  # Not shipped: draws the widget and Live Activity views to PNGs (see .github/workflows/screenshots.yml).
+  AgentsScreenshots:
+    type: bundle.unit-test
+    platform: iOS
+    templates: [UsesShared]
+    sources:
+      - path: Widgets
+        excludes: [AgentsWidgetBundle.swift]
+      - App/Intents
+      - Screenshots
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.wildware.agents.screenshots
+        GENERATE_INFOPLIST_FILE: YES
+
+  AgentsUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - UITests
+    dependencies:
+      - target: Agents
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.wildware.agents.uitests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: Agents
+
 schemes:
   Agents:
     build:
@@ -156,3 +184,16 @@ schemes:
       config: Debug
     archive:
       config: Release
+
+  Screenshots:
+    build:
+      targets:
+        Agents: all
+      preActions:
+        - name: Build Kotlin
+          settingsTarget: Agents
+          script: |
+            cd "$SRCROOT/.." && ./gradlew :shared:assembleSharedDebugXCFramework
+    test:
+      config: Debug
+      targets: [AgentsScreenshots, AgentsUITests]

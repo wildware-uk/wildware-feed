@@ -57,6 +57,16 @@ struct StatusWidgetView: View {
     @Environment(\.widgetFamily) private var family
 
     var body: some View {
+        StatusWidgetContent(entry: entry, family: family)
+    }
+}
+
+/// The widget's look for one size. Separate from `StatusWidgetView` so it can be drawn outside WidgetKit, for screenshots.
+struct StatusWidgetContent: View {
+    let entry: StatusEntry
+    let family: WidgetFamily
+
+    var body: some View {
         switch entry.state {
         case .notLinked:
             Text("Open Agents to sign in").font(.caption)
