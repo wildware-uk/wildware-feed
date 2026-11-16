@@ -1,0 +1,158 @@
+name: Agents
+options:
+  bundleIdPrefix: dev.wildware
+  deploymentTarget:
+    iOS: "18.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    DEVELOPMENT_TEAM: ${DEVELOPMENT_TEAM}
+    CODE_SIGN_STYLE: Automatic
+    FRAMEWORK_SEARCH_PATHS: $(inherited)
+
+# Kotlin is built by Gradle, not Xcode: ./gradlew :shared:assembleSharedDebugXCFramework
+# (the Agents scheme runs it before every build). Each target links the static framework.
+targetTemplates:
+  UsesShared:
+    dependencies:
+      - framework: ../shared/build/XCFrameworks/debug/Shared.xcframework
+        embed: false
+    sources:
+      - path: Common
+        group: Common
+
+targets:
+  Agents:
+    type: application
+    platform: iOS
+    templates: [UsesShared]
+    sources:
+      - path: App
+    info:
+      path: App/Info.plist
+      properties:
+        CFBundleDisplayName: Agents
+        AppIdentifierPrefix: $(AppIdentifierPrefix)
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
+        NSSupportsLiveActivities: true
+        NSSupportsLiveActivitiesFrequentUpdates: true
+        UIBackgroundModes: [remote-notification]
+        NSFaceIDUsageDescription: Confirm it is you before approving what an agent asks.
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+        CFBundleURLTypes:
+          - CFBundleURLName: dev.wildware.agents
+            CFBundleURLSchemes: [agents]
+        INAlternativeAppNames:
+          - INAlternativeAppName: Agent Dashboard
+          - INAlternativeAppName: Dashboard
+    entitlements:
+      path: App/Agents.entitlements
+      properties:
+        aps-environment: development
+        com.apple.developer.usernotifications.time-sensitive: true
+        com.apple.security.application-groups: [group.dev.wildware.agents]
+        keychain-access-groups: [$(AppIdentifierPrefix)dev.wildware.agents.shared]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.wildware.agents
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    dependencies:
+      - target: AgentsWidgets
+      - target: AgentsShare
+      - target: AgentsNotificationService
+
+  AgentsWidgets:
+    type: app-extension
+    platform: iOS
+    templates: [UsesShared]
+    sources:
+      - path: Widgets
+      - path: App/Intents
+        group: Widgets
+    info:
+      path: Widgets/Info.plist
+      properties:
+        CFBundleDisplayName: Agents
+        AppIdentifierPrefix: $(AppIdentifierPrefix)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    entitlements:
+      path: Widgets/Widgets.entitlements
+      properties:
+        com.apple.security.application-groups: [group.dev.wildware.agents]
+        keychain-access-groups: [$(AppIdentifierPrefix)dev.wildware.agents.shared]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.wildware.agents.widgets
+
+  AgentsShare:
+    type: app-extension
+    platform: iOS
+    templates: [UsesShared]
+    sources:
+      - path: Share
+    info:
+      path: Share/Info.plist
+      properties:
+        CFBundleDisplayName: Agents
+        AppIdentifierPrefix: $(AppIdentifierPrefix)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.share-services
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ShareViewController
+          NSExtensionAttributes:
+            NSExtensionActivationRule:
+              NSExtensionActivationSupportsText: true
+              NSExtensionActivationSupportsWebURLWithMaxCount: 1
+              NSExtensionActivationSupportsImageWithMaxCount: 4
+    entitlements:
+      path: Share/Share.entitlements
+      properties:
+        com.apple.security.application-groups: [group.dev.wildware.agents]
+        keychain-access-groups: [$(AppIdentifierPrefix)dev.wildware.agents.shared]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.wildware.agents.share
+
+  AgentsNotificationService:
+    type: app-extension
+    platform: iOS
+    templates: [UsesShared]
+    sources:
+      - path: NotificationService
+    info:
+      path: NotificationService/Info.plist
+      properties:
+        CFBundleDisplayName: Agents
+        AppIdentifierPrefix: $(AppIdentifierPrefix)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.usernotifications.service
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).NotificationService
+    entitlements:
+      path: NotificationService/NotificationService.entitlements
+      properties:
+        com.apple.security.application-groups: [group.dev.wildware.agents]
+        keychain-access-groups: [$(AppIdentifierPrefix)dev.wildware.agents.shared]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.wildware.agents.notifications
+
+schemes:
+  Agents:
+    build:
+      targets:
+        Agents: all
+      preActions:
+        - name: Build Kotlin
+          settingsTarget: Agents
+          script: |
+            cd "$SRCROOT/.." && ./gradlew :shared:assembleSharedDebugXCFramework
+    run:
+      config: Debug
+    archive:
+      config: Release

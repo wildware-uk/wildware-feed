@@ -1,0 +1,26 @@
+import Foundation
+import Shared
+
+/// The way into the Kotlin client from any target. Nil until the phone is linked.
+enum Dashboard {
+    static func client() -> DashboardClient? {
+        guard let credentials = CredentialStore.load() else { return nil }
+        return IosDashboardKt.dashboardClient(server: credentials.server.absoluteString, deviceToken: credentials.token)
+    }
+
+    static var isLinked: Bool { CredentialStore.load() != nil }
+}
+
+enum DashboardError: LocalizedError {
+    case notLinked
+
+    var errorDescription: String? {
+        switch self {
+        case .notLinked: "Open the Agents app and sign in to your dashboard first."
+        }
+    }
+}
+
+extension DashboardSummary {
+    var topRequest: PendingRequest? { requests.first }
+}
