@@ -180,7 +180,8 @@ targets:
         excludes: [AgentsWidgetBundle.swift]
       - App/Intents
       - Voice
-      - NotificationContent
+      - path: NotificationContent
+        excludes: [Info.plist, "*.entitlements"]
       - Screenshots
     settings:
       base:
