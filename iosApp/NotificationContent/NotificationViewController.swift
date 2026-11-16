@@ -30,12 +30,25 @@ final class NotificationViewController: UIViewController, UNNotificationContentE
         } else {
             embed(alert)
         }
+        fitToContent()
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        fitToContent()
+    }
+
+    /// Measured at the alert's real width: an unbounded width lays the text out as one long line,
+    /// which reports a height of a line or two and clips everything below.
+    private func fitToContent() {
+        guard let host, view.bounds.width > 0 else { return }
+        let fitted = host.sizeThatFits(in: CGSize(width: view.bounds.width, height: CGFloat.greatestFiniteMagnitude))
+        let size = CGSize(width: view.bounds.width, height: min(fitted.height, Self.maxHeight))
+        if size != preferredContentSize { preferredContentSize = size }
     }
 
     private func embed(_ alert: AlertView) {
         let host = UIHostingController(rootView: alert)
-        // The hosting controller reports the text's own height; the alert grows to it.
-        host.sizingOptions = .preferredContentSize
         host.view.backgroundColor = .clear
         host.view.frame = view.bounds
         host.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
@@ -43,13 +56,6 @@ final class NotificationViewController: UIViewController, UNNotificationContentE
         view.addSubview(host.view)
         host.didMove(toParent: self)
         self.host = host
-    }
-
-    override func preferredContentSizeDidChange(forChildContentContainer container: UIContentContainer) {
-        super.preferredContentSizeDidChange(forChildContentContainer: container)
-        let height = min(container.preferredContentSize.height, Self.maxHeight)
-        guard height > 0 else { return }
-        preferredContentSize = CGSize(width: view.bounds.width, height: height)
     }
 
     /// Agents often link dashboard pages by path alone, which only the app can open.
