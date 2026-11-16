@@ -57,6 +57,12 @@ final class WidgetScreenshots: XCTestCase {
         try save("live-activity-quiet", liveActivity(quiet))
     }
 
+    func testVoiceNoteLiveActivity() throws {
+        let note = VoiceNoteActivityAttributes(startedAt: .now.addingTimeInterval(-12), projectName: "Garden Game")
+        try save("voice-note-recording", liveActivity(VoiceNoteStatusView(attributes: note, state: .init(phase: .recording))))
+        try save("voice-note-sent", liveActivity(VoiceNoteStatusView(attributes: note, state: .init(phase: .sent, detail: "Garden Game"))))
+    }
+
     private func widget(_ family: WidgetFamily, state: AgentsActivityAttributes.ContentState, top: PendingRequest?) -> some View {
         StatusWidgetContent(entry: StatusEntry(date: .now, state: .ready(state, top: top)), family: family)
             .padding(16)
@@ -71,7 +77,11 @@ final class WidgetScreenshots: XCTestCase {
     }
 
     private func liveActivity(_ state: AgentsActivityAttributes.ContentState) -> some View {
-        LockScreenView(state: state)
+        liveActivity(LockScreenView(state: state))
+    }
+
+    private func liveActivity(_ content: some View) -> some View {
+        content
             .padding()
             .frame(width: 370, alignment: .leading)
             .background(Color.dashboardBackground)

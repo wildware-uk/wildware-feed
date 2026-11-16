@@ -6,5 +6,7 @@ struct AgentsWidgetBundle: WidgetBundle {
     var body: some Widget {
         StatusWidget()
         AgentsLiveActivity()
+        VoiceNoteControl()
+        VoiceNoteLiveActivity()
     }
 }

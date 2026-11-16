@@ -43,5 +43,14 @@ struct AgentsShortcuts: AppShortcutsProvider {
             shortTitle: "Message Agent",
             systemImageName: "bubble.left"
         )
+        AppShortcut(
+            intent: RecordVoiceNoteIntent(),
+            phrases: [
+                "Record a voice note in \(.applicationName)",
+                "New \(.applicationName) voice note",
+            ],
+            shortTitle: "Voice Note",
+            systemImageName: "mic"
+        )
     }
 }
