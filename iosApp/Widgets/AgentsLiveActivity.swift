@@ -80,6 +80,7 @@ struct ConfirmButtons: View {
                     Text("No").bold()
                 }.tint(.red)
             }
+            .buttonStyle(.borderedProminent)
         }
     }
 }

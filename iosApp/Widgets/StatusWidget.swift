@@ -92,7 +92,7 @@ struct StatusWidgetContent: View {
             .gaugeStyle(.accessoryCircular)
         case .accessoryRectangular:
             VStack(alignment: .leading) {
-                Text(state.headline).font(.headline).widgetAccentable()
+                Text(state.headline).font(.headline).lineLimit(1).widgetAccentable()
                 Text(state.topQuestion ?? "\(state.online) online · \(state.inProgress) in progress")
                     .font(.caption).lineLimit(2)
             }
@@ -150,6 +150,7 @@ struct AnswerButtons: View {
                     .tint(action.isDestructive ? .red : .orange)
                 }
             }
+            .buttonStyle(.borderedProminent)
         }
     }
 }
