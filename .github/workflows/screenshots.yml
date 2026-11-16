@@ -35,12 +35,12 @@ jobs:
         timeout-minutes: 15
         run: |
           set -o pipefail
-          xcodebuild test \
+          # A TEST_RUNNER_ environment variable reaches the tests without the prefix; a build setting does not.
+          TEST_RUNNER_SCREENSHOT_DIR="$PWD/screenshots" xcodebuild test \
             -project iosApp/Agents.xcodeproj \
             -scheme Screenshots \
             -destination "id=$SIM" \
             CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM= \
-            TEST_RUNNER_SCREENSHOT_DIR="$PWD/screenshots" \
             | tee test.log | grep -E "error:|Test Case .*(passed|failed)|TEST (SUCCEEDED|FAILED)|\*\* " || true
           grep -q "TEST SUCCEEDED" test.log
       - if: always()
