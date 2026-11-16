@@ -69,7 +69,7 @@ struct AnswerLatestRequestIntent: AppIntent {
         guard let request = try await client.summary().topRequest else {
             return .result(dialog: "Nobody is waiting on you.")
         }
-        guard request.kind != RequestKind.multiChoice, request.kind != RequestKind.form else {
+        guard !["multi_choice", "form"].contains(request.kind.wireName) else {
             return .result(dialog: "\(request.agentName) needs an answer that won't fit in a sentence. Open the app to reply.")
         }
         let spoken: String
