@@ -52,6 +52,32 @@ final class WidgetScreenshots: XCTestCase {
         try save("lock-inline", accessory(.accessoryInline, width: 260, height: 26))
     }
 
+    func testStyledAlert() throws {
+        let markdown = """
+        ## Styled alert test
+        Long-press this alert. You should see **bold**, _italics_, `inline code` and a [tappable link](https://dashboard.example.com).
+
+        - a bullet point
+        - another, with **bold** inside
+
+        1. a numbered step
+        2. and a second
+
+        > a quoted line
+
+        ```
+        npm test   # a code block
+        ```
+        """
+        let view = AlertView(title: "home-server replied to you", markdown: markdown, plainText: "", openLink: { _ in }, openApp: {})
+        let fitted = UIHostingController(rootView: view).sizeThatFits(in: CGSize(width: 370, height: .greatestFiniteMagnitude))
+        XCTAssertGreaterThan(fitted.height, 200, "the expanded alert would have no height")
+        let alert = view
+            .background(Color(uiColor: .secondarySystemBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        try save("alert-styled", alert, width: 370)
+    }
+
     func testLiveActivity() throws {
         try save("live-activity-question", liveActivity(waiting))
         try save("live-activity-quiet", liveActivity(quiet))

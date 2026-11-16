@@ -23,11 +23,7 @@ final class NotificationViewController: UIViewController, UNNotificationContentE
             markdown: info["markdown"] as? String,
             plainText: content.body,
             openLink: { [weak self] url in self?.openLink(url) },
-            openApp: { [weak self] in self?.extensionContext?.performNotificationDefaultAction() },
-            resize: { [weak self] height in
-                guard let self else { return }
-                preferredContentSize = CGSize(width: view.bounds.width, height: min(height, Self.maxHeight))
-            }
+            openApp: { [weak self] in self?.extensionContext?.performNotificationDefaultAction() }
         )
         if let host {
             host.rootView = alert
@@ -38,18 +34,22 @@ final class NotificationViewController: UIViewController, UNNotificationContentE
 
     private func embed(_ alert: AlertView) {
         let host = UIHostingController(rootView: alert)
+        // The hosting controller reports the text's own height; the alert grows to it.
+        host.sizingOptions = .preferredContentSize
         host.view.backgroundColor = .clear
-        host.view.translatesAutoresizingMaskIntoConstraints = false
+        host.view.frame = view.bounds
+        host.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         addChild(host)
         view.addSubview(host.view)
-        NSLayoutConstraint.activate([
-            host.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            host.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            host.view.topAnchor.constraint(equalTo: view.topAnchor),
-            host.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-        ])
         host.didMove(toParent: self)
         self.host = host
+    }
+
+    override func preferredContentSizeDidChange(forChildContentContainer container: UIContentContainer) {
+        super.preferredContentSizeDidChange(forChildContentContainer: container)
+        let height = min(container.preferredContentSize.height, Self.maxHeight)
+        guard height > 0 else { return }
+        preferredContentSize = CGSize(width: view.bounds.width, height: height)
     }
 
     /// Agents often link dashboard pages by path alone, which only the app can open.
@@ -65,25 +65,23 @@ struct AlertView: View {
     let plainText: String
     let openLink: (URL) -> Void
     let openApp: () -> Void
-    let resize: (CGFloat) -> Void
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 8) {
-                if !title.isEmpty {
-                    Text(title).font(.headline)
-                }
-                if let markdown {
-                    MarkdownView(blocks: MarkdownBlock.parse(markdown))
-                } else {
-                    Text(plainText)
-                }
+        // No ScrollView: its ideal height is not its content's, so the alert would size to nothing.
+        // Anything past the height cap is cut off; a tap opens the full message in the app.
+        VStack(alignment: .leading, spacing: 8) {
+            if !title.isEmpty {
+                Text(title).font(.headline)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(16)
-            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { resize($0) }
+            if let markdown {
+                MarkdownView(blocks: MarkdownBlock.parse(markdown))
+            } else {
+                Text(plainText)
+            }
         }
-        .scrollBounceBehavior(.basedOnSize)
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
         .contentShape(Rectangle())
         .onTapGesture(perform: openApp)
         .environment(\.openURL, OpenURLAction { url in
