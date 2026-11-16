@@ -10,7 +10,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
     ) -> Bool {
         UNUserNotificationCenter.current().delegate = self
         Task {
-            await Notifications.registerBaseCategories()
+            Notifications.registerCategories()
             if Dashboard.isLinked {
                 await MainActor.run { application.registerForRemoteNotifications() }
                 await LiveActivityController.shared.watchTokens()

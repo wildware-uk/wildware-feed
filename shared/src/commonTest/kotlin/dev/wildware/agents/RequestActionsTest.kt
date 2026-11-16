@@ -72,6 +72,28 @@ class RequestActionsTest {
     }
 
     @Test
+    fun `shared option categories number their buttons instead of naming any question's options`() {
+        val options = listOf("Ship it", "Hold", "Roll back")
+        val id = RequestActions.categoryId(RequestKind.Buttons, options)!!
+        val buttons = RequestActions.categoryActions(id)
+
+        assertEquals(listOf("Option 1", "Option 2", "Option 3"), buttons.map { it.title })
+        assertEquals(JsonPrimitive("Hold"), RequestActions.answerFor(RequestKind.Buttons, options, buttons[1].id, null))
+        assertEquals(listOf("Yes", "No"), RequestActions.categoryActions("REQUEST.confirm").map { it.title })
+        assertTrue(RequestActions.categoryIds.all { RequestActions.categoryActions(it).isNotEmpty() })
+    }
+
+    @Test
+    fun `the alert text says what each numbered option is`() {
+        assertEquals(
+            "Option 1: Ship it\nOption 2: Hold",
+            RequestActions.optionsLegend(RequestKind.Choice, listOf("Ship it", "Hold")),
+        )
+        assertNull(RequestActions.optionsLegend(RequestKind.Confirm, null))
+        assertNull(RequestActions.optionsLegend(RequestKind.Buttons, (1..5).map { "Option $it" }))
+    }
+
+    @Test
     fun `a request with no buttons has no category`() {
         assertNull(RequestActions.categoryId(RequestKind.Form, listOf("Send")))
         assertNull(RequestActions.categoryId(RequestKind.Buttons, emptyList()))

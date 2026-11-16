@@ -12,7 +12,7 @@ final class NotificationViewController: UIViewController, UNNotificationContentE
         let content = notification.request.content
         let info = content.userInfo
 
-        // A request's category is shared by every question with as many buttons, so set this one's titles.
+        // Shared categories number their option buttons; here there is room for this question's own titles.
         if let kind = info["requestKind"] as? String {
             let actions = Notifications.actions(forRequestKind: kind, options: info["options"] as? [String])
             if !actions.isEmpty { extensionContext?.notificationActions = actions }

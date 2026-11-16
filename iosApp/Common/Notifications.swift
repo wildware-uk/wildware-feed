@@ -2,43 +2,28 @@ import Shared
 import UserNotifications
 
 /// Notification buttons. Message and update alerts share fixed categories; a request's category
-/// depends on its kind and button count, and takes its button titles when its alert arrives.
+/// depends on its kind and button count, and the expanded alert swaps in that question's own titles.
 enum Notifications {
     static let messageCategory = "MESSAGE"
     static let updateCategory = "UPDATE"
     static let requestCategory = "REQUEST"
     static let replyAction = "reply"
 
-    static func registerBaseCategories() async {
-        let center = UNUserNotificationCenter.current()
-        let existing = await center.notificationCategories()
+    static func registerCategories() {
+        let requests = RequestActions.shared.categoryIds.map { id in
+            UNNotificationCategory(
+                identifier: id,
+                actions: RequestActions.shared.categoryActions(categoryId: id).map(notificationAction),
+                intentIdentifiers: [],
+                options: []
+            )
+        }
         let base: Set<UNNotificationCategory> = [
             replyCategory(id: messageCategory),
             replyCategory(id: updateCategory),
             UNNotificationCategory(identifier: requestCategory, actions: [], intentIdentifiers: []),
         ]
-        let kept = existing.filter { RequestActions.shared.categoryIds.contains($0.identifier) }
-        center.setNotificationCategories(base.union(kept))
-    }
-
-    /// Registers the buttons for one request and returns the category id to put on its notification.
-    /// The newest question's titles replace the last ones in its category; the expanded alert
-    /// shows each question's own titles (see `actions`).
-    static func category(forRequestKind kindName: String, options: [String]?) async -> String? {
-        guard let kind = RequestKind.companion.fromWire(value: kindName),
-              let id = RequestActions.shared.categoryId(kind: kind, options: options)
-        else { return nil }
-
-        let center = UNUserNotificationCenter.current()
-        var categories = await center.notificationCategories().filter { $0.identifier != id }
-        categories.insert(UNNotificationCategory(
-            identifier: id,
-            actions: actions(forRequestKind: kindName, options: options),
-            intentIdentifiers: [],
-            options: []
-        ))
-        center.setNotificationCategories(categories)
-        return id
+        UNUserNotificationCenter.current().setNotificationCategories(base.union(requests))
     }
 
     static func actions(forRequestKind kindName: String, options: [String]?) -> [UNNotificationAction] {

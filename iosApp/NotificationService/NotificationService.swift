@@ -1,32 +1,27 @@
 import Shared
 import UserNotifications
 
-/// Runs on the phone before an alert is shown, to give each question its own answer buttons.
+/// Runs on the phone before an alert is shown, to give each question its answer buttons.
 final class NotificationService: UNNotificationServiceExtension {
-    private var contentHandler: ((UNNotificationContent) -> Void)?
-    private var content: UNMutableNotificationContent?
-
     override func didReceive(
         _ request: UNNotificationRequest,
         withContentHandler contentHandler: @escaping (UNNotificationContent) -> Void
     ) {
-        self.contentHandler = contentHandler
         let content = (request.content.mutableCopy() as? UNMutableNotificationContent) ?? UNMutableNotificationContent()
-        self.content = content
-
         let info = request.content.userInfo
-        guard let kind = info["requestKind"] as? String else { return contentHandler(content) }
+        guard let kindName = info["requestKind"] as? String,
+              let kind = RequestKind.companion.fromWire(value: kindName)
+        else { return contentHandler(content) }
 
-        Task {
-            if let category = await Notifications.category(forRequestKind: kind, options: info["options"] as? [String]) {
-                content.categoryIdentifier = category
-            }
-            content.relevanceScore = 1
-            contentHandler(content)
+        let options = info["options"] as? [String]
+        if let category = RequestActions.shared.categoryId(kind: kind, options: options) {
+            content.categoryIdentifier = category
         }
-    }
-
-    override func serviceExtensionTimeWillExpire() {
-        if let contentHandler, let content { contentHandler(content) }
+        // Where the buttons only say "Option 1", as on the Watch, the text says what each one is.
+        if let legend = RequestActions.shared.optionsLegend(kind: kind, options: options) {
+            content.body += "\n" + legend
+        }
+        content.relevanceScore = 1
+        contentHandler(content)
     }
 }

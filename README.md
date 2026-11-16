@@ -31,7 +31,7 @@ only a native app can do:
 | `iosApp/Widgets` | Widgets and the Live Activity screens. |
 | `iosApp/Share` | The share sheet. |
 | `iosApp/Voice` | Voice notes: recording, transcription and sending, shared by the app, its controls and Siri. |
-| `iosApp/NotificationService` | Builds each question's answer buttons as its alert arrives. |
+| `iosApp/NotificationService` | Picks each question's answer buttons as its alert arrives, and lists what numbered options mean. |
 | `iosApp/NotificationContent` | Shows a held alert's markdown with its formatting, and that question's own answer buttons. |
 | `iosApp/Common` | Swift shared by every target: stored login, the Live Activity shape, deep links. |
 

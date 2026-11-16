@@ -75,7 +75,7 @@ object RequestActions {
     /**
      * The notification category for a request's buttons, or null when it has none. There is one per
      * kind and button count, a fixed set the notification content extension can list by name.
-     * Requests with the same count share a category, so each alert sets its own button titles.
+     * Requests with the same count share a category, so its buttons carry no question's own titles.
      */
     fun categoryId(kind: RequestKind, options: List<String>?): String? {
         val count = actionsFor(kind, options).size
@@ -89,6 +89,28 @@ object RequestActions {
     val categoryIds: List<String> =
         listOf("$CategoryPrefix.confirm", "$CategoryPrefix.text") +
             (1..MaxOptionButtons).map { "$CategoryPrefix.options.$it" }
+
+    /**
+     * The buttons a shared category is registered with. They must be true for every question in it,
+     * so options are numbered rather than named: a named button could answer another question's option.
+     */
+    fun categoryActions(categoryId: String): List<NotificationAction> = when (categoryId) {
+        "$CategoryPrefix.confirm" -> actionsFor(RequestKind.Confirm, null)
+        "$CategoryPrefix.text" -> actionsFor(RequestKind.Text, null)
+        else -> categoryId.removePrefix("$CategoryPrefix.options.").toIntOrNull()
+            ?.let { count -> List(count) { NotificationAction("$OptionPrefix$it", optionName(it)) } }
+            .orEmpty()
+    }
+
+    /** What each numbered button means, for alert text shown beside the numbered buttons. */
+    fun optionsLegend(kind: RequestKind, options: List<String>?): String? =
+        actionsFor(kind, options)
+            .takeIf { kind == RequestKind.Buttons || kind == RequestKind.Choice }
+            ?.takeIf { it.isNotEmpty() }
+            ?.mapIndexed { index, action -> "${optionName(index)}: ${action.title}" }
+            ?.joinToString("\n")
+
+    private fun optionName(index: Int) = "Option ${index + 1}"
 
     private const val CategoryPrefix = "REQUEST"
 }

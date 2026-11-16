@@ -7,7 +7,7 @@ extension Notifications {
         let center = UNUserNotificationCenter.current()
         let granted = (try? await center.requestAuthorization(options: [.alert, .sound, .badge, .timeSensitive])) ?? false
         guard granted else { return }
-        await registerBaseCategories()
+        registerCategories()
         await MainActor.run { UIApplication.shared.registerForRemoteNotifications() }
     }
 }
