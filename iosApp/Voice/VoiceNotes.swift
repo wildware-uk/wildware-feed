@@ -4,7 +4,7 @@ import Foundation
 import Shared
 
 enum VoiceNoteError: LocalizedError {
-    case microphoneOff, liveActivitiesOff, couldNotRecord, noProject
+    case microphoneOff, liveActivitiesOff, couldNotRecord, noProject, nothingHeard
 
     var errorDescription: String? {
         switch self {
@@ -12,11 +12,12 @@ enum VoiceNoteError: LocalizedError {
         case .liveActivitiesOff: "Turn on Live Activities for Agents in Settings to record without unlocking."
         case .couldNotRecord: "The microphone is busy. Try again in a moment."
         case .noProject: "There's no project to send it to yet."
+        case .nothingHeard: "No words were picked up, so nothing was sent."
         }
     }
 }
 
-/// Records voice notes, writes down what was said, and posts both to a project's feed.
+/// Records voice notes, writes down what was said, and posts the words to a project's feed.
 /// The hold-to-talk button, the lock screen control, the Action button and Siri all share this one recorder.
 @MainActor
 final class VoiceNotes: ObservableObject {
@@ -26,7 +27,6 @@ final class VoiceNotes: ObservableObject {
 
     @Published private(set) var startedAt: Date?
     @Published private(set) var level: Float = 0
-    @Published private(set) var isSending = false
 
     private var recorder: AVAudioRecorder?
     private var metering: Task<Void, Never>?
@@ -71,29 +71,51 @@ final class VoiceNotes: ObservableObject {
         Task { await endActivity(nil) }
     }
 
-    /// Stops recording, writes down what was said and posts both. A nil `project` means the last one used.
-    /// Returns where it went, or nil when the press was too short to be a note.
-    @discardableResult
-    func finish(to project: ProjectRef? = nil) async throws -> ProjectRef? {
-        guard let recording = stopRecording() else {
+    /// Stops recording and writes down what was said, then deletes the recording.
+    /// Nil when the press was too short to be a note; throws `nothingHeard` when no words were picked up.
+    func stop() async throws -> String? {
+        guard let recording = stopRecording() else { return nil }
+        defer { try? FileManager.default.removeItem(at: recording.file) }
+        guard VoiceNote.shared.isLongEnough(seconds: recording.seconds) else { return nil }
+        let transcript = await Transcriber.transcribe(recording.file)
+        guard let text = VoiceNote.shared.text(transcript: transcript) else {
+            throw VoiceNoteError.nothingHeard
+        }
+        return text
+    }
+
+    /// Posts what was said as a new message. A nil `project` means the last one used.
+    func post(_ text: String, to project: ProjectRef?) async throws -> ProjectRef {
+        guard let client = Dashboard.client() else { throw DashboardError.notLinked }
+        defer { client.close() }
+        var destination = project
+        if destination == nil {
+            let projects = try await client.summary().projects
+            destination = VoiceNote.shared.destination(
+                picked: nil, path: nil, lastUsed: CredentialStore.lastProject?.slug, projects: projects
+            )
+        }
+        guard let destination else { throw VoiceNoteError.noProject }
+        _ = try await client.share(projectSlug: destination.slug, text: text, attachments: [])
+        CredentialStore.lastProject = destination
+        return destination
+    }
+
+    /// The lock screen's way to end a note: stop, write it down and post it to the last project used.
+    func finish() async throws {
+        guard isRecording else {
             // The app was restarted mid-note, so a Stop button is all that's left of it.
             await endActivity(nil)
-            return nil
+            return
         }
-        defer { try? FileManager.default.removeItem(at: recording.file) }
-        guard VoiceNote.shared.isLongEnough(seconds: recording.seconds) else {
-            await endActivity(nil)
-            return nil
-        }
-
-        isSending = true
-        defer { isSending = false }
         await updateActivity(NoteState(phase: .sending))
         do {
-            let sent = try await send(recording.file, to: project)
-            CredentialStore.lastProject = sent
+            guard let text = try await stop() else {
+                await endActivity(nil)
+                return
+            }
+            let sent = try await post(text, to: nil)
             await endActivity(NoteState(phase: .sent, detail: sent.name))
-            return sent
         } catch {
             await endActivity(NoteState(phase: .failed, detail: error.localizedDescription))
             throw error
@@ -134,27 +156,6 @@ final class VoiceNotes: ObservableObject {
         level = 0
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
         return (recorder.url, seconds)
-    }
-
-    private func send(_ file: URL, to project: ProjectRef?) async throws -> ProjectRef {
-        guard let client = Dashboard.client() else { throw DashboardError.notLinked }
-        defer { client.close() }
-        var destination = project
-        if destination == nil {
-            let projects = try await client.summary().projects
-            destination = VoiceNote.shared.destination(
-                picked: nil, path: nil, lastUsed: CredentialStore.lastProject?.slug, projects: projects
-            )
-        }
-        guard let destination else { throw VoiceNoteError.noProject }
-        let transcript = await Transcriber.transcribe(file)
-        let audio = try Data(contentsOf: file)
-        _ = try await client.share(
-            projectSlug: destination.slug,
-            text: VoiceNote.shared.messageBody(transcript: transcript),
-            attachments: [IosDashboardKt.voiceNoteAttachment(data: audio)]
-        )
-        return destination
     }
 
     private func updateActivity(_ state: NoteState) async {

@@ -8,7 +8,7 @@ import AppIntents
 struct RecordVoiceNoteIntent: AudioRecordingIntent, LiveActivityIntent {
     static let title: LocalizedStringResource = "Record a Voice Note"
     static let description = IntentDescription(
-        "Records you, writes down what you said, and posts both to the project you last sent a voice note to."
+        "Records you, writes down what you said, and posts it to the project you last sent a voice note to."
     )
 
     func perform() async throws -> some IntentResult {

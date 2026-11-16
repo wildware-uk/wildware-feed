@@ -53,22 +53,22 @@ class VoiceNoteTest {
     fun `the transcript is tidied into one paragraph`() {
         assertEquals(
             "Merge the branch. Then deploy.",
-            VoiceNote.messageBody(listOf("  Merge the branch.", "\nThen   deploy. ")),
+            VoiceNote.text(listOf("  Merge the branch.", "\nThen   deploy. ")),
         )
     }
 
     @Test
-    fun `a note with no words gets a caption`() {
-        assertEquals(VoiceNote.NoWordsCaption, VoiceNote.messageBody(emptyList()))
-        assertEquals(VoiceNote.NoWordsCaption, VoiceNote.messageBody(listOf(" ", "")))
+    fun `a note with no words has no text`() {
+        assertNull(VoiceNote.text(emptyList()))
+        assertNull(VoiceNote.text(listOf(" ", "")))
     }
 
     @Test
     fun `a very long transcript is cut to fit the dashboard`() {
-        val body = VoiceNote.messageBody(listOf("word ".repeat(5_000)))
+        val text = VoiceNote.text(listOf("word ".repeat(5_000)))!!
 
-        assertEquals(VoiceNote.MaxBodyLength, body.length)
-        assertTrue(body.endsWith("…"))
+        assertEquals(VoiceNote.MaxBodyLength, text.length)
+        assertTrue(text.endsWith("…"))
     }
 
     @Test

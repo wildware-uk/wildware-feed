@@ -1,17 +1,12 @@
 package dev.wildware.agents
 
-/** The decisions behind a voice note: where it goes, whether it is worth sending, and what its message says. */
+/** The decisions behind a voice note: where it goes, whether it is worth sending, and what its text says. */
 object VoiceNote {
     /** Shorter than this, a press was a tap on the button rather than something said. */
     const val MinimumSeconds = 0.6
 
     /** The dashboard refuses longer message bodies. */
     const val MaxBodyLength = 10_000
-
-    const val NoWordsCaption = "Voice note (no words picked up)"
-
-    const val Filename = "voice-note.m4a"
-    const val MimeType = "audio/mp4"
 
     private val whitespace = Regex("\\s+")
 
@@ -32,11 +27,11 @@ object VoiceNote {
         return segments.getOrNull(1)?.takeIf { segments[0] == "projects" }
     }
 
-    /** The message posted with the recording: what was said, as one tidy paragraph, or a caption when nothing was. */
-    fun messageBody(transcript: List<String>): String {
+    /** What was said, as one tidy paragraph, or null when no words were picked up. */
+    fun text(transcript: List<String>): String? {
         val text = transcript.joinToString(" ").trim().replace(whitespace, " ")
         return when {
-            text.isEmpty() -> NoWordsCaption
+            text.isEmpty() -> null
             text.length > MaxBodyLength -> text.take(MaxBodyLength - 1).trimEnd() + "…"
             else -> text
         }

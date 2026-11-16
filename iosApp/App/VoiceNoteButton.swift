@@ -13,6 +13,7 @@ struct VoiceNoteButton: View {
     @State private var picked: String?
     @State private var isHolding = false
     @State private var willCancel = false
+    @State private var working: String?
     @State private var notice: String?
 
     private static let cancelDistance: CGFloat = 80
@@ -27,10 +28,8 @@ struct VoiceNoteButton: View {
         VStack(alignment: .leading, spacing: 8) {
             if let startedAt = notes.startedAt {
                 RecordingPanel(startedAt: startedAt, level: notes.level, destination: destination?.name, willCancel: willCancel)
-            } else if notes.isSending {
-                Pill(text: "Sending…")
-            } else if let notice {
-                Pill(text: notice)
+            } else if let status = working ?? notice {
+                Pill(text: status)
             }
             HStack(spacing: 8) {
                 microphone
@@ -113,12 +112,18 @@ struct VoiceNoteButton: View {
         guard notes.isRecording else { return }
         let project = destination
         Task {
+            defer { working = nil }
             do {
-                if let sent = try await notes.finish(to: project) {
-                    show("Sent to \(sent.name)")
-                } else {
+                working = "Writing it down…"
+                guard let text = try await notes.stop() else {
                     show("Hold the mic to record")
+                    return
                 }
+                working = "Sending…"
+                let sent = try await notes.post(text, to: project)
+                show("Sent to \(sent.name)")
+            } catch VoiceNoteError.nothingHeard {
+                show("Didn't catch any words. Nothing was sent.")
             } catch {
                 model.lastError = "Your voice note didn't send: \(error.localizedDescription)"
             }
