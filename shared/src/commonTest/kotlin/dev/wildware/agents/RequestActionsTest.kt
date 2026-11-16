@@ -56,10 +56,24 @@ class RequestActionsTest {
     }
 
     @Test
-    fun `requests with the same buttons share a category and different buttons do not`() {
-        val first = RequestActions.categoryId(RequestKind.Buttons, listOf("a", "b"))
+    fun `requests with the same number of buttons share a category from the fixed set`() {
+        assertEquals(
+            RequestActions.categoryId(RequestKind.Buttons, listOf("a", "b")),
+            RequestActions.categoryId(RequestKind.Choice, listOf("c", "d")),
+        )
+        assertNotEquals(
+            RequestActions.categoryId(RequestKind.Buttons, listOf("a", "b")),
+            RequestActions.categoryId(RequestKind.Buttons, listOf("a", "b", "c")),
+        )
 
-        assertEquals(first, RequestActions.categoryId(RequestKind.Buttons, listOf("a", "b")))
-        assertNotEquals(first, RequestActions.categoryId(RequestKind.Buttons, listOf("a", "c")))
+        val optionCounts = (0..RequestActions.MaxOptionButtons + 1).map { n -> List(n) { "Option $it" } }
+        val ids = RequestKind.entries.flatMap { kind -> optionCounts.mapNotNull { RequestActions.categoryId(kind, it) } }
+        assertEquals(RequestActions.categoryIds.toSet(), ids.toSet())
+    }
+
+    @Test
+    fun `a request with no buttons has no category`() {
+        assertNull(RequestActions.categoryId(RequestKind.Form, listOf("Send")))
+        assertNull(RequestActions.categoryId(RequestKind.Buttons, emptyList()))
     }
 }

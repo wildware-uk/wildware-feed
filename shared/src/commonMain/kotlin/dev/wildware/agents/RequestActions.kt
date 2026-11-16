@@ -72,7 +72,23 @@ object RequestActions {
             RequestKind.MultiChoice, RequestKind.Form -> null
         }
 
-    /** A category per distinct button set, so two requests with the same options share one. */
-    fun categoryId(kind: RequestKind, options: List<String>?): String =
-        "REQUEST." + kind.wireName + "." + actionsFor(kind, options).joinToString("|") { it.title }.hashCode().toUInt()
+    /**
+     * The notification category for a request's buttons, or null when it has none. There is one per
+     * kind and button count, a fixed set the notification content extension can list by name.
+     * Requests with the same count share a category, so each alert sets its own button titles.
+     */
+    fun categoryId(kind: RequestKind, options: List<String>?): String? {
+        val count = actionsFor(kind, options).size
+        return when {
+            count == 0 -> null
+            kind == RequestKind.Buttons || kind == RequestKind.Choice -> "$CategoryPrefix.options.$count"
+            else -> "$CategoryPrefix.${kind.wireName}"
+        }
+    }
+
+    val categoryIds: List<String> =
+        listOf("$CategoryPrefix.confirm", "$CategoryPrefix.text") +
+            (1..MaxOptionButtons).map { "$CategoryPrefix.options.$it" }
+
+    private const val CategoryPrefix = "REQUEST"
 }
