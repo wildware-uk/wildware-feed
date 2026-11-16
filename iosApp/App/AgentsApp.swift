@@ -32,11 +32,10 @@ struct RootView: View {
             .ignoresSafeArea(edges: .bottom)
             .background(Color(red: 0x11 / 255, green: 0x14 / 255, blue: 0x19 / 255))
             .overlay(alignment: .bottomLeading) {
-                HStack(alignment: .bottom, spacing: 8) {
-                    AppMenu()
-                    if model.isLinked { VoiceNoteButton() }
-                }
-                .padding(12)
+                AppMenu().padding(12)
+            }
+            .overlay(alignment: .bottom) {
+                if model.isLinked { VoiceNoteButton().padding(.bottom, 8) }
             }
             .overlay(alignment: .top) {
                 if let error = model.lastError {
