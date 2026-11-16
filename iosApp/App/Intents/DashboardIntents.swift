@@ -107,9 +107,13 @@ struct AnswerRequestIntent: AppIntent, LiveActivityIntent {
 
     func perform() async throws -> some IntentResult {
         guard let client = Dashboard.client() else { throw DashboardError.notLinked }
-        defer { client.close() }
+        // Redraw even when the answer fails: the usual failure is a question already answered
+        // elsewhere, and the widget would otherwise keep offering its dead buttons.
+        defer {
+            client.close()
+            WidgetCenter.shared.reloadAllTimelines()
+        }
         _ = try await client.answerFromAction(requestId: requestId, kind: kind, options: options, actionId: actionId, typedText: nil)
-        WidgetCenter.shared.reloadAllTimelines()
         return .result()
     }
 }
