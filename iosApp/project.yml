@@ -22,8 +22,7 @@ targetTemplates:
       - framework: ../shared/build/XCFrameworks/debug/Shared.xcframework
         embed: false
     sources:
-      - path: Common
-        group: Common
+      - Common
 
 targets:
   Agents:
@@ -72,9 +71,8 @@ targets:
     platform: iOS
     templates: [UsesShared]
     sources:
-      - path: Widgets
-      - path: App/Intents
-        group: Widgets
+      - Widgets
+      - App/Intents
     info:
       path: Widgets/Info.plist
       properties:
