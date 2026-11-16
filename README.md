@@ -13,8 +13,11 @@ only a native app can do:
 - **Live Activity.** A lock screen and Dynamic Island bar that the server keeps current, with
   Yes/No buttons for yes-or-no questions. The server can start it when a question arrives.
 - **Share sheet.** Share a screenshot, photo, link or text from any app into a project's feed.
+- **Voice notes.** Hold the mic button to talk, let go to send. The phone writes down what you said
+  (Apple's on-device speech model) and posts it with the recording to the project on screen. A lock
+  screen, Control Center and Action button control records without unlocking, with a Stop button on the lock screen.
 - **Siri.** "Create a ticket in Agents", "What are my Agents doing", "Answer my Agents",
-  "Message Garden Game in Agents". Siri asks for anything you didn't say.
+  "Message Garden Game in Agents", "Record a voice note in Agents". Siri asks for anything you didn't say.
 
 ## How it fits together
 
@@ -24,6 +27,7 @@ only a native app can do:
 | `iosApp/App` | The SwiftUI app: web view, sign-in linking, push, Live Activity control, Siri. |
 | `iosApp/Widgets` | Widgets and the Live Activity screens. |
 | `iosApp/Share` | The share sheet. |
+| `iosApp/Voice` | Voice notes: recording, transcription and sending, shared by the app, its controls and Siri. |
 | `iosApp/NotificationService` | Builds each question's answer buttons as its alert arrives. |
 | `iosApp/Common` | Swift shared by every target: stored login, the Live Activity shape, deep links. |
 
