@@ -37,7 +37,9 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         let action = response.actionIdentifier
 
         if action == UNNotificationDefaultActionIdentifier {
-            if let url = info["url"] as? String, let path = DeepLink.dashboardPath(fromAbsolute: url) {
+            if let link = PendingLink.take() {
+                await follow(link)
+            } else if let url = info["url"] as? String, let path = DeepLink.dashboardPath(fromAbsolute: url) {
                 await MainActor.run { AppModel.shared.open(path: path) }
             }
             return
@@ -63,6 +65,17 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
             await LiveActivityController.shared.refresh(startIfNeeded: false)
         } catch {
             await tell("Your answer didn't send: \(error.localizedDescription)")
+        }
+    }
+
+    /// Dashboard links (or bare paths) open in the app's own page; anything else goes to Safari.
+    @MainActor
+    private func follow(_ link: URL) async {
+        let isDashboard = link.scheme == nil || link.host() == CredentialStore.server?.host()
+        if isDashboard, let path = DeepLink.dashboardPath(fromAbsolute: link.absoluteString) {
+            AppModel.shared.open(path: path)
+        } else {
+            _ = await UIApplication.shared.open(link)
         }
     }
 

@@ -58,10 +58,10 @@ final class NotificationViewController: UIViewController, UNNotificationContentE
         self.host = host
     }
 
-    /// Agents often link dashboard pages by path alone, which only the app can open.
+    /// `extensionContext.open` does nothing in an alert, so the app opens the link once it is up.
     private func openLink(_ url: URL) {
-        let target = url.scheme == nil ? DeepLink.open(path: url.absoluteString) : url
-        extensionContext?.open(target, completionHandler: nil)
+        PendingLink.leave(url)
+        extensionContext?.performNotificationDefaultAction()
     }
 }
 

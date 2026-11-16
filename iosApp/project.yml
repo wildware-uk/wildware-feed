@@ -169,6 +169,10 @@ targets:
             UNNotificationExtensionInitialContentSizeRatio: 0.3
             UNNotificationExtensionDefaultContentHidden: true
             UNNotificationExtensionUserInteractionEnabled: true
+    entitlements:
+      path: NotificationContent/NotificationContent.entitlements
+      properties:
+        com.apple.security.application-groups: [group.dev.wildware.agents]
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.wildware.agents.notificationcontent
