@@ -20,3 +20,5 @@ fun attachment(filename: String, mimeType: String, data: NSData): Attachment {
     return Attachment(filename, mimeType, bytes)
 }
 
+
+fun voiceNoteAttachment(data: NSData): Attachment = attachment(VoiceNote.Filename, VoiceNote.MimeType, data)
