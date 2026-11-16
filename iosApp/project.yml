@@ -151,6 +151,9 @@ targets:
     type: app-extension
     platform: iOS
     templates: [UsesShared]
+    dependencies:
+      # Importing it only for its protocol doesn't link it, and without it the extension traps at launch.
+      - sdk: UserNotificationsUI.framework
     sources:
       - path: NotificationContent
     info:

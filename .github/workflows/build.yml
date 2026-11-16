@@ -62,6 +62,11 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             | tee build.log | grep -E "error:|warning: .*deprecated|BUILD (SUCCEEDED|FAILED)" || true
           grep -q "BUILD SUCCEEDED" build.log
+      - name: The alert extension links the framework iOS looks up when it starts
+        timeout-minutes: 2
+        run: |
+          appex=$(find ~/Library/Developer/Xcode/DerivedData -path "*Debug-iphonesimulator/Agents.app/PlugIns/AgentsNotificationContent.appex/AgentsNotificationContent" | head -1)
+          otool -L "$appex" | grep -q UserNotificationsUI.framework
       - if: failure()
         uses: actions/upload-artifact@v4
         with:
