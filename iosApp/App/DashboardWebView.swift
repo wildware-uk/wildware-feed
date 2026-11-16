@@ -11,6 +11,7 @@ struct WebNavigation: Equatable {
 struct DashboardWebView: UIViewRepresentable {
     let server: URL
     let navigation: WebNavigation?
+    let onPathChanged: @MainActor (String) -> Void
     let onPageLoaded: (WKWebView) -> Void
 
     static let userAgentSuffix = "AgentsiOS/1"
@@ -35,6 +36,13 @@ struct DashboardWebView: UIViewRepresentable {
         refresh.addTarget(context.coordinator, action: #selector(Coordinator.reload(_:)), for: .valueChanged)
         webView.scrollView.refreshControl = refresh
 
+        // The dashboard moves between pages without reloading, so only the address shows where it is.
+        let onPathChanged = onPathChanged
+        context.coordinator.addressObservation = webView.observe(\.url) { webView, _ in
+            guard let path = webView.url?.path() else { return }
+            Task { @MainActor in onPathChanged(path) }
+        }
+
         webView.load(URLRequest(url: url(for: navigation?.path)))
         context.coordinator.lastNavigation = navigation?.id
         return webView
@@ -54,6 +62,7 @@ struct DashboardWebView: UIViewRepresentable {
     final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
         private let parent: DashboardWebView
         var lastNavigation: UUID?
+        var addressObservation: NSKeyValueObservation?
 
         init(_ parent: DashboardWebView) { self.parent = parent }
 

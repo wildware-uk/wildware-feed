@@ -1,5 +1,6 @@
 import Foundation
 import Security
+import Shared
 
 /// Where this phone's dashboard lives and the device key that lets the app, its widgets,
 /// its share sheet and Siri act as the owner. Stored once, read by every target.
@@ -14,6 +15,7 @@ enum CredentialStore {
     private static let service = "dev.wildware.agents.device"
     private static let account = "owner"
     private static let serverKey = "serverURL"
+    private static let lastProjectKey = "lastVoiceNoteProject"
 
     static var defaults: UserDefaults { UserDefaults(suiteName: appGroup) ?? .standard }
 
@@ -21,6 +23,17 @@ enum CredentialStore {
     static var server: URL? {
         get { defaults.string(forKey: serverKey).flatMap(URL.init(string:)) }
         set { defaults.set(newValue?.absoluteString, forKey: serverKey) }
+    }
+
+    /// Where the last voice note went. Notes recorded from the lock screen go there too.
+    static var lastProject: ProjectRef? {
+        get {
+            guard let saved = defaults.dictionary(forKey: lastProjectKey) as? [String: String],
+                  let slug = saved["slug"], let name = saved["name"]
+            else { return nil }
+            return ProjectRef(slug: slug, name: name)
+        }
+        set { defaults.set(newValue.map { ["slug": $0.slug, "name": $0.name] }, forKey: lastProjectKey) }
     }
 
     static func load() -> Credentials? {

@@ -33,6 +33,7 @@ targets:
     templates: [UsesShared]
     sources:
       - path: App
+      - path: Voice
     info:
       path: App/Info.plist
       properties:
@@ -42,8 +43,10 @@ targets:
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
         NSSupportsLiveActivities: true
         NSSupportsLiveActivitiesFrequentUpdates: true
-        UIBackgroundModes: [remote-notification]
+        UIBackgroundModes: [remote-notification, audio]
         NSFaceIDUsageDescription: Confirm it is you before approving what an agent asks.
+        NSMicrophoneUsageDescription: Records the voice notes you send to your agents.
+        NSSpeechRecognitionUsageDescription: Writes down what you say in a voice note, so your agents can read it.
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
         CFBundleURLTypes:
@@ -75,6 +78,7 @@ targets:
     sources:
       - Widgets
       - App/Intents
+      - Voice
     info:
       path: Widgets/Info.plist
       properties:
@@ -151,6 +155,7 @@ targets:
       - path: Widgets
         excludes: [AgentsWidgetBundle.swift]
       - App/Intents
+      - Voice
       - Screenshots
     settings:
       base:

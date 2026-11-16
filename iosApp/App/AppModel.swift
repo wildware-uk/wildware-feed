@@ -12,6 +12,8 @@ final class AppModel: ObservableObject {
     @Published var server: URL? = CredentialStore.server
     @Published private(set) var isLinked = Dashboard.isLinked
     @Published var navigation: WebNavigation?
+    /// The dashboard page on screen, which decides where a voice note goes.
+    @Published var currentPath: String?
     @Published var lastError: String?
 
     private var apnsToken: String?

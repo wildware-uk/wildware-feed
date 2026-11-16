@@ -26,12 +26,18 @@ struct RootView: View {
 
     var body: some View {
         if let server = model.server {
-            DashboardWebView(server: server, navigation: model.navigation) { webView in
+            DashboardWebView(server: server, navigation: model.navigation, onPathChanged: { model.currentPath = $0 }) { webView in
                 model.pageLoaded(in: webView)
             }
             .ignoresSafeArea(edges: .bottom)
             .background(Color(red: 0x11 / 255, green: 0x14 / 255, blue: 0x19 / 255))
-            .overlay(alignment: .bottomLeading) { AppMenu().padding(12) }
+            .overlay(alignment: .bottomLeading) {
+                HStack(alignment: .bottom, spacing: 8) {
+                    AppMenu()
+                    if model.isLinked { VoiceNoteButton() }
+                }
+                .padding(12)
+            }
             .overlay(alignment: .top) {
                 if let error = model.lastError {
                     Text(error)
