@@ -8,6 +8,7 @@ only a native app can do:
   reply field). Answering needs Face ID or your passcode.
 - **Better alerts.** Apple push, with questions marked time-sensitive so they get through Focus.
   Replies to agents straight from message alerts.
+- **Formatted alerts.** Press and hold an alert to read the agent's message as written: headings, bold, lists, quotes, code and tappable links.
 - **Widgets.** Home screen and lock screen: who's online, what's in progress, what's waiting. The
   medium widget answers simple questions with a tap.
 - **Live Activity.** A lock screen and Dynamic Island bar that the server keeps current, with
@@ -31,6 +32,7 @@ only a native app can do:
 | `iosApp/Share` | The share sheet. |
 | `iosApp/Voice` | Voice notes: recording, transcription and sending, shared by the app, its controls and Siri. |
 | `iosApp/NotificationService` | Builds each question's answer buttons as its alert arrives. |
+| `iosApp/NotificationContent` | Shows a held alert's markdown with its formatting, and that question's own answer buttons. |
 | `iosApp/Common` | Swift shared by every target: stored login, the Live Activity shape, deep links. |
 
 Apple only allows widgets, Live Activities, Siri and share sheets in Swift, so those parts are Swift

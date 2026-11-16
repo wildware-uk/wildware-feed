@@ -70,6 +70,7 @@ targets:
       - target: AgentsWidgets
       - target: AgentsShare
       - target: AgentsNotificationService
+      - target: AgentsNotificationContent
 
   AgentsWidgets:
     type: app-extension
@@ -145,6 +146,29 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.wildware.agents.notifications
+
+  AgentsNotificationContent:
+    type: app-extension
+    platform: iOS
+    templates: [UsesShared]
+    sources:
+      - path: NotificationContent
+    info:
+      path: NotificationContent/Info.plist
+      properties:
+        CFBundleDisplayName: Agents
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.usernotifications.content-extension
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).NotificationViewController
+          NSExtensionAttributes:
+            # Content extensions can't match categories by pattern, so request categories are a fixed set.
+            UNNotificationExtensionCategory: [MESSAGE, UPDATE, REQUEST, REQUEST.confirm, REQUEST.text, REQUEST.options.1, REQUEST.options.2, REQUEST.options.3, REQUEST.options.4]
+            UNNotificationExtensionInitialContentSizeRatio: 0.3
+            UNNotificationExtensionDefaultContentHidden: true
+            UNNotificationExtensionUserInteractionEnabled: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.wildware.agents.notificationcontent
 
   # Not shipped: draws the widget and Live Activity views to PNGs (see .github/workflows/screenshots.yml).
   AgentsScreenshots:
