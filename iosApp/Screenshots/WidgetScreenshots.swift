@@ -70,7 +70,7 @@ final class WidgetScreenshots: XCTestCase {
         ```
         """
         let view = AlertView(title: "home-server replied to you", markdown: markdown, plainText: "", openLink: { _ in }, openApp: {})
-        let fitted = UIHostingController(rootView: view).sizeThatFits(in: CGSize(width: 370, height: .greatestFiniteMagnitude))
+        let fitted = UIHostingController(rootView: view).sizeThatFits(in: CGSize(width: 370, height: CGFloat.greatestFiniteMagnitude))
         XCTAssertGreaterThan(fitted.height, 200, "the expanded alert would have no height")
         let alert = view
             .background(Color(uiColor: .secondarySystemBackground))
