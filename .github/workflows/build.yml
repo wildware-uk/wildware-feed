@@ -65,10 +65,12 @@ jobs:
       - name: The alert extension links the framework iOS looks up when it starts
         timeout-minutes: 2
         run: |
-          appex=$(find ~/Library/Developer/Xcode/DerivedData -type f -name AgentsNotificationContent -path "*AgentsNotificationContent.appex/*" | head -1)
-          echo "binary: ${appex:-not found}"
-          otool -L "$appex"
-          otool -L "$appex" | grep -q UserNotificationsUI.framework
+          # Debug builds keep the code in a .debug.dylib beside a stub binary; check whichever holds it.
+          dir=$(find ~/Library/Developer/Xcode/DerivedData -type d -name AgentsNotificationContent.appex -path "*Debug-iphonesimulator*" | head -1)
+          code="$dir/AgentsNotificationContent.debug.dylib"
+          [ -f "$code" ] || code="$dir/AgentsNotificationContent"
+          otool -L "$code"
+          otool -L "$code" | grep -q UserNotificationsUI.framework
       - if: failure()
         uses: actions/upload-artifact@v4
         with:
