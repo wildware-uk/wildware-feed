@@ -4,7 +4,8 @@ import SwiftUI
 import UIKit
 
 /// Hold to talk: press the mic to record, let go to send, slide away to cancel.
-/// The name above it says which project the note goes to; tap it to pick another.
+/// If a text box on the page was in use, the words go into it for the owner to check and send.
+/// Otherwise they're posted to the project named above the mic; tap the name to pick another.
 struct VoiceNoteButton: View {
     @EnvironmentObject private var model: AppModel
     @ObservedObject private var notes = VoiceNotes.shared
@@ -13,6 +14,7 @@ struct VoiceNoteButton: View {
     @State private var picked: String?
     @State private var isHolding = false
     @State private var willCancel = false
+    @State private var intoTextBox = false
     @State private var isKeyboardUp = false
     @State private var working: String?
     @State private var notice: String?
@@ -31,7 +33,7 @@ struct VoiceNoteButton: View {
             if let startedAt = notes.startedAt {
                 RecordingPanel(
                     startedAt: startedAt,
-                    goesTo: destination.map { "To \($0.name)" },
+                    goesTo: intoTextBox ? "Into the text box" : destination.map { "To \($0.name)" },
                     willCancel: willCancel
                 )
             } else if let status = working ?? notice {
@@ -121,7 +123,10 @@ struct VoiceNoteButton: View {
                 try notes.start()
             } catch {
                 model.lastError = "Couldn't record: \(error.localizedDescription)"
+                return
             }
+            intoTextBox = false
+            Task { intoTextBox = await model.pageTextBox.isThere() }
         case .undetermined:
             Task {
                 guard await AVAudioApplication.requestRecordPermission() else { return }
@@ -142,6 +147,10 @@ struct VoiceNoteButton: View {
                 working = "Writing it down…"
                 guard let text = try await notes.stop() else {
                     show("Hold the mic to record")
+                    return
+                }
+                if await model.pageTextBox.insert(text) {
+                    show("Added to the text box. Check it, then send.")
                     return
                 }
                 working = "Sending…"

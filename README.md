@@ -14,8 +14,10 @@ only a native app can do:
   Yes/No buttons for yes-or-no questions. The server can start it when a question arrives.
 - **Share sheet.** Share a screenshot, photo, link or text from any app into a project's feed.
 - **Voice notes.** Hold the mic button to talk, let go to send. The phone writes down what you said
-  (Apple's on-device speech model) and posts it with the recording to the project on screen. A lock
-  screen, Control Center and Action button control records without unlocking, with a Stop button on the lock screen.
+  (Apple's on-device speech model) and sends only the words. If you were typing in a reply box or answer
+  on the page, the words go in there for you to check and send; otherwise they're posted to the project
+  on screen. A lock screen, Control Center and Action button control records without unlocking, with a
+  Stop button on the lock screen.
 - **Siri.** "Create a ticket in Agents", "What are my Agents doing", "Answer my Agents",
   "Message Garden Game in Agents", "Record a voice note in Agents". Siri asks for anything you didn't say.
 

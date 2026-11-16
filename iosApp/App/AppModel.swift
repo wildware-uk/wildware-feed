@@ -14,6 +14,7 @@ final class AppModel: ObservableObject {
     @Published var navigation: WebNavigation?
     /// The dashboard page on screen, which decides where a voice note goes.
     @Published var currentPath: String?
+    let pageTextBox = PageTextBox()
     @Published var lastError: String?
 
     private var apnsToken: String?

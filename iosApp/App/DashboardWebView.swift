@@ -11,6 +11,7 @@ struct WebNavigation: Equatable {
 struct DashboardWebView: UIViewRepresentable {
     let server: URL
     let navigation: WebNavigation?
+    let textBox: PageTextBox
     let onPathChanged: @MainActor (String) -> Void
     let onPageLoaded: (WKWebView) -> Void
 
@@ -23,6 +24,7 @@ struct DashboardWebView: UIViewRepresentable {
         configuration.websiteDataStore = .default()
         configuration.allowsInlineMediaPlayback = true
         configuration.applicationNameForUserAgent = Self.userAgentSuffix
+        configuration.userContentController.addUserScript(PageTextBox.script)
 
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = context.coordinator
@@ -31,6 +33,7 @@ struct DashboardWebView: UIViewRepresentable {
         webView.isInspectable = true
         webView.backgroundColor = UIColor(red: 0x11 / 255, green: 0x14 / 255, blue: 0x19 / 255, alpha: 1)
         webView.isOpaque = false
+        textBox.webView = webView
 
         let refresh = UIRefreshControl()
         refresh.addTarget(context.coordinator, action: #selector(Coordinator.reload(_:)), for: .valueChanged)

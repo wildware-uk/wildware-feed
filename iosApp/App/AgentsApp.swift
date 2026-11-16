@@ -26,7 +26,10 @@ struct RootView: View {
 
     var body: some View {
         if let server = model.server {
-            DashboardWebView(server: server, navigation: model.navigation, onPathChanged: { model.currentPath = $0 }) { webView in
+            DashboardWebView(
+                server: server, navigation: model.navigation, textBox: model.pageTextBox,
+                onPathChanged: { model.currentPath = $0 }
+            ) { webView in
                 model.pageLoaded(in: webView)
             }
             .ignoresSafeArea(edges: .bottom)
