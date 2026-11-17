@@ -30,6 +30,8 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         willPresent notification: UNNotification
     ) async -> UNNotificationPresentationOptions {
         WidgetCenter.shared.reloadAllTimelines()
+        // Most alerts are a question arriving or being settled, so the Inbox reads the dashboard again.
+        Task { await InboxStore.shared.refresh() }
         return [.banner, .list, .sound]
     }
 
@@ -63,6 +65,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
                 _ = try await client.reply(thread: thread, body: typed)
             }
             WidgetCenter.shared.reloadAllTimelines()
+            await InboxStore.shared.refresh()
             await LiveActivityController.shared.refresh(startIfNeeded: false)
         } catch {
             await tell("Your answer didn't send: \(error.localizedDescription)")

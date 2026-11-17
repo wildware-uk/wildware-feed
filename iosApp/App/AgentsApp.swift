@@ -23,42 +23,142 @@ struct AgentsApp: App {
 
 struct RootView: View {
     @EnvironmentObject private var model: AppModel
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
-        if let server = model.server {
+        Group {
+            if let server = model.server {
+                // Picked once per device, never by window size, so resizing on iPad never rebuilds the web view.
+                if UIDevice.current.userInterfaceIdiom == .pad {
+                    PadLayout(server: server)
+                } else {
+                    PhoneLayout(server: server)
+                }
+            } else {
+                SetupView()
+            }
+        }
+        // Questions arrive by push too, but a missed push must not leave the Inbox stale for long.
+        .task(id: scenePhase) {
+            guard scenePhase == .active else { return }
+            while !Task.isCancelled {
+                if model.isLinked { await InboxStore.shared.refresh() }
+                try? await Task.sleep(for: .seconds(60))
+            }
+        }
+    }
+}
+
+/// iPhone: the dashboard with the composer bar under it, and the Inbox as a sheet the bar opens.
+private struct PhoneLayout: View {
+    let server: URL
+    @EnvironmentObject private var model: AppModel
+
+    var body: some View {
+        DashboardScreen(server: server, showsInbox: true, showsMenu: true)
+            .overlay(alignment: .bottomLeading) {
+                // Before linking there is no bar, but the menu must still reach "Change dashboard".
+                if !model.isLinked { AppMenu().padding(12) }
+            }
+            .sheet(isPresented: $model.showInbox) {
+                NavigationStack {
+                    InboxView(leave: { model.showInbox = false })
+                        .toolbar {
+                            ToolbarItem(placement: .confirmationAction) { Button("Done") { model.showInbox = false } }
+                        }
+                }
+                .environmentObject(model)
+            }
+    }
+}
+
+/// iPad: the Inbox in the sidebar, the dashboard beside it.
+private struct PadLayout: View {
+    let server: URL
+    @EnvironmentObject private var model: AppModel
+    @ObservedObject private var store = InboxStore.shared
+    @State private var columns = NavigationSplitViewVisibility.all
+
+    var body: some View {
+        NavigationSplitView(columnVisibility: $columns) {
+            Group {
+                if model.isLinked {
+                    InboxView()
+                } else {
+                    ContentUnavailableView(
+                        "Sign in to see your Inbox",
+                        systemImage: "link",
+                        description: Text("Sign in on the page, and this iPad links itself.")
+                    )
+                }
+            }
+            .navigationSplitViewColumnWidth(min: 300, ideal: 360, max: 440)
+        } detail: {
+            DashboardScreen(server: server, showsInbox: false, showsMenu: false)
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .topBarLeading) {
+                        if columns == .detailOnly && store.count > 0 {
+                            Button { columns = .all } label: {
+                                Label("Inbox: \(store.count) waiting", systemImage: "tray.full")
+                                    .labelStyle(.titleAndIcon)
+                            }
+                        }
+                    }
+                    ToolbarItem(placement: .topBarTrailing) { AppMenu(compact: true) }
+                }
+        }
+        .navigationSplitViewStyle(.balanced)
+    }
+}
+
+/// The dashboard page, with the composer bar beneath it once the device is linked.
+/// The bar sits below the page rather than over it, so it never covers the page's own inputs,
+/// and it leaves while the page's own text box has the keyboard.
+private struct DashboardScreen: View {
+    let server: URL
+    let showsInbox: Bool
+    let showsMenu: Bool
+    @EnvironmentObject private var model: AppModel
+
+    private var showsBar: Bool { model.isLinked && !model.pageIsTyping }
+
+    var body: some View {
+        VStack(spacing: 0) {
             DashboardWebView(
                 server: server, navigation: model.navigation, textBox: model.pageTextBox,
                 onPathChanged: { model.currentPath = $0 }
             ) { webView in
                 model.pageLoaded(in: webView)
             }
-            .ignoresSafeArea(edges: .bottom)
-            .background(Color(red: 0x11 / 255, green: 0x14 / 255, blue: 0x19 / 255))
-            .overlay(alignment: .bottomLeading) {
-                AppMenu().padding(12)
+            // The page moves its own inputs above the keyboard, as it does in Safari.
+            .ignoresSafeArea(.keyboard)
+            .ignoresSafeArea(.container, edges: showsBar ? [] : .bottom)
+            if showsBar {
+                ComposerBar(showsInbox: showsInbox, showsMenu: showsMenu)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
             }
-            .overlay(alignment: .bottom) {
-                if model.isLinked { VoiceNoteButton().padding(.bottom, 8) }
+        }
+        .animation(.easeOut(duration: 0.15), value: showsBar)
+        .background(Color(red: 0x11 / 255, green: 0x14 / 255, blue: 0x19 / 255))
+        .overlay(alignment: .top) {
+            if let error = model.lastError {
+                Text(error)
+                    .font(.footnote)
+                    .padding(10)
+                    .background(.red.opacity(0.85), in: RoundedRectangle(cornerRadius: 10))
+                    .foregroundStyle(.white)
+                    .padding()
+                    .onTapGesture { model.lastError = nil }
             }
-            .overlay(alignment: .top) {
-                if let error = model.lastError {
-                    Text(error)
-                        .font(.footnote)
-                        .padding(10)
-                        .background(.red.opacity(0.85), in: RoundedRectangle(cornerRadius: 10))
-                        .foregroundStyle(.white)
-                        .padding()
-                        .onTapGesture { model.lastError = nil }
-                }
-            }
-        } else {
-            SetupView()
         }
     }
 }
 
 /// The few native settings there are, tucked into one small button so the dashboard keeps the screen.
 struct AppMenu: View {
+    /// In the composer bar or a toolbar, a plain icon; floating over the page, a dimmed round button.
+    var compact = false
     @EnvironmentObject private var model: AppModel
 
     var body: some View {
@@ -77,12 +177,17 @@ struct AppMenu: View {
                 model.forgetServer()
             }
         } label: {
-            Image(systemName: model.isLinked ? "ellipsis.circle" : "link.circle")
-                .font(.title2)
-                .foregroundStyle(.white.opacity(0.55))
-                .padding(6)
-                .background(.black.opacity(0.25), in: Circle())
+            if compact {
+                Image(systemName: "ellipsis.circle").font(.body)
+            } else {
+                Image(systemName: model.isLinked ? "ellipsis.circle" : "link.circle")
+                    .font(.title2)
+                    .foregroundStyle(.white.opacity(0.55))
+                    .padding(6)
+                    .background(.black.opacity(0.25), in: Circle())
+            }
         }
+        .accessibilityLabel("Settings")
     }
 }
 

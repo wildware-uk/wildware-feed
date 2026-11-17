@@ -1,9 +1,18 @@
 # Agents for iPhone
 
-A native iPhone app for the [Agent Dashboard](https://github.com/wildware-uk/agent-dashboard).
-The dashboard itself runs in a web view, exactly as in the browser. Around it, the app adds what
-only a native app can do:
+A native iPhone and iPad app for the [Agent Dashboard](https://github.com/wildware-uk/agent-dashboard).
+The screens you use most are native; the rest of the dashboard runs in a web view, exactly as in the
+browser. Around it, the app adds what only a native app can do:
 
+- **Inbox.** Every question waiting on you, the one closing soonest first, with how long each has left.
+  Swipe right for Yes and left for No; tap one to read it all and answer with its own buttons or a
+  text box. Answering needs Face ID or your passcode. Forms and multi-picks open in the dashboard.
+  A badge shows how many are waiting; it refreshes when the app opens and when an alert arrives.
+- **Composer bar.** Along the bottom: type, hold the mic to talk, add photos, send. A chip says where it
+  goes: the project on screen (else the last one you used), an agent's question you tapped Reply on,
+  or the page's own text box you were using. Tap the chip to change it. The bar steps aside while you
+  type in the page itself.
+- **iPad.** The Inbox sits in a sidebar beside the dashboard, in any orientation.
 - **Answer from the lock screen.** Question alerts carry their own buttons (Yes/No, each option, or a
   reply field). Answering needs Face ID or your passcode.
 - **Better alerts.** Apple push, with questions marked time-sensitive so they get through Focus.
@@ -14,11 +23,10 @@ only a native app can do:
 - **Live Activity.** A lock screen and Dynamic Island bar that the server keeps current, with
   Yes/No buttons for yes-or-no questions. The server can start it when a question arrives.
 - **Share sheet.** Share a screenshot, photo, link or text from any app into a project's feed.
-- **Voice notes.** Hold the mic button to talk, let go to send. The phone writes down what you said
-  (Apple's on-device speech model) and sends only the words. If you were typing in a reply box or answer
-  on the page, the words go in there for you to check and send; otherwise they're posted to the project
-  on screen. A lock screen, Control Center and Action button control records without unlocking, with a
-  Stop button on the lock screen.
+- **Voice notes.** Hold the bar's mic to talk. The phone writes down what you said (Apple's on-device
+  speech model) and puts the words in the bar, or in the page's text box if that's where it goes, for
+  you to check and send. A lock screen, Control Center and Action button control records without
+  unlocking and posts straight away, with a Stop button on the lock screen.
 - **Apple Watch.** See what agents are waiting on and answer from your wrist: Yes/No, one button per
   option, or dictate a text answer. Dictate a message to a project, or reply in a question's thread.
   A watch face complication shows how many questions are waiting and opens the list.
@@ -29,8 +37,8 @@ only a native app can do:
 
 | Folder | What it is |
 | --- | --- |
-| `shared/` | Kotlin Multiplatform: the dashboard client, the data shapes, and the logic for notification buttons, spoken answers, Siri replies and project-name matching. Tested on the JVM. |
-| `iosApp/App` | The SwiftUI app: web view, sign-in linking, push, Live Activity control, Siri. |
+| `shared/` | Kotlin Multiplatform: the dashboard client, the data shapes, and the logic for notification buttons, the Inbox's order and time left, where the composer sends, spoken answers, Siri replies and project-name matching. Tested on the JVM. |
+| `iosApp/App` | The SwiftUI app: Inbox, composer bar, web view, sign-in linking, push, Live Activity control, Siri. |
 | `iosApp/Widgets` | Widgets and the Live Activity screens. |
 | `iosApp/Share` | The share sheet. |
 | `iosApp/Voice` | Voice notes: recording, transcription and sending, shared by the app, its controls and Siri. |

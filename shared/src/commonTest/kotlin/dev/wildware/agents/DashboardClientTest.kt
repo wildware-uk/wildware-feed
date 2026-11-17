@@ -112,6 +112,40 @@ class DashboardClientTest {
     }
 
     @Test
+    fun `the composer talks over a question in its own thread, photos and all`() = runTest {
+        client { request ->
+            if (request.url.encodedPath == "/api/media") json("""{"media":{"id":"x1"}}""", HttpStatusCode.Created)
+            else json("""{"message":{"id":"m4"}}""", HttpStatusCode.Created)
+        }.send(mapOf("request" to "r1"), " why this branch? ", listOf(Attachment("a.jpg", "image/jpeg", byteArrayOf(1))))
+
+        assertEquals("""{"request":"r1","body":"why this branch?","mediaIds":["x1"]}""", seen[1].second)
+    }
+
+    @Test
+    fun `sending nothing at all uploads nothing`() = runTest {
+        assertFailsWith<DashboardException> { client { error("unreachable") }.send(mapOf("project" to "p"), " ", emptyList()) }
+        assertTrue(seen.isEmpty())
+    }
+
+    @Test
+    fun `a question's detail and suggested answer are read when the dashboard sends them`() = runTest {
+        val summary = client {
+            json(SUMMARY.replace(""""expiresAt":"2026-11-16T13:00:00Z"""", """"expiresAt":"2026-11-16T13:00:00Z","detail":"Branch fee-rounding","default":"Later""""))
+        }.summary()
+
+        val request = summary.requests.single()
+        assertEquals("Branch fee-rounding", request.detail)
+        assertEquals("Later", request.defaultAnswer)
+    }
+
+    @Test
+    fun `older dashboards send no detail or default`() = runTest {
+        val request = client { json(SUMMARY) }.summary().requests.single()
+        assertEquals(null, request.detail)
+        assertEquals(null, request.defaultAnswer)
+    }
+
+    @Test
     fun `a refusal carries the dashboard's code and message`() = runTest {
         val error = assertFailsWith<DashboardException> {
             client { json("""{"error":"conflict","message":"already answered"}""", HttpStatusCode.Conflict) }

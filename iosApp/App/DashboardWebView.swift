@@ -25,6 +25,9 @@ struct DashboardWebView: UIViewRepresentable {
         configuration.allowsInlineMediaPlayback = true
         configuration.applicationNameForUserAgent = Self.userAgentSuffix
         configuration.userContentController.addUserScript(PageTextBox.script)
+        configuration.userContentController.add(
+            PageTextBoxMessages(textBox), contentWorld: PageTextBox.world, name: PageTextBox.messageName
+        )
 
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = context.coordinator
@@ -41,9 +44,15 @@ struct DashboardWebView: UIViewRepresentable {
 
         // The dashboard moves between pages without reloading, so only the address shows where it is.
         let onPathChanged = onPathChanged
-        context.coordinator.addressObservation = webView.observe(\.url) { webView, _ in
+        let textBox = textBox
+        context.coordinator.addressObservation = webView.observe(\.url) { [weak textBox] webView, _ in
             guard let path = webView.url?.path() else { return }
-            Task { @MainActor in onPathChanged(path) }
+            Task { @MainActor in
+                onPathChanged(path)
+                // The page draws the new route a moment after the address changes; the old box goes with it.
+                try? await Task.sleep(for: .milliseconds(400))
+                await textBox?.recheck()
+            }
         }
 
         webView.load(URLRequest(url: url(for: navigation?.path)))

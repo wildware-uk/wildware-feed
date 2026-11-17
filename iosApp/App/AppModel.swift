@@ -17,8 +17,42 @@ final class AppModel: ObservableObject {
     let pageTextBox = PageTextBox()
     @Published var lastError: String?
 
+    /// The iPhone's Inbox sheet.
+    @Published var showInbox = false
+    /// Where the owner chose by hand for the composer bar to send: an Inbox Reply or a project from its chip.
+    @Published var composerChoice: ComposerTarget?
+    /// The page's text box the owner last used, while it is still on the page.
+    @Published private(set) var pageBox: ComposerTarget.PageTextBox?
+    /// The page's own text box has the keyboard, so the composer bar steps out of its way.
+    @Published private(set) var pageIsTyping = false
+    /// Changes when something asks the composer bar to take the keyboard, such as Reply in the Inbox.
+    @Published private(set) var composerFocusRequest = 0
+
     private var apnsToken: String?
     private var isLinking = false
+
+    init() {
+        if Sample.isOn {
+            isLinked = true
+            server = server ?? URL(string: ProcessInfo.processInfo.environment["DASHBOARD_URL"] ?? "https://dashboard.example.com")
+        }
+        pageTextBox.onChange = { [weak self] state in
+            guard let self else { return }
+            if state.isTyping && !self.pageIsTyping {
+                // The newest thing the owner did wins: starting to type on the page takes over from any earlier pick.
+                self.composerChoice = nil
+            }
+            self.pageIsTyping = state.isTyping
+            self.pageBox = state.hasBox ? ComposerTarget.PageTextBox(placeholder: state.placeholder) : nil
+        }
+    }
+
+    /// Reply in the Inbox: the bar's next message goes into that question's thread, without answering it.
+    func replyFromComposer(to request: PendingRequest) {
+        composerChoice = ComposerTarget.Reply(requestId: request.id, agentName: request.agentName)
+        showInbox = false
+        composerFocusRequest += 1
+    }
 
     func setServer(_ url: URL) {
         CredentialStore.server = url
@@ -65,6 +99,7 @@ final class AppModel: ObservableObject {
             isLinked = true
             lastError = nil
             WatchLink.shared.sendCredentials()
+            await InboxStore.shared.refresh()
             await Notifications.requestPermission()
             if let apnsToken { await sendApnsToken(apnsToken) }
             await LiveActivityController.shared.start()
