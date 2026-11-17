@@ -27,7 +27,9 @@ final class WidgetScreenshots: XCTestCase {
         question: "Tests pass. Merge the fee-rounding branch into main?",
         kind: RequestKind.companion.fromWire(value: "confirm")!,
         options: nil,
-        expiresAt: "2026-11-16T12:00:00Z"
+        expiresAt: "2026-11-16T12:00:00Z",
+        detail: nil,
+        defaultAnswer: nil
     )
     private let choice = PendingRequest(
         id: "req-2",
@@ -37,7 +39,9 @@ final class WidgetScreenshots: XCTestCase {
         question: "The build is green. What next?",
         kind: RequestKind.companion.fromWire(value: "choice")!,
         options: ["Ship it", "Hold", "Roll back"],
-        expiresAt: "2026-11-16T12:00:00Z"
+        expiresAt: "2026-11-16T12:00:00Z",
+        detail: nil,
+        defaultAnswer: nil
     )
 
     func testHomeScreenWidgets() throws {

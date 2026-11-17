@@ -19,6 +19,9 @@ only a native app can do:
   on the page, the words go in there for you to check and send; otherwise they're posted to the project
   on screen. A lock screen, Control Center and Action button control records without unlocking, with a
   Stop button on the lock screen.
+- **Apple Watch.** See what agents are waiting on and answer from your wrist: Yes/No, one button per
+  option, or dictate a text answer. Dictate a message to a project, or reply in a question's thread.
+  A watch face complication shows how many questions are waiting and opens the list.
 - **Siri.** "Create a ticket in Agents", "What are my Agents doing", "Answer my Agents",
   "Message Garden Game in Agents", "Record a voice note in Agents". Siri asks for anything you didn't say.
 
@@ -34,6 +37,9 @@ only a native app can do:
 | `iosApp/NotificationService` | Picks each question's answer buttons as its alert arrives, and lists what numbered options mean. |
 | `iosApp/NotificationContent` | Shows a held alert's markdown with its formatting, and that question's own answer buttons. |
 | `iosApp/Common` | Swift shared by every target: stored login, the Live Activity shape, deep links. |
+| `iosApp/Watch` | The Apple Watch app (watchOS 11+): the question list, answering, dictated messages. |
+| `iosApp/WatchWidgets` | The watch face complication: how many questions are waiting. |
+| `iosApp/WatchCommon` | Swift shared by the watch app and its complication. |
 
 Apple only allows widgets, Live Activities, Siri and share sheets in Swift, so those parts are Swift
 and call into the Kotlin layer for everything else.
@@ -41,6 +47,12 @@ and call into the Kotlin layer for everything else.
 **Signing in.** You sign in on the dashboard's normal login page inside the app. The app then
 swaps that login for a key of its own (`POST /api/devices`), stored in the keychain where the
 widgets, share sheet and Siri can read it. Revoke a phone with `DELETE /api/devices/<id>`.
+
+**The watch.** The watch has no login page. Once the phone is linked, it hands the server address
+and its key to the watch over WatchConnectivity, and again each time either side starts up. The
+watch keeps them in its own keychain and uses the same key as the phone, so revoking the phone
+signs the watch out too. Signing out on the phone signs the watch out. Until the key arrives, the
+watch says "Open Agents on your iPhone".
 
 ## Building
 
@@ -52,12 +64,18 @@ DEVELOPMENT_TEAM=<your team id> xcodegen generate --spec iosApp/project.yml
 open iosApp/Agents.xcodeproj
 ```
 
-The Agents scheme rebuilds the Kotlin framework before each build.
+The Agents scheme rebuilds the Kotlin framework before each build. The same framework carries the
+watch's code, and the iPhone app carries the watch app, so building Agents builds both. The
+AgentsWatch scheme builds the watch app on its own.
+
+**Installing on the watch.** After installing a new build on the iPhone, open the Watch app on the
+iPhone, find Agents under Available Apps and tap Install (or turn on automatic app install). Then
+open Agents on the iPhone once so it sends the watch its key.
 
 Kotlin tests run anywhere: `./gradlew :shared:jvmTest`.
 
-CI (`.github/workflows/build.yml`) runs the Kotlin tests and builds the app and every extension for
-the simulator on a Mac runner.
+CI (`.github/workflows/build.yml`) runs the Kotlin tests and builds the app, every extension and the
+watch app for the simulator on a Mac runner.
 
 ## Turning on push
 

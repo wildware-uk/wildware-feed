@@ -32,7 +32,23 @@ data class PendingRequest(
     val kind: RequestKind,
     val options: List<String>? = null,
     val expiresAt: String,
-)
+    /** More about the question, below it. Older servers leave it out. */
+    val detail: String? = null,
+    /**
+     * What the answer starts filled with, if the agent gave one: an option, typed text, or "true" or
+     * "false" for a yes-or-no question. `default` is a keyword in Swift, hence the name.
+     */
+    @SerialName("default") val defaultAnswer: String? = null,
+) {
+    /** The suggested answer as its button says it ("Yes", an option, typed text), or null when there is none. */
+    val defaultLabel: String?
+        get() = when {
+            kind != RequestKind.Confirm -> defaultAnswer
+            defaultAnswer == "true" -> "Yes"
+            defaultAnswer == "false" -> "No"
+            else -> null
+        }
+}
 
 @Serializable
 enum class RequestKind {
