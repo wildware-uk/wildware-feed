@@ -25,6 +25,7 @@ final class AppModel: ObservableObject {
         CredentialStore.clear()
         server = url
         isLinked = false
+        WatchLink.shared.sendCredentials()
     }
 
     func forgetServer() {
@@ -32,6 +33,7 @@ final class AppModel: ObservableObject {
         CredentialStore.server = nil
         server = nil
         isLinked = false
+        WatchLink.shared.sendCredentials()
         Task { await LiveActivityController.shared.endAll() }
     }
 
@@ -62,6 +64,7 @@ final class AppModel: ObservableObject {
             CredentialStore.save(deviceId: registration.device.id, token: registration.token)
             isLinked = true
             lastError = nil
+            WatchLink.shared.sendCredentials()
             await Notifications.requestPermission()
             if let apnsToken { await sendApnsToken(apnsToken) }
             await LiveActivityController.shared.start()

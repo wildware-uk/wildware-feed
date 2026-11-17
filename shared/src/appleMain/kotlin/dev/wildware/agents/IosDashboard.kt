@@ -7,7 +7,7 @@ import kotlinx.cinterop.usePinned
 import platform.Foundation.NSData
 import platform.posix.memcpy
 
-/** Builds the client on Apple's own networking stack. This is the entry point Swift uses. */
+/** Builds the client on Apple's own networking stack. This is the entry point Swift uses, on the iPhone and the watch. */
 fun dashboardClient(server: String, deviceToken: String?): DashboardClient =
     DashboardClient(server, deviceToken, Darwin.create())
 

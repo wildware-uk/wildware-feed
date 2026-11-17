@@ -46,6 +46,16 @@ object RequestActions {
     }
 
     /**
+     * Every answer button a screen of its own can show, such as the watch's: [actionsFor] without the
+     * lock screen's limit, so a question with many options gets one button per option.
+     */
+    fun allActionsFor(kind: RequestKind, options: List<String>?): List<NotificationAction> = when (kind) {
+        RequestKind.Buttons, RequestKind.Choice ->
+            options.orEmpty().mapIndexed { index, option -> NotificationAction("$OptionPrefix$index", option) }
+        else -> actionsFor(kind, options)
+    }
+
+    /**
      * The `value` to send to `POST /api/requests/{id}/answer` for a tapped action,
      * or null when the action does not answer this request (a stale or unknown button).
      */
