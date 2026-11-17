@@ -22,6 +22,15 @@ sealed class ComposerTarget {
         override val thread get() = mapOf("request" to requestId)
     }
 
+    /**
+     * A Reply pressed on the page, handed to the bar instead of opening a box there. The page keeps the
+     * sending, because it knows which card, comment or question the words belong to: the bar gives the
+     * words back with [id]. [draft] is a suggested answer to start from.
+     */
+    data class PageReply(val id: String, override val label: String, val draft: String = "") : ComposerTarget() {
+        override val thread: Map<String, String>? get() = null
+    }
+
     /** The text box the owner was using on the page: a reply, an answer, the feed's own composer. */
     data class PageTextBox(val placeholder: String?) : ComposerTarget() {
         override val label: String
@@ -49,7 +58,7 @@ object Composer {
         projects: List<ProjectRef>,
     ): ComposerTarget? {
         when (chosen) {
-            is ComposerTarget.Reply -> return chosen
+            is ComposerTarget.Reply, is ComposerTarget.PageReply -> return chosen
             is ComposerTarget.Project -> projects.find { it.slug == chosen.project.slug }?.let { return ComposerTarget.Project(it) }
             is ComposerTarget.PageTextBox -> if (pageBox != null) return pageBox
             null -> {}
@@ -65,8 +74,9 @@ object Composer {
         return first != "login" && first != "logout"
     }
 
-    /** Photos go up with a post or a reply; the page's text box can only take words. */
-    fun acceptsPhotos(target: ComposerTarget?): Boolean = target != null && target !is ComposerTarget.PageTextBox
+    /** Photos go up with a post or a reply; the page takes only words back from the bar. */
+    fun acceptsPhotos(target: ComposerTarget?): Boolean =
+        target != null && target !is ComposerTarget.PageTextBox && target !is ComposerTarget.PageReply
 
     fun canSend(text: String, photoCount: Int, target: ComposerTarget?): Boolean = when {
         target == null -> false

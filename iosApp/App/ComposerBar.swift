@@ -5,7 +5,7 @@ import SwiftUI
 import UIKit
 
 /// The bar along the bottom of the dashboard: type, hold the mic to talk, add photos, send.
-/// The chip above it says where the message goes: the project on screen, an agent's question you
+/// The chip above it says where the message goes: the project on screen, a Reply pressed on the page, an agent's question you
 /// chose to reply to, or the page's own text box you were using. Tap the chip to change it.
 /// Spoken words land in the bar's field to check before sending, or in the page's text box when that is
 /// where it goes. The bar steps aside while the page's own text box has the keyboard.
@@ -87,6 +87,10 @@ struct ComposerBar: View {
         }
         .sheet(isPresented: $showOutbox) { OutboxSheet() }
         .onChange(of: model.composerFocusRequest) { fieldFocused = true }
+        .onChange(of: model.composerChoice) {
+            // A suggested answer from the page starts the bar off, unless the owner already typed something.
+            if let reply = model.composerChoice as? ComposerTarget.PageReply, draft.isEmpty { draft = reply.draft }
+        }
         .onChange(of: model.currentPath) {
             // A project picked by hand belongs to the page it was picked on, as the old mic's picker did.
             if model.composerChoice is ComposerTarget.Project { model.composerChoice = nil }
@@ -122,7 +126,7 @@ struct ComposerBar: View {
                 .background(Color.accentColor.opacity(0.18), in: Capsule())
             }
             .accessibilityLabel("Sends \(target?.label ?? "nowhere yet"). Change where it goes.")
-            if target is ComposerTarget.Reply {
+            if target is ComposerTarget.Reply || target is ComposerTarget.PageReply {
                 Button {
                     model.composerChoice = nil
                 } label: {
@@ -134,7 +138,7 @@ struct ComposerBar: View {
     }
 
     private func icon(for target: ComposerTarget?) -> String {
-        if target is ComposerTarget.Reply { return "arrowshape.turn.up.left.fill" }
+        if target is ComposerTarget.Reply || target is ComposerTarget.PageReply { return "arrowshape.turn.up.left.fill" }
         if target is ComposerTarget.PageTextBox { return "character.cursor.ibeam" }
         return "folder"
     }
@@ -261,6 +265,20 @@ struct ComposerBar: View {
                 show("In the page's text box. Check it, then send it there.")
                 return
             }
+            if let reply = target as? ComposerTarget.PageReply {
+                do {
+                    try await model.pageTextBox.sendReply(id: reply.id, text: text)
+                    if (model.composerChoice as? ComposerTarget.PageReply) == reply { model.composerChoice = nil }
+                    UINotificationFeedbackGenerator().notificationOccurred(.success)
+                    show("Sent")
+                } catch {
+                    // The words stay in the bar to try again: retyping them is worse than the failure.
+                    if draft.isEmpty { draft = text }
+                    UINotificationFeedbackGenerator().notificationOccurred(.error)
+                    show(error.localizedDescription)
+                }
+                return
+            }
             // Everything goes through the outbox, so nothing is lost when there's no signal.
             if Sample.isOn {
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
@@ -270,7 +288,7 @@ struct ComposerBar: View {
                 label: target.label, thread: target.thread ?? [:], text: text, photos: sentPhotos.map(\.upload)
             )
             if let project = target as? ComposerTarget.Project { CredentialStore.lastProject = project.project }
-            if target is ComposerTarget.Reply { model.composerChoice = nil }
+            if target is ComposerTarget.Reply || target is ComposerTarget.PageReply { model.composerChoice = nil }
             OutboxRunner.shared.reload()
             let outcome = await Task.detached { await OutboxQueue.flush(only: queued) }.value
             OutboxRunner.shared.reload()

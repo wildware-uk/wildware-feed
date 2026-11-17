@@ -34,6 +34,22 @@ class ComposerTest {
     }
 
     @Test
+    fun `a reply pressed on the page wins over the page's text box`() {
+        val pageReply = ComposerTarget.PageReply("reply-1", "Reply to scout")
+        assertEquals(pageReply, Composer.target(pageReply, box, "/projects/agent-dashboard", null, projects))
+        assertEquals("Reply to scout", pageReply.label)
+        assertNull(pageReply.thread)
+    }
+
+    @Test
+    fun `a reply on the page takes words but not photos`() {
+        val pageReply = ComposerTarget.PageReply("reply-1", "Reply to scout")
+        assertTrue(Composer.canSend("yes", 0, pageReply))
+        assertFalse(Composer.canSend("", 1, pageReply))
+        assertFalse(Composer.acceptsPhotos(pageReply))
+    }
+
+    @Test
     fun `a project picked on the chip wins over the page's text box`() {
         assertEquals(ComposerTarget.Project(mega), Composer.target(ComposerTarget.Project(mega), box, "/projects/agent-dashboard", null, projects))
     }

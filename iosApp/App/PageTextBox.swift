@@ -1,3 +1,4 @@
+import Shared
 import WebKit
 
 /// The text box the owner last used on the dashboard page: a reply, an answer, the feed composer.
@@ -95,6 +96,25 @@ final class PageTextBox {
 
     weak var webView: WKWebView?
     var onChange: ((State) -> Void)?
+    /// The page pressed Reply and wants the bar to take the words: see `src/web/native-composer.ts` in the dashboard.
+    var onReply: ((ComposerTarget.PageReply) -> Void)?
+
+    /// The name the page's own script looks for, in the page's world rather than ours, since the page's code calls it.
+    static let replyMessageName = "agentsComposer"
+
+    /// Gives the bar's words back to the page for the reply it handed over. Throws with the page's reason when it can't send.
+    func sendReply(id: String, text: String) async throws {
+        guard let webView else { throw PageReplyError(message: "The page has gone. Press Reply again.") }
+        do {
+            _ = try await webView.callAsyncJavaScript(
+                "await window.agentsComposer.send(id, text)",
+                arguments: ["id": id, "text": text], in: nil, contentWorld: .page
+            )
+        } catch let error as NSError {
+            let reason = error.userInfo["WKJavaScriptExceptionMessage"] as? String
+            throw PageReplyError(message: reason.map { $0.replacingOccurrences(of: "Error: ", with: "") } ?? error.localizedDescription)
+        }
+    }
     private(set) var state = State()
 
     /// Whether words would go into the page's text box right now.
@@ -131,6 +151,28 @@ final class PageTextBox {
         guard let webView else { return false }
         let result = try? await webView.callAsyncJavaScript(body, arguments: arguments, in: nil, contentWorld: Self.world)
         return result as? Bool ?? false
+    }
+}
+
+struct PageReplyError: LocalizedError {
+    let message: String
+    var errorDescription: String? { message }
+}
+
+/// Passes a Reply pressed on the page to its `PageTextBox`, held weakly for the same reason as below.
+final class PageReplyMessages: NSObject, WKScriptMessageHandler {
+    private weak var textBox: PageTextBox?
+
+    @MainActor
+    init(_ textBox: PageTextBox) { self.textBox = textBox }
+
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        guard let body = message.body as? [String: Any], let id = body["id"] as? String, let label = body["label"] as? String
+        else { return }
+        let draft = body["draft"] as? String ?? ""
+        Task { @MainActor [weak textBox] in
+            textBox?.onReply?(ComposerTarget.PageReply(id: id, label: label, draft: draft))
+        }
     }
 }
 

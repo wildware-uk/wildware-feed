@@ -45,6 +45,10 @@ final class AppModel: ObservableObject {
             self.pageIsTyping = state.isTyping
             self.pageBox = state.hasBox ? ComposerTarget.PageTextBox(placeholder: state.placeholder) : nil
         }
+        pageTextBox.onReply = { [weak self] reply in
+            self?.composerChoice = reply
+            self?.composerFocusRequest += 1
+        }
     }
 
     /// Reply in the Inbox: the bar's next message goes into that question's thread, without answering it.

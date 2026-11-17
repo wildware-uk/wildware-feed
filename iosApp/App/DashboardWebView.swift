@@ -28,6 +28,9 @@ struct DashboardWebView: UIViewRepresentable {
         configuration.userContentController.add(
             PageTextBoxMessages(textBox), contentWorld: PageTextBox.world, name: PageTextBox.messageName
         )
+        configuration.userContentController.add(
+            PageReplyMessages(textBox), contentWorld: .page, name: PageTextBox.replyMessageName
+        )
 
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = context.coordinator
