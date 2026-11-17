@@ -141,10 +141,18 @@ class DashboardClient(
 
     /** Posts shared content to a project's feed. The dashboard needs some text, so files alone get a caption. */
     @Throws(Exception::class)
-    suspend fun share(projectSlug: String, text: String?, attachments: List<Attachment>): String {
-        val mediaIds = attachments.map { upload(it) }
+    suspend fun share(projectSlug: String, text: String?, attachments: List<Attachment>): String =
+        send(mapOf("project" to projectSlug), text, attachments)
+
+    /**
+     * Posts what the composer bar holds into [thread]: `{"project": slug}` for a feed post,
+     * `{"request": id}` to talk over a question an agent asked. Files alone get a caption.
+     */
+    @Throws(Exception::class)
+    suspend fun send(thread: Map<String, String>, text: String?, attachments: List<Attachment>): String {
         val body = text?.trim()?.takeIf { it.isNotEmpty() } ?: shareCaption(attachments)
-        return postMessage(mapOf("project" to projectSlug, "body" to body), mediaIds)
+        val mediaIds = attachments.map { upload(it) }
+        return postMessage(thread + ("body" to body), mediaIds)
     }
 
     fun close() = http.close()

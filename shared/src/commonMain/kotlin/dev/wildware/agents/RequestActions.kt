@@ -37,13 +37,16 @@ object RequestActions {
             if (choices.isEmpty() || choices.size > MaxOptionButtons) {
                 emptyList()
             } else {
-                choices.mapIndexed { index, option -> NotificationAction("$OptionPrefix$index", option) }
+                choices.mapIndexed { index, option -> NotificationAction(optionActionId(index), option) }
             }
         }
 
         RequestKind.Text -> listOf(NotificationAction(Reply, "Reply", isTextInput = true))
         RequestKind.MultiChoice, RequestKind.Form -> emptyList()
     }
+
+    /** The action that picks the option at [index]. */
+    fun optionActionId(index: Int): String = "$OptionPrefix$index"
 
     /**
      * Every answer button a screen of its own can show, such as the watch's: [actionsFor] without the

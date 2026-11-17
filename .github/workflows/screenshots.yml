@@ -31,6 +31,17 @@ jobs:
           xcrun simctl bootstatus "$id"
           xcrun simctl ui "$id" appearance dark
           xcrun simctl status_bar "$id" override --time 9:41 --batteryState charged --batteryLevel 100 --cellularBars 4 --wifiBars 3
+      - name: Boot an iPad simulator
+        timeout-minutes: 6
+        run: |
+          id=$(xcrun simctl list devices available -j \
+            | jq -r '[.devices[][] | select(.name | test("^iPad Pro"))] | last | .udid')
+          echo "Using $id"
+          echo "IPAD=$id" >> "$GITHUB_ENV"
+          xcrun simctl boot "$id"
+          xcrun simctl bootstatus "$id"
+          xcrun simctl ui "$id" appearance dark
+          xcrun simctl status_bar "$id" override --time 9:41 --batteryState charged --batteryLevel 100 --wifiBars 3
       - name: Draw the screenshots
         timeout-minutes: 15
         run: |
@@ -43,6 +54,18 @@ jobs:
             CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM= \
             | tee test.log | grep -E "error:|Test Case .*(passed|failed)|TEST (SUCCEEDED|FAILED)|\*\* " || true
           grep -q "TEST SUCCEEDED" test.log
+      - name: Draw the iPad's Inbox and dashboard
+        timeout-minutes: 12
+        run: |
+          set -o pipefail
+          TEST_RUNNER_SCREENSHOT_DIR="$PWD/screenshots" xcodebuild test \
+            -project iosApp/Agents.xcodeproj \
+            -scheme Screenshots \
+            -destination "id=$IPAD" \
+            -only-testing:AgentsUITests/AppScreenshots/testInboxAndComposer \
+            CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM= \
+            | tee test-ipad.log | grep -E "error:|Test Case .*(passed|failed)|TEST (SUCCEEDED|FAILED)|\*\* " || true
+          grep -q "TEST SUCCEEDED" test-ipad.log
       - if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -50,3 +73,4 @@ jobs:
           path: |
             screenshots
             test.log
+            test-ipad.log
