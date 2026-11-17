@@ -1,4 +1,5 @@
 import CoreSpotlight
+import Shared
 import SwiftUI
 
 @main
