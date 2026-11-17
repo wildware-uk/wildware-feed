@@ -2,9 +2,6 @@ package dev.wildware.agents
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.contentOrNull
 
 /** What the dashboard looks like right now, in the small shape widgets, Siri and Live Activities need. */
 @Serializable
@@ -37,19 +34,19 @@ data class PendingRequest(
     val expiresAt: String,
     /** More about the question, below it. Older servers leave it out. */
     val detail: String? = null,
-    /** The answer the agent suggests. `default` is a keyword in Swift, hence the name. */
-    @SerialName("default") val defaultAnswer: JsonElement? = null,
+    /**
+     * What the answer starts filled with, if the agent gave one: an option, typed text, or "true" or
+     * "false" for a yes-or-no question. `default` is a keyword in Swift, hence the name.
+     */
+    @SerialName("default") val defaultAnswer: String? = null,
 ) {
-    /** The suggested answer as a button would say it ("Yes", an option, typed text), or null when there is none. */
+    /** The suggested answer as its button says it ("Yes", an option, typed text), or null when there is none. */
     val defaultLabel: String?
-        get() {
-            val value = defaultAnswer as? JsonPrimitive ?: return null
-            if (value.isString) return value.content
-            return when (value.contentOrNull) {
-                "true" -> "Yes"
-                "false" -> "No"
-                else -> null
-            }
+        get() = when {
+            kind != RequestKind.Confirm -> defaultAnswer
+            defaultAnswer == "true" -> "Yes"
+            defaultAnswer == "false" -> "No"
+            else -> null
         }
 }
 
