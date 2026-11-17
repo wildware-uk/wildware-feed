@@ -105,7 +105,7 @@ enum OutboxQueue {
 
     /// Reads, changes and writes the queue while holding it, then deletes files nothing uses any more.
     @discardableResult
-    static func update(_ change: ([OutboxItem]) -> [OutboxItem]) -> [OutboxItem] {
+    static func update(_ change: @escaping ([OutboxItem]) -> [OutboxItem]) -> [OutboxItem] {
         var result: [OutboxItem] = []
         let write = { (url: URL) in
             let before = load(url)
