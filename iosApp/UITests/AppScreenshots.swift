@@ -1,3 +1,4 @@
+import UIKit
 import XCTest
 
 /// Drives the real app in the simulator: the first-run screen, then the dashboard loaded inside it.
