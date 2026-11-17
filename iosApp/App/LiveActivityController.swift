@@ -23,11 +23,23 @@ actor LiveActivityController {
         }
         Task {
             for await activity in Activity<AgentsActivityAttributes>.activityUpdates {
+                await self.endOthers(keeping: activity)
                 await self.watch(activity)
             }
         }
+        if let newest = Activity<AgentsActivityAttributes>.activities.last {
+            Task { await endOthers(keeping: newest) }
+        }
         for activity in Activity<AgentsActivityAttributes>.activities {
             watch(activity)
+        }
+    }
+
+    /// The dashboard can start an activity by push while one is already showing, so keep
+    /// only the newest rather than letting them stack up on the lock screen.
+    private func endOthers(keeping kept: Activity<AgentsActivityAttributes>) async {
+        for activity in Activity<AgentsActivityAttributes>.activities where activity.id != kept.id {
+            await activity.end(nil, dismissalPolicy: .immediate)
         }
     }
 
@@ -77,7 +89,10 @@ actor LiveActivityController {
         }
         Task {
             for await state in activity.activityStateUpdates where state == .ended || state == .dismissed {
-                await send { try await $0.setLiveActivityToken(token: nil) }
+                let anotherIsShowing = Activity<AgentsActivityAttributes>.activities.contains {
+                    $0.id != activity.id && $0.activityState == .active
+                }
+                if !anotherIsShowing { await send { try await $0.setLiveActivityToken(token: nil) } }
             }
         }
     }
