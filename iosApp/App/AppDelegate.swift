@@ -10,6 +10,8 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
     ) -> Bool {
         UNUserNotificationCenter.current().delegate = self
         WatchLink.shared.start()
+        OutboxRunner.registerBackgroundTasks()
+        Task { @MainActor in OutboxRunner.shared.start() }
         Task {
             Notifications.registerCategories()
             if Dashboard.isLinked {
@@ -47,29 +49,35 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
             }
             return
         }
-        guard action != UNNotificationDismissActionIdentifier, let client = Dashboard.client() else { return }
-        defer { client.close() }
+        guard action != UNNotificationDismissActionIdentifier, Dashboard.isLinked else { return }
 
+        // Both go through the outbox, so an answer or reply tapped with no signal still arrives later.
         let typed = (response as? UNTextInputNotificationResponse)?.userText
-        do {
-            if let requestId = info["requestId"] as? String, let kind = info["requestKind"] as? String {
-                let answered = try await client.answerFromAction(
-                    requestId: requestId,
-                    kind: kind,
-                    options: info["options"] as? [String],
-                    actionId: action,
-                    typedText: typed
-                )
-                if !answered.boolValue { await tell("That button no longer matches the question. Open the app to answer.") }
-            } else if action == Notifications.replyAction, let thread = info["reply"] as? [String: String], let typed {
-                _ = try await client.reply(thread: thread, body: typed)
-            }
-            WidgetCenter.shared.reloadAllTimelines()
-            await InboxStore.shared.refresh()
-            await LiveActivityController.shared.refresh(startIfNeeded: false)
-        } catch {
-            await tell("Your answer didn't send: \(error.localizedDescription)")
+        let queued: String
+        if let requestId = info["requestId"] as? String, let kind = info["requestKind"] as? String {
+            queued = OutboxQueue.enqueueAnswer(
+                agentName: info["agentName"] as? String ?? response.notification.request.content.title,
+                requestId: requestId,
+                kind: kind,
+                options: info["options"] as? [String],
+                actionId: action,
+                typedText: typed
+            )
+        } else if action == Notifications.replyAction, let thread = info["reply"] as? [String: String], let typed {
+            queued = OutboxQueue.enqueueMessage(
+                label: "Reply: \(response.notification.request.content.title)", thread: thread, text: typed
+            )
+        } else {
+            return
         }
+        // A refusal is announced by the outbox itself; only a send that has to wait needs saying here.
+        if await OutboxQueue.flush(only: queued) == .waiting {
+            await tell("No connection right now. It will send when you're back online.")
+        }
+        await MainActor.run { OutboxRunner.shared.reload() }
+        WidgetCenter.shared.reloadAllTimelines()
+        await InboxStore.shared.refresh()
+        await LiveActivityController.shared.refresh(startIfNeeded: false)
     }
 
     /// Dashboard links (or bare paths) open in the app's own page; anything else goes to Safari.

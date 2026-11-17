@@ -17,11 +17,16 @@ struct CreateTicketIntent: AppIntent {
     }
 
     func perform() async throws -> some IntentResult & ProvidesDialog {
-        guard let client = Dashboard.client() else { throw DashboardError.notLinked }
-        defer { client.close() }
-        _ = try await client.createTicket(projectSlug: project.id, text: details)
+        guard Dashboard.isLinked else { throw DashboardError.notLinked }
+        let ref = ProjectRef(slug: project.id, name: project.name)
+        let queued = OutboxQueue.enqueueTicket(project: ref, text: details)
+        let outcome = await OutboxQueue.flush(only: queued)
+        if outcome == .refused { throw OutboxError.refused }
+        guard outcome == .sent else {
+            return .result(dialog: "There's no connection right now. I'll put it on \(project.name)'s board as soon as there is.")
+        }
         WidgetCenter.shared.reloadAllTimelines()
-        return .result(dialog: "\(Speech.shared.ticketCreated(project: ProjectRef(slug: project.id, name: project.name)))")
+        return .result(dialog: "\(Speech.shared.ticketCreated(project: ref))")
     }
 }
 
@@ -36,9 +41,13 @@ struct MessageAgentIntent: AppIntent {
     var message: String
 
     func perform() async throws -> some IntentResult & ProvidesDialog {
-        guard let client = Dashboard.client() else { throw DashboardError.notLinked }
-        defer { client.close() }
-        _ = try await client.share(projectSlug: project.id, text: message, attachments: [])
+        guard Dashboard.isLinked else { throw DashboardError.notLinked }
+        let queued = OutboxQueue.enqueueMessage(label: "To \(project.name)", thread: ["project": project.id], text: message)
+        let outcome = await OutboxQueue.flush(only: queued)
+        if outcome == .refused { throw OutboxError.refused }
+        guard outcome == .sent else {
+            return .result(dialog: "There's no connection right now. It will go to \(project.name) as soon as there is.")
+        }
         return .result(dialog: "Sent to \(project.name).")
     }
 }

@@ -158,12 +158,26 @@ class DashboardClient(
     /** Posts [text] to [projectSlug]'s feed and marks it as work, so an agent on that project picks it up. */
     @Throws(Exception::class)
     suspend fun createTicket(projectSlug: String, text: String): String {
-        val messageId = postMessage(mapOf("project" to projectSlug, "body" to text), mediaIds = emptyList())
+        val messageId = postToProject(projectSlug, text)
+        markAsWork(messageId)
+        return messageId
+    }
+
+    /**
+     * Sends one item from the outbox. A failed send comes back as a result saying whether to try again,
+     * not as an error. [attachments] are the item's files read back from disk, in order.
+     */
+    @Throws(Exception::class)
+    suspend fun deliver(item: OutboxItem, attachments: List<Attachment>): DeliveryResult = deliverQueued(item, attachments)
+
+    internal suspend fun postToProject(projectSlug: String, text: String): String =
+        postMessage(mapOf("project" to projectSlug, "body" to text), mediaIds = emptyList())
+
+    internal suspend fun markAsWork(messageId: String) {
         http.post("api/cards/message/$messageId/status") {
             authorise()
             jsonBody(buildJsonObject { put("status", "todo") })
         }.requireSuccess()
-        return messageId
     }
 
     /** Posts shared content to a project's feed. The dashboard needs some text, so files alone get a caption. */

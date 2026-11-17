@@ -55,7 +55,11 @@ struct DashboardWebView: UIViewRepresentable {
             }
         }
 
-        webView.load(URLRequest(url: url(for: navigation?.path)))
+        if Sample.isOn {
+            webView.loadHTMLString(Sample.page, baseURL: nil)
+        } else {
+            webView.load(URLRequest(url: url(for: navigation?.path)))
+        }
         context.coordinator.lastNavigation = navigation?.id
         return webView
     }

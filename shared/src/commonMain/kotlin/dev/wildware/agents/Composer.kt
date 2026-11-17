@@ -59,6 +59,12 @@ object Composer {
             ?.let { ComposerTarget.Project(it) }
     }
 
+    /** The bar has no place on the sign-in page: nothing can be sent until the dashboard knows who you are. */
+    fun showsOn(path: String?): Boolean {
+        val first = path?.substringBefore('?')?.trim('/')?.substringBefore('/') ?: return true
+        return first != "login" && first != "logout"
+    }
+
     /** Photos go up with a post or a reply; the page's text box can only take words. */
     fun acceptsPhotos(target: ComposerTarget?): Boolean = target != null && target !is ComposerTarget.PageTextBox
 

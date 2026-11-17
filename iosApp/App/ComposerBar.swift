@@ -18,6 +18,8 @@ struct ComposerBar: View {
     @EnvironmentObject private var model: AppModel
     @ObservedObject private var store = InboxStore.shared
     @ObservedObject private var notes = VoiceNotes.shared
+    @ObservedObject private var outbox = OutboxRunner.shared
+    @State private var showOutbox = false
     @FocusState private var fieldFocused: Bool
     @State private var draft = ""
     @State private var picking: [PhotosPickerItem] = []
@@ -46,6 +48,7 @@ struct ComposerBar: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
+            if !outbox.items.isEmpty { outboxButton }
             HStack(spacing: 8) {
                 targetChip
                 if let status = working ?? notice {
@@ -82,6 +85,7 @@ struct ComposerBar: View {
                 .alignmentGuide(.top) { $0[.bottom] + 8 }
             }
         }
+        .sheet(isPresented: $showOutbox) { OutboxSheet() }
         .onChange(of: model.composerFocusRequest) { fieldFocused = true }
         .onChange(of: model.currentPath) {
             // A project picked by hand belongs to the page it was picked on, as the old mic's picker did.
@@ -155,6 +159,27 @@ struct ComposerBar: View {
         .accessibilityLabel(store.count == 1 ? "Inbox, 1 question waiting" : "Inbox, \(store.count) questions waiting")
     }
 
+    // MARK: Outbox
+
+    /// What hasn't reached the dashboard yet. Tap for the list, to try again or delete.
+    private var outboxButton: some View {
+        let waiting = outbox.waiting.count
+        let failed = outbox.failed.count
+        return Button { showOutbox = true } label: {
+            HStack(spacing: 6) {
+                Image(systemName: failed > 0 ? "exclamationmark.triangle.fill" : "clock.arrow.circlepath")
+                if waiting > 0 { Text("Waiting to send (\(waiting))") }
+                if failed > 0 { Text(failed == 1 ? "1 couldn't send" : "\(failed) couldn't send") }
+            }
+            .font(.caption.weight(.medium))
+            .foregroundStyle(failed > 0 ? Color.red : Color.orange)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background((failed > 0 ? Color.red : Color.orange).opacity(0.15), in: Capsule())
+        }
+        .accessibilityLabel("Outbox: \(waiting) waiting to send, \(failed) couldn't send")
+    }
+
     // MARK: Photos
 
     private var photoButton: some View {
@@ -226,38 +251,40 @@ struct ComposerBar: View {
         draft = ""
         photos = []
         Task {
-            do {
-                if target is ComposerTarget.PageTextBox {
-                    guard await model.pageTextBox.insert(text) else {
-                        draft = text
-                        show("The page's text box has gone. Pick where it goes.")
-                        return
-                    }
-                    UINotificationFeedbackGenerator().notificationOccurred(.success)
-                    show("In the page's text box. Check it, then send it there.")
+            guard !(target is ComposerTarget.PageTextBox) else {
+                guard await model.pageTextBox.insert(text) else {
+                    draft = text
+                    show("The page's text box has gone. Pick where it goes.")
                     return
                 }
-                working = "Sending…"
-                defer { working = nil }
-                if !Sample.isOn {
-                    guard let client = Dashboard.client() else { throw DashboardError.notLinked }
-                    defer { client.close() }
-                    _ = try await client.send(thread: target.thread ?? [:], text: text, attachments: sentPhotos.map(\.attachment))
-                }
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
-                if let project = target as? ComposerTarget.Project {
-                    CredentialStore.lastProject = project.project
-                    show("Sent to \(project.project.name)")
-                } else if let reply = target as? ComposerTarget.Reply {
-                    model.composerChoice = nil
-                    show("Sent to \(reply.agentName)")
-                }
-            } catch {
-                // Put it all back so nothing typed is lost.
-                draft = text
-                photos = sentPhotos
+                show("In the page's text box. Check it, then send it there.")
+                return
+            }
+            // Everything goes through the outbox, so nothing is lost when there's no signal.
+            if Sample.isOn {
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                return
+            }
+            let queued = OutboxQueue.enqueueMessage(
+                label: target.label, thread: target.thread ?? [:], text: text, photos: sentPhotos.map(\.upload)
+            )
+            if let project = target as? ComposerTarget.Project { CredentialStore.lastProject = project.project }
+            if target is ComposerTarget.Reply { model.composerChoice = nil }
+            OutboxRunner.shared.reload()
+            let outcome = await Task.detached { await OutboxQueue.flush(only: queued) }.value
+            OutboxRunner.shared.reload()
+            if outcome == .sent {
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                show("Sent")
+            } else if outcome == .refused {
                 UINotificationFeedbackGenerator().notificationOccurred(.error)
-                model.lastError = "That didn't send: \(error.localizedDescription)"
+                show("The dashboard refused it. See the outbox.")
+            } else {
+                // Kept safe on the phone: confirm it like a send, and say where it is.
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                show("No connection. Waiting to send.")
+                OutboxRunner.shared.kick()
             }
         }
     }
@@ -359,7 +386,8 @@ struct ComposerBar: View {
 struct PickedPhoto: Identifiable {
     let id = UUID()
     let image: UIImage
-    let attachment: Attachment
+    /// The JPEG that goes up, as the outbox stores it.
+    let upload: OutboxPhoto
 
     /// The longest side the dashboard gets. Phone photos are far bigger than an agent needs to read one.
     private static let maxSide: CGFloat = 2048
@@ -369,7 +397,7 @@ struct PickedPhoto: Identifiable {
         let image = Self.fitted(original)
         guard let jpeg = image.jpegData(compressionQuality: 0.85) else { return nil }
         self.image = image
-        attachment = IosDashboardKt.attachment(filename: "photo-\(index + 1).jpg", mimeType: "image/jpeg", data: jpeg)
+        upload = OutboxPhoto(filename: "photo-\(index + 1).jpg", mimeType: "image/jpeg", data: jpeg)
     }
 
     private static func fitted(_ image: UIImage) -> UIImage {

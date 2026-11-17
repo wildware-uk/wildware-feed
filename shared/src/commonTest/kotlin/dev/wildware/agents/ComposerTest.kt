@@ -87,4 +87,14 @@ class ComposerTest {
         assertEquals("there", Composer.appendDictation("", "there"))
         assertEquals("hello", Composer.appendDictation("hello", "  "))
     }
+
+    @Test
+    fun `the bar stays off the sign-in page`() {
+        assertFalse(Composer.showsOn("/login"))
+        assertFalse(Composer.showsOn("/login?next=/projects/x"))
+        assertFalse(Composer.showsOn("/logout"))
+        assertTrue(Composer.showsOn("/"))
+        assertTrue(Composer.showsOn("/projects/login-page"))
+        assertTrue(Composer.showsOn(null))
+    }
 }

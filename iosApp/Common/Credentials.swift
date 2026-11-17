@@ -16,6 +16,7 @@ enum CredentialStore {
     private static let account = "owner"
     private static let serverKey = "serverURL"
     private static let lastProjectKey = "lastVoiceNoteProject"
+    private static let knownProjectsKey = "knownProjects"
 
     static var defaults: UserDefaults { UserDefaults(suiteName: appGroup) ?? .standard }
 
@@ -34,6 +35,17 @@ enum CredentialStore {
             return ProjectRef(slug: slug, name: name)
         }
         set { defaults.set(newValue.map { ["slug": $0.slug, "name": $0.name] }, forKey: lastProjectKey) }
+    }
+
+    /// The projects the dashboard last listed, so the share sheet can offer them with no signal.
+    static var knownProjects: [ProjectRef] {
+        get {
+            (defaults.array(forKey: knownProjectsKey) as? [[String: String]] ?? []).compactMap { saved in
+                guard let slug = saved["slug"], let name = saved["name"] else { return nil }
+                return ProjectRef(slug: slug, name: name)
+            }
+        }
+        set { defaults.set(newValue.map { ["slug": $0.slug, "name": $0.name] }, forKey: knownProjectsKey) }
     }
 
     static func load() -> Credentials? {

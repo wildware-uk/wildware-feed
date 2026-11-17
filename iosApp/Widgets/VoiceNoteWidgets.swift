@@ -61,6 +61,8 @@ struct VoiceNoteStatusView: View {
                     Text("Writing down what you said").font(.subheadline).opacity(0.7)
                 case .sent:
                     EmptyView()
+                case .queued:
+                    Text("No connection. It's saved on your phone.").font(.subheadline).opacity(0.7)
                 case .failed:
                     Text(state.detail ?? "").font(.subheadline).opacity(0.7).lineLimit(2)
                 }
@@ -84,6 +86,7 @@ extension VoiceNoteActivityAttributes.ContentState {
         case .recording: "mic.fill"
         case .sending: "arrow.up.circle"
         case .sent: "checkmark.circle.fill"
+        case .queued: "clock.arrow.circlepath"
         case .failed: "exclamationmark.triangle.fill"
         }
     }
@@ -93,6 +96,7 @@ extension VoiceNoteActivityAttributes.ContentState {
         case .recording: .red
         case .sending: .white
         case .sent: .green
+        case .queued: .orange
         case .failed: .orange
         }
     }

@@ -1,4 +1,5 @@
 import CoreSpotlight
+import Shared
 import SwiftUI
 
 @main
@@ -22,6 +23,8 @@ struct AgentsApp: App {
         }
         .onChange(of: scenePhase) { _, phase in
             guard model.isLinked else { return }
+            if phase == .active { OutboxRunner.shared.kick(ignoreBackoff: true) }
+            if phase == .background { OutboxRunner.shared.scheduleBackground() }
             Task { await LiveActivityController.shared.refresh(startIfNeeded: phase == .background) }
             if phase == .active { Task { await SpotlightIndexer.refresh() } }
         }
@@ -128,7 +131,9 @@ private struct DashboardScreen: View {
     let showsMenu: Bool
     @EnvironmentObject private var model: AppModel
 
-    private var showsBar: Bool { model.isLinked && !model.pageIsTyping }
+    private var showsBar: Bool {
+        model.isLinked && !model.pageIsTyping && Composer.shared.showsOn(path: model.currentPath)
+    }
 
     var body: some View {
         VStack(spacing: 0) {

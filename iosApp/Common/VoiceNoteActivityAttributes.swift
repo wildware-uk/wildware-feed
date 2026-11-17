@@ -5,10 +5,10 @@ import Foundation
 /// It lives on the phone alone: the server never pushes to it.
 struct VoiceNoteActivityAttributes: ActivityAttributes {
     struct ContentState: Codable, Hashable {
-        enum Phase: String, Codable { case recording, sending, sent, failed }
+        enum Phase: String, Codable { case recording, sending, sent, queued, failed }
 
         var phase: Phase
-        /// Once sent, the project it went to; on failure, what went wrong.
+        /// Once sent or queued, the project it goes to; on failure, what went wrong.
         var detail: String?
     }
 
@@ -22,6 +22,7 @@ extension VoiceNoteActivityAttributes {
         case .recording: projectName.map { "Recording for \($0)" } ?? "Recording a voice note"
         case .sending: "Sending your voice note…"
         case .sent: "Sent to \(state.detail ?? projectName ?? "your agents")"
+        case .queued: "Will send to \(state.detail ?? projectName ?? "your agents") when there's signal"
         case .failed: "Your voice note didn't send"
         }
     }
