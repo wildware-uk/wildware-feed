@@ -38,7 +38,7 @@ struct LatestNewsSnippet: View {
                     Text(update.date, format: .relative(presentation: .named)).font(.caption).foregroundStyle(.secondary)
                 }
                 Text(update.headline).font(.headline)
-                let more = PlainText.shared.sentences(text: update.text, count: 3, skip: (update.title ?? "").isEmpty ? 1 : 0, maxLength: 320)
+                let more = PlainText.shared.sentences(text: update.text, count: 3, skip: update.sentencesInHeadline, maxLength: 320)
                 if !more.isEmpty {
                     Text(more).font(.subheadline).foregroundStyle(.secondary).lineLimit(5)
                 }

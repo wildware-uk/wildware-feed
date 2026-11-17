@@ -132,6 +132,9 @@ class RecentActivityTest {
         val large = ProjectCard.build("garden-game", summary, activity, CardSize.Large)!!
         assertEquals(listOf("r1", "r3"), large.questions.map { it.id })
 
+        val titled = activity(update("u3", gardenGame, title = "Merged", text = "Merged\nTests pass.", at = now))
+        assertEquals("Tests pass.", ProjectCard.build("garden-game", summary, titled, CardSize.Large)!!.excerpt)
+
         val accessory = ProjectCard.build("harbor-app", summary, activity, CardSize.Accessory)!!
         assertEquals("", accessory.excerpt)
         assertEquals("1 question waiting", accessory.statusLine)

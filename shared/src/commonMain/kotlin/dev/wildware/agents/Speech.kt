@@ -64,9 +64,7 @@ object Speech {
         val title = update.title?.trim()?.takeIf { it.isNotEmpty() }
             ?: return PlainText.sentences(update.text, 2)
         val titled = if (title.last() in ".!?…") title else "$title."
-        // Bodies often open by repeating their title; don't read it twice.
-        val skip = if (PlainText.sentences(update.text, 1).trimEnd('.').equals(title.trimEnd('.'), ignoreCase = true)) 1 else 0
-        val body = PlainText.sentences(update.text, 2, skip = skip, maxLength = 240)
+        val body = PlainText.sentences(update.text, 2, skip = update.sentencesInHeadline, maxLength = 240)
         return if (body.isEmpty()) titled else "$titled $body"
     }
 

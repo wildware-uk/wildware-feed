@@ -49,9 +49,7 @@ data class ProjectCard(
 
         private fun excerpt(update: RecentUpdate, size: CardSize): String {
             if (size.excerptSentences == 0) return ""
-            // With no title the headline is the first sentence, so start after it.
-            val skip = if (update.title.isNullOrBlank()) 1 else 0
-            return PlainText.sentences(update.text, size.excerptSentences, skip = skip, maxLength = 90 * size.excerptSentences)
+            return PlainText.sentences(update.text, size.excerptSentences, skip = update.sentencesInHeadline, maxLength = 90 * size.excerptSentences)
         }
     }
 }

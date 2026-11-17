@@ -227,8 +227,12 @@ struct ProjectWidgetContent: View {
             HStack(spacing: 4) {
                 Text(update.agentName).bold().lineLimit(1)
                 Text("·")
-                Text(update.date, style: .relative)
+                // A clock time, not "6 min ago": the widget redraws every few minutes, and a ticking timer reads badly.
+                Text(update.date, format: Calendar.current.isDateInToday(update.date)
+                    ? Date.FormatStyle.dateTime.hour().minute()
+                    : Date.FormatStyle.dateTime.month(.abbreviated).day())
             }
+            .lineLimit(1)
             .font(big ? .subheadline : .caption2)
             .foregroundStyle(.white.opacity(0.6))
         }

@@ -25,6 +25,16 @@ data class RecentUpdate(
 ) {
     /** The line a card leads with: its title, or failing that its first sentence. */
     val headline: String get() = title?.takeIf { it.isNotBlank() } ?: PlainText.firstSentence(text).ifEmpty { "An update" }
+
+    /**
+     * Sentences of [text] already said by [headline]: the first, when there is no title or the
+     * body opens by repeating it, as bodies often do. Skip them so nothing is read twice.
+     */
+    val sentencesInHeadline: Int
+        get() {
+            val title = title?.trim()?.takeIf { it.isNotEmpty() } ?: return 1
+            return if (PlainText.firstSentence(text).trimEnd('.').equals(title.trimEnd('.'), ignoreCase = true)) 1 else 0
+        }
 }
 
 data class RecentMessage(
