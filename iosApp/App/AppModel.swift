@@ -60,6 +60,7 @@ final class AppModel: ObservableObject {
         server = url
         isLinked = false
         WatchLink.shared.sendCredentials()
+        Task { await SpotlightIndexer.clear() }
     }
 
     func forgetServer() {
@@ -69,6 +70,7 @@ final class AppModel: ObservableObject {
         isLinked = false
         WatchLink.shared.sendCredentials()
         Task { await LiveActivityController.shared.endAll() }
+        Task { await SpotlightIndexer.clear() }
     }
 
     func open(path: String) {
@@ -105,6 +107,7 @@ final class AppModel: ObservableObject {
             await LiveActivityController.shared.start()
             WidgetCenter.shared.reloadAllTimelines()
             AgentsShortcuts.updateAppShortcutParameters()
+            await SpotlightIndexer.refresh()
         } catch {
             lastError = "Could not link this phone: \(error.localizedDescription)"
         }

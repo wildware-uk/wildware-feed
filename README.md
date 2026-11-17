@@ -20,6 +20,11 @@ browser. Around it, the app adds what only a native app can do:
 - **Formatted alerts.** Press and hold an alert to read the agent's message as written: headings, bold, lists, quotes, code and tappable links.
 - **Widgets.** Home screen and lock screen: who's online, what's in progress, what's waiting. The
   medium widget answers simple questions with a tap.
+- **Project widget.** Pick one project: its latest update and the questions it's waiting on, in small,
+  medium and large, on the lock screen, and big and readable in StandBy (phone on its side, charging).
+- **Focus filters.** Choose which projects can still alert you during a Focus. The rest stay quiet
+  until the Focus ends.
+- **Spotlight.** Search finds your projects and their recent updates. Tap one to open it.
 - **Live Activity.** A lock screen and Dynamic Island bar that the server keeps current, with
   Yes/No buttons for yes-or-no questions. The server can start it when a question arrives.
 - **Share sheet.** Share a screenshot, photo, link or text from any app into a project's feed.
@@ -31,7 +36,8 @@ browser. Around it, the app adds what only a native app can do:
   option, or dictate a text answer. Dictate a message to a project, or reply in a question's thread.
   A watch face complication shows how many questions are waiting and opens the list.
 - **Siri.** "Create a ticket in Agents", "What are my Agents doing", "Answer my Agents",
-  "Message Garden Game in Agents", "Record a voice note in Agents". Siri asks for anything you didn't say.
+  "Message Garden Game in Agents", "Record a voice note in Agents", "What did Garden Game say in Agents".
+  Siri asks for anything you didn't say.
 
 ## How it fits together
 
@@ -84,6 +90,16 @@ Kotlin tests run anywhere: `./gradlew :shared:jvmTest`.
 
 CI (`.github/workflows/build.yml`) runs the Kotlin tests and builds the app, every extension and the
 watch app for the simulator on a Mac runner.
+
+## Setting up on the phone
+
+- **Focus filter.** Settings → Focus → pick a Focus → Add Filter → Agents → choose the projects that may
+  still alert you. Leave it empty to hear from every project. The phone tells the dashboard
+  (`PUT /api/devices/current/alert-projects`) each time that Focus turns on or off.
+- **Project widget.** Hold the home screen → Edit → Add Widget → Agents → Project. Then hold the widget →
+  Edit Widget → choose the project. For StandBy, add it while the phone is on its side and charging.
+- **Siri.** "What did *project* say in Agents?" works once the phone is linked; nothing to set up.
+- **Spotlight.** Fills itself each time the app opens.
 
 ## Turning on push
 

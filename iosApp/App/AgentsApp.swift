@@ -1,3 +1,4 @@
+import CoreSpotlight
 import SwiftUI
 
 @main
@@ -13,10 +14,16 @@ struct AgentsApp: App {
                 .onOpenURL { url in
                     if let path = DeepLink.path(from: url) { model.open(path: path) }
                 }
+                // Launch, as well as each return to the app below, so search knows the latest.
+                .task { if model.isLinked { await SpotlightIndexer.refresh() } }
+                .onContinueUserActivity(CSSearchableItemActionType) { activity in
+                    if let path = SpotlightIndexer.path(from: activity) { model.open(path: path) }
+                }
         }
         .onChange(of: scenePhase) { _, phase in
             guard model.isLinked else { return }
             Task { await LiveActivityController.shared.refresh(startIfNeeded: phase == .background) }
+            if phase == .active { Task { await SpotlightIndexer.refresh() } }
         }
     }
 }

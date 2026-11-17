@@ -40,6 +40,36 @@ object Speech {
 
     fun ticketCreated(project: ProjectRef): String = "Done. The ticket is on ${project.name}'s board."
 
+    /**
+     * "What did Garden Game say?": who posted last, how long ago, and the first two sentences.
+     * An agent's message newer than that update is added after it, since it is the latest word.
+     */
+    fun latest(project: ProjectRef, activity: RecentActivity, nowMillis: Long): String {
+        val update = activity.updates.firstOrNull { it.project?.slug == project.slug }
+        val message = activity.messages.firstOrNull { it.project?.slug == project.slug }
+            ?.takeIf { update == null || it.createdAt > update.createdAt }
+
+        val parts = mutableListOf<String>()
+        if (update != null) {
+            parts += "${update.agentName} posted ${TimeAgo.spoken(update.createdAt, nowMillis)}: ${spokenUpdate(update)}"
+        }
+        if (message != null) {
+            val lead = if (update == null) "" else "Since then, "
+            parts += "$lead${message.agentName} said ${TimeAgo.spoken(message.createdAt, nowMillis)}: ${PlainText.sentences(message.text, 2)}"
+        }
+        return parts.joinToString(" ").ifEmpty { "Nothing from ${project.name} yet." }
+    }
+
+    private fun spokenUpdate(update: RecentUpdate): String {
+        val title = update.title?.trim()?.takeIf { it.isNotEmpty() }
+            ?: return PlainText.sentences(update.text, 2)
+        val titled = if (title.last() in ".!?…") title else "$title."
+        // Bodies often open by repeating their title; don't read it twice.
+        val skip = if (PlainText.sentences(update.text, 1).trimEnd('.').equals(title.trimEnd('.'), ignoreCase = true)) 1 else 0
+        val body = PlainText.sentences(update.text, 2, skip = skip, maxLength = 240)
+        return if (body.isEmpty()) titled else "$titled $body"
+    }
+
     private fun spokenList(items: List<String>): String = when (items.size) {
         1 -> items[0]
         else -> items.dropLast(1).joinToString(", ") + " or " + items.last()

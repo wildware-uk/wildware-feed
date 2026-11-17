@@ -23,6 +23,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
@@ -62,6 +63,32 @@ class DashboardClient(
 
     @Throws(Exception::class)
     suspend fun summary(): DashboardSummary = http.get("api/summary") { authorise() }.decoded()
+
+    /**
+     * The latest updates and agent messages, named and as plain text. [projectSlug] narrows it
+     * to one project. Reads the owner snapshot, the one read that carries agent and project names.
+     */
+    @Throws(Exception::class)
+    suspend fun recent(projectSlug: String? = null, limit: Int = 50): RecentActivity =
+        http.get("api/snapshot") {
+            authorise()
+            parameter("limit", limit)
+            if (projectSlug != null) parameter("project", projectSlug)
+        }.decoded<SnapshotBody>().toActivity()
+
+    /**
+     * Which projects may still alert this phone during a Focus. Null or empty lifts the limit,
+     * so every project alerts again. The dashboard refuses slugs it doesn't know.
+     */
+    @Throws(Exception::class)
+    suspend fun setAlertProjects(projectSlugs: List<String>?) {
+        http.put("api/devices/current/alert-projects") {
+            authorise()
+            jsonBody(buildJsonObject {
+                put("projects", projectSlugs?.takeIf { it.isNotEmpty() }?.let { slugs -> JsonArray(slugs.distinct().map(::JsonPrimitive)) } ?: JsonNull)
+            })
+        }.requireSuccess()
+    }
 
     /** Swaps the web view's login cookie for a long-lived device key. */
     @Throws(Exception::class)

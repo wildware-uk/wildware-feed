@@ -35,6 +35,17 @@ struct AgentsShortcuts: AppShortcutsProvider {
             systemImageName: "questionmark.bubble"
         )
         AppShortcut(
+            intent: LatestNewsIntent(),
+            phrases: [
+                "What did \(\.$project) say in \(.applicationName)",
+                "What's new on \(\.$project) in \(.applicationName)",
+                "Latest from \(\.$project) in \(.applicationName)",
+                "What did my \(.applicationName) say",
+            ],
+            shortTitle: "Latest News",
+            systemImageName: "text.bubble"
+        )
+        AppShortcut(
             intent: MessageAgentIntent(),
             phrases: [
                 "Message \(\.$project) in \(.applicationName)",
