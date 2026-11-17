@@ -270,7 +270,9 @@ extension ProjectCard {
             question: "Tests pass. Merge the fee-rounding branch into main?",
             kind: RequestKind.companion.fromWire(value: "confirm")!,
             options: nil,
-            expiresAt: "2026-11-16T12:00:00Z"
+            expiresAt: "2026-11-16T12:00:00Z",
+            detail: nil,
+            defaultAnswer: nil
         )
         let activity = RecentActivity(projects: [project], updates: [update], messages: [])
         let summary = DashboardSummary(
