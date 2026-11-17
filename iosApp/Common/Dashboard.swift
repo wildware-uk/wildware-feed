@@ -24,3 +24,7 @@ enum DashboardError: LocalizedError {
 extension DashboardSummary {
     var topRequest: PendingRequest? { requests.first }
 }
+
+extension RecentUpdate {
+    var date: Date { Date(timeIntervalSince1970: Double(createdAt) / 1000) }
+}

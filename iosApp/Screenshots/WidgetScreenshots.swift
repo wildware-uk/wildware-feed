@@ -56,6 +56,20 @@ final class WidgetScreenshots: XCTestCase {
         try save("lock-inline", accessory(.accessoryInline, width: 260, height: 26))
     }
 
+    func testProjectWidget() throws {
+        try save("project-small", project(.systemSmall), width: 170, height: 170)
+        try save("project-medium", project(.systemMedium), width: 364, height: 170)
+        try save("project-large", project(.systemLarge), width: 364, height: 382)
+        // StandBy: no card behind it, on a black screen across the room.
+        let standBy = ProjectWidgetContent(entry: projectEntry(.small), family: .systemSmall, showsBackground: false)
+            .padding(16)
+            .background(.black)
+        try save("project-standby", standBy, width: 170, height: 170)
+        let lock = ProjectWidgetContent(entry: projectEntry(.accessory), family: .accessoryRectangular, showsBackground: false)
+            .foregroundStyle(.white)
+        try save("project-lock-rectangular", lock, width: 172, height: 76)
+    }
+
     func testStyledAlert() throws {
         let markdown = """
         ## Styled alert test
@@ -95,6 +109,17 @@ final class WidgetScreenshots: XCTestCase {
 
     private func widget(_ family: WidgetFamily, state: AgentsActivityAttributes.ContentState, top: PendingRequest?) -> some View {
         StatusWidgetContent(entry: StatusEntry(date: .now, state: .ready(state, top: top)), family: family)
+            .padding(16)
+            .background(Color.dashboardBackground)
+            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+    }
+
+    private func projectEntry(_ size: CardSize) -> ProjectEntry {
+        ProjectEntry(date: .now, state: .ready(ProjectCard.sample(size: size)))
+    }
+
+    private func project(_ family: WidgetFamily) -> some View {
+        ProjectWidgetContent(entry: projectEntry(CardSize.of(family)), family: family, showsBackground: true)
             .padding(16)
             .background(Color.dashboardBackground)
             .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))

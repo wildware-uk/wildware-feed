@@ -158,6 +158,59 @@ class DashboardClientTest {
     }
 
     @Test
+    fun `a focus filter names the projects that may still alert`() = runTest {
+        client { json("""{"ok":true}""") }.setAlertProjects(listOf("garden-game", "harbor-app", "garden-game"))
+
+        val (request, body) = seen.single()
+        assertEquals(HttpMethod.Put, request.method)
+        assertEquals("https://dash.test/api/devices/current/alert-projects", request.url.toString())
+        assertEquals("Bearer device-key", request.headers[HttpHeaders.Authorization])
+        assertEquals("""{"projects":["garden-game","harbor-app"]}""", body)
+    }
+
+    @Test
+    fun `turning a focus filter off, or listing nothing, lifts the limit`() = runTest {
+        val api = client { json("""{"ok":true}""") }
+        api.setAlertProjects(null)
+        api.setAlertProjects(emptyList())
+
+        assertEquals(listOf("""{"projects":null}""", """{"projects":null}"""), seen.map { it.second })
+    }
+
+    @Test
+    fun `an unknown project in a focus filter is the dashboard's refusal`() = runTest {
+        val error = assertFailsWith<DashboardException> {
+            client { json("""{"error":"invalid_argument","message":"unknown project: gone"}""", HttpStatusCode.BadRequest) }
+                .setAlertProjects(listOf("gone"))
+        }
+
+        assertEquals(400, error.status)
+        assertEquals("invalid_argument", error.code)
+    }
+
+    @Test
+    fun `recent activity is named and plain`() = runTest {
+        val activity = client { json(SNAPSHOT) }.recent(projectSlug = "garden-game", limit = 5)
+
+        val (request, _) = seen.single()
+        assertEquals("/api/snapshot", request.url.encodedPath)
+        assertEquals("5", request.url.parameters["limit"])
+        assertEquals("garden-game", request.url.parameters["project"])
+        assertEquals(listOf(ProjectRef("garden-game", "Garden Game")), activity.projects)
+
+        val update = activity.updates.single()
+        assertEquals("Builder", update.agentName)
+        assertEquals("garden-game", update.project?.slug)
+        assertEquals("Merged\nAll tests pass.", update.text)
+        assertEquals("Merged", update.headline)
+
+        val message = activity.messages.single()
+        assertEquals("m2", message.id)
+        assertEquals("An agent", message.agentName)
+        assertEquals("Done, see the PR.", message.text)
+    }
+
+    @Test
     fun `without a device key nothing is sent`() = runTest {
         val error = assertFailsWith<DashboardException> { client(token = null) { error("unreachable") }.summary() }
 
@@ -180,6 +233,23 @@ class DashboardClientTest {
              "work":{"todo":1,"inProgress":2,"blocked":0},
              "projects":[{"slug":"garden-game","name":"Garden Game"}],
              "extraFieldFromANewerServer":true}
+        """
+
+        const val SNAPSHOT = """
+            {"seq":9,"at":"2026-11-16T12:00:00Z",
+             "projects":[{"id":"p1","seq":1,"slug":"garden-game","name":"Garden Game","status":"active","theme":null},
+                         {"id":"p2","seq":2,"slug":"old","name":"Old","status":"archived"}],
+             "agentNames":{"a1":"Builder"},
+             "updates":{"items":[
+                {"id":"u1","seq":3,"projectId":"p1","agentId":"a1","title":null,"body":"# Merged\n\n**All** tests pass.",
+                 "level":"info","createdAt":1700000000000,"deletedAt":null,"media":[]},
+                {"id":"u0","seq":2,"projectId":"p1","agentId":"a1","title":"Gone","body":"x","createdAt":1600000000000,"deletedAt":1600000001000}
+             ],"nextCursor":null,"hasMore":false},
+             "messages":[
+                {"id":"m1","projectId":"p1","author":"human","body":"how is it going?","createdAt":1700000001000},
+                {"id":"m2","projectId":"p1","author":"agent:a9","body":"Done, see [the PR](https://x).","createdAt":1700000002000}
+             ],
+             "tags":[]}
         """
     }
 }
