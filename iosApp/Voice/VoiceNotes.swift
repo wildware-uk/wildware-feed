@@ -4,7 +4,7 @@ import Foundation
 import Shared
 
 enum VoiceNoteError: LocalizedError {
-    case microphoneOff, liveActivitiesOff, couldNotRecord, noProject, nothingHeard
+    case microphoneOff, liveActivitiesOff, couldNotRecord, noProject, nothingHeard, refused
 
     var errorDescription: String? {
         switch self {
@@ -13,6 +13,7 @@ enum VoiceNoteError: LocalizedError {
         case .couldNotRecord: "The microphone is busy. Try again in a moment."
         case .noProject: "There's no project to send it to yet."
         case .nothingHeard: "No words were picked up, so nothing was sent."
+        case .refused: "The dashboard refused it. Open Agents to see why."
         }
     }
 }
@@ -85,20 +86,21 @@ final class VoiceNotes: ObservableObject {
     }
 
     /// Posts what was said as a new message. A nil `project` means the last one used.
-    func post(_ text: String, to project: ProjectRef?) async throws -> ProjectRef {
-        guard let client = Dashboard.client() else { throw DashboardError.notLinked }
-        defer { client.close() }
-        var destination = project
-        if destination == nil {
-            let projects = try await client.summary().projects
-            destination = VoiceNote.shared.destination(
-                picked: nil, path: nil, lastUsed: CredentialStore.lastProject?.slug, projects: projects
-            )
+    /// It goes through the outbox, so with no signal it waits and sends later: `sent` says which happened.
+    func post(_ text: String, to project: ProjectRef?) async throws -> (project: ProjectRef, sent: Bool) {
+        guard Dashboard.isLinked else { throw DashboardError.notLinked }
+        var destination = project ?? CredentialStore.lastProject
+        if destination == nil, let client = Dashboard.client() {
+            defer { client.close() }
+            let projects = (try? await client.summary().projects) ?? []
+            destination = VoiceNote.shared.destination(picked: nil, path: nil, lastUsed: nil, projects: projects)
         }
         guard let destination else { throw VoiceNoteError.noProject }
-        _ = try await client.share(projectSlug: destination.slug, text: text, attachments: [])
         CredentialStore.lastProject = destination
-        return destination
+        let queued = OutboxQueue.enqueueMessage(label: "To \(destination.name)", thread: ["project": destination.slug], text: text)
+        let outcome = await OutboxQueue.flush(only: queued)
+        if outcome == .giveUp { throw VoiceNoteError.refused }
+        return (destination, outcome == .sent)
     }
 
     /// The lock screen's way to end a note: stop, write it down and post it to the last project used.
@@ -114,8 +116,8 @@ final class VoiceNotes: ObservableObject {
                 await endActivity(nil)
                 return
             }
-            let sent = try await post(text, to: nil)
-            await endActivity(NoteState(phase: .sent, detail: sent.name))
+            let posted = try await post(text, to: nil)
+            await endActivity(NoteState(phase: posted.sent ? .sent : .queued, detail: posted.project.name))
         } catch {
             await endActivity(NoteState(phase: .failed, detail: error.localizedDescription))
             throw error
@@ -171,7 +173,7 @@ final class VoiceNotes: ObservableObject {
                 await activity.end(nil, dismissalPolicy: .immediate)
                 continue
             }
-            let dismissal: ActivityUIDismissalPolicy = outcome.phase == .sent ? .after(.now + 30) : .default
+            let dismissal: ActivityUIDismissalPolicy = outcome.phase == .failed ? .default : .after(.now + 30)
             await activity.end(ActivityContent(state: outcome, staleDate: nil), dismissalPolicy: dismissal)
         }
     }

@@ -31,16 +31,20 @@ private struct ShareView: View {
     @State private var projects: [ProjectRef] = []
     @State private var selected: String?
     @State private var note = ""
-    @State private var attachments: [Attachment] = []
+    @State private var attachments: [OutboxPhoto] = []
     @State private var status: Status = .loading
 
-    enum Status: Equatable { case loading, ready, sending, failed(String) }
+    enum Status: Equatable { case loading, ready, sending, queued, failed(String) }
 
     var body: some View {
         NavigationStack {
             Form {
                 if case let .failed(message) = status {
                     Text(message).foregroundStyle(.red)
+                }
+                if status == .queued {
+                    Text("No connection. It's saved, and Agents will send it when you're back online.")
+                        .foregroundStyle(.orange)
                 }
                 Picker("Project", selection: $selected) {
                     ForEach(projects, id: \.slug) { Text($0.name).tag(Optional($0.slug)) }
@@ -61,7 +65,7 @@ private struct ShareView: View {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel", action: cancel) }
                 ToolbarItem(placement: .confirmationAction) {
                     Button(status == .sending ? "Sending…" : "Post", action: post)
-                        .disabled(selected == nil || status == .sending || status == .loading)
+                        .disabled(selected == nil || status == .sending || status == .loading || status == .queued)
                 }
             }
         }
@@ -69,34 +73,44 @@ private struct ShareView: View {
     }
 
     private func load() async {
-        guard let client = Dashboard.client() else {
+        guard Dashboard.isLinked else {
             status = .failed(DashboardError.notLinked.localizedDescription)
             return
         }
-        defer { client.close() }
         async let content = SharedContent.load(from: items)
-        do {
-            projects = try await client.summary().projects
-            selected = projects.first?.slug
-            let loaded = await content
-            note = loaded.text
-            attachments = loaded.attachments
-            status = .ready
-        } catch {
-            status = .failed("Couldn't reach the dashboard: \(error.localizedDescription)")
+        // Offline, the projects the app last saw are enough to pick from: the post waits in the outbox.
+        projects = CredentialStore.knownProjects
+        if let client = Dashboard.client() {
+            defer { client.close() }
+            if let fresh = try? await client.summary().projects {
+                projects = fresh
+                CredentialStore.knownProjects = fresh
+            }
         }
+        selected = CredentialStore.lastProject.flatMap { last in projects.first { $0.slug == last.slug }?.slug } ?? projects.first?.slug
+        let loaded = await content
+        note = loaded.text
+        attachments = loaded.attachments
+        status = projects.isEmpty ? .failed("Couldn't reach the dashboard to list your projects. Try again with signal.") : .ready
     }
 
     private func post() {
-        guard let selected, let client = Dashboard.client() else { return }
+        guard let selected, let project = projects.first(where: { $0.slug == selected }) else { return }
         status = .sending
         Task {
-            defer { client.close() }
-            do {
-                _ = try await client.share(projectSlug: selected, text: note, attachments: attachments)
+            let queued = OutboxQueue.enqueueMessage(
+                label: "To \(project.name)", thread: ["project": project.slug], text: note, photos: attachments
+            )
+            let outcome = await OutboxQueue.flush(only: queued)
+            if outcome == .sent {
                 finish()
-            } catch {
-                status = .failed("Didn't send: \(error.localizedDescription)")
+            } else if outcome == .giveUp {
+                OutboxQueue.delete(queued)
+                status = .failed("The dashboard refused it, so nothing was sent.")
+            } else {
+                status = .queued
+                try? await Task.sleep(for: .seconds(2))
+                finish()
             }
         }
     }
@@ -106,7 +120,7 @@ private struct ShareView: View {
 private enum SharedContent {
     struct Loaded {
         var text = ""
-        var attachments: [Attachment] = []
+        var attachments: [OutboxPhoto] = []
     }
 
     static func load(from items: [NSExtensionItem]) async -> Loaded {
@@ -133,7 +147,7 @@ private enum SharedContent {
     }
 
     /// Photos arrive as files, raw data or a UIImage depending on the app; send them all as JPEG.
-    private static func imageAttachment(from provider: NSItemProvider, index: Int) async -> Attachment? {
+    private static func imageAttachment(from provider: NSItemProvider, index: Int) async -> OutboxPhoto? {
         guard let item = try? await provider.loadItem(forTypeIdentifier: UTType.image.identifier) else { return nil }
         let image: UIImage?
         switch item {
@@ -143,6 +157,6 @@ private enum SharedContent {
         default: image = nil
         }
         guard let data = image?.jpegData(compressionQuality: 0.85) else { return nil }
-        return IosDashboardKt.attachment(filename: "shared-\(index + 1).jpg", mimeType: "image/jpeg", data: data)
+        return OutboxPhoto(filename: "shared-\(index + 1).jpg", mimeType: "image/jpeg", data: data)
     }
 }

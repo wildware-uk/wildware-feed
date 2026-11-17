@@ -12,6 +12,11 @@ browser. Around it, the app adds what only a native app can do:
   goes: the project on screen (else the last one you used), an agent's question you tapped Reply on,
   or the page's own text box you were using. Tap the chip to change it. The bar steps aside while you
   type in the page itself.
+- **Nothing lost offline.** Everything you send (bar messages and photos, lock screen voice notes, Siri
+  tickets and messages, the share sheet, replies and answers from alerts) goes through an outbox kept
+  on the phone. With no signal it says "Waiting to send" and sends itself when the network comes back,
+  when you open the app, or in the background. If the dashboard refuses something for good, you're
+  told, and can try again or delete it.
 - **iPad.** The Inbox sits in a sidebar beside the dashboard, in any orientation.
 - **Answer from the lock screen.** Question alerts carry their own buttons (Yes/No, each option, or a
   reply field). Answering needs Face ID or your passcode.

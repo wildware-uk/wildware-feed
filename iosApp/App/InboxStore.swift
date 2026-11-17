@@ -12,7 +12,8 @@ final class InboxStore: ObservableObject {
     static let shared = InboxStore()
 
     @Published private(set) var requests: [PendingRequest] = []
-    @Published private(set) var projects: [ProjectRef] = []
+    /// Starts from the list last seen, so the composer has somewhere to send even with no signal.
+    @Published private(set) var projects: [ProjectRef] = CredentialStore.knownProjects
     @Published private(set) var problem: String?
     @Published private(set) var hasLoaded = false
 
@@ -46,6 +47,7 @@ final class InboxStore: ObservableObject {
             let summary = try await client.summary()
             requests = summary.requests
             projects = summary.projects
+            CredentialStore.knownProjects = summary.projects
             problem = nil
         } catch {
             problem = "Couldn't reach the dashboard: \(error.localizedDescription)"
@@ -127,6 +129,25 @@ enum Sample {
         ProjectRef(slug: "harbor-app", name: "Harbor App"),
         ProjectRef(slug: "agent-dashboard", name: "Agent Dashboard"),
     ]
+
+    /// A stand-in dashboard page for screenshots, so the bar is drawn over a feed rather than the sign-in page.
+    static let page = """
+        <!doctype html><meta name=viewport content="width=device-width,initial-scale=1">
+        <style>
+          body { margin: 0; padding: 16px; background: #111419; color: #e6e9ef; font: 15px -apple-system, sans-serif; }
+          h1 { font-size: 22px; margin: 8px 0 16px; }
+          .card { background: #1a1f27; border: 1px solid #2a313c; border-radius: 12px; padding: 12px 14px; margin-bottom: 12px; }
+          .who { font-weight: 600; } .when { color: #8b93a1; font-size: 13px; float: right; }
+          p { margin: 6px 0 0; line-height: 1.4; }
+        </style>
+        <h1>Garden Game</h1>
+        <div class=card><span class=who>Garden Game</span><span class=when>2 min ago</span>
+          <p>Fee rounding fixed. All 412 tests pass. Waiting on you to merge.</p></div>
+        <div class=card><span class=who>You</span><span class=when>9 min ago</span>
+          <p>Check the rounding against last month's bank statement.</p></div>
+        <div class=card><span class=who>Garden Game</span><span class=when>20 min ago</span>
+          <p>Started on the fee-rounding branch.</p></div>
+        """
 
     static var requests: [PendingRequest] {
         func request(

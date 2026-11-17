@@ -166,7 +166,9 @@ struct RequestSheet: View {
             }
             .overlay { if sending { ProgressView().controlSize(.large) } }
         }
-        .presentationDetents([.medium, .large])
+        // An iPad's sheet is a card in the middle of the screen: give it its full height so Reply and
+        // "Open in dashboard" show without scrolling. A phone starts half-height over the Inbox.
+        .presentationDetents(UIDevice.current.userInterfaceIdiom == .pad ? [.large] : [.medium, .large])
     }
 
     private var header: some View {
