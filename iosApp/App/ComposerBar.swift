@@ -277,7 +277,7 @@ struct ComposerBar: View {
             if outcome == .sent {
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
                 show("Sent")
-            } else if outcome == .giveUp {
+            } else if outcome == .refused {
                 UINotificationFeedbackGenerator().notificationOccurred(.error)
                 show("The dashboard refused it. See the outbox.")
             } else {

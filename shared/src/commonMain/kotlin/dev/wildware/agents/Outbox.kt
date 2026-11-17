@@ -81,7 +81,12 @@ data class DeliveryResult(
     val status: Int? = null,
     val message: String? = null,
     val ticketMessageId: String? = null,
-)
+) {
+    val isSent: Boolean get() = outcome == DeliveryOutcome.Sent
+
+    /** Refused for good: Swift reads this rather than the enum, whose case names it spells its own way. */
+    val isRefused: Boolean get() = outcome == DeliveryOutcome.GiveUp
+}
 
 /** The outbox's rules: what to send next, when to try again, and when to stop trying. Storage is the app's. */
 object Outbox {
@@ -174,6 +179,9 @@ object Outbox {
                 )
             }
         }
+
+    /** A send cut short (the process was stopped): it is tried again later, like no signal. */
+    fun interrupted(): DeliveryResult = DeliveryResult(DeliveryOutcome.Retry, message = "Stopped before it finished.")
 
     /** The owner asked to try a given-up or waiting item again now. */
     fun retryNow(items: List<OutboxItem>, id: String): List<OutboxItem> =

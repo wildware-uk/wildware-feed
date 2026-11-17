@@ -12,6 +12,15 @@ enum OutboxError: LocalizedError {
     }
 }
 
+/// How one queued item's send went, for whoever queued it.
+enum OutboxSend {
+    case sent
+    /// No signal or the server struggling: it waits in the outbox and goes later.
+    case waiting
+    /// The dashboard said no for good. The owner has been told; it stays listed.
+    case refused
+}
+
 /// A photo or file to queue with a message, before it is written into the outbox's folder.
 struct OutboxPhoto {
     let filename: String
@@ -135,11 +144,11 @@ enum OutboxQueue {
     /// and anything older in its thread first: the share sheet and Siri send their own and leave the rest to the app.
     /// Returns how [only] went, or nil when it wasn't tried (another process has it, or something older failed).
     @discardableResult
-    static func flush(ignoreBackoff: Bool = false, only: String? = nil) async -> DeliveryOutcome? {
+    static func flush(ignoreBackoff: Bool = false, only: String? = nil) async -> OutboxSend? {
         guard let client = Dashboard.client() else { return nil }
         defer { client.close() }
         var tried: [String] = []
-        var outcomeOfOnly: DeliveryOutcome?
+        var outcomeOfOnly: OutboxSend?
         while !Task.isCancelled {
             // Pick and claim in one held write, so no other process picks the same item meanwhile.
             var picked: OutboxItem?
@@ -166,12 +175,15 @@ enum OutboxQueue {
                 result = try await client.deliver(item: item, attachments: attachments)
             } catch {
                 // Cancelled: release the claim so the next pass can send it.
-                update { Outbox.shared.afterAttempt(items: $0, id: item.id, result: DeliveryResult(outcome: .retry, status: nil, message: nil, ticketMessageId: nil), nowMillis: nowMillis) }
+                update { Outbox.shared.afterAttempt(items: $0, id: item.id, result: Outbox.shared.interrupted(), nowMillis: nowMillis) }
                 break
             }
             update { Outbox.shared.afterAttempt(items: $0, id: item.id, result: result, nowMillis: nowMillis) }
-            if result.outcome == .giveUp { await tellGaveUp(item, reason: result.message) }
-            if item.id == only { outcomeOfOnly = result.outcome; break }
+            if result.isRefused { await tellGaveUp(item, reason: result.message) }
+            if item.id == only {
+                outcomeOfOnly = result.isSent ? .sent : result.isRefused ? .refused : .waiting
+                break
+            }
         }
         return outcomeOfOnly
     }

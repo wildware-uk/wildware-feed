@@ -104,7 +104,7 @@ private struct ShareView: View {
             let outcome = await OutboxQueue.flush(only: queued)
             if outcome == .sent {
                 finish()
-            } else if outcome == .giveUp {
+            } else if outcome == .refused {
                 OutboxQueue.delete(queued)
                 status = .failed("The dashboard refused it, so nothing was sent.")
             } else {

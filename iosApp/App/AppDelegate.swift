@@ -71,7 +71,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
             return
         }
         // A refusal is announced by the outbox itself; only a send that has to wait needs saying here.
-        if await OutboxQueue.flush(only: queued) == .retry {
+        if await OutboxQueue.flush(only: queued) == .waiting {
             await tell("No connection right now. It will send when you're back online.")
         }
         await MainActor.run { OutboxRunner.shared.reload() }

@@ -21,7 +21,7 @@ struct CreateTicketIntent: AppIntent {
         let ref = ProjectRef(slug: project.id, name: project.name)
         let queued = OutboxQueue.enqueueTicket(project: ref, text: details)
         let outcome = await OutboxQueue.flush(only: queued)
-        if outcome == .giveUp { throw OutboxError.refused }
+        if outcome == .refused { throw OutboxError.refused }
         guard outcome == .sent else {
             return .result(dialog: "There's no connection right now. I'll put it on \(project.name)'s board as soon as there is.")
         }
@@ -44,7 +44,7 @@ struct MessageAgentIntent: AppIntent {
         guard Dashboard.isLinked else { throw DashboardError.notLinked }
         let queued = OutboxQueue.enqueueMessage(label: "To \(project.name)", thread: ["project": project.id], text: message)
         let outcome = await OutboxQueue.flush(only: queued)
-        if outcome == .giveUp { throw OutboxError.refused }
+        if outcome == .refused { throw OutboxError.refused }
         guard outcome == .sent else {
             return .result(dialog: "There's no connection right now. It will go to \(project.name) as soon as there is.")
         }
