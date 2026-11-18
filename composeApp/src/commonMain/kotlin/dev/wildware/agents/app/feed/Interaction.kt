@@ -128,16 +128,26 @@ class FeedUi(preview: ScreenPreview, initial: FeedState, var onEvent: (FeedEvent
         runCatching { composerFocus.requestFocus() }
     }
 
-    /** Shows a search result: its thread for a card or reply, the waiting questions for a question. */
+    /** Shows a search result: scrolls to its card, and opens the thread for a card or reply. */
     fun openResult(hit: SearchEntry) {
         if (state.current.slug != null && state.current.slug != hit.projectSlug) emit(FeedEvent.SelectProject(null))
         val thread = hit.threadId
-        if (thread == null) {
-            filter = FeedFilter.Waiting
-            return
-        }
+        reveal(thread ?: hit.id)
+        if (thread == null) return
         openThread(thread, phone = isPhone)
         emit(FeedEvent.OpenThread(thread))
+    }
+
+    /** A card the feed should scroll to. A new [serial] each time, so asking twice scrolls twice. */
+    data class Reveal(val id: String, val serial: Long)
+
+    /** The card waiting to be scrolled into view, once it is loaded. */
+    var revealing by mutableStateOf<Reveal?>(null)
+    private var revealSerial = 0L
+
+    /** Scrolls the feed to card [id], waiting for it to load if it isn't yet. */
+    fun reveal(id: String) {
+        revealing = Reveal(id, ++revealSerial)
     }
     var isPhone = false
 

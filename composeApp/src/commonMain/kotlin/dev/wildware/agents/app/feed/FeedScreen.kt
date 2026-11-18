@@ -1,5 +1,10 @@
 package dev.wildware.agents.app.feed
 
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.mapNotNull
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -162,6 +167,7 @@ private fun DesktopFeed(ui: FeedUi, showThread: Boolean, startAt: String?) {
                 feedItems(ui, Density.Comfortable)
             }
             LoadOlderWhenNearEnd(ui, list)
+            ScrollToRevealed(ui, list, itemsBefore = 1)
             val scrolled by remember { derivedStateOf { list.firstVisibleItemIndex > 3 } }
             if (scrolled) BackToTop(Modifier.align(Alignment.TopCenter).padding(top = 14.dp), toTop)
             // "All projects" has no one place to post to, so the box shows once a project is open.
@@ -252,6 +258,7 @@ private fun PhoneFeed(ui: FeedUi, safeArea: SafeArea, startAt: String?, widthPx:
                 feedItems(ui, Density.Compact)
             }
             LoadOlderWhenNearEnd(ui, list)
+            ScrollToRevealed(ui, list, itemsBefore = 2)
         }
         // Tapping the status bar area scrolls to the top, as it does across iOS.
         Box(
@@ -341,10 +348,41 @@ private fun bottomFade(background: Color) = Brush.verticalGradient(
 )
 
 /** Where in the list an item sits, so a screen can open scrolled to it. */
-private fun startIndex(state: FeedState, key: String?, itemsBefore: Int): Int {
-    if (key == null) return 0
-    val keys = state.sections.flatMapIndexed { s, section -> listOf("section-$s") + section.items.map { it.id } }
-    return keys.indexOf(key).takeIf { it >= 0 }?.plus(itemsBefore) ?: 0
+private fun startIndex(state: FeedState, key: String?, itemsBefore: Int): Int =
+    key?.let { indexIn(state.sections, it, itemsBefore) } ?: 0
+
+/** Where card [id] sits in the list built from [sections], or null when it isn't there. */
+private fun indexIn(sections: List<FeedSection>, id: String, itemsBefore: Int): Int? {
+    val keys = sections.flatMapIndexed { s, section -> listOf("section-$s") + section.items.map { it.id } }
+    return keys.indexOf(id).takeIf { it >= 0 }?.plus(itemsBefore)
+}
+
+/** How long to wait for a card to load (a project switching, a page arriving) before giving up. */
+private const val RevealWaitMillis = 10_000L
+
+/**
+ * Scrolls to the card [FeedUi.reveal] asked for: a search result, a tapped notification, a deep
+ * link. It waits for the card to load, shows every card if the chips hid it, and leaves a little
+ * room above it so the "Back to top" pill doesn't cover its header.
+ */
+@Composable
+private fun ScrollToRevealed(ui: FeedUi, list: LazyListState, itemsBefore: Int) {
+    val target = ui.revealing ?: return
+    val motion = AgentTheme.motion
+    val room = with(LocalDensity.current) { 64.dp.roundToPx() }
+    LaunchedEffect(target) {
+        val index = withTimeoutOrNull(RevealWaitMillis) {
+            snapshotFlow { indexIn(ui.sections, target.id, itemsBefore) to (ui.state.item(target.id) != null) }
+                // Loaded but not listed means the chips hid it: show everything again.
+                .onEach { (index, loaded) -> if (index == null && loaded && ui.filter != FeedFilter.All) ui.filter = FeedFilter.All }
+                .mapNotNull { it.first }
+                .first()
+        }
+        if (index != null) {
+            if (motion.reduced) list.scrollToItem(index, -room) else list.animateScrollToItem(index, -room)
+        }
+        if (ui.revealing == target) ui.revealing = null
+    }
 }
 
 /** The sections and their cards, hung off a timeline rail. */

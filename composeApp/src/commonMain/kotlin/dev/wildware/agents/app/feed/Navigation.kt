@@ -77,6 +77,7 @@ internal fun FollowNavigation(ui: FeedUi, navigator: AppNavigator?) {
             if (open.project != ui.state.current.slug) ui.emit(FeedEvent.SelectProject(open.project))
             val id = open.cardId ?: return@collect
             val item = withTimeoutOrNull(CardWaitMillis) { snapshotFlow { ui.state.item(id) }.filterNotNull().first() }
+            if (item != null) ui.reveal(id)
             if (item is Threaded) {
                 ui.openThread(id, phone = ui.isPhone)
                 ui.emit(FeedEvent.OpenThread(id))
