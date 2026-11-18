@@ -33,7 +33,7 @@ of about 50 MB) + R2 (10 GB of storage free, then $0.015 per GB a month; no egre
 ```sh
 heroku create APP --region eu --stack container
 heroku addons:create heroku-postgresql:essential-0 -a APP
-heroku pg:backups:schedule DATABASE_URL --at '03:00 Europe/London' -a APP
+heroku pg:backups:schedule DATABASE_URL --at '03:00 UTC' -a APP
 ```
 
 Essential plans have no point-in-time recovery, so the daily backup schedule is the safety net.
