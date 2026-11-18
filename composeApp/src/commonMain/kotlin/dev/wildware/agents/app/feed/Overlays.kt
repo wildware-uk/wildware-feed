@@ -715,7 +715,7 @@ fun PhoneThreadScreen(ui: FeedUi, item: Threaded, widthPx: Float, safeArea: Safe
             // A preview showing a swiped reply opens scrolled to the replies.
             val scroll = rememberScrollState(if (preview.replySwipe != null) 100_000 else 0)
             Column(
-                Modifier.weight(1f).verticalScroll(scroll).padding(horizontal = 16.dp),
+                Modifier.weight(1f).closesComposer(ui).verticalScroll(scroll).padding(horizontal = 16.dp),
             ) {
                 Spacer(Modifier.height(8.dp))
                 FeedItemView(item, selected = false, density = Density.Compact, inThread = true)
@@ -771,6 +771,7 @@ fun ThreadComposer(ui: FeedUi?, threadId: String, modifier: Modifier = Modifier,
             compact = true,
             onSend = { text, files -> ui?.emit(FeedEvent.SendReply(threadId, text, replying?.id, files)) },
             focus = focus,
+            draftKey = "thread:$threadId",
         )
     }
 }

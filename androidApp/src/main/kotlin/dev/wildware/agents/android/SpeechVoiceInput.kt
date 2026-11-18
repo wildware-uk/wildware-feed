@@ -19,6 +19,9 @@ import dev.wildware.agents.app.feed.VoiceInput
  *
  * Android's recogniser stops by itself after a pause. While the mic is still held this starts it
  * again and keeps what was heard, so a long note with pauses in it comes back whole.
+ *
+ * It reports what it has heard as the owner speaks (partial results), so the words show while
+ * they talk; the finished words replace them.
  */
 class SpeechVoiceInput(private val context: Context, private val hooks: ActivityHooks) : VoiceInput {
     private var recognizer: SpeechRecognizer? = null
@@ -26,9 +29,10 @@ class SpeechVoiceInput(private val context: Context, private val hooks: Activity
     private var holding = false
     private var listening = false
     private var onStarted: ((String?) -> Unit)? = null
+    private var onHeard: ((String) -> Unit)? = null
     private var onDone: ((String?, String?) -> Unit)? = null
 
-    override fun start(onStarted: (problem: String?) -> Unit) {
+    override fun start(onHeard: (words: String) -> Unit, onStarted: (problem: String?) -> Unit) {
         if (!SpeechRecognizer.isRecognitionAvailable(context)) return onStarted("This phone has no speech recognition")
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             val ask = hooks.askPermission ?: return onStarted("Allow the microphone in Settings to talk")
@@ -39,6 +43,7 @@ class SpeechVoiceInput(private val context: Context, private val hooks: Activity
         heard = StringBuilder()
         holding = true
         this.onStarted = onStarted
+        this.onHeard = onHeard
         listen()
     }
 
@@ -52,6 +57,7 @@ class SpeechVoiceInput(private val context: Context, private val hooks: Activity
         holding = false
         onDone = null
         onStarted = null
+        onHeard = null
         recognizer?.cancel()
         release()
     }
@@ -64,7 +70,7 @@ class SpeechVoiceInput(private val context: Context, private val hooks: Activity
             Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
                 .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
                 .putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
-                .putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
+                .putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
                 // Asks for long pauses; many recognisers stop sooner anyway, which listen() covers.
                 .putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 10_000L),
         )
@@ -80,6 +86,7 @@ class SpeechVoiceInput(private val context: Context, private val hooks: Activity
     private fun deliver(problem: String? = null) {
         val done = onDone ?: return
         onDone = null
+        onHeard = null
         release()
         val text = heard.toString().trim()
         if (text.isNotEmpty()) done(text, null) else done(null, problem ?: "Didn't catch that. Hold and try again")
@@ -108,6 +115,7 @@ class SpeechVoiceInput(private val context: Context, private val hooks: Activity
         override fun onResults(results: Bundle?) {
             listening = false
             keep(results)
+            onHeard?.invoke(heard.toString())
             if (holding) listen() else deliver()
         }
 
@@ -136,7 +144,12 @@ class SpeechVoiceInput(private val context: Context, private val hooks: Activity
         override fun onRmsChanged(rmsdB: Float) = Unit
         override fun onBufferReceived(buffer: ByteArray?) = Unit
         override fun onEndOfSpeech() = Unit
-        override fun onPartialResults(partialResults: Bundle?) = Unit
+        override fun onPartialResults(partialResults: Bundle?) {
+            // What this stretch has heard so far, after what earlier stretches kept.
+            val words = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()?.trim().orEmpty()
+            if (words.isEmpty()) return
+            onHeard?.invoke(if (heard.isEmpty()) words else "$heard $words")
+        }
         override fun onEvent(eventType: Int, params: Bundle?) = Unit
     }
 

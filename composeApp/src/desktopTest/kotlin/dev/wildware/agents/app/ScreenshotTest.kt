@@ -17,6 +17,8 @@ import dev.wildware.agents.app.feed.Bell
 import dev.wildware.agents.app.feed.BellItem
 import dev.wildware.agents.app.feed.Acks
 import dev.wildware.agents.app.feed.Author
+import dev.wildware.agents.app.feed.VoiceInput
+import dev.wildware.agents.app.feed.LocalVoiceInput
 import dev.wildware.agents.app.feed.FakeFeed
 import dev.wildware.agents.app.feed.Presence
 import dev.wildware.agents.app.feed.FeedFilter
@@ -303,6 +305,30 @@ class ScreenshotTest {
             for (dark in listOf(false, true)) {
                 shoot("${size.label}-${if (dark) "dark" else "light"}-bell", size, dark) {
                     AgentsPreview(dark = dark, state = state, safeArea = size.safeArea, preview = ScreenPreview(bellOpen = true))
+                }
+            }
+        }
+    }
+
+    /** The phone's message box open, with its close button, and then the mic held with the words showing as they are said. */
+    @Test
+    fun composerOpenAndListening() {
+        val talking = object : VoiceInput {
+            override fun start(onHeard: (words: String) -> Unit, onStarted: (problem: String?) -> Unit) {
+                onStarted(null)
+                onHeard("Can you check why the Mac build got slower this week and")
+            }
+            override fun finish(onDone: (text: String?, problem: String?) -> Unit) = Unit
+            override fun cancel() = Unit
+        }
+        for (dark in listOf(false, true)) {
+            val mode = if (dark) "dark" else "light"
+            shoot("phone-$mode-composer-open", Size.Phone, dark) {
+                AgentsPreview(dark = dark, safeArea = Size.Phone.safeArea, preview = ScreenPreview(composerOpen = true, composerText = "Half a thought about the release notes"))
+            }
+            shoot("phone-$mode-live-words", Size.Phone, dark) {
+                CompositionLocalProvider(LocalVoiceInput provides talking) {
+                    AgentsPreview(dark = dark, safeArea = Size.Phone.safeArea, preview = ScreenPreview(composerListening = true))
                 }
             }
         }

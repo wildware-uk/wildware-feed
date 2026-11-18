@@ -43,7 +43,7 @@ internal const val DrawerWidthFraction = 0.84f
 private const val CommitFraction = 1f / 3f
 
 /** What a back swipe is doing, fixed when it starts so it can't change meaning halfway through. */
-private enum class BackMode { Overlay, CloseDrawer, OpenDrawer, Thread }
+private enum class BackMode { Overlay, Composer, CloseDrawer, OpenDrawer, Thread }
 
 /**
  * What system back does on the feed, topmost thing first. It closes the picture viewer, search or
@@ -66,6 +66,8 @@ internal fun FollowSystemBack(ui: FeedUi, widthPx: Float) {
 
     fun modeNow(): BackMode? = when {
         ui.viewer != null || ui.playing != null || ui.commandOpen || ui.bellOpen || ui.alertsOpen || ui.statusPick != null || ui.menu != null || ui.selecting != null -> BackMode.Overlay
+        // The open message box closes before the screen under it moves; what was written stays.
+        ui.composerOpen -> BackMode.Composer
         ui.drawer.value > 0f -> BackMode.CloseDrawer
         ui.phoneThread != null -> BackMode.Thread
         system.ownsLeftEdge && ui.isPhone -> BackMode.OpenDrawer
@@ -79,7 +81,7 @@ internal fun FollowSystemBack(ui: FeedUi, widthPx: Float) {
     fun finish(mode: BackMode?, back: Boolean) {
         gesture[0] = null
         past[0] = false
-        if (back && feels && mode != null && mode != BackMode.Overlay) haptics.performHapticFeedback(HapticFeedbackType.GestureEnd)
+        if (back && feels && mode != null && mode != BackMode.Overlay && mode != BackMode.Composer) haptics.performHapticFeedback(HapticFeedbackType.GestureEnd)
         when (mode) {
             BackMode.Overlay -> if (back) when {
                 ui.viewer != null -> ui.viewer = null
@@ -91,6 +93,7 @@ internal fun FollowSystemBack(ui: FeedUi, widthPx: Float) {
                 ui.selecting != null -> ui.selecting = null
                 else -> ui.menu = null
             }
+            BackMode.Composer -> if (back) ui.closeComposer()
             BackMode.CloseDrawer -> scope.launch { ui.drawer.settle(!back, motion.settle()) }
             BackMode.OpenDrawer -> scope.launch { ui.drawer.settle(back, motion.settle()) }
             BackMode.Thread -> scope.launch {
@@ -112,7 +115,7 @@ internal fun FollowSystemBack(ui: FeedUi, widthPx: Float) {
                 BackMode.CloseDrawer -> swipe.progress.also { ui.drawer.value = 1f - it }
                 BackMode.OpenDrawer -> swipe.across(widthPx * DrawerWidthFraction).also { ui.drawer.value = it }
                 BackMode.Thread -> swipe.across(widthPx).also { ui.threadBack.value = it }
-                BackMode.Overlay, null -> null
+                BackMode.Overlay, BackMode.Composer, null -> null
             }
             if (feels && across != null && (across >= CommitFraction) != past[0]) {
                 past[0] = !past[0]

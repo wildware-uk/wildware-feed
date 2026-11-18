@@ -10,6 +10,12 @@ enum Transcriber {
             try? await AssetInventory.assetInstallationRequest(supporting: [transcriber])?.downloadAndInstall()
             return
         }
+        await askForSpeech()
+    }
+
+    /// Asks once to use speech recognition: the older recognizer, and the words shown live while a
+    /// note is held, both need it.
+    static func askForSpeech() async {
         guard SFSpeechRecognizer.authorizationStatus() == .notDetermined else { return }
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             SFSpeechRecognizer.requestAuthorization { _ in continuation.resume() }

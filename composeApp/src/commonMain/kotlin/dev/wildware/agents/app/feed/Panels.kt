@@ -1,5 +1,17 @@
 package dev.wildware.agents.app.feed
 
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.foundation.text.input.TextFieldState
 import dev.wildware.agents.Composer as Dictation
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -62,7 +74,6 @@ import androidx.compose.ui.input.key.type
 import dev.wildware.agents.app.design.TextInput
 import dev.wildware.agents.app.design.AppMark
 import androidx.compose.foundation.text.input.clearText
-import androidx.compose.foundation.text.input.rememberTextFieldState
 
 @Composable
 private fun Kbd(text: String, light: Boolean = false) {
@@ -437,6 +448,10 @@ private fun TextAction(label: String, onClick: () -> Unit) {
  * The box for writing: to everyone in a project, or into a thread. Enter adds a line;
  * Cmd+Enter or Ctrl+Enter (or the arrow) sends. Files come in through the paperclip, by dropping
  * them on the box, or by pasting a picture; each shows above the text with a way to remove it.
+ *
+ * Once open (the cursor in it; on a phone, the keyboard up) it closes without sending by its close
+ * button, a swipe down on it, a tap on the feed, back, or Escape. What was written stays, and with
+ * a [draftKey] it stays even when the box leaves the screen and comes back.
  */
 @Composable
 fun Composer(
@@ -447,11 +462,35 @@ fun Composer(
     label: String = "Message",
     /** Lets "New post" in the command bar put the cursor here. */
     focus: FocusRequester? = null,
+    /** Which draft this box writes: "project:<slug>", "thread:<id>". */
+    draftKey: String? = null,
 ) {
     val colors = AgentTheme.colors
     val shape = AgentTheme.shapes.large
-    val text = rememberTextFieldState()
     val preview = LocalPreview.current
+    // The feed's own composer takes what was shared in from another app.
+    val ui = LocalFeedUi.current
+    val text = remember(draftKey) {
+        TextFieldState(draftKey?.let { ui?.drafts?.get(it) } ?: preview.composerText.takeIf { focus != null }.orEmpty())
+    }
+    if (draftKey != null && ui != null) {
+        LaunchedEffect(text) {
+            snapshotFlow { text.text.toString() }.collect { ui.drafts[draftKey] = it }
+        }
+    }
+    val focusManager = LocalFocusManager.current
+    val keyboard = LocalSoftwareKeyboardController.current
+    var open by remember { mutableStateOf(false) }
+    val close: () -> Unit = {
+        keyboard?.hide()
+        focusManager.clearFocus(force = true)
+    }
+    // Back, or a tap on the feed, asks through the screen's state.
+    val closeRequests = ui?.closeRequests ?: 0
+    LaunchedEffect(closeRequests) { if (closeRequests > 0 && open) close() }
+    DisposableEffect(ui) { onDispose { if (open) ui?.composerOpen = false } }
+    val stillOpen by rememberUpdatedState(open)
+    val swipeClosePx = with(LocalDensity.current) { SwipeToClose.toPx() }
     val files = remember { mutableStateListOf<PendingFile>().apply { if (focus != null) addAll(preview.composerFiles) } }
     var hovering by remember { mutableStateOf(false) }
     var refused by remember { mutableStateOf<String?>(null) }
@@ -466,8 +505,12 @@ fun Composer(
         files += fits
         refused = big.firstOrNull()?.let { "${it.name} is over 25 MB, so it was left out." }
     }
-    // The feed's own composer takes what was shared in from another app.
-    val ui = LocalFeedUi.current
+    if (focus != null && (preview.composerOpen || preview.composerListening)) {
+        LaunchedEffect(Unit) {
+            if (preview.composerOpen) runCatching { focus.requestFocus() }
+            if (preview.composerListening) recorder?.press()
+        }
+    }
     if (focus != null && ui != null) {
         LaunchedEffect(ui.incoming) {
             val draft = ui.incoming ?: return@LaunchedEffect
@@ -496,12 +539,32 @@ fun Composer(
             .background(colors.surfaceRaised)
             .border(if (hovering) 2.dp else 1.dp, if (hovering) colors.accent else colors.border, shape)
             .fileDropTarget(onHover = { hovering = it }, onFiles = add)
+            .pointerInput(Unit) {
+                // A swipe down on the open box closes it. Watched before the text box sees it, and
+                // never taken from it, so dragging to select still works.
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                    while (true) {
+                        val change = awaitPointerEvent(PointerEventPass.Initial).changes.firstOrNull { it.id == down.id } ?: break
+                        val dy = change.position.y - down.position.y
+                        val dx = change.position.x - down.position.x
+                        if (stillOpen && dy > swipeClosePx && dy > 2 * kotlin.math.abs(dx)) {
+                            close()
+                            break
+                        }
+                        if (!change.pressed) break
+                    }
+                }
+            }
             .padding(start = 6.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
     ) {
         AttachmentStrip(files, onRemove = { files.remove(it) }, Modifier.padding(start = 8.dp, top = 8.dp, bottom = 4.dp))
         refused?.let { MetaText(it, Modifier.padding(start = 8.dp, top = 4.dp), color = colors.error) }
         recorder?.note?.let { MetaText(it, Modifier.padding(start = 8.dp, top = 4.dp), color = colors.textMuted) }
+        recorder?.takeIf { it.active && it.heard.isNotBlank() }?.let { LiveWords(it.heard) }
         Row(verticalAlignment = Alignment.CenterVertically) {
+            // On a phone the open box says how to put it away, as the keyboard covers the feed.
+            if (open && LocalIsPhone.current) IconAction(Icons.ChevronDown, "Close the message box", onClick = close)
             if (picker != null) {
                 IconAction(Icons.Paperclip, "Attach files") { picker.pick { picked -> add(picked) } }
             } else {
@@ -511,7 +574,16 @@ fun Composer(
                 text,
                 label = label,
                 placeholder = placeholder,
-                modifier = Modifier.weight(1f).then(if (focus != null) Modifier.focusRequester(focus) else Modifier).onPreviewKeyEvent { e ->
+                modifier = Modifier.weight(1f).then(if (focus != null) Modifier.focusRequester(focus) else Modifier).onFocusChanged {
+                    if (it.isFocused != open) {
+                        open = it.isFocused
+                        ui?.composerOpen = it.isFocused
+                    }
+                }.onPreviewKeyEvent { e ->
+                    if (e.type == KeyEventType.KeyDown && e.key == Key.Escape) {
+                        close()
+                        return@onPreviewKeyEvent true
+                    }
                     // Paste a picture or files from the clipboard; plain text pastes as usual.
                     val paste = e.type == KeyEventType.KeyDown && e.key == Key.V && (e.isMetaPressed || e.isCtrlPressed)
                     val pasted = if (paste) clipboardFiles() else null
@@ -532,6 +604,20 @@ fun Composer(
                 SendButton(enabled = !blank || files.isNotEmpty(), onClick = send)
             }
         }
+    }
+}
+
+/** How far down a finger drags the open box to close it. */
+private val SwipeToClose = 48.dp
+
+/**
+ * A touch on the feed puts the open message box away, as tapping or scrolling the messages does
+ * across iOS. Only watched: the touch still reaches whatever it landed on.
+ */
+fun Modifier.closesComposer(ui: FeedUi): Modifier = pointerInput(ui) {
+    awaitEachGesture {
+        awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+        if (ui.composerOpen) ui.closeComposer()
     }
 }
 

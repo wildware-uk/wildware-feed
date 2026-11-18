@@ -277,7 +277,7 @@ private fun DesktopColumns(ui: FeedUi, showRail: Boolean, startAt: String?) {
         VerticalRule()
         Box(Modifier.weight(1f).fillMaxHeight()) {
             LazyColumn(
-                Modifier.fillMaxSize().listActions(refresh, toTop, null),
+                Modifier.fillMaxSize().closesComposer(ui).listActions(refresh, toTop, null),
                 state = list,
                 contentPadding = PaddingValues(start = 36.dp, end = 36.dp, top = 28.dp, bottom = 110.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -305,6 +305,7 @@ private fun DesktopColumns(ui: FeedUi, showRail: Boolean, startAt: String?) {
                     focus = ui.composerFocus,
                     placeholder = "Write to everyone in ${state.current.name}…",
                     onSend = { text, files -> ui.emit(FeedEvent.Post(text, files)) },
+                    draftKey = "project:${state.current.slug}",
                     modifier = Modifier.widthIn(max = FeedMaxWidth),
                 )
             }
@@ -378,7 +379,7 @@ private fun PhoneFeed(ui: FeedUi, safeArea: SafeArea, startAt: String?, widthPx:
             },
         ) {
             LazyColumn(
-                Modifier.fillMaxSize().listActions(refresh, toTop, openDrawer),
+                Modifier.fillMaxSize().closesComposer(ui).listActions(refresh, toTop, openDrawer),
                 state = list,
                 contentPadding = remember(safeArea) { safeContentPadding(safeArea, horizontal = 16.dp, top = 8.dp, bottom = 96.dp) },
             ) {
@@ -412,6 +413,7 @@ private fun PhoneFeed(ui: FeedUi, safeArea: SafeArea, startAt: String?, widthPx:
                 focus = ui.composerFocus,
                 placeholder = "Message ${state.current.name}…",
                 onSend = { text, files -> ui.emit(FeedEvent.Post(text, files)) },
+                draftKey = "project:${state.current.slug}",
                 compact = true,
             )
         }

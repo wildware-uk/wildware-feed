@@ -7,6 +7,7 @@ import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableStateSetOf
 import androidx.compose.runtime.setValue
@@ -159,6 +160,12 @@ data class ScreenPreview(
     val command: String? = null,
     /** Files already attached in the feed's composer. */
     val composerFiles: List<PendingFile> = emptyList(),
+    /** Words already in the feed's composer. */
+    val composerText: String = "",
+    /** The feed's composer has the cursor, as after a tap on it. */
+    val composerOpen: Boolean = false,
+    /** The feed's composer mic is held down. */
+    val composerListening: Boolean = false,
     /** Options already picked on picture or choice questions, by question id. */
     val picked: Map<String, Set<String>> = emptyMap(),
     val menu: MenuTarget? = null,
@@ -233,6 +240,24 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
     /** The alert settings for this device. */
     var alertsOpen by mutableStateOf(preview.alertsOpen)
     val composerFocus = FocusRequester()
+
+    /** A message box has the cursor (on a phone, the keyboard is up). Back closes it first. */
+    var composerOpen by mutableStateOf(false)
+
+    /** Asks the open message box to close; each ask counts up, so asking twice closes twice. */
+    var closeRequests by mutableIntStateOf(0)
+        private set
+
+    /** Closes the open message box without sending, keeping what was written. */
+    fun closeComposer() {
+        closeRequests++
+    }
+
+    /**
+     * What was written and not sent, by box: each project's and each thread's. A box that leaves the
+     * screen (a thread closed, another project opened) finds its words here when it comes back.
+     */
+    val drafts = mutableMapOf<String, String>()
 
     /** Words and files shared in from another app, waiting for the next project composer on screen. */
     var incoming by mutableStateOf<SharedDraft?>(null)

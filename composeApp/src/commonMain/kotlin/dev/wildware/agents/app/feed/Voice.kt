@@ -12,6 +12,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Text
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
@@ -50,8 +53,12 @@ import kotlinx.coroutines.delay
  * comes back on the main thread.
  */
 interface VoiceInput {
-    /** Starts recording. [onStarted] gets null once it is recording, or what stopped it (no microphone, say). */
-    fun start(onStarted: (problem: String?) -> Unit)
+    /**
+     * Starts recording. [onStarted] gets null once it is recording, or what stopped it (no microphone,
+     * say). [onHeard] gets everything heard so far, again each time it grows, while the owner talks;
+     * a phone that can't follow along never calls it.
+     */
+    fun start(onHeard: (words: String) -> Unit, onStarted: (problem: String?) -> Unit)
 
     /** Stops and writes it down. [onDone] gets the words, or null and what to tell the owner. */
     fun finish(onDone: (text: String?, problem: String?) -> Unit)
@@ -79,6 +86,13 @@ class VoiceRecorder(private val input: VoiceInput, private val onWords: (String)
     /** A word for the owner under the box: "Check it, then send", or what went wrong. */
     var note by mutableStateOf<String?>(null)
 
+    /** The words heard so far, while recording and while they are written down; then the finished words replace them. */
+    var heard by mutableStateOf("")
+        private set
+
+    /** This recording is still going: words heard after its end are left out. */
+    private var listening = false
+
     val active: Boolean get() = phase != Phase.Idle
 
     /** Let go before recording had started: finish (or cancel) as soon as it has. */
@@ -90,8 +104,11 @@ class VoiceRecorder(private val input: VoiceInput, private val onWords: (String)
         willCancel = false
         note = null
         releasedEarly = null
-        input.start { problem ->
+        heard = ""
+        listening = true
+        input.start(onHeard = { words -> if (listening) heard = words }) { problem ->
             if (problem != null) {
+                listening = false
                 phase = Phase.Idle
                 note = problem
                 return@start
@@ -113,6 +130,8 @@ class VoiceRecorder(private val input: VoiceInput, private val onWords: (String)
         phase = Phase.Writing
         note = "Writing it down…"
         input.finish { text, problem ->
+            listening = false
+            heard = ""
             phase = Phase.Idle
             if (text != null) onWords(text)
             note = problem ?: "Check it, then send"
@@ -120,6 +139,8 @@ class VoiceRecorder(private val input: VoiceInput, private val onWords: (String)
     }
 
     private fun cancel() {
+        listening = false
+        heard = ""
         input.cancel()
         phase = Phase.Idle
         note = null
@@ -215,3 +236,24 @@ fun RecordingStrip(recorder: VoiceRecorder, modifier: Modifier = Modifier) {
         )
     }
 }
+
+/**
+ * What has been heard so far, above the recording strip, as the owner speaks. The newest words
+ * are the ones that matter, so a long note shows its end.
+ */
+@Composable
+fun LiveWords(words: String, modifier: Modifier = Modifier) {
+    val colors = AgentTheme.colors
+    val shown = if (words.length > LiveWordsShown) "…" + words.takeLast(LiveWordsShown).trimStart() else words
+    Text(
+        shown,
+        modifier.fillMaxWidth().padding(start = 10.dp, end = 10.dp, top = 8.dp),
+        color = colors.text,
+        style = AgentTheme.type.body,
+        maxLines = 4,
+        overflow = TextOverflow.Ellipsis,
+    )
+}
+
+/** About four lines on a phone. */
+private const val LiveWordsShown = 160
