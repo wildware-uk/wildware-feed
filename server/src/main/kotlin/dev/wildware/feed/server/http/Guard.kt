@@ -5,7 +5,7 @@ package dev.wildware.feed.server.http
  * `/logout` pages are not ported: the website is deprecated.
  */
 object Guard {
-    private val TOKEN_AUTHED = listOf("/mcp", "/api/upload", "/s", "/api/agent")
+    private val TOKEN_AUTHED = listOf("/mcp", "/api/upload", "/api/agent")
     private val PUBLIC = listOf("/api/devices/sign-in")
 
     fun normalise(path: String): String = if (path == "/") path else path.trimEnd('/').ifEmpty { "/" }
