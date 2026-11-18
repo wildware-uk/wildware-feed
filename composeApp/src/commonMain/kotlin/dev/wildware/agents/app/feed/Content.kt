@@ -61,6 +61,7 @@ import com.mikepenz.markdown.m3.Markdown
 import com.mikepenz.markdown.m3.markdownColor
 import com.mikepenz.markdown.m3.markdownTypography
 import com.mikepenz.markdown.model.markdownPadding
+import com.mikepenz.markdown.model.markdownAnimations
 import com.mikepenz.markdown.model.State
 import com.mikepenz.markdown.model.parseMarkdown
 import kotlin.concurrent.atomics.AtomicReference
@@ -157,6 +158,8 @@ fun MarkdownBody(markdown: String, modifier: Modifier = Modifier, color: Color =
             block = 6.dp, list = 2.dp, listItemTop = 3.dp, listItemBottom = 0.dp,
             codeBlock = CodeBlockPadding,
         ),
+        // Each piece of text would otherwise animate its size: a cost on every card, for nothing.
+        animations = markdownAnimations(animateTextSize = { this }),
         components = markdownComponents(
             codeFence = { model ->
                 MarkdownCodeFence(model.content, model.node, model.typography.code) { text, language, style ->
