@@ -8,8 +8,8 @@ struct AgentsLiveActivity: Widget {
         ActivityConfiguration(for: AgentsActivityAttributes.self) { context in
             LockScreenView(state: context.state)
                 .padding()
-                .activityBackgroundTint(.dashboardBackground)
-                .activitySystemActionForegroundColor(.white)
+                .activityBackgroundTint(Theme.surface)
+                .activitySystemActionForegroundColor(Theme.text)
                 .widgetURL(DeepLink.open(path: "/"))
         } dynamicIsland: { context in
             let state = context.state
@@ -54,14 +54,17 @@ struct LockScreenView: View {
             HStack {
                 Text(state.headline).font(.headline)
                 Spacer()
-                CountsRow(state: state)
+                // Interim until the chosen Live Activity design lands.
+                Text("\(state.waiting) waiting · \(state.online) online")
+                    .font(Theme.Font.meta)
+                    .foregroundStyle(Theme.textMuted)
             }
             if let question = state.topQuestion {
                 Text(question).font(.subheadline).lineLimit(2)
                 ConfirmButtons(state: state)
             }
         }
-        .foregroundStyle(.white)
+        .foregroundStyle(Theme.text)
     }
 }
 

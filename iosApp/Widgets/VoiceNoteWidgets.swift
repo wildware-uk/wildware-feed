@@ -21,8 +21,8 @@ struct VoiceNoteLiveActivity: Widget {
         ActivityConfiguration(for: VoiceNoteActivityAttributes.self) { context in
             VoiceNoteStatusView(attributes: context.attributes, state: context.state)
                 .padding()
-                .activityBackgroundTint(.dashboardBackground)
-                .activitySystemActionForegroundColor(.white)
+                .activityBackgroundTint(Theme.surface)
+                .activitySystemActionForegroundColor(Theme.text)
         } dynamicIsland: { context in
             let attributes = context.attributes
             let state = context.state
@@ -76,7 +76,7 @@ struct VoiceNoteStatusView: View {
                 .tint(.red)
             }
         }
-        .foregroundStyle(.white)
+        .foregroundStyle(Theme.text)
     }
 }
 
@@ -94,7 +94,7 @@ extension VoiceNoteActivityAttributes.ContentState {
     var tint: Color {
         switch phase {
         case .recording: .red
-        case .sending: .white
+        case .sending: Theme.textMuted
         case .sent: .green
         case .queued: .orange
         case .failed: .orange
