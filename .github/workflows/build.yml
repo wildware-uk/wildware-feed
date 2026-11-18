@@ -66,7 +66,7 @@ jobs:
       - run: ./gradlew :shared:assembleSharedDebugXCFramework
       - name: Shared tests on the iPhone simulator
         timeout-minutes: 10
-        run: ./gradlew :shared:iosSimulatorArm64Test
+        run: ./gradlew :shared:iosSimulatorArm64Test --no-daemon
       - run: brew install xcodegen
         timeout-minutes: 5
       - name: Generate the Xcode project
