@@ -133,3 +133,39 @@ class MediaToStore(private val root: Path, private val store: MediaStore, privat
         else -> "application/octet-stream"
     }
 }
+
+/** The way back: every object in [store] written into a media folder at [root], same keys. Resumable. */
+class StoreToFolder(private val store: MediaStore, private val root: Path, private val log: (String) -> Unit = {}) {
+    data class Report(val objects: Long, val written: Long, val skipped: Long, val bytes: Long)
+
+    fun copy(threads: Int = 4): Report {
+        val objects = store.list("")
+        val written = AtomicLong()
+        val skipped = AtomicLong()
+        val bytes = AtomicLong()
+        val failures = ConcurrentHashMap.newKeySet<String>()
+        val pool = Executors.newFixedThreadPool(threads)
+        for ((key, size) in objects) pool.execute {
+            try {
+                val target = root.resolve(key).normalize()
+                require(target.startsWith(root)) { "bad key" }
+                if (Files.isRegularFile(target) && Files.size(target) == size) {
+                    skipped.incrementAndGet()
+                } else {
+                    Files.createDirectories(target.parent)
+                    store.local(key) { Files.copy(it, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING) }
+                    written.incrementAndGet()
+                    bytes.addAndGet(size)
+                }
+            } catch (e: Exception) {
+                failures += "$key: ${e.message}"
+            }
+            val n = written.get() + skipped.get()
+            if (n % 500 == 0L) log("  $n of ${objects.size} objects")
+        }
+        pool.shutdown()
+        pool.awaitTermination(7, TimeUnit.DAYS)
+        check(failures.isEmpty()) { "${failures.size} objects didn't copy, e.g. " + failures.take(5).joinToString("; ") }
+        return Report(objects.size.toLong(), written.get(), skipped.get(), bytes.get())
+    }
+}

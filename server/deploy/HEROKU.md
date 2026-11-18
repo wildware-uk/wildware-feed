@@ -117,8 +117,16 @@ run() { env $(cat /tmp/heroku-migrate.env | xargs) feed-server migrate "$@"; }
 7. `rm /tmp/heroku-migrate.env`.
 
 **Going back:** until anything is written on Heroku, start the old server again and point the DNS
-record back. After that, the Postgres → SQLite export (planned) is needed to bring the new writes
-back.
+record back. After that, bring the new writes back with `feed-server export`: scale the dyno to 0,
+then, on the old machine,
+
+```sh
+heroku config -s -a APP | grep -E '^(DATABASE_URL|MEDIA_STORE|S3_)' > /tmp/heroku-migrate.env
+env $(cat /tmp/heroku-migrate.env | xargs) feed-server export --to <new data dir>
+```
+
+It writes a new SQLite file and media folder (it refuses an existing one), checks them the same way
+as the copy forward, and the old server can start on that folder.
 
 ## Watching it
 

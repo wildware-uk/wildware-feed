@@ -107,7 +107,7 @@ object Migrate {
     }
 
     /** The bucket MEDIA_STORE=s3 names, or null when media stays on disk. */
-    private fun bucket(env: Map<String, String>): dev.wildware.feed.server.media.MediaStore? {
+    internal fun bucket(env: Map<String, String>): dev.wildware.feed.server.media.MediaStore? {
         if (env["MEDIA_STORE"] != "s3") return null
         fun need(name: String) = env[name]?.takeIf { it.isNotBlank() } ?: throw IllegalArgumentException("$name is required when MEDIA_STORE is s3")
         val client = dev.wildware.feed.server.media.S3Client(

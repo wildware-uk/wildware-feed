@@ -24,6 +24,7 @@ fun main(args: Array<String>) {
         dev.wildware.feed.server.http.FeedServer(app).start(wait = true)
         return
     }
+    if (args[0] == "export") exitProcess(Export.run(args.drop(1), System.getenv(), ::println, System.err::println))
     if (args[0] == "migrate") exitProcess(Migrate.run(args.drop(1), System.getenv(), ::println, System.err::println))
     exitProcess(Cli(System.getenv(), ::println, System.err::println).run(args.toList()))
 }

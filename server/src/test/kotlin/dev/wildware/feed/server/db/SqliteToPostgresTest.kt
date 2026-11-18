@@ -50,6 +50,31 @@ class SqliteToPostgresTest {
     }
 
     @Test
+    fun `the way back gives a SQLite file with the same rows, at the same migration, and refuses an existing file`() {
+        assumeTrue(pg != null, "PG_TEST_URL not set")
+        val file = sqliteWithRows()
+        val tool = SqliteToPostgres()
+        Database.memory().use { target ->
+            tool.openSource(file).use { tool.copy(it, target) }
+            target.update("INSERT INTO agents (id, name, token_hash, created_at) VALUES ('A3', 'after', 'h3', 12)")
+            val dir = Files.createTempDirectory("back").toFile()
+            val back = PostgresToSqlite().export(target, dir.path)
+            assertEquals(3, back.single { it.table == "agents" }.rows)
+            Database.openReadOnly(dir.path).use { db ->
+                assertEquals(listOf("A1", "A2", "A3"), db.query("SELECT id FROM agents ORDER BY seq") { it.getString(1) })
+                assertEquals(5, db.one("SELECT count(*) FROM embed_types") { it.getInt(1) })
+            }
+            Database.open(dir.path).use { db ->
+                db.update("INSERT INTO agents (id, name, token_hash, created_at) VALUES ('A4', 'next', 'h4', 13)")
+                val seqs = db.query("SELECT seq FROM agents ORDER BY seq") { it.getLong(1) }
+                assertTrue(seqs.last() > seqs[2], "new rows get new seqs after an export")
+            }
+            val again = assertFailsWith<IllegalStateException> { PostgresToSqlite().export(target, dir.path) }
+            assertTrue(again.message!!.endsWith("already exists; export only into a new folder."))
+        }
+    }
+
+    @Test
     fun `it refuses a target that already has data`() {
         assumeTrue(pg != null, "PG_TEST_URL not set")
         val file = sqliteWithRows()

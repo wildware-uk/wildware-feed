@@ -69,6 +69,10 @@ class S3MediaStoreTest {
             assertEquals(3, move.copy().skipped)
             assertEquals(emptyList(), move.verify(db, hashes = true).problems)
 
+            val back = Files.createTempDirectory("media-back").resolve("media")
+            assertEquals(3, StoreToFolder(bucket, back).copy().written)
+            assertEquals(emptyList(), MediaToStore(back, LocalMediaStore(back)).verify(db, hashes = true).problems)
+
             bucket.put("01/$id2/original.png", Files.write(Files.createTempFile(work, "x", ""), "PNG BYTES".toByteArray()), "image/png")
             assertEquals(listOf("01/$id2/original.png: SHA-256 differs from the database"), move.verify(db, hashes = true).problems)
         }
