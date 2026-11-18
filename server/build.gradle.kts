@@ -26,6 +26,7 @@ dependencies {
     implementation(libs.commonmark)
     implementation(libs.commonmark.tables)
     implementation(libs.commonmark.strikethrough)
+    runtimeOnly(libs.slf4j.simple)
 
     testImplementation(kotlin("test"))
     testImplementation(libs.junit.jupiter)

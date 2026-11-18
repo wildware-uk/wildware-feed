@@ -18,9 +18,8 @@ fun main(args: Array<String>) {
             exitProcess(1)
         }
         val app = App.open(config)
-        Runtime.getRuntime().addShutdownHook(Thread { app.close() })
         println("Listening on http://${config.host}:${config.port}")
-        serve(app, wait = true)
+        dev.wildware.feed.server.http.FeedServer(app).start(wait = true)
         return
     }
     exitProcess(Cli(System.getenv(), ::println, System.err::println).run(args.toList()))

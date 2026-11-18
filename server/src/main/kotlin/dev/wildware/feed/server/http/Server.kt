@@ -20,9 +20,43 @@ import io.ktor.server.routing.route
 import io.ktor.server.routing.routing
 
 /** Start the server for [app] on its configured host and port. */
-fun serve(app: App, wait: Boolean = true): EmbeddedServer<*, *> {
-    app.startJobs()
-    return embeddedServer(CIO, port = app.config.port, host = app.config.host) { feed(app) }.start(wait = wait)
+fun serve(app: App, wait: Boolean = true): EmbeddedServer<*, *> = FeedServer(app).start(wait).engine
+
+/**
+ * The running server: one owner for starting and stopping, used by `main` and by a desktop app that
+ * hosts it. [stop] stops taking requests, gives open requests [GRACE_MS], cancels what is left
+ * (live streams included), then stops the jobs and closes the database, in that order.
+ */
+class FeedServer(val app: App) {
+    lateinit var engine: EmbeddedServer<*, *>
+        private set
+
+    /** The port actually bound (useful when the config asked for 0). */
+    val port: Int get() = kotlinx.coroutines.runBlocking { engine.engine.resolvedConnectors().first().port }
+
+    fun start(wait: Boolean = false): FeedServer {
+        app.startJobs()
+        engine = embeddedServer(CIO, port = app.config.port, host = app.config.host) { feed(app) }
+        engine.start(wait = false)
+        if (wait) {
+            Runtime.getRuntime().addShutdownHook(Thread { stop() })
+            Thread.currentThread().join()
+        }
+        return this
+    }
+
+    private val stopped = java.util.concurrent.atomic.AtomicBoolean(false)
+
+    fun stop() {
+        if (!stopped.compareAndSet(false, true)) return
+        runCatching { engine.stop(GRACE_MS, TIMEOUT_MS) }
+        app.close()
+    }
+
+    companion object {
+        const val GRACE_MS = 500L
+        const val TIMEOUT_MS = 1500L
+    }
 }
 
 /** The whole HTTP surface, as a Ktor module the desktop app can mount too. */

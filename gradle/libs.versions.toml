@@ -21,6 +21,7 @@ androidx-lifecycle = "2.10.0"
 junit4 = "4.13.2"
 bouncycastle = "1.81"
 commonmark = "0.24.0"
+slf4j = "2.0.17"
 
 [libraries]
 ktor-client-core = { module = "io.ktor:ktor-client-core", version.ref = "ktor" }
@@ -34,6 +35,7 @@ ktor-server-cio = { module = "io.ktor:ktor-server-cio", version.ref = "ktor" }
 ktor-server-test-host = { module = "io.ktor:ktor-server-test-host", version.ref = "ktor" }
 bouncycastle = { module = "org.bouncycastle:bcprov-jdk18on", version.ref = "bouncycastle" }
 commonmark = { module = "org.commonmark:commonmark", version.ref = "commonmark" }
+slf4j-simple = { module = "org.slf4j:slf4j-simple", version.ref = "slf4j" }
 commonmark-tables = { module = "org.commonmark:commonmark-ext-gfm-tables", version.ref = "commonmark" }
 commonmark-strikethrough = { module = "org.commonmark:commonmark-ext-gfm-strikethrough", version.ref = "commonmark" }
 ktor-client-mock = { module = "io.ktor:ktor-client-mock", version.ref = "ktor" }

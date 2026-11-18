@@ -1,0 +1,20 @@
+# A self-hosted Wildware Feed server. Put the settings in .env beside this file (see
+# server/spec/01-config-and-auth.md; the TypeScript server's .env works as it is).
+services:
+  feed:
+    image: wildware-feed-server:latest
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATA_DIR: /data
+      PORT: 8010
+      ORIGIN: ${PUBLIC_BASE_URL:?set PUBLIC_BASE_URL in .env}
+    ports:
+      - '127.0.0.1:8010:8010'
+    volumes:
+      - feed-data:/data
+    stop_grace_period: 10s
+
+volumes:
+  feed-data:

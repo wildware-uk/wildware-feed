@@ -1,0 +1,45 @@
+# systemd unit for the Kotlin server installed from its distribution tarball.
+#
+#   sudo useradd --system --home-dir /var/lib/wildware-feed --create-home feed
+#   sudo tar -xf feed-server.tar -C /opt            # gives /opt/feed-server/{bin,lib}
+#   sudo install -m 600 -o feed .env /etc/wildware-feed.env
+#   sudo cp feed-server.service /etc/systemd/system/ && sudo systemctl daemon-reload
+#   sudo systemctl enable --now feed-server
+#
+# Needs Java 21 on PATH (or set JAVA_HOME below), and ffmpeg for video posters and thumbnails.
+
+[Unit]
+Description=Wildware Feed server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=feed
+Group=feed
+EnvironmentFile=/etc/wildware-feed.env
+Environment=DATA_DIR=/var/lib/wildware-feed
+# Environment=JAVA_HOME=/usr/lib/jvm/java-21
+Environment="JAVA_OPTS=-XX:MaxRAMPercentage=50 -XX:+ExitOnOutOfMemoryError -Djava.awt.headless=true"
+ExecStart=/opt/feed-server/bin/feed-server
+Restart=on-failure
+RestartSec=2
+# The server stops in under two seconds: open requests get half a second, live streams are closed.
+TimeoutStopSec=10
+# The JVM exits 143 after SIGTERM: that is a clean stop, not a failure.
+SuccessExitStatus=143
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+ReadWritePaths=/var/lib/wildware-feed
+
+[Install]
+WantedBy=multi-user.target
