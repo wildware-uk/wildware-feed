@@ -42,7 +42,7 @@ class InstantReplyTest {
         everything.state.value.allCards.first { it.id == cardId }.replies
 
     @Test
-    fun `a reply shows on its card at once, marked as sending, before the dashboard has it`() = runTest {
+    fun `a reply shows on its card at once and marked as sending before the dashboard has it`() = runTest {
         val server = FakeDashboard(testScheduler).apply {
             messages = listOf(post("p1"))
             // No signal: every write fails and is kept for later.
