@@ -105,8 +105,8 @@ echo "== recording reads from the TypeScript server"
 ( . "$work/env.sh"; cd "$ts_dir"; exec timeout 3600 node build ) > "$work/ts.log" 2>&1 &
 server_pid=$!
 wait_for_server "$work/ts.log"
-env "${common_env[@]}" PARITY_CLI="$work/ts-cli.sh" PARITY_READS=record \
-    bash -c "cd '$repo_root' && timeout 1500 ./gradlew --no-daemon -Dorg.gradle.jvmargs=-Xmx3g -q :server-parity:test --tests '*ReadParityTest*'" \
+(cd "$repo_root" && env "${common_env[@]}" PARITY_CLI="$work/ts-cli.sh" PARITY_READS=record \
+    timeout 1500 ./gradlew --no-daemon -Dorg.gradle.jvmargs=-Xmx3g -q :server-parity:test --tests '*ReadParityTest*') \
     || { echo "== recording failed; TS server log:"; tail -60 "$work/ts.log"; exit 1; }
 stop_server
 
@@ -120,8 +120,8 @@ filters=()
 for t in $kotlin_tests; do filters+=(--tests "*.$t"); done
 echo "== running against the Kotlin server: $kotlin_tests"
 status=0
-env "${common_env[@]}" PARITY_CLI="$work/kt-cli.sh" PARITY_READS=compare PARITY_EXCLUDE_TAGS="$exclude_tags" \
-    bash -c "cd '$repo_root' && timeout 1500 ./gradlew --no-daemon -Dorg.gradle.jvmargs=-Xmx3g :server-parity:test $(printf "%q " "${filters[@]}") $(printf "%q " "$@")" \
+(cd "$repo_root" && env "${common_env[@]}" PARITY_CLI="$work/kt-cli.sh" PARITY_READS=compare PARITY_EXCLUDE_TAGS="$exclude_tags" \
+    timeout 1500 ./gradlew --no-daemon -Dorg.gradle.jvmargs=-Xmx3g :server-parity:test "${filters[@]}" ${@+"$@"}) \
     || status=$?
 if [ "$status" -ne 0 ]; then echo "== Kotlin server log (last 80 lines)"; tail -80 "$work/kt.log"; fi
 exit "$status"
