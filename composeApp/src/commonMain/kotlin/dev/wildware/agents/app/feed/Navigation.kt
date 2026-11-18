@@ -2,6 +2,7 @@ package dev.wildware.agents.app.feed
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import dev.wildware.agents.app.design.AgentTheme
 import androidx.compose.runtime.snapshotFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -59,7 +60,27 @@ class AppNavigator {
     internal fun handled(request: OpenCard) {
         pending.compareAndSet(request, null)
     }
+
+    private val pendingShare = MutableStateFlow<SharedDraft?>(null)
+
+    /** Something shared into the app, waiting for the feed. */
+    val shares: StateFlow<SharedDraft?> = pendingShare.asStateFlow()
+
+    /**
+     * Puts [text] and [files] shared from another app (Android's share sheet) into a project's
+     * composer, to check and send. With every project showing, the projects open to pick one.
+     */
+    fun share(text: String, files: List<PendingFile>) {
+        pendingShare.value = SharedDraft(text, files, ++serial)
+    }
+
+    internal fun handled(draft: SharedDraft) {
+        pendingShare.compareAndSet(draft, null)
+    }
 }
+
+/** Words and files shared in from another app. [serial] tells two shares of the same thing apart. */
+class SharedDraft(val text: String, val files: List<PendingFile>, val serial: Long)
 
 /** How long to wait for a card to load before leaving the project open without it. */
 private const val CardWaitMillis = 10_000L
@@ -68,6 +89,19 @@ private const val CardWaitMillis = 10_000L
 @Composable
 internal fun FollowNavigation(ui: FeedUi, navigator: AppNavigator?) {
     if (navigator == null) return
+    val motion = AgentTheme.motion
+    LaunchedEffect(ui, navigator) {
+        navigator.shares.filterNotNull().collect { draft ->
+            navigator.handled(draft)
+            ui.menu = null
+            ui.viewer = null
+            ui.commandOpen = false
+            ui.phoneThreadOpen = false
+            ui.incoming = draft
+            // Every project is showing, so there is no composer yet: offer the projects to pick one.
+            if (ui.state.current.slug == null && ui.isPhone) ui.drawer.settle(true, motion.normal())
+        }
+    }
     LaunchedEffect(ui, navigator) {
         navigator.requests.filterNotNull().collect { open ->
             navigator.handled(open)

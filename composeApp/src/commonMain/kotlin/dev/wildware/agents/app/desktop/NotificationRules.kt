@@ -9,7 +9,7 @@ import dev.wildware.agents.RequestCard
 import dev.wildware.agents.ThreadLine
 import dev.wildware.agents.UpdateCard
 
-/** One desktop notification. [focusId] is the card to open the app at when it is clicked. */
+/** One notification (desktop, or Android while the app runs). [focusId] is the card to open the app at when it is clicked. */
 data class DesktopNotice(val key: String, val title: String, val body: String, val focusId: String)
 
 /**

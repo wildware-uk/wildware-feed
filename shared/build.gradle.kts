@@ -3,6 +3,7 @@ import org.jetbrains.kotlin.gradle.plugin.mpp.apple.XCFramework
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
     alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.android.kmp.library)
 }
 
 kotlin {
@@ -11,6 +12,13 @@ kotlin {
     // The JVM target exists so the shared logic's tests run in milliseconds on any machine,
     // including the Linux box this is developed on, which cannot run iOS tests.
     jvm()
+
+    // The Android app (androidApp/) runs the same engine. It has no code of its own here.
+    android {
+        namespace = "dev.wildware.agents.shared"
+        compileSdk = libs.versions.android.compileSdk.get().toInt()
+        minSdk = libs.versions.android.minSdk.get().toInt()
+    }
 
     // One framework for the iPhone and one for the watch. watchosArm64 is arm64_32, the code most
     // watches run; watchosDeviceArm64 is the plain arm64 that newer watches can run.

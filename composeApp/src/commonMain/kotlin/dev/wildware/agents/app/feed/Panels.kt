@@ -22,6 +22,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -447,6 +448,17 @@ fun Composer(
         val (fits, big) = incoming.partition { !tooBig(it) }
         files += fits
         refused = big.firstOrNull()?.let { "${it.name} is over 25 MB, so it was left out." }
+    }
+    // The feed's own composer takes what was shared in from another app.
+    val ui = LocalFeedUi.current
+    if (focus != null && ui != null) {
+        LaunchedEffect(ui.incoming) {
+            val draft = ui.incoming ?: return@LaunchedEffect
+            ui.incoming = null
+            if (draft.text.isNotBlank()) text.edit { replace(0, length, Dictation.appendDictation(text.text.toString(), draft.text)) }
+            add(draft.files)
+            runCatching { focus.requestFocus() }
+        }
     }
     val send = {
         val typed = text.text.toString().trim()

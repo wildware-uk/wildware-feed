@@ -18,6 +18,7 @@ dependencyResolutionManagement {
 
 include(":shared")
 include(":composeApp")
+include(":androidApp")
 
 // The black-box parity suite for the server rewrite. Plain JVM; it talks to a running server over HTTP.
 include(":server-parity")

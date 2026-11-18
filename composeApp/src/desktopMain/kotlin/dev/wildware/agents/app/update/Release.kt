@@ -69,6 +69,8 @@ enum class AssetKind(val wire: String) {
     LinuxAppImage("linux-appimage"),
     LinuxDeb("linux-deb"),
     LinuxRpm("linux-rpm"),
+    /** The Android app, for phones that installed it from the release page rather than a store. */
+    AndroidApk("android-apk"),
 }
 
 /** Something went wrong reading releases or downloading one. [message] is fit to show the owner. */

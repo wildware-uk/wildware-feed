@@ -187,6 +187,7 @@ class GitHubReleaseSource(
                 n.endsWith(".appimage") -> AssetKind.LinuxAppImage
                 n.endsWith(".deb") -> AssetKind.LinuxDeb
                 n.endsWith(".rpm") -> AssetKind.LinuxRpm
+                n.endsWith(".apk") -> AssetKind.AndroidApk
                 else -> null
             }
         }
