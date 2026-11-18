@@ -55,7 +55,9 @@ fun Modifier.contextGestures(
             awaitPointerEventScope {
                 while (true) {
                     val event = awaitPointerEvent()
-                    if (event.type == PointerEventType.Press && event.buttons.isSecondaryPressed) {
+                    // A press something inside already took (selectable text) is left to it.
+                    val free = event.changes.none { it.isConsumed }
+                    if (event.type == PointerEventType.Press && event.buttons.isSecondaryPressed && free) {
                         event.changes.forEach { it.consume() }
                         openMenu(event.changes.first().position)
                     }

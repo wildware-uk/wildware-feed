@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.selection.DisableSelection
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -73,15 +74,21 @@ fun MarkdownBody(markdown: String, modifier: Modifier = Modifier, color: Color =
     val state = rememberMarkdownState(markdown, immediate = true)
     val code = colors.code
     val highlights = remember(code) { Highlights.Builder().theme(code.toSyntaxTheme()) }
+    val inlineCodeBackground = colors.text.copy(alpha = if (colors.isDark) 0.10f else 0.06f)
+    val inlineCode = type.code.copy(fontSize = type.body.fontSize * 0.88f, color = colors.text)
+    val copy = rememberCopyState()
+    val annotator = rememberInlineCodeAnnotator(inlineCode, inlineCodeBackground, copy)
+    SelectableText(modifier, copy) {
     Markdown(
         markdownState = state,
-        modifier = modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth(),
         colors = markdownColor(
             text = color,
             codeBackground = code.background,
-            inlineCodeBackground = colors.text.copy(alpha = if (colors.isDark) 0.10f else 0.06f),
+            inlineCodeBackground = inlineCodeBackground,
             dividerColor = colors.border,
         ),
+        annotator = annotator,
         typography = markdownTypography(
             text = type.body.copy(color = color),
             paragraph = type.body.copy(color = color),
@@ -89,7 +96,7 @@ fun MarkdownBody(markdown: String, modifier: Modifier = Modifier, color: Color =
             list = type.body,
             ordered = type.body,
             code = type.code.copy(color = code.text),
-            inlineCode = type.code.copy(fontSize = type.body.fontSize * 0.88f, color = colors.text),
+            inlineCode = inlineCode,
             h1 = type.title, h2 = type.title, h3 = type.bodyStrong, h4 = type.bodyStrong, h5 = type.bodyStrong, h6 = type.bodyStrong,
             quote = type.body.copy(color = colors.textMuted),
         ),
@@ -113,6 +120,13 @@ fun MarkdownBody(markdown: String, modifier: Modifier = Modifier, color: Color =
             },
         ),
     )
+    }
+}
+
+/** Plain text, such as the owner's own post, selectable the same way a markdown body is. */
+@Composable
+fun PlainBody(text: String, modifier: Modifier = Modifier, color: Color = AgentTheme.colors.text) {
+    SelectableText(modifier) { Text(text, color = color, style = AgentTheme.type.body) }
 }
 
 private fun CodeColors.toSyntaxTheme() = SyntaxTheme(
@@ -128,7 +142,7 @@ private fun CodeColors.toSyntaxTheme() = SyntaxTheme(
     mark = punctuation.toArgb() and 0xFFFFFF,
 )
 
-/** A code block with its language and a copy button above it. */
+/** A code block with its language and a copy button above it. Long lines scroll sideways. */
 @Composable
 private fun CodeBlock(code: String, language: String?, content: @Composable () -> Unit) {
     val colors = AgentTheme.colors
@@ -142,20 +156,24 @@ private fun CodeBlock(code: String, language: String?, content: @Composable () -
             .background(colors.code.background)
             .border(1.dp, colors.border, shape),
     ) {
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .background(colors.code.text.copy(alpha = 0.05f))
-                .padding(start = 14.dp, end = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                (language ?: "code").lowercase(),
-                Modifier.weight(1f),
-                color = headerText,
-                style = AgentTheme.type.code.copy(fontSize = 11.sp),
-            )
-            IconAction(Icons.Copy, "Copy code", tint = headerText, iconSize = 15.dp)
+        // The label and button are not part of the code, so a drag selection skips them.
+        DisableSelection {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .background(colors.code.text.copy(alpha = 0.05f))
+                    .padding(start = 14.dp, end = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    (language ?: "code").lowercase(),
+                    Modifier.weight(1f),
+                    color = headerText,
+                    style = AgentTheme.type.code.copy(fontSize = 11.sp),
+                )
+                // Exactly the code: no fences, no language, no trailing newline.
+                CopyCodeButton(code.trimEnd('\n', '\r'), tint = headerText)
+            }
         }
         Box(Modifier.trimVertical(8.dp)) {
             // The highlighter brings its own background; the block above already paints one.
