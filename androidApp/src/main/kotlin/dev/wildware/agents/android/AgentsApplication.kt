@@ -85,7 +85,9 @@ class AgentsApplication : Application() {
 
     private fun followSession(session: DashboardSession?) {
         watchingProjects?.cancel()
-        if (session == null) {
+        // The demo is sample data: it gets no launcher shortcuts and no "stay connected" service.
+        val demo = (model.screen.value as? AppScreen.Signed)?.demo == true
+        if (session == null || demo) {
             ConnectionService.stop(this)
             Shortcuts.clear(this)
             return
@@ -109,7 +111,8 @@ class AgentsApplication : Application() {
         if (on && signedIn) ConnectionService.start(context) else ConnectionService.stop(context)
     }
 
-    val signedIn: Boolean get() = model.screen.value is AppScreen.Signed
+    /** Signed in to a real dashboard: the demo doesn't count. */
+    val signedIn: Boolean get() = (model.screen.value as? AppScreen.Signed)?.demo == false
 
     /** Opens card [cardId], in its own project's feed when that is known (else every project's). */
     fun openCard(cardId: String) {

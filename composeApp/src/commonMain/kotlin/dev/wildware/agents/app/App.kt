@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.Modifier
 import dev.wildware.agents.app.feed.AppCommand
 import dev.wildware.agents.app.feed.LocalAppCommands
+import dev.wildware.agents.app.feed.LocalDemo
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -100,6 +101,7 @@ fun AgentsApp(
                     notice = screen.notice,
                     safeArea = safeArea,
                     signIn = model::signIn,
+                    tryDemo = model::enterDemo,
                 )
                 is AppScreen.Signed -> {
                     val session = screen.session
@@ -111,6 +113,7 @@ fun AgentsApp(
                         LocalPushAlerts provides platform.pushAlerts,
                         LocalVoiceInput provides platform.voiceInput,
                         LocalAppCommands provides commands,
+                        LocalDemo provides screen.demo,
                     ) {
                         FeedScreen(state, safeArea, navigator = navigator) { event ->
                             when (event) {

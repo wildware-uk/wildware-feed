@@ -299,6 +299,7 @@ private fun OwnerRow(owner: Author.Owner, onAlerts: () -> Unit, onToggleTheme: (
             .padding(horizontal = 18.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        val demo = LocalDemo.current
         // You and your settings: the alerts this device gets, as the avatar opens on a phone.
         Row(
             Modifier.weight(1f).clip(AgentTheme.shapes.small).pressable("Alerts on this device", AgentTheme.shapes.small, onClick = onAlerts),
@@ -307,11 +308,11 @@ private fun OwnerRow(owner: Author.Owner, onAlerts: () -> Unit, onToggleTheme: (
             Avatar(owner, 28.dp)
             Column(Modifier.padding(start = 10.dp).weight(1f)) {
                 Text(owner.name, color = colors.text, style = AgentTheme.type.label, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                MetaText("Alerts")
+                MetaText(if (demo) "Demo" else "Alerts")
             }
         }
         IconAction(Icons.Moon, if (AgentTheme.colors.isDark) "Switch to light" else "Switch to dark", onClick = onToggleTheme)
-        IconAction(Icons.SignOut, "Sign out", onClick = onSignOut)
+        IconAction(Icons.SignOut, if (demo) "Leave demo" else "Sign out", onClick = onSignOut)
     }
 }
 
@@ -342,6 +343,7 @@ fun FeedHeader(ui: FeedUi, compact: Boolean, modifier: Modifier = Modifier) {
                 }
                 Spacer(Modifier.height(4.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (LocalDemo.current) DemoBadge(Modifier.padding(end = 8.dp))
                     LinkBadge(state.link)
                     MetaText(
                         " · ${online.size} online · ${state.current.unread} new",

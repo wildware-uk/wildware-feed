@@ -84,6 +84,8 @@ fun SignInScreen(
     deviceName: String,
     notice: String?,
     safeArea: SafeArea,
+    /** Opens the app on built-in sample data, for a look round without a dashboard. */
+    tryDemo: (() -> Unit)? = null,
     signIn: suspend (server: String, password: String, device: String) -> Unit,
 ) {
     val colors = AgentTheme.colors
@@ -177,6 +179,23 @@ fun SignInScreen(
                 enabled = !busy,
                 onClick = submit,
             )
+            if (tryDemo != null) {
+                Spacer(Modifier.height(18.dp))
+                AppButton(
+                    "Try a demo",
+                    ButtonTone.Secondary,
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !busy,
+                    onClick = tryDemo,
+                )
+                Text(
+                    "No dashboard yet? Look round on sample projects. Nothing leaves this device.",
+                    Modifier.padding(top = 8.dp).fillMaxWidth(),
+                    color = colors.textFaint,
+                    style = AgentTheme.type.meta,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                )
+            }
         }
     }
     }

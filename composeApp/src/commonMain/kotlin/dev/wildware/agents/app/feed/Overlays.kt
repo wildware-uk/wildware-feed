@@ -544,7 +544,7 @@ fun ProjectsDrawer(ui: FeedUi, progress: EdgeProgress, widthPx: Float, safeArea:
             }
             Spacer(Modifier.height(20.dp))
             Box(Modifier.fillMaxWidth().height(1.dp).background(colors.border))
-            SheetRow("Sign out", Icons.SignOut, destructive = false) { ui.emit(FeedEvent.SignOut) }
+            SheetRow(if (LocalDemo.current) "Leave demo" else "Sign out", Icons.SignOut, destructive = false) { ui.emit(FeedEvent.SignOut) }
         }
     }
 }

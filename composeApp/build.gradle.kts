@@ -74,6 +74,8 @@ kotlin {
             implementation(libs.markdown.renderer.code)
             implementation(libs.highlights)
             implementation(libs.ktor.client.core)
+            // "Try a demo" answers the app from memory through ktor's mock network.
+            implementation(libs.ktor.client.mock)
             implementation(libs.coroutines.core)
             implementation(libs.serialization.json)
             implementation(libs.coil.compose)

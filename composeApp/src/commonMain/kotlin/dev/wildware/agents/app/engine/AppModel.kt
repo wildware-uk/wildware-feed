@@ -12,13 +12,25 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import dev.wildware.agents.MemoryOutboxStorage
+import dev.wildware.agents.MemoryTextStore
+import dev.wildware.agents.app.demo.DemoServer
+import dev.wildware.agents.app.feed.FeedEvent
+import dev.wildware.agents.app.session.MemorySessionStore
+
+/** Where the demo's sessions think they are. Nothing is ever sent there: the demo answers itself. */
+internal const val DemoAddress = "https://demo.example"
+
+/** The project the demo opens on. */
+internal const val DemoStartProject = "garden-game"
 
 /** Which screen the app is on. */
 sealed interface AppScreen {
     /** Signed out. [notice] says why, when the app signed itself out. */
     data class SigningIn(val notice: String? = null) : AppScreen
 
-    data class Signed(val session: DashboardSession) : AppScreen
+    /** The feed. [demo] when it runs on the built-in sample data rather than a dashboard. */
+    data class Signed(val session: DashboardSession, val demo: Boolean = false) : AppScreen
 }
 
 /**
@@ -60,7 +72,46 @@ class AppModel(private val platform: AppPlatform, private val scope: CoroutineSc
         open(saved)
     }
 
+    /** The demo's dashboard while one is open; thrown away when it is left. */
+    private var demoServer: DemoServer? = null
+
+    /**
+     * Opens the app on built-in sample data, with no dashboard and no network: "Try a demo" on
+     * the sign-in screen, so anyone can look round before they have a server. Nothing is saved,
+     * so the next launch is back at sign-in, and push, alerts and the watch never hear of it.
+     */
+    fun enterDemo() {
+        val server = DemoServer()
+        demoServer = server
+        val demo = AppPlatform(
+            sessions = MemorySessionStore(),
+            readMarks = MemoryTextStore(),
+            outbox = MemoryOutboxStorage(),
+            httpEngine = { server.engine() },
+            deviceName = platform.deviceName,
+            imageCacheDir = null,
+            settings = platform.settings,
+            filePicker = platform.filePicker,
+            voiceInput = platform.voiceInput,
+            foreground = platform.foreground,
+        )
+        val session = DashboardSession(SavedSession(DemoAddress, "demo", platform.deviceName), demo, scope)
+        session.start()
+        // A project rather than "All projects", so there is somewhere to write straight away.
+        session.handle(FeedEvent.SelectProject(DemoStartProject))
+        mutableScreen.value = AppScreen.Signed(session, demo = true)
+    }
+
+    /** Leaves the demo for sign-in, forgetting everything done in it. */
+    fun leaveDemo() {
+        (mutableScreen.value as? AppScreen.Signed)?.session?.stop()
+        demoServer?.close()
+        demoServer = null
+        mutableScreen.value = AppScreen.SigningIn()
+    }
+
     fun signOut(notice: String? = null) {
+        if ((mutableScreen.value as? AppScreen.Signed)?.demo == true) return leaveDemo()
         watcher?.cancel()
         (mutableScreen.value as? AppScreen.Signed)?.session?.stop()
         platform.sessions.clear()

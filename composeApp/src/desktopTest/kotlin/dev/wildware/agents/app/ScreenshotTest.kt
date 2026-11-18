@@ -197,7 +197,7 @@ class ScreenshotTest {
             for (dark in listOf(false, true)) {
                 shoot("${size.label}-${if (dark) "dark" else "light"}-sign-in", size, dark) {
                     AgentTheme(dark) {
-                        SignInScreen(deviceName = "Alex's MacBook", notice = null, safeArea = size.safeArea) { _, _, _ -> }
+                        SignInScreen(deviceName = "Alex's MacBook", notice = null, safeArea = size.safeArea, tryDemo = {}) { _, _, _ -> }
                     }
                 }
             }

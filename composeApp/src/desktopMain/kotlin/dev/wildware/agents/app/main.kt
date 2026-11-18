@@ -1,5 +1,6 @@
 package dev.wildware.agents.app
 
+import kotlinx.coroutines.flow.combine
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -134,6 +135,9 @@ fun main(args: Array<String>) {
         updatesFor = { settings ->
             updateController(
                 settings = settings,
+                // The demo is for a look round with nothing sent anywhere, update checks included.
+                inDemo = model.screen.map { (it as? AppScreen.Signed)?.demo == true }
+                    .stateIn(scope, SharingStarted.Eagerly, false),
                 releases = releases,
                 workDir = File(dir, "updates"),
                 scope = scope,
@@ -207,6 +211,7 @@ fun main(args: Array<String>) {
 /** The update checker and installer, or null when this build's version can't be read. */
 private fun updateController(
     settings: StateFlow<DesktopSettings>,
+    inDemo: StateFlow<Boolean>,
     releases: StateFlow<ReleaseSource?>,
     workDir: File,
     scope: CoroutineScope,
@@ -214,7 +219,8 @@ private fun updateController(
     quit: () -> Unit,
 ): UpdateController? {
     val current = SemVer.parse(AppVersion) ?: return null
-    val automatic = settings.map { it.checkForUpdates }.stateIn(scope, SharingStarted.Eagerly, settings.value.checkForUpdates)
+    val automatic = combine(settings, inDemo) { s, demo -> s.checkForUpdates && !demo }
+        .stateIn(scope, SharingStarted.Eagerly, settings.value.checkForUpdates && !inDemo.value)
     val updater = Updater(Installation.current(), SystemInstaller(), workDir, beforeQuit, quit)
     // Clear out the last update's download once the app has settled after it.
     scope.launch(Dispatchers.IO) {
