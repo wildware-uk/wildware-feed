@@ -134,6 +134,11 @@ data class FeedState(
     val hasMore: Boolean,
     /** The words this feed's projects use, for the tag picker. */
     val tags: List<TagView>,
+    /**
+     * Not [loaded] yet, but showing what this device kept from last time: the cards are there to
+     * read while the first read is on its way.
+     */
+    val cached: Boolean = false,
 ) {
     /** Every card, pinned first, in order. */
     val allCards: List<FeedCard> get() = pinned + cards
@@ -171,6 +176,8 @@ class Dashboard internal constructor(
     streamFactory: (CoroutineScope) -> LiveStream,
     private val pollMillis: Long,
     private val outbox: OutboxQueue?,
+    /** The feed as it last was, shown at once on the next launch. Null keeps nothing. */
+    internal val cache: FeedCache? = null,
 ) {
     @OptIn(ExperimentalTime::class)
     constructor(
@@ -181,15 +188,16 @@ class Dashboard internal constructor(
         clock: () -> Long = { Clock.System.now().toEpochMilliseconds() },
         timing: StreamTiming = StreamTiming(),
         pageSize: Int = 50,
-    ) : this(client, scope, readMarks, clock, pageSize, { LiveStream(client, it, timing) }, PollMillis, outbox)
+        cache: FeedCache? = null,
+    ) : this(client, scope, readMarks, clock, pageSize, { LiveStream(client, it, timing) }, PollMillis, outbox, cache)
 
     private val confined: CoroutineScope = confinedScope(scope)
 
     val stream: LiveStream = streamFactory(confined)
     val status: StateFlow<StreamStatus> get() = stream.status
 
-    private val requests = RequestsReader(client, confined, ::changed)
-    private val presence = PresenceReader(client, confined, ::changed)
+    private val requests = RequestsReader(client, confined, ::changed).also { it.cache = cache }
+    private val presence = PresenceReader(client, confined, ::changed).also { it.cache = cache }
     private val feeds = mutableMapOf<String?, Feed>()
     private var timers: Job? = null
     private var now = clock()
@@ -290,6 +298,7 @@ class Dashboard internal constructor(
 
     fun stop() {
         started = false
+        cache?.close()
         outbox?.onSent = null
         stream.stop()
         timers?.cancel()
@@ -437,6 +446,11 @@ class Feed internal constructor(
     private val timeline = TimelineReader(client, projectSlug, pageSize, scope) { dashboard.changed() }
     private val threads = ThreadsReader(client, projectSlug, { timeline.projects.firstOrNull { it.slug == projectSlug }?.id }, scope) { dashboard.changed() }
     internal val readers: List<FeedReader> get() = listOf(timeline, threads)
+
+    init {
+        timeline.cache = dashboard.cache
+        threads.cache = dashboard.cache
+    }
 
     private val mutableState = MutableStateFlow(FeedState.empty(projectSlug))
     val state: StateFlow<FeedState> = mutableState.asStateFlow()
@@ -624,6 +638,7 @@ class Feed internal constructor(
             project = project,
             status = status,
             loaded = timeline.loaded && threads.loaded,
+            cached = (timeline.cached || timeline.loaded) && (threads.cached || threads.loaded) && !(timeline.loaded && threads.loaded),
             loading = timeline.loading || threads.loading || requestsLoading,
             loadingOlder = timeline.isLoadingOlder,
             waiting = waiting,

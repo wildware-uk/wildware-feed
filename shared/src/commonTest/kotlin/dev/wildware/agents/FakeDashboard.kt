@@ -47,6 +47,9 @@ class FakeDashboard(scheduler: TestCoroutineScheduler) {
      */
     var boot: String? = null
 
+    /** How long every read (not the stream) takes to answer, as a slow network does. */
+    var readDelayMillis = 0L
+
     /** Set to make the stream refuse: 401 signs the device out. */
     var streamStatus: HttpStatusCode = HttpStatusCode.OK
 
@@ -113,6 +116,7 @@ class FakeDashboard(scheduler: TestCoroutineScheduler) {
                 else -> ok("{}")
             }
         }
+        if (readDelayMillis > 0 && path != "/api/stream") kotlinx.coroutines.delay(readDelayMillis)
         val project = request.url.parameters["project"]
         val projectId = projects.firstOrNull { it.slug == project }?.id
         return when (path) {

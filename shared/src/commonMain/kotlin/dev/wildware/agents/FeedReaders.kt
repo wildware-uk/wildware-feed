@@ -83,6 +83,9 @@ internal fun confinedScope(scope: CoroutineScope): CoroutineScope {
 }
 
 internal abstract class FeedReader(scope: CoroutineScope, protected val onChange: () -> Unit) {
+    /** Where cache writes are scheduled: the engine's own thread. */
+    protected val cacheScope: CoroutineScope = scope
+
     /** The newest event seq this reader's state accounts for. */
     var seq: Long = 0
         protected set
@@ -98,17 +101,42 @@ internal abstract class FeedReader(scope: CoroutineScope, protected val onChange
     var loading: Boolean = false
         private set
 
+    /**
+     * What this reader holds came from the device's [FeedCache], and no read has landed yet. It is
+     * shown, but [loaded] stays false: nothing counts it as the server's word (no seq, no "ready").
+     */
+    var cached: Boolean = false
+        private set
+
+    /** Where this reader keeps its last good state between launches, or null for none. */
+    internal var cache: FeedCache? = null
+    private var restoreTried = false
+
+    /** This reader's name in the cache, or null when it keeps nothing. */
+    protected open val cacheKey: String? = null
+
+    /** Keeps what this reader holds now in [cache]. */
+    protected open fun saveTo(cache: FeedCache, key: String) {}
+
+    /** Takes back what [saveTo] kept. Returns false when there was nothing to take. */
+    protected open fun restoreFrom(cache: FeedCache, key: String): Boolean = false
+
     protected abstract val watched: Set<String>
 
     protected val refresher = Refresher(scope) { replace -> tracked { load(replace) } }
 
     /** Runs one read, keeping [loading] and [failed] honest. A failed read keeps what is on screen. */
     protected suspend fun tracked(read: suspend () -> Unit) {
+        restoreOnce()
         loading = true
         onChange()
         try {
             read()
             failed = false
+            cached = false
+            val store = cache
+            val key = cacheKey
+            if (store != null && key != null && loaded) saveTo(store, key)
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Throwable) {
@@ -118,6 +146,24 @@ internal abstract class FeedReader(scope: CoroutineScope, protected val onChange
             loading = false
             onChange()
         }
+    }
+
+    /**
+     * Before the first read goes out, shows what the cache kept from last time. Its seq is not
+     * taken: every event still counts, and the read that follows replaces it all.
+     */
+    private fun restoreOnce() {
+        if (restoreTried) return
+        restoreTried = true
+        val store = cache ?: return
+        val key = cacheKey ?: return
+        if (loaded) return
+        val restored = runCatching { restoreFrom(store, key) }.getOrDefault(false)
+        if (!restored) return
+        seq = 0
+        loaded = false
+        cached = true
+        onChange()
     }
 
     /** Asks for a read of everything this reader holds. */
@@ -187,6 +233,26 @@ internal class TimelineReader(
         event.type == "reaction.updated" && event.payload.cardKind() == CardKinds.Update
 
     override suspend fun load(replace: Boolean) = apply(client.snapshot(projectSlug, limit), replace)
+
+    override val cacheKey = FeedCache.key("timeline", projectSlug)
+
+    override fun saveTo(cache: FeedCache, key: String) = cache.save(
+        key,
+        FeedSnapshot(
+            seq = seq,
+            projects = projects, tags = tags, cardTags = cardTags, cardFields = cardFields, cardApps = cardApps,
+            updates = UpdatesPage(pending + items, cursor, hasMore),
+            agentNames = agentNames,
+        ),
+        FeedSnapshot.serializer(),
+        cacheScope,
+    )
+
+    override fun restoreFrom(cache: FeedCache, key: String): Boolean {
+        val kept = cache.read(key, FeedSnapshot.serializer()) ?: return false
+        apply(kept, replace = true)
+        return true
+    }
 
     override fun handle(event: StreamEvent) {
         // One stream carries every project; a page showing one drops what isn't its business.
@@ -344,6 +410,16 @@ internal class ThreadsReader(
     private var draining = false
 
     override suspend fun load(replace: Boolean) = apply(client.messages(projectSlug))
+
+    override val cacheKey = FeedCache.key("threads", projectSlug)
+
+    override fun saveTo(cache: FeedCache, key: String) = cache.save(key, snapshot, MessagesSnapshot.serializer(), scope)
+
+    override fun restoreFrom(cache: FeedCache, key: String): Boolean {
+        val kept = cache.read(key, MessagesSnapshot.serializer()) ?: return false
+        apply(kept)
+        return true
+    }
 
     override fun requestRead(replace: Boolean) {
         wholeWanted = true
@@ -579,6 +655,17 @@ internal class RequestsReader(
 
     override suspend fun load(replace: Boolean) = apply(client.waitingRequests())
 
+    override val cacheKey = "requests"
+
+    override fun saveTo(cache: FeedCache, key: String) =
+        cache.save(key, RequestsSnapshot(seq = seq, requests = items), RequestsSnapshot.serializer(), cacheScope)
+
+    override fun restoreFrom(cache: FeedCache, key: String): Boolean {
+        val kept = cache.read(key, RequestsSnapshot.serializer()) ?: return false
+        apply(kept)
+        return true
+    }
+
     internal fun apply(next: RequestsSnapshot) {
         items = next.requests
         seq = next.seq
@@ -598,6 +685,17 @@ internal class PresenceReader(
     override val watched = setOf("agent.presence", StreamEvent.Resync)
 
     override suspend fun load(replace: Boolean) = apply(client.liveAgents())
+
+    override val cacheKey = "agents"
+
+    override fun saveTo(cache: FeedCache, key: String) =
+        cache.save(key, AgentsSnapshot(seq = seq, agents = agents), AgentsSnapshot.serializer(), cacheScope)
+
+    override fun restoreFrom(cache: FeedCache, key: String): Boolean {
+        val kept = cache.read(key, AgentsSnapshot.serializer()) ?: return false
+        apply(kept)
+        return true
+    }
 
     fun poll() = refresher.request(replace = false)
 
