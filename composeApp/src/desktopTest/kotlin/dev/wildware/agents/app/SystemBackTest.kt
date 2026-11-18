@@ -54,8 +54,16 @@ class SystemBackTest {
         }
     }
 
+    /** What the phone's haptics were asked for, in order. */
+    private val felt = mutableListOf<androidx.compose.ui.hapticfeedback.HapticFeedbackType>()
+    private val haptics = object : androidx.compose.ui.hapticfeedback.HapticFeedback {
+        override fun performHapticFeedback(hapticFeedbackType: androidx.compose.ui.hapticfeedback.HapticFeedbackType) {
+            felt += hapticFeedbackType
+        }
+    }
+
     private fun androidx.compose.ui.test.ComposeUiTest.phone(system: FakeSystemBack, preview: ScreenPreview = ScreenPreview()) = setContent {
-        CompositionLocalProvider(LocalSystemBack provides system) {
+        CompositionLocalProvider(LocalSystemBack provides system, androidx.compose.ui.platform.LocalHapticFeedback provides haptics) {
             AgentTheme(dark = true) {
                 Box(Modifier.size(390.dp, 844.dp)) {
                     FeedScreen(FakeFeed.state.copy(openThread = FakeFeed.state.openThread), preview = preview)
@@ -78,6 +86,46 @@ class SystemBackTest {
         system.back()
         waitForIdle()
         onNodeWithText("Hold to reorder").assertExists()
+    }
+
+    @Test
+    fun onTheIphoneTheEdgeSwipeTicksAtTheCommitPointAndConfirmsOnLettingGo() = runComposeUiTest {
+        val system = FakeSystemBack(ownsLeftEdge = true)
+        phone(system)
+
+        system.progress(BackSwipe(progress = 0.05f, touchX = 20f))
+        waitForIdle()
+        assertEquals(emptyList(), felt, "nothing before the commit point")
+        system.progress(BackSwipe(progress = 0.5f, touchX = 200f))
+        system.progress(BackSwipe(progress = 0.6f, touchX = 230f))
+        waitForIdle()
+        assertEquals(listOf(androidx.compose.ui.hapticfeedback.HapticFeedbackType.GestureThresholdActivate), felt, "one tick crossing it, not one per step")
+        system.back()
+        waitForIdle()
+        assertEquals(listOf(androidx.compose.ui.hapticfeedback.HapticFeedbackType.GestureThresholdActivate, androidx.compose.ui.hapticfeedback.HapticFeedbackType.GestureEnd), felt)
+    }
+
+    @Test
+    fun onTheIphoneASwipeSlidBackFeelsNoConfirm() = runComposeUiTest {
+        val system = FakeSystemBack(ownsLeftEdge = true)
+        phone(system)
+        system.progress(BackSwipe(progress = 0.5f, touchX = 200f))
+        system.progress(BackSwipe(progress = 0.1f, touchX = 20f))
+        system.cancel()
+        waitForIdle()
+
+        // Back across the line ticks again, so the finger knows it will not commit; letting go is silent.
+        assertEquals(listOf(androidx.compose.ui.hapticfeedback.HapticFeedbackType.GestureThresholdActivate, androidx.compose.ui.hapticfeedback.HapticFeedbackType.GestureThresholdActivate), felt)
+    }
+
+    @Test
+    fun onAndroidTheSystemGivesItsOwnFeelSoTheAppAddsNone() = runComposeUiTest {
+        val system = FakeSystemBack(ownsLeftEdge = false)
+        phone(system, ScreenPreview(threadOpen = true))
+        system.progress(BackSwipe(progress = 0.6f, touchX = 230f))
+        system.back()
+        waitForIdle()
+        assertEquals(emptyList(), felt)
     }
 
     @Test

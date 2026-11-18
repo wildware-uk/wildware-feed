@@ -4,6 +4,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import dev.wildware.agents.app.design.AgentTheme
 import kotlinx.coroutines.launch
 
@@ -37,6 +39,9 @@ val LocalSystemBack = staticCompositionLocalOf<SystemBack> { PlatformSystemBack 
 /** How much of the screen's width the phone's projects drawer covers. */
 internal const val DrawerWidthFraction = 0.84f
 
+/** How far across a swipe has to be to go through when let go, as the app's own edge swipe has it. */
+private const val CommitFraction = 1f / 3f
+
 /** What a back swipe is doing, fixed when it starts so it can't change meaning halfway through. */
 private enum class BackMode { Overlay, CloseDrawer, OpenDrawer, Thread }
 
@@ -53,6 +58,11 @@ internal fun FollowSystemBack(ui: FeedUi, widthPx: Float) {
     val motion = AgentTheme.motion
     val scope = rememberCoroutineScope()
     val gesture = remember { arrayOfNulls<BackMode>(1) }
+    // Past the commit point, for the tick as the finger crosses it either way.
+    val past = remember { booleanArrayOf(false) }
+    val haptics = LocalHapticFeedback.current
+    // Android's own back gesture has its own feel; where the app owns the swipe (iPhone) it gives the feel.
+    val feels = system.ownsLeftEdge
 
     fun modeNow(): BackMode? = when {
         ui.viewer != null || ui.commandOpen || ui.menu != null -> BackMode.Overlay
@@ -68,6 +78,8 @@ internal fun FollowSystemBack(ui: FeedUi, widthPx: Float) {
 
     fun finish(mode: BackMode?, back: Boolean) {
         gesture[0] = null
+        past[0] = false
+        if (back && feels && mode != null && mode != BackMode.Overlay) haptics.performHapticFeedback(HapticFeedbackType.GestureEnd)
         when (mode) {
             BackMode.Overlay -> if (back) when {
                 ui.viewer != null -> ui.viewer = null
@@ -91,11 +103,15 @@ internal fun FollowSystemBack(ui: FeedUi, widthPx: Float) {
         enabled = gesture[0] != null || modeNow() != null,
         onProgress = { swipe ->
             val mode = gesture[0] ?: modeNow().also { gesture[0] = it }
-            when (mode) {
-                BackMode.CloseDrawer -> ui.drawer.value = 1f - swipe.progress
-                BackMode.OpenDrawer -> ui.drawer.value = swipe.across(widthPx * DrawerWidthFraction)
-                BackMode.Thread -> ui.threadBack.value = swipe.across(widthPx)
-                BackMode.Overlay, null -> Unit
+            val across = when (mode) {
+                BackMode.CloseDrawer -> swipe.progress.also { ui.drawer.value = 1f - it }
+                BackMode.OpenDrawer -> swipe.across(widthPx * DrawerWidthFraction).also { ui.drawer.value = it }
+                BackMode.Thread -> swipe.across(widthPx).also { ui.threadBack.value = it }
+                BackMode.Overlay, null -> null
+            }
+            if (feels && across != null && (across >= CommitFraction) != past[0]) {
+                past[0] = !past[0]
+                haptics.performHapticFeedback(HapticFeedbackType.GestureThresholdActivate)
             }
         },
         onCancel = { finish(gesture[0], back = false) },
