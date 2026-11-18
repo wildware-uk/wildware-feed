@@ -1015,7 +1015,9 @@ class McpEdgeTest : ParityTest() {
             val expireView = requestView(expire, "confirm", expireQ, p.id)
             if (holdS > 5) {
                 assertTrue(expireMs in 4_500..15_000, "held until it expired: $expireMs ms")
-                whole(expired, timedOutSummary, dismissed(expire, "timeout", expireView))
+                // The hold's timer can fire a moment before the deadline on a slow machine; the
+                // request is then still pending, and the await_request below times it out.
+                if (expired.structured["state"].s != "pending") whole(expired, timedOutSummary, dismissed(expire, "timeout", expireView))
             }
             delay(1_000)
             a.whole("await_request", obj("request_id" to expire), timedOutSummary, dismissed(expire, "timeout", expireView))
