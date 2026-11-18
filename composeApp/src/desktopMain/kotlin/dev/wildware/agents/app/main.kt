@@ -29,6 +29,8 @@ import dev.wildware.agents.app.engine.AppModel
 import dev.wildware.agents.app.engine.AppScreen
 import dev.wildware.agents.app.desktop.DesktopSettings
 import dev.wildware.agents.app.feed.AppCommand
+import dev.wildware.agents.app.local.ThisComputer
+import dev.wildware.agents.app.local.ThisComputerLayer
 import dev.wildware.agents.app.update.AppVersion
 import dev.wildware.agents.app.update.Installation
 import dev.wildware.agents.app.update.Release
@@ -100,6 +102,8 @@ fun main(args: Array<String>) {
     val model = AppModel(platform, scope)
     // A clicked notification asks the feed to open its card, the same way a tapped iPhone push does.
     val navigator = AppNavigator()
+    // Settings for the server this app runs ("This computer"): phone access and Claude Code.
+    val thisComputer = platform.localServer?.let { ThisComputer(it, scope) }
 
     var visible by mutableStateOf(true)
     var window: ComposeWindow? = null
@@ -150,6 +154,7 @@ fun main(args: Array<String>) {
                 },
             )
         },
+        thisComputer = { thisComputer?.open() },
     )
     shell.start()
     // Mac: a click on the Dock icon brings the hidden window back, and Cmd-Q quits properly.
@@ -195,12 +200,18 @@ fun main(args: Array<String>) {
             this.window.minimumSize = java.awt.Dimension(380, 560)
             val updates = shell.updates
             val available = updates?.available?.collectAsState()?.value
+            val screen by model.screen.collectAsState()
+            val local = thisComputer?.takeIf { (screen as? AppScreen.Signed)?.session?.saved?.local == true }
             AgentsApp(
                 platform,
                 model,
                 navigator = navigator,
-                commands = updates?.let { updateCommands(it, available) }.orEmpty(),
-                overlay = { updates?.let { UpdateLayer(it, showFolder = ::showFolder) } },
+                commands = updates?.let { updateCommands(it, available) }.orEmpty() + local?.let(::thisComputerCommands).orEmpty(),
+                overlay = {
+                    updates?.let { UpdateLayer(it, showFolder = ::showFolder) }
+                    local?.let { ThisComputerLayer(it) }
+                },
+                openSettings = local?.let { it::open },
             )
         }
     }
@@ -234,6 +245,15 @@ private fun updateController(
 private fun updateCommands(updates: UpdateController, available: Release?): List<AppCommand> = listOfNotNull(
     available?.let { AppCommand("Update to ${it.version}", "Install it and restart", listOf("update", "upgrade", "install")) { updates.showOffer() } },
     AppCommand("Check for updates", "You have $ProductName ${updates.current}", listOf("update", "upgrade", "version")) { updates.checkByHand() },
+)
+
+/** "This computer" and "Connect Claude Code", while signed in to the server this app runs. */
+private fun thisComputerCommands(settings: ThisComputer): List<AppCommand> = listOf(
+    AppCommand("This computer", "Let your phone connect, or connect Claude Code", listOf("settings", "phone", "server", "local")) { settings.open() },
+    AppCommand("Connect Claude Code", "Give an agent on this computer its own key", listOf("agent", "token", "claude", "plugin")) {
+        settings.open()
+        settings.connectAgent()
+    },
 )
 
 /** Opens [path] in Finder, Explorer or the file manager. */

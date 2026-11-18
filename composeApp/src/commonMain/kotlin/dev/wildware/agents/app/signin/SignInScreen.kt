@@ -35,6 +35,11 @@ import androidx.compose.ui.semantics.error
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.selection.selectableGroup
+import dev.wildware.agents.app.design.pressable
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -70,6 +75,13 @@ private fun SignInException.problem(): Problem = when (failure) {
     SignInFailure.Refused -> Problem(Field.Device, message ?: "The dashboard turned that down.")
 }
 
+/** Where to sign in: a server this app runs itself, or one somewhere else. */
+enum class SignInChoice { ThisComputer, Server }
+
+/** "This computer" where the app can run a server itself (the desktop app); otherwise a server. */
+fun defaultSignInChoice(canHostLocally: Boolean): SignInChoice =
+    if (canHostLocally) SignInChoice.ThisComputer else SignInChoice.Server
+
 private fun minutes(seconds: Long): String {
     val m = (seconds + 59) / 60
     return if (m <= 1) "about a minute" else "$m minutes"
@@ -78,6 +90,9 @@ private fun minutes(seconds: Long): String {
 /**
  * Sign in with the dashboard's address, the owner password and a name for this device. The
  * password is sent once and never kept; the device key that comes back is.
+ *
+ * Where the app can run a server itself ([signInHere] is set), it first offers "This computer",
+ * which needs only the device's name, or "A server", the form above.
  */
 @Composable
 fun SignInScreen(
@@ -86,6 +101,12 @@ fun SignInScreen(
     safeArea: SafeArea,
     /** Opens the app on built-in sample data, for a look round without a dashboard. */
     tryDemo: (() -> Unit)? = null,
+    /** Starts the server on this computer and signs in to it; null where the app can't run one (phones). */
+    signInHere: (suspend (device: String) -> Unit)? = null,
+    /** Why the server on this computer isn't running, when it tried and couldn't. */
+    hostProblem: String? = null,
+    /** Which choice shows first. */
+    startWith: SignInChoice = defaultSignInChoice(signInHere != null),
     signIn: suspend (server: String, password: String, device: String) -> Unit,
 ) {
     val colors = AgentTheme.colors
@@ -96,8 +117,27 @@ fun SignInScreen(
     val device = rememberTextFieldState(deviceName)
     var busy by remember { mutableStateOf(false) }
     var problem by remember { mutableStateOf<Problem?>(null) }
+    var choice by remember { mutableStateOf(if (signInHere == null) SignInChoice.Server else startWith) }
+    val here = choice == SignInChoice.ThisComputer && signInHere != null
 
-    val submit: () -> Unit = submit@{
+    val submitHere: () -> Unit = submit@{
+        if (busy || signInHere == null) return@submit
+        busy = true
+        problem = null
+        scope.launch {
+            try {
+                signInHere(device.text.toString())
+            } catch (cancelled: kotlin.coroutines.cancellation.CancellationException) {
+                throw cancelled
+            } catch (failed: Exception) {
+                problem = Problem(Field.General, failed.message ?: "The server on this computer didn't start. Try again.")
+            } finally {
+                busy = false
+            }
+        }
+    }
+
+    val submitServer: () -> Unit = submit@{
         if (busy) return@submit
         if (server.text.isBlank()) {
             problem = Problem(Field.Server, "Type your dashboard's address.")
@@ -137,9 +177,21 @@ fun SignInScreen(
             AppMark(52.dp)
             Spacer(Modifier.height(20.dp))
             Text("Sign in", Modifier.semantics { heading() }, color = colors.text, style = type.display)
-            Spacer(Modifier.height(6.dp))
+            if (signInHere != null) {
+                Spacer(Modifier.height(16.dp))
+                ChoiceTabs(choice) {
+                    if (!busy) {
+                        choice = it
+                        problem = null
+                    }
+                }
+                Spacer(Modifier.height(14.dp))
+            } else {
+                Spacer(Modifier.height(6.dp))
+            }
             Text(
-                "Connect ${dev.wildware.agents.app.ProductName} to your server. The password is used once; the device keeps its own key.",
+                if (here) "Your feed runs right here, on this computer. No address or password needed."
+                else "Connect ${dev.wildware.agents.app.ProductName} to your server. The password is used once; the device keeps its own key.",
                 color = colors.textMuted,
                 style = type.body,
             )
@@ -148,6 +200,27 @@ fun SignInScreen(
                 Banner(notice, isError = false)
             }
             Spacer(Modifier.height(24.dp))
+            if (here) {
+                LabelledField(
+                    "Name for this device", device, problem.takeIf { it?.field == Field.Device }?.message,
+                    hint = "Shown in the dashboard's device list, so you can revoke it later.",
+                    keyboard = KeyboardOptions(imeAction = ImeAction.Go),
+                    onSubmit = submitHere,
+                )
+                (problem?.takeIf { it.field == Field.General }?.message ?: hostProblem)?.let {
+                    Spacer(Modifier.height(16.dp))
+                    Banner(it, isError = true)
+                }
+                Spacer(Modifier.height(22.dp))
+                AppButton(
+                    if (busy) "Starting…" else "Start on this computer",
+                    ButtonTone.Primary,
+                    modifier = Modifier.fillMaxWidth(),
+                    icon = if (busy) Icons.Clock else null,
+                    enabled = !busy,
+                    onClick = submitHere,
+                )
+            } else {
             LabelledField(
                 "Dashboard address", server, problem.takeIf { it?.field == Field.Server }?.message,
                 placeholder = "https://dashboard.example.com",
@@ -164,7 +237,7 @@ fun SignInScreen(
                 "Name for this device", device, problem.takeIf { it?.field == Field.Device }?.message,
                 hint = "Shown in the dashboard's device list, so you can revoke it later.",
                 keyboard = KeyboardOptions(imeAction = ImeAction.Go),
-                onSubmit = submit,
+                onSubmit = submitServer,
             )
             problem?.takeIf { it.field == Field.General }?.let {
                 Spacer(Modifier.height(16.dp))
@@ -177,7 +250,7 @@ fun SignInScreen(
                 modifier = Modifier.fillMaxWidth(),
                 icon = if (busy) Icons.Clock else null,
                 enabled = !busy,
-                onClick = submit,
+                onClick = submitServer,
             )
             if (tryDemo != null) {
                 Spacer(Modifier.height(18.dp))
@@ -196,8 +269,47 @@ fun SignInScreen(
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                 )
             }
+            }
         }
     }
+    }
+}
+
+/** "This computer" or "A server", side by side, at the top of the screen. */
+@Composable
+private fun ChoiceTabs(choice: SignInChoice, onChoose: (SignInChoice) -> Unit) {
+    val colors = AgentTheme.colors
+    val outer = AgentTheme.shapes.medium
+    val inner = AgentTheme.shapes.small
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(outer)
+            .background(colors.surfaceSunken)
+            .border(1.dp, colors.border, outer)
+            .padding(3.dp)
+            .selectableGroup(),
+    ) {
+        for ((option, label) in listOf(SignInChoice.ThisComputer to "This computer", SignInChoice.Server to "A server")) {
+            val selected = option == choice
+            Box(
+                Modifier
+                    .weight(1f)
+                    .clip(inner)
+                    .background(if (selected) colors.surfaceRaised else Color.Transparent)
+                    .border(1.dp, if (selected) colors.borderStrong else Color.Transparent, inner)
+                    .pressable(label, inner, role = Role.Tab, labelIsShown = true) { onChoose(option) }
+                    .semantics { this.selected = selected },
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    label,
+                    color = if (selected) colors.text else colors.textMuted,
+                    style = AgentTheme.type.label,
+                    maxLines = 1,
+                )
+            }
+        }
     }
 }
 

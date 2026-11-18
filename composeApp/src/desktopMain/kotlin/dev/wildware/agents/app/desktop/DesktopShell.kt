@@ -39,6 +39,8 @@ class DesktopShell(
     notifierFor: (DesktopTray) -> Notifier,
     /** The updater, when there is one; created once the settings say whether it checks by itself. */
     updatesFor: (StateFlow<DesktopSettings>) -> UpdateController? = { null },
+    /** Opens the settings for the server this app runs, when there is one. */
+    private val thisComputer: () -> Unit = {},
 ) : TrayActions {
     private val mutableSettings = MutableStateFlow(
         settingsStore.load().let {
@@ -69,6 +71,7 @@ class DesktopShell(
         watching = scope.launch {
             model.screen.collectLatest { screen ->
                 val session = (screen as? AppScreen.Signed)?.session
+                tray.showThisComputer(session?.saved?.local == true)
                 if (session == null) {
                     tray.show(TrayLook.of(null))
                     return@collectLatest
@@ -150,6 +153,11 @@ class DesktopShell(
     }
 
     override fun setCheckForUpdates(on: Boolean) = update { it.copy(checkForUpdates = on) }
+
+    override fun openThisComputer() {
+        openWindow(null)
+        thisComputer()
+    }
 
     private fun update(change: (DesktopSettings) -> DesktopSettings) {
         val next = change(mutableSettings.value)

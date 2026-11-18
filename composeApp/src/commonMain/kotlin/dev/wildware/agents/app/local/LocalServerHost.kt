@@ -47,7 +47,6 @@ data class AgentConnection(val dashboardUrl: String, val agentToken: String)
 
 /** What the "Let my phone connect" switch says before it is turned on. */
 const val PHONE_ACCESS_WARNING =
-    "Phones on this network will reach your feed at a plain http:// address. Anyone else on the same " +
-        "Wi-Fi could read what passes between them, including the key your phone signs in with. Turn " +
-        "this on only on a network you trust, such as your home, or reach this computer through a " +
-        "private network like Tailscale instead."
+    "Phones on this Wi-Fi will connect over plain http, which isn't encrypted. Anyone else on the same " +
+        "network could read your feed and your phone's sign-in key. Only turn this on at home or on " +
+        "another network you trust, or use a private network like Tailscale instead."

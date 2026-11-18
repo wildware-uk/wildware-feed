@@ -8,6 +8,7 @@ import androidx.compose.ui.Modifier
 import dev.wildware.agents.app.feed.AppCommand
 import dev.wildware.agents.app.feed.LocalAppCommands
 import dev.wildware.agents.app.feed.LocalDemo
+import dev.wildware.agents.app.feed.LocalOpenSettings
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -86,6 +87,8 @@ fun AgentsApp(
     commands: List<AppCommand> = emptyList(),
     /** Drawn over every screen, in the app's theme (the desktop's update button and dialog). */
     overlay: @Composable BoxScope.() -> Unit = {},
+    /** Opens the settings for the server this app runs, when signed in to it (desktop only). */
+    openSettings: (() -> Unit)? = null,
 ) {
     setSingletonImageLoaderFactory { context -> agentsImageLoader(context, platform.httpEngine, platform.imageCacheDir) }
 
@@ -96,13 +99,18 @@ fun AgentsApp(
     AgentTheme(isDark, accessibility) {
         Box(Modifier.fillMaxSize()) {
             when (val screen = model.screen.collectAsState().value) {
-                is AppScreen.SigningIn -> SignInScreen(
-                    deviceName = model.deviceName,
-                    notice = screen.notice,
-                    safeArea = safeArea,
-                    signIn = model::signIn,
-                    tryDemo = model::enterDemo,
-                )
+                is AppScreen.SigningIn -> {
+                    val hostProblem = platform.localServer?.state?.collectAsState()?.value?.problem
+                    SignInScreen(
+                        deviceName = model.deviceName,
+                        notice = screen.notice,
+                        safeArea = safeArea,
+                        signInHere = if (model.canHostLocally) model::signInHere else null,
+                        hostProblem = hostProblem,
+                        signIn = model::signIn,
+                        tryDemo = model::enterDemo,
+                    )
+                }
                 is AppScreen.Signed -> {
                     val session = screen.session
                     val state = session.state.collectAsState()
@@ -114,6 +122,7 @@ fun AgentsApp(
                         LocalVoiceInput provides platform.voiceInput,
                         LocalAppCommands provides commands,
                         LocalDemo provides screen.demo,
+                        LocalOpenSettings provides openSettings,
                     ) {
                         FeedScreen(state, safeArea, navigator = navigator) { event ->
                             when (event) {

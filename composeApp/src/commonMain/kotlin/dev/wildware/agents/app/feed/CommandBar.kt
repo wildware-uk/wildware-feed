@@ -59,6 +59,9 @@ data class AppCommand(val title: String, val detail: String = "", val keywords: 
 /** Extra actions for the command bar, from whoever hosts the feed. */
 val LocalAppCommands = staticCompositionLocalOf { emptyList<AppCommand>() }
 
+/** Opens "This computer" settings (the server the desktop app runs), or null where there are none. */
+val LocalOpenSettings = staticCompositionLocalOf<(() -> Unit)?> { null }
+
 /** One line in the command bar: something to do, somewhere to go, or something found. */
 private class Command(
     val group: String,

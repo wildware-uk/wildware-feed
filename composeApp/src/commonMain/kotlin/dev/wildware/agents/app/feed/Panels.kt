@@ -311,6 +311,7 @@ private fun OwnerRow(owner: Author.Owner, onAlerts: () -> Unit, onToggleTheme: (
                 MetaText(if (demo) "Demo" else "Alerts")
             }
         }
+        LocalOpenSettings.current?.let { IconAction(Icons.Settings, "This computer", onClick = it) }
         IconAction(Icons.Moon, if (AgentTheme.colors.isDark) "Switch to light" else "Switch to dark", onClick = onToggleTheme)
         IconAction(Icons.SignOut, if (demo) "Leave demo" else "Sign out", onClick = onSignOut)
     }

@@ -32,6 +32,9 @@ interface TrayActions {
     fun openUpdate()
 
     fun setCheckForUpdates(on: Boolean)
+
+    /** "This computer…": shows the window with the settings for the server this app runs. */
+    fun openThisComputer() {}
 }
 
 /**
@@ -73,6 +76,13 @@ class DesktopTray(private val actions: TrayActions, settings: DesktopSettings, p
         }
     }
 
+    /** "This computer…", in the menu only while signed in to the server this app runs. */
+    private val thisComputerItem = MenuItem("This computer…").apply { addActionListener { actions.openThisComputer() } }
+    private var menu: PopupMenu? = null
+
+    @Volatile
+    private var showingThisComputer = false
+
     fun install() {
         if (!supported) return
         EventQueue.invokeLater {
@@ -80,6 +90,7 @@ class DesktopTray(private val actions: TrayActions, settings: DesktopSettings, p
                 add(MenuItem("Open $ProductName").apply { addActionListener { actions.open(null) } })
                 add(MenuItem("Mark all read").apply { addActionListener { actions.markAllRead() } })
                 add(updateItem)
+                if (showingThisComputer) add(thisComputerItem)
                 addSeparator()
                 add(keepRunning.apply { addItemListener { actions.setKeepRunning(it.stateChange == ItemEvent.SELECTED) } })
                 add(startAtLogin.apply {
@@ -95,6 +106,7 @@ class DesktopTray(private val actions: TrayActions, settings: DesktopSettings, p
                 addSeparator()
                 add(MenuItem("Quit $ProductName").apply { addActionListener { actions.quit() } })
             }
+            this.menu = menu
             val tray = SystemTray.getSystemTray()
             val size = tray.trayIconSize.let { maxOf(it.width, it.height, 16) }
             icon = TrayIcon(TrayIconImage.draw(size * 2, look.badge, style), look.tooltip, menu).apply {
@@ -118,6 +130,16 @@ class DesktopTray(private val actions: TrayActions, settings: DesktopSettings, p
             val size = SystemTray.getSystemTray().trayIconSize.let { maxOf(it.width, it.height, 16) }
             icon.image = TrayIconImage.draw(size * 2, look.badge, style)
             icon.toolTip = look.tooltip
+        }
+    }
+
+    /** Adds or removes "This computer…", after the update item. */
+    fun showThisComputer(show: Boolean) {
+        if (show == showingThisComputer) return
+        showingThisComputer = show
+        EventQueue.invokeLater {
+            val menu = menu ?: return@invokeLater
+            if (show) menu.insert(thisComputerItem, 3) else menu.remove(thisComputerItem)
         }
     }
 
