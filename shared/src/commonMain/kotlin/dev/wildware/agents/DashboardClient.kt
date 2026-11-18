@@ -94,16 +94,25 @@ class DashboardClient(
         }.decoded()
 
     /**
-     * Every thread in scope: replies, posts, and who has read and reacted to them. [updateId] or
-     * [requestId] reads one thread alone; [projectSlug] one project's; none of them, every project's.
+     * Every thread in scope: replies, posts, and who has read and reacted to them. [updateId],
+     * [requestId], [replyTo] (a post and its replies) or [taskId] reads one thread alone;
+     * [projectSlug] one project's; none of them, every project's.
      */
     @Throws(Exception::class)
-    suspend fun messages(projectSlug: String? = null, updateId: String? = null, requestId: String? = null): MessagesSnapshot =
+    suspend fun messages(
+        projectSlug: String? = null,
+        updateId: String? = null,
+        requestId: String? = null,
+        replyTo: String? = null,
+        taskId: String? = null,
+    ): MessagesSnapshot =
         http.get("api/messages") {
             authorise()
             if (projectSlug != null) parameter("project", projectSlug)
             if (updateId != null) parameter("update", updateId)
             if (requestId != null) parameter("request", requestId)
+            if (replyTo != null) parameter("replyTo", replyTo)
+            if (taskId != null) parameter("task", taskId)
         }.decoded()
 
     /** Every question waiting on the owner, oldest first. */

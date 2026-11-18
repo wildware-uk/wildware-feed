@@ -127,6 +127,8 @@ class FakeDashboard(scheduler: TestCoroutineScheduler) {
                     .filter { projectId == null || it.projectId == projectId }
                     .filter { message -> request.url.parameters["update"].let { it == null || message.updateId == it } }
                     .filter { message -> request.url.parameters["request"].let { it == null || message.requestId == it } }
+                    .filter { message -> request.url.parameters["replyTo"].let { it == null || message.id == it || message.replyTo == it } }
+                    .filter { message -> request.url.parameters["task"].let { it == null || message.taskId == it } }
                     .sortedBy { it.createdAt },
                 reactions = reactions,
             )))

@@ -479,4 +479,140 @@ class FeedEngineTest {
 
         assertEquals(scoped, server.count("/api/messages?project=mega"))
     }
+
+    /** A message event as the server now sends it: the thread named, null where it has none. */
+    private fun messageEvent(messageId: String, updateId: String? = null, replyTo: String? = null, requestId: String? = null, taskId: String? = null) =
+        buildJsonObject {
+            put("messageId", messageId); put("projectId", "p1"); put("author", "agent:a1")
+            put("updateId", updateId); put("replyTo", replyTo); put("requestId", requestId); put("taskId", taskId)
+        }
+
+    @Test
+    fun `a reply under a post re-reads only that post's thread`() = runTest {
+        val server = FakeDashboard(testScheduler).apply {
+            messages = listOf(
+                FakeDashboard.message("post1", 3, "human", "Have a look", 3_000),
+                FakeDashboard.message("post2", 4, "human", "And this", 4_000),
+            )
+        }
+        val dashboard = started(server)
+        val whole = server.wholeThreadReads()
+
+        server.messages += FakeDashboard.message("r1", 11, "agent:a1", "Looked", 11_000, replyTo = "post1")
+        server.connections.single().event("message.created", 11, messageEvent("r1", replyTo = "post1"))
+        runCurrent()
+
+        assertEquals(whole, server.wholeThreadReads())
+        assertEquals(1, server.count("/api/messages?replyTo=post1"))
+        val cards = dashboard.everything.state.value.cards
+        assertEquals(listOf("post1", "post2"), cards.map { it.id }, "the reply moves its post up")
+        assertEquals(listOf("r1"), cards.first().replies.map { it.message.id })
+        assertTrue(cards[1].replies.isEmpty())
+    }
+
+    @Test
+    fun `a new post reads itself in`() = runTest {
+        val server = FakeDashboard(testScheduler)
+        val dashboard = started(server)
+        val whole = server.wholeThreadReads()
+
+        server.messages += FakeDashboard.message("post1", 11, "agent:a1", "A note", 11_000)
+        server.connections.single().event("message.created", 11, messageEvent("post1"))
+        runCurrent()
+
+        assertEquals(whole, server.wholeThreadReads())
+        assertEquals(1, server.count("/api/messages?replyTo=post1"))
+        assertIs<PostCard>(dashboard.everything.state.value.cards.single())
+    }
+
+    @Test
+    fun `a deleted post takes its replies with it without reading everything`() = runTest {
+        val server = FakeDashboard(testScheduler).apply {
+            messages = listOf(
+                FakeDashboard.message("post1", 3, "human", "Have a look", 3_000),
+                FakeDashboard.message("r1", 4, "agent:a1", "Looked", 4_000, replyTo = "post1"),
+                FakeDashboard.message("post2", 5, "human", "Keep me", 5_000),
+            )
+        }
+        val dashboard = started(server)
+        val whole = server.wholeThreadReads()
+
+        server.messages = server.messages.filter { it.id == "post2" }
+        server.connections.single().event("message.deleted", 11, messageEvent("post1"))
+        runCurrent()
+
+        assertEquals(whole, server.wholeThreadReads())
+        assertEquals(listOf("post2"), dashboard.everything.state.value.cards.map { it.id })
+    }
+
+    @Test
+    fun `a task's line re-reads that task's thread`() = runTest {
+        val server = FakeDashboard(testScheduler)
+        started(server)
+        val whole = server.wholeThreadReads()
+
+        server.messages += FakeDashboard.message("t-line", 11, "agent:a1", "Started", 11_000).copy(taskId = "t1")
+        server.connections.single().event("message.created", 11, messageEvent("t-line", taskId = "t1"))
+        runCurrent()
+
+        assertEquals(whole, server.wholeThreadReads())
+        assertEquals(1, server.count("/api/messages?task=t1"))
+    }
+
+    @Test
+    fun `a pin on a post this feed holds re-reads that post, one it doesn't hold reads everything`() = runTest {
+        val server = FakeDashboard(testScheduler).apply { messages = listOf(FakeDashboard.message("post1", 3, "human", "Pin me", 3_000)) }
+        val dashboard = started(server)
+        val whole = server.wholeThreadReads()
+
+        server.messages = listOf(server.messages.single().copy(pinned = true))
+        // A pin carries only which message, as the server's card routes publish it.
+        server.connections.single().event("message.updated", 11, payload("messageId" to "post1", "projectId" to "p1", "author" to ""))
+        runCurrent()
+        assertEquals(whole, server.wholeThreadReads())
+        assertEquals(listOf("post1"), dashboard.everything.state.value.pinned.map { it.id })
+
+        server.connections.single().event("message.updated", 12, payload("messageId" to "elsewhere", "projectId" to "p1", "author" to ""))
+        runCurrent()
+        assertEquals(whole + 1, server.wholeThreadReads())
+    }
+
+    @Test
+    fun `a picture becoming ready on a reply re-reads only that reply's thread`() = runTest {
+        val server = FakeDashboard(testScheduler).apply {
+            updates = listOf(FakeDashboard.update("u1", 5))
+            messages = listOf(FakeDashboard.message("m1", 6, "agent:a1", "Screenshot", 6_000, updateId = "u1"))
+        }
+        val dashboard = started(server)
+        val whole = server.wholeThreadReads()
+        val snapshots = server.count("/api/snapshot?")
+
+        server.connections.single().event("media.ready", 11, buildJsonObject {
+            put("mediaId", "md1"); put("updateId", null as String?); put("messageId", "m1"); put("requestId", null as String?); put("kind", "image")
+        })
+        // A picture on a message nobody has loaded yet: its own event will bring it.
+        server.connections.single().event("media.ready", 12, buildJsonObject {
+            put("mediaId", "md2"); put("updateId", null as String?); put("messageId", "unknown"); put("requestId", null as String?); put("kind", "image")
+        })
+        runCurrent()
+
+        assertEquals(whole, server.wholeThreadReads())
+        assertEquals(1, server.count("/api/messages?update=u1"))
+        assertTrue(dashboard.everything.state.value.loaded)
+        assertEquals(snapshots, server.count("/api/snapshot?"), "a picture on a message is no reason to re-read the updates")
+    }
+
+    @Test
+    fun `a picture becoming ready on a question re-reads the questions`() = runTest {
+        val server = FakeDashboard(testScheduler).apply { requests = listOf(FakeDashboard.request("r1", 1)) }
+        started(server)
+        val reads = server.count("/api/snapshot/requests")
+
+        server.connections.single().event("media.ready", 11, buildJsonObject {
+            put("mediaId", "md1"); put("updateId", null as String?); put("messageId", null as String?); put("requestId", "r1"); put("kind", "image")
+        })
+        runCurrent()
+
+        assertEquals(reads + 1, server.count("/api/snapshot/requests"))
+    }
 }

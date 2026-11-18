@@ -190,7 +190,8 @@ internal class TimelineReader(
 
     override fun handle(event: StreamEvent) {
         // One stream carries every project; a page showing one drops what isn't its business.
-        if (elsewhere(event)) {
+        // A picture that isn't on an update (the server says so with a null updateId) isn't either.
+        if (elsewhere(event) || event.type == "media.ready" && notOnAnUpdate(event.payload)) {
             seq = maxOf(seq, event.seq)
             return
         }
@@ -204,6 +205,8 @@ internal class TimelineReader(
         }
         super.handle(event)
     }
+
+    private fun notOnAnUpdate(payload: JsonObject?) = payload != null && "updateId" in payload && payload.string("updateId") == null
 
     /** An unknown project id is not "elsewhere": a project made since the page loaded must still re-read. */
     private fun elsewhere(event: StreamEvent): Boolean {
@@ -294,16 +297,25 @@ internal class TimelineReader(
     }
 }
 
-/** One thread the server can read on its own: an update's replies, or the talk about a question. */
+/** One thread the server can read on its own. */
 internal sealed interface ThreadKey {
+    /** An update's replies: `?update=`. */
     data class Update(val id: String) : ThreadKey
+
+    /** The talk about a question: `?request=`. */
     data class Request(val id: String) : ThreadKey
+
+    /** A post and the replies under it: `?replyTo=`. Empty once the post is deleted. */
+    data class Post(val id: String) : ThreadKey
+
+    /** A task's thread: `?task=`. */
+    data class Task(val id: String) : ThreadKey
 }
 
 /**
  * Every thread in scope. Read whole when it starts and on `resync`; after that an event re-reads
- * only the thread it belongs to (`GET /api/messages?update=` or `?request=`), and only falls back
- * to reading everything when it can't tell which thread that is (see [threadOf]).
+ * only the thread it belongs to (`GET /api/messages?update=`, `?request=`, `?replyTo=` or `?task=`),
+ * and only falls back to reading everything when it can't tell which thread that is (see [threadOf]).
  *
  * A thread read is not stamped onto [seq]: it accounts for one thread, and raising the cursor on
  * it would drop a later event for another thread that hasn't arrived yet.
@@ -370,6 +382,10 @@ internal class ThreadsReader(
         }
     }
 
+    private companion object {
+        val Anchors = listOf("updateId", "requestId", "replyTo", "taskId")
+    }
+
     private sealed interface Target {
         data object Nothing : Target
         data object Everything : Target
@@ -377,10 +393,10 @@ internal class ThreadsReader(
     }
 
     /**
-     * Which thread an event is about. A message already held answers it from its own row. A new
-     * message can only say if its event names the thread (`updateId`, `requestId`, `replyTo`,
-     * `taskId`); events that don't, and replies under posts (which the server can't read on their
-     * own), fall back to reading everything.
+     * Which thread an event is about. A message already held answers it from its own row; a new
+     * one from its event, which names the thread (`updateId`, `requestId`, `replyTo`, `taskId`,
+     * all null for a post). An event that names neither, such as a pin on a message this reader
+     * hasn't loaded, falls back to reading everything.
      */
     private fun threadOf(event: StreamEvent): Target {
         val payload = event.payload
@@ -399,12 +415,16 @@ internal class ThreadsReader(
                 held(id) ?: Target.Everything
             }
             "media.ready" -> {
-                // Only media this reader is waiting on: an update's is the timeline's business.
-                val mediaId = payload.string("mediaId") ?: return Target.Nothing
-                val messageId = payload.string("messageId")
-                    ?: snapshot.media.entries.firstOrNull { (_, media) -> media.any { it.id == mediaId } }?.key
-                    ?: return Target.Nothing
-                held(messageId) ?: Target.Everything
+                // Only a message's media: an update's or a question's is another reader's business.
+                // A message not loaded yet gets its media with the read its own event asks for.
+                val messageId = if (payload != null && "messageId" in payload) {
+                    payload.string("messageId")
+                } else {
+                    // An older server doesn't say: look for the media among what is held.
+                    val mediaId = payload.string("mediaId")
+                    snapshot.media.entries.firstOrNull { (_, media) -> media.any { it.id == mediaId } }?.key
+                }
+                messageId?.let(::held) ?: Target.Nothing
             }
             else -> Target.Everything
         }
@@ -412,19 +432,26 @@ internal class ThreadsReader(
 
     private fun held(messageId: String): Target? = snapshot.messages.firstOrNull { it.id == messageId }?.let(::anchorOf)
 
-    private fun anchorOf(message: MessageView): Target = when {
-        message.updateId != null -> Target.Thread(ThreadKey.Update(message.updateId))
-        message.requestId != null -> Target.Thread(ThreadKey.Request(message.requestId))
-        else -> Target.Everything
-    }
+    private fun anchorOf(message: MessageView): Target =
+        Target.Thread(keyOf(message.id, message.updateId, message.requestId, message.replyTo, message.taskId))
 
     private fun fromPayload(payload: JsonObject?): Target {
-        if (payload == null) return Target.Everything
-        val anchors = listOf("updateId", "requestId", "replyTo", "taskId")
-        if (anchors.none { it in payload }) return Target.Everything
-        payload.string("updateId")?.let { return Target.Thread(ThreadKey.Update(it)) }
-        payload.string("requestId")?.let { return Target.Thread(ThreadKey.Request(it)) }
-        return Target.Everything
+        val messageId = payload.string("messageId")
+        if (payload == null || messageId == null) return Target.Everything
+        // A pin or status change on a message says only which message: no way to tell its thread.
+        if (Anchors.none { it in payload }) return Target.Everything
+        return Target.Thread(
+            keyOf(messageId, payload.string("updateId"), payload.string("requestId"), payload.string("replyTo"), payload.string("taskId")),
+        )
+    }
+
+    /** With no anchor at all, the message is a post: its own thread. */
+    private fun keyOf(id: String, updateId: String?, requestId: String?, replyTo: String?, taskId: String?): ThreadKey = when {
+        updateId != null -> ThreadKey.Update(updateId)
+        requestId != null -> ThreadKey.Request(requestId)
+        replyTo != null -> ThreadKey.Post(replyTo)
+        taskId != null -> ThreadKey.Task(taskId)
+        else -> ThreadKey.Post(id)
     }
 
     private fun kick() {
@@ -455,6 +482,8 @@ internal class ThreadsReader(
                 val part = when (key) {
                     is ThreadKey.Update -> client.messages(updateId = key.id)
                     is ThreadKey.Request -> client.messages(requestId = key.id)
+                    is ThreadKey.Post -> client.messages(replyTo = key.id)
+                    is ThreadKey.Task -> client.messages(taskId = key.id)
                 }
                 merge(key, part)
             }
@@ -472,6 +501,8 @@ internal class ThreadsReader(
         fun inThread(message: MessageView) = when (key) {
             is ThreadKey.Update -> message.updateId == key.id
             is ThreadKey.Request -> message.requestId == key.id
+            is ThreadKey.Post -> message.id == key.id || message.replyTo == key.id
+            is ThreadKey.Task -> message.taskId == key.id
         }
         val fresh = part.messages.filter(::inThread)
         val replaced = snapshot.messages.filter(::inThread).mapTo(HashSet()) { it.id } + fresh.map { it.id }
@@ -499,7 +530,10 @@ internal class RequestsReader(
 
     override fun alsoWatches(event: StreamEvent) =
         event.type == "reaction.updated" && event.payload.cardKind() == CardKinds.Request ||
-            event.type == "media.ready" && event.payload.string("mediaId").let { id -> items.any { request -> request.media.any { it.id == id } } }
+            event.type == "media.ready" && (
+                event.payload.string("requestId")?.let { id -> items.any { it.id == id } }
+                    ?: event.payload.string("mediaId").let { id -> items.any { request -> request.media.any { it.id == id } } }
+                )
 
     override fun handle(event: StreamEvent) {
         // Settled is settled: take it off at once rather than waiting for the re-read to say so.
