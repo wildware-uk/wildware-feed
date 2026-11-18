@@ -274,7 +274,6 @@ targets:
       path: NotificationService/NotificationService.entitlements
       properties:
         com.apple.security.application-groups: [group.dev.wildware.agents]
-        com.apple.developer.usernotifications.communication: true
         keychain-access-groups: [$(AppIdentifierPrefix)dev.wildware.agents.shared]
     settings:
       base:
