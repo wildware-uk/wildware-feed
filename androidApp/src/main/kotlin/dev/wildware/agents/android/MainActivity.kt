@@ -28,7 +28,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalDensity
 import androidx.core.content.ContextCompat
 import androidx.core.content.IntentCompat
 import androidx.lifecycle.lifecycleScope
@@ -38,6 +37,7 @@ import dev.wildware.agents.app.design.resolveDark
 import dev.wildware.agents.app.engine.AppScreen
 import dev.wildware.agents.app.feed.AppCommand
 import dev.wildware.agents.app.feed.SafeArea
+import dev.wildware.agents.app.feed.rememberSystemSafeArea
 import dev.wildware.agents.app.feed.ScreenPreview
 import dev.wildware.agents.app.design.AgentTheme
 import androidx.compose.foundation.background
@@ -126,9 +126,8 @@ class MainActivity : ComponentActivity() {
         val stay by app.stayConnected.collectAsState()
 
         // The status bar above; the navigation bar or the keyboard, whichever is taller, below.
-        val density = LocalDensity.current
-        val insets = WindowInsets.safeDrawing
-        val safeArea = with(density) { SafeArea(top = insets.getTop(density).toDp(), bottom = insets.getBottom(density).toDp()) }
+        // One live object, so the keyboard sliding moves the composer without redrawing the app.
+        val safeArea = rememberSystemSafeArea()
         Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))) {
             AgentsApp(
                 app.platform,
@@ -143,9 +142,7 @@ class MainActivity : ComponentActivity() {
 
     @Composable
     private fun Sample(thread: Boolean) {
-        val density = LocalDensity.current
-        val insets = WindowInsets.safeDrawing
-        val safeArea = with(density) { SafeArea(top = insets.getTop(density).toDp(), bottom = insets.getBottom(density).toDp()) }
+        val safeArea = rememberSystemSafeArea()
         AgentsPreview(
             dark = isSystemInDarkTheme(),
             safeArea = safeArea,
