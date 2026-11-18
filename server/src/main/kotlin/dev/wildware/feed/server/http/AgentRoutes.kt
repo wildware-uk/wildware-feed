@@ -91,7 +91,7 @@ private suspend fun ApplicationCall.mcp(app: App) {
     if (type != "application/json") {
         return respondRaw(415, transportError(-32000, "Unsupported Media Type: Content-Type must be application/json"), Wire.JSON)
     }
-    val parsed = runCatching { Wire.json.parseToJsonElement(bodyText().orEmpty()) }.getOrNull()
+    val parsed = Wire.parseStrict(bodyText().orEmpty())
         ?: return respondRaw(400, transportError(-32700, "Parse error: Invalid JSON"), Wire.JSON)
     val messages = (parsed as? JsonArray)?.toList() ?: listOf(parsed)
     if (messages.isEmpty() || messages.any { it !is JsonObject || it["jsonrpc"]?.jsonPrimitive?.contentOrNull != "2.0" }) {

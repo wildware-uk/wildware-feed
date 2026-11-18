@@ -35,6 +35,21 @@ object Wire {
 
     fun encode(element: JsonElement): String = json.encodeToString(JsonElement.serializer(), element)
 
+    /**
+     * `JSON.parse`: kotlinx happily reads a bare word like `nope` as a value, which JavaScript
+     * refuses; refuse it too.
+     */
+    fun parseStrict(text: String): JsonElement? {
+        val parsed = runCatching { json.parseToJsonElement(text) }.getOrNull() ?: return null
+        fun ok(e: JsonElement): Boolean = when (e) {
+            is JsonPrimitive -> e.isString || e is kotlinx.serialization.json.JsonNull || e.content == "true" || e.content == "false" ||
+                Regex("^-?(0|[1-9]\\d*)(\\.\\d+)?([eE][+-]?\\d+)?$").matches(e.content)
+            is JsonObject -> e.values.all(::ok)
+            is kotlinx.serialization.json.JsonArray -> e.all(::ok)
+        }
+        return parsed.takeIf(::ok)
+    }
+
     fun error(code: String, message: String? = null): JsonObject = buildJsonObject {
         put("error", JsonPrimitive(code))
         if (message != null) put("message", JsonPrimitive(message))
@@ -82,13 +97,13 @@ suspend fun ApplicationCall.bodyText(): String? {
 /** A JSON object body, strictly: "body must be JSON" / "body must be a JSON object". */
 suspend fun ApplicationCall.jsonObjectBody(): JsonObject {
     val text = bodyText() ?: throw invalid("body must be JSON")
-    val parsed = runCatching { Wire.json.parseToJsonElement(text) }.getOrElse { throw invalid("body must be JSON") }
+    val parsed = Wire.parseStrict(text) ?: throw invalid("body must be JSON")
     return parsed as? JsonObject ?: throw invalid("body must be a JSON object")
 }
 
 /** A JSON object body, leniently: anything unreadable is `{}` (the TS card and tag routes do this). */
 suspend fun ApplicationCall.lenientObjectBody(): JsonObject =
-    bodyText()?.let { runCatching { Wire.json.parseToJsonElement(it) as? JsonObject }.getOrNull() } ?: JsonObject(emptyMap())
+    bodyText()?.let { Wire.parseStrict(it) as? JsonObject } ?: JsonObject(emptyMap())
 
 fun JsonElement?.jsValue(): Any? = when (this) {
     null, is kotlinx.serialization.json.JsonNull -> null
