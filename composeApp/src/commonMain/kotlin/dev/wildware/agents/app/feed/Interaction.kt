@@ -119,6 +119,9 @@ class FeedUi(preview: ScreenPreview, initial: FeedState, var onEvent: (FeedEvent
     var commandOpen by mutableStateOf(preview.command != null)
     val composerFocus = FocusRequester()
 
+    /** Words and files shared in from another app, waiting for the next project composer on screen. */
+    var incoming by mutableStateOf<SharedDraft?>(null)
+
     /** What search looks through: every project's loaded cards when the engine gives them, else what is on screen. */
     val searchEntries: List<SearchEntry>
         get() = state.searchIndex.ifEmpty { searchEntriesOf(state.sections) }

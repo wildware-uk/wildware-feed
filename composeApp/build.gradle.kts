@@ -5,6 +5,7 @@ plugins {
     alias(libs.plugins.compose.multiplatform)
     alias(libs.plugins.compose.compiler)
     alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.android.kmp.library)
 }
 
 /** The version, from `agents.version` in gradle.properties. */
@@ -35,6 +36,15 @@ kotlin {
 
     // Mac, Windows and Linux all run this one JVM build.
     jvm("desktop")
+
+    // Android: the screens and the platform hooks. The app itself (manifest, activity, icons) is androidApp/.
+    android {
+        namespace = "dev.wildware.agents.app"
+        compileSdk = libs.versions.android.compileSdk.get().toInt()
+        minSdk = libs.versions.android.minSdk.get().toInt()
+        // The fonts are Compose resources, which travel in the library's assets.
+        androidResources { enable = true }
+    }
 
     // The iPhone app links this one framework. It carries `shared` too (exported, so Swift sees the
     // same types the widgets and extensions use), because two Kotlin frameworks in one app would each
@@ -77,6 +87,9 @@ kotlin {
                 implementation(libs.coroutines.swing)
                 implementation(libs.ktor.client.okhttp)
             }
+        }
+        androidMain.dependencies {
+            implementation(libs.androidx.activity.compose)
         }
         iosMain.dependencies {
             // `api` so the framework can export it to Swift.

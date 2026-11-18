@@ -164,6 +164,9 @@ class GitHubReleaseSourceTest {
         assertEquals(AssetKind.MacDmg, GitHubReleaseSource.kindOf("Agents-1.0.2-mac-arm64.dmg"))
         assertEquals(AssetKind.WindowsZip, GitHubReleaseSource.kindOf("Agents-1.0.2-windows-x64-portable.zip"))
         assertEquals(AssetKind.LinuxAppImage, GitHubReleaseSource.kindOf("Agents-1.0.2-x86_64.AppImage"))
+        assertEquals(AssetKind.AndroidApk, GitHubReleaseSource.kindOf("Wildware-Feed-1.0.2-android.apk"))
+        // The Play Store bundle is not something a phone installs from the release page.
+        assertNull(GitHubReleaseSource.kindOf("Wildware-Feed-1.0.2-android.aab"))
         assertNull(GitHubReleaseSource.kindOf("source.zip"))
         assertNull(GitHubReleaseSource.kindOf("SHA256SUMS.txt"))
     }

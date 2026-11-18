@@ -114,6 +114,7 @@ fun FeedScreen(
             if (ui.commandOpen) CommandBar(ui, if (phone) safeArea else SafeArea())
         }
         FollowNavigation(ui, navigator)
+        FollowSystemBack(ui)
     }
 }
 
