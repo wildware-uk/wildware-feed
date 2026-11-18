@@ -118,7 +118,7 @@ class OwnerActionsTest {
     }
 
     @Test
-    fun `a work state is sent as the state, and not work as null`() = runTest {
+    fun `a work state is sent as the state and not work as null`() = runTest {
         val server = FakeDashboard(testScheduler)
         val (queue, actions) = setUp(server)
 
