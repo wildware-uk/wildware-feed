@@ -406,6 +406,25 @@ class ScreenshotTest {
         }
     }
 
+    /** Replies, each its own item: inline under its card on a desktop, and the phone's thread. */
+    @Test
+    fun threadReplies() {
+        val thread = FakeFeed.state.openThread!!.id
+        for (dark in listOf(false, true)) {
+            val mode = if (dark) "dark" else "light"
+            shoot("desktop-$mode-replies", Size.Desktop, dark, startAt = thread)
+            // A short head card, so the replies are on screen.
+            val head = (FakeFeed.state.openThread as FeedItem.Update).copy(body = "Two sessions on one token shared a \"last read\" marker. Now each connection has its own.")
+            val state = FakeFeed.state.copy(
+                openThread = head,
+                sections = FakeFeed.state.sections.map { sec -> sec.copy(items = sec.items.map { if (it.id == head.id) head else it }) },
+            )
+            shoot("phone-$mode-replies", Size.Phone, dark) {
+                AgentsPreview(dark = dark, state = state, safeArea = Size.Phone.safeArea, preview = ScreenPreview(threadOpen = true))
+            }
+        }
+    }
+
     /** Increase Contrast on, in both themes, and the largest common text size. */
     @Test
     fun accessibilityVariants() {

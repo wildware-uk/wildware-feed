@@ -9,6 +9,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
+import dev.wildware.agents.app.design.AgentColors
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -618,6 +619,16 @@ private fun DrawerProjectRow(p: Project, selected: Boolean, dragging: Boolean, o
     }
 }
 
+/**
+ * The surface a reply sits on: the owner's in the soft accent, like their side of a chat, and an
+ * agent's a step off the card (set in, in light; lifted, in dark), where a card's own colour is.
+ */
+internal fun replySurface(colors: AgentColors, own: Boolean): Color = when {
+    own -> colors.accentSoft
+    colors.isDark -> colors.surfaceRaised
+    else -> colors.surfaceSunken
+}
+
 /** A reply that can be swiped right to answer it, long-pressed for its menu, double-tapped to react. */
 @Composable
 fun InteractiveReply(reply: Reply, modifier: Modifier = Modifier) {
@@ -635,22 +646,27 @@ fun InteractiveReply(reply: Reply, modifier: Modifier = Modifier) {
         text = reply.body,
         own = reply.author is Author.Owner,
     )
+    val shape = AgentTheme.shapes.medium
     SwipeActions(
-        shape = AgentTheme.shapes.medium,
-        modifier = modifier,
+        shape = shape,
+        // About 8 dp between one reply and the next.
+        modifier = modifier.padding(vertical = 4.dp),
         state = swipe,
         startAction = GestureAction("Reply", Icons.Reply, colors.accent, colors.onAccent) {
             ui?.emit(FeedEvent.Reply(reply.id))
         },
     ) {
         val shown = ui?.reactionsFor(reply.id, reply.reactions) ?: reply.reactions
+        // Each reply on its own surface, so it is plain where one ends and the next begins. The
+        // surface is opaque, so it also covers the action under it while it is swiped.
         ReplyView(
             reply.copy(reactions = shown),
             Modifier
-                // Read while drawing, so a swipe moves the reply without recomposing it.
-                .drawBehind { if (swipe.offsetPx != 0f) drawRect(colors.background) }
+                .clip(shape)
+                .background(replySurface(colors, own = reply.author is Author.Owner))
+                .border(1.dp, colors.border, shape)
                 .feedItemGestures(target)
-                .padding(vertical = 10.dp),
+                .padding(horizontal = 12.dp, vertical = 10.dp),
         )
     }
 }
