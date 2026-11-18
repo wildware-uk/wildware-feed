@@ -267,6 +267,27 @@ class MappingTest {
     }
 
     @Test
+    fun postsAndRepliesCarryTheirPicturesVideosSoundsAndFiles() {
+        fun media(id: String, kind: String, variants: List<String>, filename: String? = null, mime: String = "") =
+            MediaView(id = id, kind = kind, status = "ready", variants = variants, filename = filename, bytes = 2048, mime = mime, width = 1280, height = 720, durationMs = 5_000)
+        val head = line("m1", "human", noon - 60_000).copy(media = listOf(
+            media("img", "image", listOf("original")),
+            media("vid", "video", listOf("original", "poster", "video")),
+            media("snd", "audio", listOf("original"), mime = "audio/mpeg"),
+            media("doc", "file", listOf("original"), filename = "crash.log", mime = "text/plain"),
+        ))
+        val reply = line("m2", "agent:a1", noon - 30_000).copy(media = listOf(media("clip", "video", listOf("original", "poster", "video"))))
+        val post = postOf(head, listOf(reply))
+
+        assertEquals(listOf(null, "https://dash.test/media/vid/video"), post.attachments.map { it.video?.url })
+        assertEquals(listOf("snd"), post.sounds.map { it.id })
+        assertEquals(listOf("crash.log"), post.files.map { it.name })
+        val r = post.replies.single()
+        assertEquals(listOf("https://dash.test/media/clip/video"), r.attachments.map { it.video?.url })
+        assertTrue(r.sounds.isEmpty() && r.files.isEmpty())
+    }
+
+    @Test
     fun aDroppedConnectionReadsAsReconnecting() {
         val state = mapper.map(feed(emptyList(), status = StreamStatus.Offline), listOf(mega), emptyList(), emptyList(), "mega")
         assertEquals(LinkStatus.Reconnecting, state.link)

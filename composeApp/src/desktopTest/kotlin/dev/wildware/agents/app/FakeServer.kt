@@ -1,5 +1,6 @@
 package dev.wildware.agents.app
 
+import dev.wildware.agents.MediaView
 import dev.wildware.agents.NotificationsSnapshot
 import dev.wildware.agents.NotificationView
 import dev.wildware.agents.AgentsSnapshot
@@ -52,6 +53,8 @@ class FakeServer {
         MessageView(id = "m-post", seq = 7, projectId = "p1", author = "human", body = "Why is the Mac build slow?", createdAt = now() - 20_000),
     )
     var reactions = listOf<ReactionView>()
+    /** Media on messages, by message id, as `GET /api/messages` sends it. */
+    var messageMedia = mapOf<String, List<MediaView>>()
     var requests = listOf(
         RequestView(
             id = "r1", seq = 8, agentId = "a1", projectId = "p1", kind = "buttons",
@@ -123,7 +126,7 @@ class FakeServer {
                     agentNames = agentNames,
                 )))
             }
-            "/api/messages" -> ok(json.encodeToString(MessagesSnapshot.serializer(), MessagesSnapshot(seq = seq, messages = messages, reactions = reactions)))
+            "/api/messages" -> ok(json.encodeToString(MessagesSnapshot.serializer(), MessagesSnapshot(seq = seq, messages = messages, reactions = reactions, media = messageMedia)))
             "/api/snapshot/requests" -> ok(json.encodeToString(RequestsSnapshot.serializer(), RequestsSnapshot(seq, requests = requests)))
             "/api/devices/current/alert-prefs" -> ok(alertPrefs)
             "/api/snapshot/agents" -> ok(json.encodeToString(AgentsSnapshot.serializer(), AgentsSnapshot(seq, agents = agents)))

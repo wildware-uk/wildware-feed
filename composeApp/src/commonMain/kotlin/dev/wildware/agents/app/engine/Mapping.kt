@@ -189,6 +189,9 @@ internal class FeedMapper(
             author = author(post, agents),
             project = project(projectId),
             body = post.message.body,
+            attachments = post.media.tiles().map { tile(it) },
+            sounds = post.media.sounds(),
+            files = post.media.files(),
             acks = acks(this, agents),
             replies = replies(replies, unread, agents, project, threads),
             unreadReplies = unread,
@@ -277,6 +280,9 @@ internal class FeedMapper(
                 sending = line.sending,
                 questions = line.questions.map { it.toQuestion(agents, project, threads) },
                 undelivered = undelivered(line),
+                attachments = line.media.tiles().map { tile(it) },
+                sounds = line.media.sounds(),
+                files = line.media.files(),
             )
         }
     }

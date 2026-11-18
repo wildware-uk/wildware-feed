@@ -19,6 +19,8 @@ import dev.wildware.agents.app.feed.Acks
 import dev.wildware.agents.app.feed.Author
 import dev.wildware.agents.app.feed.VoiceInput
 import dev.wildware.agents.app.feed.LocalVoiceInput
+import dev.wildware.agents.app.feed.Attachment
+import dev.wildware.agents.app.feed.Scene
 import dev.wildware.agents.app.feed.FakeFeed
 import dev.wildware.agents.app.feed.Presence
 import dev.wildware.agents.app.feed.FeedFilter
@@ -421,6 +423,37 @@ class ScreenshotTest {
             )
             shoot("phone-$mode-replies", Size.Phone, dark) {
                 AgentsPreview(dark = dark, state = state, safeArea = Size.Phone.safeArea, preview = ScreenPreview(threadOpen = true))
+            }
+        }
+    }
+
+    /** A post with a video, a sound and a file, and a reply with a video: as the feed and the phone thread show them. */
+    @Test
+    fun postMedia() {
+        val post = FakeFeed.state.sections.flatMap { it.items }.filterIsInstance<FeedItem.Post>().first()
+        val clip = Attachment("Screen recording", "Screen recording", 16f / 9f, scene = Scene.Dusk, video = VideoSource("https://dash.test/media/v1/video", "0:12"))
+        val withMedia = post.copy(
+            attachments = listOf(clip),
+            sounds = listOf(Sound("s1", "https://dash.test/media/s1/original", 9_000, "audio/mpeg")),
+            files = listOf(FileAttachment("f1", "https://dash.test/media/f1/original", "crash.log", "1.5 KB", "text/plain")),
+        )
+        val fix = FakeFeed.state.openThread as FeedItem.Update
+        // A short head card, so the reply with the video is on screen in the phone's thread.
+        val thread = fix.copy(
+            body = "Two sessions on one token shared a \"last read\" marker. Now each connection has its own.",
+            replies = fix.replies.mapIndexed { i, r -> if (i == fix.replies.lastIndex) r.copy(attachments = listOf(clip.copy(scene = Scene.Night))) else r },
+        )
+        val state = FakeFeed.state.copy(
+            openThread = thread,
+            sections = FakeFeed.state.sections.map { s -> s.copy(items = s.items.map { if (it.id == post.id) withMedia else if (it.id == thread.id) thread else it }) },
+        )
+        for (dark in listOf(false, true)) {
+            val mode = if (dark) "dark" else "light"
+            for (size in listOf(Size.Phone, Size.Desktop)) {
+                shoot("${size.label}-$mode-post-media", size, dark) { AgentsPreview(dark = dark, state = state, safeArea = size.safeArea, startAt = post.id) }
+            }
+            shoot("phone-$mode-reply-media", Size.Phone, dark) {
+                AgentsPreview(dark = dark, state = state, safeArea = Size.Phone.safeArea, preview = ScreenPreview(threadOpen = true, replySwipe = null))
             }
         }
     }

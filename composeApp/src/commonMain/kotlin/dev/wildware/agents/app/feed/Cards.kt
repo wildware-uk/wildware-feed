@@ -644,6 +644,7 @@ fun PostCard(item: FeedItem.Post, modifier: Modifier = Modifier, density: Densit
                 if (density == Density.Compact && item.status != null) Chips(null, item.status, modifier = Modifier.padding(bottom = 8.dp), onStatus = chooseStatus)
                 val body = @Composable { if (own) PlainBody(item.body) else MarkdownBody(item.body) }
                 if (inThread) body() else Clamp(item.id, "the whole post") { body() }
+                PostMedia(item.attachments, item.sounds, item.files)
                 CardDetails(item.id, ui?.fieldsFor(item.id, item.fields) ?: item.fields, Modifier.padding(top = 8.dp))
                 TagChips(tags, Modifier.padding(top = 10.dp))
                 val inline = LocalInlineThreads.current && !inThread
@@ -668,6 +669,17 @@ fun PostCard(item: FeedItem.Post, modifier: Modifier = Modifier, density: Densit
         }
     }
 }
+}
+
+/** A post's or reply's pictures and videos as tiles, then its sounds and files, as an update shows them. */
+@Composable
+internal fun PostMedia(attachments: List<Attachment>, sounds: List<Sound>, files: List<FileAttachment>) {
+    if (attachments.isNotEmpty()) {
+        Spacer(Modifier.height(10.dp))
+        MediaGrid(attachments, onOpen = rememberTileOpener(attachments))
+    }
+    if (sounds.isNotEmpty()) Sounds(sounds, Modifier.padding(top = 10.dp))
+    if (files.isNotEmpty()) Files(files, Modifier.padding(top = 10.dp))
 }
 
 @Composable

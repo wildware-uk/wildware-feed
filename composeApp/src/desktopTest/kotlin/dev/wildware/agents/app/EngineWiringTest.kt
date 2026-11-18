@@ -351,6 +351,20 @@ class EngineWiringTest {
     }
 
     @Test
+    fun aVideoOnAPostShowsAsTheServerSendsIt() = runDesktopComposeUiTest(width = 1440, height = 900) {
+        server.messageMedia = mapOf(
+            "m-post" to listOf(
+                dev.wildware.agents.MediaView(id = "v1", kind = "video", status = "ready", variants = listOf("original", "poster", "video"), durationMs = 12_000, width = 1280, height = 720, mime = "video/mp4"),
+                dev.wildware.agents.MediaView(id = "f1", kind = "file", status = "ready", variants = listOf("original"), filename = "crash.log", bytes = 1536, mime = "text/plain"),
+            ),
+        )
+        app()
+        waitFor("Why is the Mac build slow?")
+        waitForNode(hasContentDescription("Play video 1 of 1, 0:12"))
+        waitForNode(hasContentDescription("Download crash.log", substring = true))
+    }
+
+    @Test
     fun aReplySaysWhichLineItAnswers() = runDesktopComposeUiTest(width = 1440, height = 900) {
         // Replies land after their card here on purpose: that order once made this test flaky.
         server.messagesDelayMs = 400

@@ -146,6 +146,10 @@ data class Reply(
     val questions: List<FeedItem.Question> = emptyList(),
     /** The owner's line, sent a while ago, and no agent has it: nobody is listening. */
     val undelivered: Boolean = false,
+    /** Pictures and videos on the reply, as tiles; sounds and files in their own rows. */
+    val attachments: List<Attachment> = emptyList(),
+    val sounds: List<Sound> = emptyList(),
+    val files: List<FileAttachment> = emptyList(),
 )
 
 @Immutable
@@ -296,6 +300,10 @@ sealed interface FeedItem {
         val author: Author,
         val project: Project,
         val body: String,
+        /** Pictures and videos on the post, as tiles; sounds and files in their own rows. */
+        val attachments: List<Attachment> = emptyList(),
+        val sounds: List<Sound> = emptyList(),
+        val files: List<FileAttachment> = emptyList(),
         val acks: Acks = Acks(),
         override val replies: List<Reply> = emptyList(),
         override val unreadReplies: Int = 0,
