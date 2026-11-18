@@ -297,4 +297,42 @@ class DashboardClientTest {
              "tags":[]}
         """
     }
+
+    @Test
+    fun `a new project is made with its name and description`() = runTest {
+        val made = client { json("""{"project":{"id":"p9","slug":"harbor-app","name":"harbor-app","description":"Ferry times"},"created":true}""", HttpStatusCode.Created) }
+            .createProject("harbor-app", "Ferry times")
+
+        val (request, body) = seen.single()
+        assertEquals(HttpMethod.Post, request.method)
+        assertEquals("https://dash.test/api/projects", request.url.toString())
+        assertEquals("""{"name":"harbor-app","description":"Ferry times"}""", body)
+        assertEquals("harbor-app", made.slug)
+    }
+
+    @Test
+    fun `renaming sends the name and description and an empty description clears it`() = runTest {
+        client { json("""{"project":{"id":"p9","slug":"harbor-app","name":"Harbour"}}""") }.renameProject("harbor-app", "Harbour", "")
+
+        val (request, body) = seen.single()
+        assertEquals(HttpMethod.Patch, request.method)
+        assertEquals("https://dash.test/api/projects/harbor-app", request.url.toString())
+        assertEquals("""{"name":"Harbour","description":null}""", body)
+    }
+
+    @Test
+    fun `archiving and unarchiving set the status`() = runTest {
+        val c = client { json("""{"project":{"id":"p9","slug":"harbor-app","name":"harbor-app"}}""") }
+        c.setProjectArchived("harbor-app", true)
+        c.setProjectArchived("harbor-app", false)
+
+        assertEquals(listOf("""{"status":"archived"}""", """{"status":"active"}"""), seen.map { it.second })
+    }
+
+    @Test
+    fun `colours are set and a missing one is cleared`() = runTest {
+        client { json("""{"project":{"id":"p9","slug":"harbor-app","name":"harbor-app"}}""") }.setProjectColours("harbor-app", "#0f3d3e", null)
+
+        assertEquals("""{"theme":{"background":"#0f3d3e","accent":null}}""", seen.single().second)
+    }
 }

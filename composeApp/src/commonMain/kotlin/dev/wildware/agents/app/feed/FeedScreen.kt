@@ -1,6 +1,7 @@
 package dev.wildware.agents.app.feed
 
 import kotlinx.coroutines.flow.distinctUntilChanged
+import dev.wildware.agents.app.design.ProjectColours
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
@@ -198,13 +199,28 @@ fun FeedScreen(
     onAwayFromTop: (Boolean) -> Unit = {},
     onEvent: (FeedEvent) -> Unit = {},
 ) {
-    val colors = AgentTheme.colors
     val ui = remember(state) { FeedUi(preview, state, onEvent) }
     ui.onEvent = onEvent
     ui.onAwayFromTop = onAwayFromTop
     // One watcher for the whole feed, rather than one per card: marks cards that just moved on.
     LaunchedEffect(ui) { snapshotFlow { ui.state.sections }.collect { ui.noteActivity(it) } }
     val scope = rememberCoroutineScope()
+    // The open project's own colours, if it has them. Read through a derived state, so only a change
+    // of colours redraws the screen, not every new state from the engine.
+    val theme by remember(ui) { derivedStateOf { ui.state.current.let { it.background to it.accent } } }
+    ProjectColours(theme.first, theme.second) { FeedScreenBody(ui, safeArea, startAt, preview, navigator, scope) }
+}
+
+@Composable
+private fun FeedScreenBody(
+    ui: FeedUi,
+    safeArea: SafeArea,
+    startAt: String?,
+    preview: ScreenPreview,
+    navigator: AppNavigator?,
+    scope: kotlinx.coroutines.CoroutineScope,
+) {
+    val colors = AgentTheme.colors
     BoxWithConstraints(Modifier.fillMaxSize().windowBackground(colors)) {
         val phone = maxWidth < PhoneBreakpoint
         ui.isPhone = phone
@@ -231,6 +247,7 @@ fun FeedScreen(
             ui.deleting?.let { DeleteConfirm(ui, it) }
             if (ui.alertsOpen) AlertSettingsSheet(ui, if (phone) safeArea else SafeArea())
             if (ui.retentionOpen) RetentionSettingsSheet(ui, if (phone) safeArea else SafeArea())
+            ui.projectDialog?.let { ProjectDialogView(ui, it) }
         }
         FollowNavigation(ui, navigator)
         FollowSystemBack(ui, widthPx)

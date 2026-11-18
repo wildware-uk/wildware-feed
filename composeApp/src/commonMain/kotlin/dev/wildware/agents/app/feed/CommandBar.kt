@@ -187,6 +187,13 @@ private fun commandsFor(ui: FeedUi, query: String, extra: List<AppCommand>, clos
     val state = ui.state
     val actions = buildList {
         if (wanted("Mark all read")) add(Command("Actions", "Mark all read", "Clear every unread badge", Icons.Check, done { ui.emit(FeedEvent.MarkAllRead) }))
+        if (wanted("New project", "create project")) {
+            add(Command("Actions", "New project", "Make a project to post and work in", Icons.Plus, done { ui.projectDialog = ProjectDialog.New }))
+        }
+        if (state.current.slug != null && wanted("Project settings", "rename archive colour colours")) {
+            val id = state.current.id
+            add(Command("Actions", "Project settings", "Rename ${state.current.name}, set its colours or archive it", Icons.Settings, done { ui.projectDialog = ProjectDialog.Settings(id) }))
+        }
         if (state.current.slug != null && wanted("New post", "write")) {
             add(Command("Actions", "New post", "Write to everyone in ${state.current.name}", Icons.Plus, done { ui.focusComposer() }))
         }

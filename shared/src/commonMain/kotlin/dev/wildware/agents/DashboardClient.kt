@@ -7,6 +7,7 @@ import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.defaultRequest
 import io.ktor.client.request.delete
+import io.ktor.client.request.patch
 import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.client.request.get
 import io.ktor.client.request.header
@@ -191,6 +192,46 @@ class DashboardClient(
             jsonBody(buildJsonObject { put("pinned", pinned) })
         }.requireSuccess()
     }
+
+    /** Makes a project. The dashboard hands back the one it already has when the name's slug is taken. */
+    @Throws(Exception::class)
+    suspend fun createProject(name: String, description: String?): ProjectView =
+        http.post("api/projects") {
+            authorise()
+            jsonBody(buildJsonObject {
+                put("name", name)
+                if (!description.isNullOrBlank()) put("description", description)
+            })
+        }.decoded<ProjectBody>().project
+
+    /** Renames a project and sets what it is for; a blank [description] takes it off. */
+    @Throws(Exception::class)
+    suspend fun renameProject(slug: String, name: String, description: String?): ProjectView =
+        patchProject(slug, buildJsonObject {
+            put("name", name)
+            put("description", description?.takeIf { it.isNotBlank() }?.let(::JsonPrimitive) ?: JsonNull)
+        })
+
+    /** Archives a project (listed apart, finished with) or brings it back. */
+    @Throws(Exception::class)
+    suspend fun setProjectArchived(slug: String, archived: Boolean): ProjectView =
+        patchProject(slug, buildJsonObject { put("status", if (archived) "archived" else "active") })
+
+    /** A project's own page and accent colours, as #rrggbb; null takes one off. */
+    @Throws(Exception::class)
+    suspend fun setProjectColours(slug: String, background: String?, accent: String?): ProjectView =
+        patchProject(slug, buildJsonObject {
+            put("theme", buildJsonObject {
+                put("background", background?.let(::JsonPrimitive) ?: JsonNull)
+                put("accent", accent?.let(::JsonPrimitive) ?: JsonNull)
+            })
+        })
+
+    private suspend fun patchProject(slug: String, body: JsonObject): ProjectView =
+        http.patch("api/projects/${slug.encodeURLPathPart()}") {
+            authorise()
+            jsonBody(body)
+        }.decoded<ProjectBody>().project
 
     /** Deletes an update card. */
     @Throws(Exception::class)
@@ -467,6 +508,9 @@ class DashboardClient(
         else -> "Shared ${attachments.size} files from my phone"
     }
 }
+
+@kotlinx.serialization.Serializable
+internal data class ProjectBody(val project: ProjectView)
 
 @kotlinx.serialization.Serializable
 internal data class AlertPrefsBody(val prefs: AlertPrefs? = null)

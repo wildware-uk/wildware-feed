@@ -112,6 +112,8 @@ class FakeServer {
                 }
                 path == "/api/settings/media-retention" -> refuseRetention?.let { ok("""{"error":"invalid_argument","message":"$it"}""", HttpStatusCode.BadRequest) }
                     ?: ok(body.also { mediaRetention = it })
+                path == "/api/projects" -> ok("""{"project":{"id":"p-new","slug":"harbor-app","name":"harbor-app"},"created":true}""", HttpStatusCode.Created)
+                path.startsWith("/api/projects/") -> ok("""{"project":{"id":"p1","slug":"${path.substringAfterLast('/')}","name":"x"}}""")
                 path == "/api/media" -> ok("""{"media":{"id":"md-up","kind":"image","mime":"image/png","status":"pending"}}""", HttpStatusCode.Created)
                 else -> ok("{}")
             }

@@ -169,7 +169,11 @@ internal class FeedMapper(
     private fun dev.wildware.agents.TagView.toCardTag() = CardTag(id, name, colour, projectId)
 
     private fun ProjectSummary.toView() =
-        Project(project.id, project.name, unread = unread, waiting = waiting, hue = hue(project.id), slug = project.slug, archived = project.isArchived)
+        Project(
+            project.id, project.name, unread = unread, waiting = waiting, hue = hue(project.id), slug = project.slug,
+            archived = project.isArchived, description = project.description,
+            background = project.theme?.background, accent = project.theme?.accent,
+        )
 
     /**
      * Where each thread line is, so a question asked under one can say what it answers and jump there;

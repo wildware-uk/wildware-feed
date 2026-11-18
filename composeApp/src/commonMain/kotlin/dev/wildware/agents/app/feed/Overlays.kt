@@ -526,6 +526,7 @@ fun ProjectsDrawer(ui: FeedUi, progress: EdgeProgress, widthPx: Float, safeArea:
                     close()
                 }
             }
+            NewProjectRow(ui)
             ArchivedProjects(ui)
             Spacer(Modifier.height(20.dp))
             SectionLabel("Agents", Modifier.padding(horizontal = 10.dp))

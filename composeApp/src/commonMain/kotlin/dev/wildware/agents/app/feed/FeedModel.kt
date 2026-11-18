@@ -78,6 +78,11 @@ data class Project(
     val slug: String? = null,
     /** Finished with: listed apart, under "Archived". */
     val archived: Boolean = false,
+    /** What it is for, in the owner's words. */
+    val description: String? = null,
+    /** Its own page colour and accent, #rrggbb; null for the app's own. */
+    val background: String? = null,
+    val accent: String? = null,
 )
 
 sealed interface Author {

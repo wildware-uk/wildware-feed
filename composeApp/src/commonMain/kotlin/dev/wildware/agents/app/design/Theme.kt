@@ -91,6 +91,28 @@ fun AgentTheme(
     }
 }
 
+/**
+ * Draws [content] in other [colors], keeping the rest of the theme: how a project's own colours
+ * reach the part of the screen that is that project's.
+ */
+@Composable
+fun AgentColorsOverride(colors: AgentColors, content: @Composable () -> Unit) {
+    val current = LocalAgentTheme.current
+    val values = remember(current, colors) { current.copy(colors = colors) }
+    MaterialTheme(colorScheme = colors.toMaterial(), typography = MaterialTheme.typography) {
+        CompositionLocalProvider(
+            LocalAgentTheme provides values,
+            LocalContentColor provides colors.text,
+            LocalIndication provides PressIndication(colors.text, reduced = current.motion.reduced),
+            LocalTextSelectionColors provides TextSelectionColors(
+                handleColor = colors.accent,
+                backgroundColor = colors.accent.copy(alpha = 0.28f),
+            ),
+            content = content,
+        )
+    }
+}
+
 private fun AgentColors.toMaterial(): ColorScheme {
     val scheme = if (isDark) darkColorScheme() else lightColorScheme()
     return scheme.copy(

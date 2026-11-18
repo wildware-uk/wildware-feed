@@ -53,6 +53,18 @@ sealed interface FeedEvent {
     data class OpenDetails(val targetId: String) : FeedEvent
     data class OpenThread(val cardId: String) : FeedEvent
     data class MoveProject(val from: Int, val to: Int) : FeedEvent
+
+    /** Make a project. [done] hears null once it is made, or why it wasn't. */
+    data class CreateProject(val name: String, val description: String?, val done: (problem: String?) -> Unit = {}) : FeedEvent
+
+    /** Rename project [slug] and say what it is for. [done] as for [CreateProject]. */
+    data class EditProject(val slug: String, val name: String, val description: String?, val done: (problem: String?) -> Unit = {}) : FeedEvent
+
+    /** Archive project [slug], or bring it back. */
+    data class ArchiveProject(val slug: String, val archived: Boolean) : FeedEvent
+
+    /** Give project [slug] its own page colour and accent (#rrggbb), or take one off with null. */
+    data class SetProjectColours(val slug: String, val background: String?, val accent: String?) : FeedEvent
     /** Show one project's feed, or every project's for null. */
     data class SelectProject(val slug: String?) : FeedEvent
     data object Refresh : FeedEvent
@@ -227,6 +239,9 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
 
     /** A short line at the bottom of the screen, gone by itself. */
     var toast by mutableStateOf<String?>(null)
+
+    /** The new-project or project-settings dialog, while it is open. */
+    var projectDialog by mutableStateOf<ProjectDialog?>(null)
 
     /** The thread open beside the feed (desktop) or over it (phone). */
     var threadId by mutableStateOf(initial.openThread?.id)
@@ -672,4 +687,10 @@ internal fun List<Reaction>.withMine(emoji: String, on: Boolean): List<Reaction>
         existing.count <= 1 -> filter { it.emoji != emoji }
         else -> map { if (it.emoji == emoji) it.copy(count = it.count - 1, mine = false) else it }
     }
+}
+
+/** Which project dialog is open: making a new one, or the settings of one already there. */
+sealed interface ProjectDialog {
+    data object New : ProjectDialog
+    data class Settings(val projectId: String) : ProjectDialog
 }

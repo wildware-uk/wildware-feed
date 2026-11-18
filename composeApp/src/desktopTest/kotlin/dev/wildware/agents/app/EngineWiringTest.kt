@@ -32,6 +32,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.v2.runDesktopComposeUiTest
@@ -425,6 +426,21 @@ class EngineWiringTest {
         onNodeWithContentDescription("Send").performClick()
         val body = waitForWrite("POST", "/api/messages")
         assertTrue("\"project\":\"mega\"" in body && "look at the build" in body, body)
+    }
+
+    @Test
+    fun aNewProjectIsMadeOnTheServerAndArchivingSetsItsStatus() = runDesktopComposeUiTest(width = 1440, height = 900) {
+        app()
+        waitFor("Mega")
+        waitForNode(hasText("New project") and hasClickAction()).performScrollTo().performClick()
+        waitForNode(hasContentDescription("Project name") and hasSetTextAction()).performTextInput("harbor-app")
+        waitForNode(hasText("Create project")).performClick()
+        assertTrue("\"name\":\"harbor-app\"" in waitForWrite("POST", "/api/projects"))
+
+        waitForNode(hasContentDescription("Mega,", substring = true)).performClick()
+        waitForNode(hasContentDescription("Project settings")).performClick()
+        waitForNode(hasText("Archive project")).performClick()
+        assertEquals("""{"status":"archived"}""", waitForWrite("PATCH", "/api/projects/mega"))
     }
 
     @Test

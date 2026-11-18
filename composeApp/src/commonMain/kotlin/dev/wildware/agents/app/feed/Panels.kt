@@ -114,7 +114,7 @@ private fun SearchField(modifier: Modifier = Modifier, onClick: () -> Unit) {
 }
 
 @Composable
-private fun NavRow(
+internal fun NavRow(
     label: String,
     selected: Boolean,
     leading: @Composable () -> Unit,
@@ -217,6 +217,7 @@ fun Sidebar(
                     onClick = { ui.emit(FeedEvent.SelectProject(p.slug)) },
                 )
             }
+            NewProjectRow(ui)
             ArchivedProjects(ui)
             if (showAgents) {
                 Spacer(Modifier.height(22.dp))
@@ -232,6 +233,20 @@ fun Sidebar(
         }
         OwnerRow(state.owner, onAlerts = { ui.alertsOpen = true }, onToggleTheme = { ui.emit(FeedEvent.ToggleTheme) }) { ui.emit(FeedEvent.SignOut) }
     }
+}
+
+/** "+ New project", under the list of projects. */
+@Composable
+internal fun NewProjectRow(ui: FeedUi) {
+    val colors = AgentTheme.colors
+    NavRow(
+        "New project",
+        selected = false,
+        leading = { Icon(Icons.Plus, null, tint = colors.textMuted, modifier = Modifier.size(18.dp)) },
+        trailing = {},
+        spoken = "New project",
+        onClick = { ui.projectDialog = ProjectDialog.New },
+    )
 }
 
 /**
@@ -355,6 +370,11 @@ fun FeedHeader(ui: FeedUi, compact: Boolean, modifier: Modifier = Modifier) {
                     )
                 }
                 OutboxLine(ui)
+            }
+            if (state.current.slug != null) {
+                val id = state.current.id
+                IconAction(Icons.Settings, "Project settings") { ui.projectDialog = ProjectDialog.Settings(id) }
+                Spacer(Modifier.width(if (compact) 0.dp else 10.dp))
             }
             if (!compact) {
                 Row(horizontalArrangement = Arrangement.spacedBy((-8).dp), modifier = Modifier.semantics(mergeDescendants = true) {

@@ -213,6 +213,26 @@ class DashboardSession(
         }
     }
 
+    /**
+     * A change to a project, made straight away rather than queued: it needs the dashboard's say
+     * (a name can be taken or too long), so [done] hears null once it is made or the reason it wasn't.
+     */
+    private fun changeProject(done: (String?) -> Unit = {}, change: suspend () -> Unit) {
+        scope.launch {
+            val problem = try {
+                change()
+                null
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (refused: DashboardException) {
+                refused.message ?: "The dashboard said no."
+            } catch (failed: Throwable) {
+                "Couldn't reach the dashboard. Check the connection and try again."
+            }
+            done(problem)
+        }
+    }
+
     /** Marks every card on the all-projects feed read, and every waiting question: the tray's "Mark all read". */
     fun markAllRead() {
         val everything = dashboard.everything.state.value
@@ -310,6 +330,23 @@ class DashboardSession(
             is FeedEvent.ReadMediaRetention -> scope.launch { loadRetention() }
             is FeedEvent.SetMediaRetention -> saveRetention(event.setting)
             is FeedEvent.SelectProject -> select(event.slug)
+            is FeedEvent.CreateProject -> changeProject(event.done) {
+                val made = client.createProject(event.name.trim(), event.description?.trim())
+                dashboard.refresh()
+                select(made.slug)
+            }
+            is FeedEvent.EditProject -> changeProject(event.done) {
+                client.renameProject(event.slug, event.name.trim(), event.description?.trim())
+                dashboard.refresh()
+            }
+            is FeedEvent.ArchiveProject -> changeProject {
+                client.setProjectArchived(event.slug, event.archived)
+                dashboard.refresh()
+            }
+            is FeedEvent.SetProjectColours -> changeProject {
+                client.setProjectColours(event.slug, event.background, event.accent)
+                dashboard.refresh()
+            }
             is FeedEvent.Refresh -> {
                 dashboard.revive(reconnect = true)
                 outbox.kick(ignoreBackoff = true)
