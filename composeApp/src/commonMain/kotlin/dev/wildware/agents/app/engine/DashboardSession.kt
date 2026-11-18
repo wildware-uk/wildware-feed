@@ -55,7 +55,8 @@ class DashboardSession(
     private val scope = CoroutineScope(parent.coroutineContext + SupervisorJob(parent.coroutineContext[Job]))
     val client = DashboardClient(saved.server, saved.token, platform.httpEngine())
     private val outbox = OutboxQueue(client, platform.outbox, scope)
-    private val dashboard = Dashboard(client, scope, ReadMarks(platform.readMarks), outbox)
+    /** The engine itself, for what lives outside the feed screen: the desktop tray and notifications. */
+    val dashboard = Dashboard(client, scope, ReadMarks(platform.readMarks), outbox)
     private val actions = OwnerActions(outbox)
     private val mapper = FeedMapper(client.serverUrl, clock)
 
@@ -82,6 +83,15 @@ class DashboardSession(
     val signedOut: StateFlow<Boolean> = dashboard.status
         .map { it == StreamStatus.SignedOut }
         .stateIn(scope, SharingStarted.Eagerly, false)
+
+    /** Marks every card on the all-projects feed read, and every waiting question: the tray's "Mark all read". */
+    fun markAllRead() {
+        val everything = dashboard.everything.state.value
+        (everything.allCards.filter { it.unread > 0 }.map { it.id } +
+            (dashboard.waiting.value + everything.waiting).filter { it.unread > 0 }.map { it.id })
+            .distinct()
+            .forEach(dashboard::markRead)
+    }
 
     fun start() {
         outbox.start()
@@ -112,7 +122,7 @@ class DashboardSession(
             is FeedEvent.Post -> postTarget()?.let { actions.post(it, event.text.ifBlank { null }, event.files.map(::upload)) }
             is FeedEvent.Delete -> cardRef(event.targetId)?.let { actions.delete(it) }
             is FeedEvent.OpenThread -> dashboard.markRead(event.cardId)
-            is FeedEvent.MarkAllRead -> latest.allCards.filter { it.unread > 0 }.forEach { dashboard.markRead(it.id) }
+            is FeedEvent.MarkAllRead -> markAllRead()
             is FeedEvent.SelectProject -> select(event.slug)
             is FeedEvent.Refresh -> {
                 dashboard.revive(reconnect = true)

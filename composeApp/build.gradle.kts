@@ -75,13 +75,44 @@ compose.resources {
     packageOfResClass = "dev.wildware.agents.app.resources"
 }
 
+/** The version, from `agents.version` in gradle.properties. */
+val agentsVersion = providers.gradleProperty("agents.version").get()
+
 compose.desktop {
     application {
         mainClass = "dev.wildware.agents.app.MainKt"
         nativeDistributions {
-            targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
+            // AppImage here is jpackage's plain app folder; CI packs it into a real .AppImage.
+            targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb, TargetFormat.Rpm, TargetFormat.AppImage)
             packageName = "Agents"
-            packageVersion = "1.0.0"
+            packageVersion = agentsVersion
+            description = "Agent Dashboard: questions and updates from your agents"
+            vendor = "Wildware"
+            copyright = "© 2026 Wildware"
+            // What `suggestRuntimeModules` found, plus the TLS curves OkHttp needs that it can't see.
+            modules("java.instrument", "java.management", "jdk.unsupported", "java.naming", "jdk.crypto.ec")
+            macOS {
+                bundleID = "dev.wildware.agents.desktop"
+                dockName = "Agents"
+                appCategory = "public.app-category.productivity"
+                iconFile.set(project.file("packaging/icons/agents.icns"))
+            }
+            windows {
+                iconFile.set(project.file("packaging/icons/agents.ico"))
+                menuGroup = "Agents"
+                shortcut = true
+                perUserInstall = true
+                // Fixed for good: it is how Windows knows a new .msi upgrades the old one.
+                upgradeUuid = "6a1d6f3e-4f0b-4c39-9d2e-2b7c1a7e5d41"
+            }
+            linux {
+                iconFile.set(project.file("packaging/icons/agents.png"))
+                packageName = "agents"
+                debMaintainer = "noreply@wildware.dev"
+                menuGroup = "Network"
+                shortcut = true
+                appCategory = "Network"
+            }
         }
     }
 }

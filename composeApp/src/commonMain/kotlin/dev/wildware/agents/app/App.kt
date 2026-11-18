@@ -51,6 +51,24 @@ fun AgentsApp(
     val scope = remember { CoroutineScope(SupervisorJob() + Dispatchers.Default) }
     DisposableEffect(scope) { onDispose { scope.cancel() } }
     val model = remember { AppModel(platform, scope) }
+    AgentsApp(platform, model, dark, accessibility, safeArea, navigator)
+}
+
+/**
+ * The same app over a [model] that lives outside the window: the desktop keeps it running in the
+ * tray while the window is closed.
+ */
+@Composable
+fun AgentsApp(
+    platform: AppPlatform,
+    model: AppModel,
+    /** Forces light or dark, for tests; otherwise the owner's pick or the device's decides. */
+    dark: Boolean? = null,
+    accessibility: AccessibilityPrefs = systemAccessibility(),
+    safeArea: SafeArea = SafeArea(),
+    /** Where notifications, widgets and search ask the feed to go. */
+    navigator: AppNavigator? = null,
+) {
     setSingletonImageLoaderFactory { context -> agentsImageLoader(context, platform.httpEngine, platform.imageCacheDir) }
 
     val choice by model.theme.collectAsState()

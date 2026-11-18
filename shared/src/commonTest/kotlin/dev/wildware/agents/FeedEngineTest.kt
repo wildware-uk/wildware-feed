@@ -644,4 +644,15 @@ class FeedEngineTest {
         assertEquals(whole, server.wholeThreadReads())
         assertEquals("👀", dashboard.everything.state.value.cards.single().replies.single().reactions.single().emoji)
     }
+
+    @Test
+    fun `ready waits for both the questions and the feed`() = runTest {
+        val server = FakeDashboard(testScheduler).apply { requests = listOf(FakeDashboard.request("r1", 1)) }
+        val dashboard = Dashboard(server.client(), backgroundScope, clock = { testScheduler.currentTime })
+        assertFalse(dashboard.ready.value)
+        dashboard.start()
+        runCurrent()
+        assertTrue(dashboard.ready.value)
+        assertEquals(listOf("r1"), dashboard.waiting.value.map { it.id })
+    }
 }

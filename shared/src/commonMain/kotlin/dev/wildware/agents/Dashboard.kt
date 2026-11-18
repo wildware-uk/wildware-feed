@@ -201,6 +201,14 @@ class Dashboard internal constructor(
     /** The sidebar: every project (archived ones last), with its badges. */
     val projects: StateFlow<List<ProjectSummary>> = mutableProjects.asStateFlow()
 
+    private val mutableReady = MutableStateFlow(false)
+
+    /**
+     * True once the questions and the all-projects feed have both been read. What is there at that
+     * moment was already there: a notifier takes it as seen and alerts only for what comes after.
+     */
+    val ready: StateFlow<Boolean> = mutableReady.asStateFlow()
+
     private var started = false
 
     /** The all-projects feed, always running while the dashboard is. */
@@ -314,6 +322,7 @@ class Dashboard internal constructor(
         mutableWaiting.value = requests.items.map { context.requestCard(it, everything) }
         feeds.values.forEach { it.publish(context, stream.status.value, requests.loading) }
         mutableProjects.value = summaries(everything.state.value)
+        if (!mutableReady.value && requests.loaded && everything.state.value.loaded) mutableReady.value = true
     }
 
     private fun summaries(all: FeedState): List<ProjectSummary> {
