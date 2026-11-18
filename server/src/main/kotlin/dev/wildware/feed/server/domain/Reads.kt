@@ -1,7 +1,5 @@
 package dev.wildware.feed.server.domain
 
-import com.ibm.icu.text.Collator
-import com.ibm.icu.util.ULocale
 import dev.wildware.feed.server.db.Database
 import dev.wildware.feed.server.db.longOrNull
 import dev.wildware.feed.server.domain.Rows.plus
@@ -423,10 +421,9 @@ class Reads(private val db: Database, private val clock: () -> Long = System::cu
                 put("expiresAt", isoOf((request["expiresAt"] as JsonPrimitive).content.toLong()))
             }
         }
-        val collator = Collator.getInstance(ULocale.ROOT)
         val sorted = active.sortedWith { a, b ->
             val pinned = (if (b[3] as Boolean) 1 else 0) - (if (a[3] as Boolean) 1 else 0)
-            if (pinned != 0) pinned else collator.compare(a[2] as String, b[2] as String)
+            if (pinned != 0) pinned else LocaleCompare.compare(a[2] as String, b[2] as String)
         }
         return buildJsonObject {
             put("at", isoOf(now))
