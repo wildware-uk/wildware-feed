@@ -62,6 +62,8 @@ class FakeServer {
         LiveAgentView(agentId = "a1", name = "forge", lastHeartbeatAt = now(), host = "build-box", cwd = "/work/garden-game", model = "claude-opus-5-5"),
     )
     var notifications = listOf<NotificationView>()
+    /** This device's alert choice, as `{"prefs":…}` JSON. */
+    var alertPrefs = """{"prefs":null}"""
     var seq = 10L
 
     /** Make every write fail, as when the server is down: the outbox keeps them waiting. */
@@ -95,6 +97,10 @@ class FakeServer {
             return when {
                 path == "/api/messages" -> ok("""{"message":{"id":"m-new","author":"human","body":"sent","createdAt":1}}""", HttpStatusCode.Created)
                 path.endsWith("/reactions") -> ok("""{"reactions":[],"on":true}""")
+                path == "/api/devices/current/alert-prefs" -> {
+                    alertPrefs = body.replace("\"prefs\"", "\"ok\":true,\"prefs\"")
+                    ok(alertPrefs)
+                }
                 path == "/api/media" -> ok("""{"media":{"id":"md-up","kind":"image","mime":"image/png","status":"pending"}}""", HttpStatusCode.Created)
                 else -> ok("{}")
             }
@@ -119,6 +125,7 @@ class FakeServer {
             }
             "/api/messages" -> ok(json.encodeToString(MessagesSnapshot.serializer(), MessagesSnapshot(seq = seq, messages = messages, reactions = reactions)))
             "/api/snapshot/requests" -> ok(json.encodeToString(RequestsSnapshot.serializer(), RequestsSnapshot(seq, requests = requests)))
+            "/api/devices/current/alert-prefs" -> ok(alertPrefs)
             "/api/snapshot/agents" -> ok(json.encodeToString(AgentsSnapshot.serializer(), AgentsSnapshot(seq, agents = agents)))
             "/api/notifications" -> ok(json.encodeToString(NotificationsSnapshot.serializer(), NotificationsSnapshot(
                 seq, notifications = notifications, unseen = notifications.count { it.seenAt == null },

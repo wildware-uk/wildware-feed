@@ -277,7 +277,7 @@ last_seen_at, failures, alert_project_ids (JSON array text | NULL)`. No device e
 event (`domain/devices.ts` header).
 
 Device view (`http/owner/devices.ts:56-67`), key order:
-`{"id","name","createdAt":ISO,"lastSeenAt":ISO|null,"hasApns":bool,"hasLiveActivity":bool,"alertProjects":[slug…]|null}`.
+`{"id","name","createdAt":ISO,"lastSeenAt":ISO|null,"hasApns":bool,"hasLiveActivity":bool,"alertProjects":[slug…]|null,"alertPrefs":{types?,levels?,priorities?}|null}`.
 `hasLiveActivity` = `live_activity_token !== null` (push-to-start ignored). `alertProjects`
 maps stored ids → current slugs, silently dropping ids of deleted projects (`domain/devices.ts:178`).
 
@@ -353,6 +353,19 @@ base64url, no padding (43 chars); stores HMAC hex under `TOKEN_SECRET`.
   stored as JSON array of project ids (`domain/devices.ts:153`).
 - `[]` is valid and means "only alerts about no project" (`deviceWantsAlert`, `domain/devices.ts:184`).
 - 200 `{"ok":true}`.
+
+### `GET`/`PUT /api/devices/current/alert-prefs` (`devices.ts`, migration 047)
+
+Which kinds of alert the calling phone gets: the same three filters a Web Push subscription has.
+
+- Device bearer only (a cookie → 400 `this needs a device key: …`).
+- `GET` → 200 `{"prefs": {…} | null}` for the calling device.
+- `PUT` body must contain key `prefs` → else 400 `send prefs: { types, levels, priorities }, or null`.
+- `prefs` is checked by `assertPushPrefs` (`domain/push.ts`): `null`/`{}` → stored NULL (every alert);
+  not an object → 400 `preferences must be an object, or null for the default`; each of `types`
+  (`request`, `update`, `message`, `comment`), `levels`, `priorities` must be a list of known words
+  → else 400 `<field> must be a list` / `<field> must be any of: …`; deduped.
+- Stored as JSON in `owner_devices.alert_prefs`. 200 `{"ok":true,"prefs":<stored or null>}`.
 
 ---
 

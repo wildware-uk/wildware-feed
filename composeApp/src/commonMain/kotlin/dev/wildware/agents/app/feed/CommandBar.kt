@@ -188,6 +188,7 @@ private fun commandsFor(ui: FeedUi, query: String, extra: List<AppCommand>, clos
             add(Command("Actions", "New post", "Write to everyone in ${state.current.name}", Icons.Plus, done { ui.focusComposer() }))
         }
         if (wanted("Refresh", "reload")) add(Command("Actions", "Refresh", "Read everything again", Icons.Refresh, done { ui.emit(FeedEvent.Refresh) }))
+        if (wanted("Alerts on this device", "notifications", "settings")) add(Command("Actions", "Alerts on this device", "Which alerts this device gets", Icons.Sliders, done { ui.alertsOpen = true }))
         if (wanted("Switch theme", "dark", "light")) add(Command("Actions", "Switch light or dark", "", Icons.Moon, done { ui.emit(FeedEvent.ToggleTheme) }))
         extra.filter { wanted(it.title, *it.keywords.toTypedArray()) }.forEach { add(Command("Actions", it.title, it.detail, Icons.Download, done(it.run))) }
         if (wanted("Sign out")) add(Command("Actions", "Sign out", "Forget this device's key", Icons.SignOut, done { ui.emit(FeedEvent.SignOut) }))

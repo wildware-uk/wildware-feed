@@ -221,6 +221,7 @@ fun FeedScreen(
             if (ui.bellOpen) NotificationPanel(ui, if (phone) safeArea else SafeArea()) { path -> scope.launch { ui.goTo(OpenCard.fromPath(path)) } }
             ui.statusPick?.let { StatusPicker(ui, it, if (phone) safeArea else SafeArea()) }
             ui.deleting?.let { DeleteConfirm(ui, it) }
+            if (ui.alertsOpen) AlertSettingsSheet(ui, if (phone) safeArea else SafeArea())
         }
         FollowNavigation(ui, navigator)
         FollowSystemBack(ui, widthPx)
@@ -381,7 +382,7 @@ private fun PhoneFeed(ui: FeedUi, safeArea: SafeArea, startAt: String?, widthPx:
                 state = list,
                 contentPadding = remember(safeArea) { safeContentPadding(safeArea, horizontal = 16.dp, top = 8.dp, bottom = 96.dp) },
             ) {
-                item(key = "bar") { PhoneTopBar(state, onProjects = openDrawer, onTapBar = toTop, onSearch = { ui.commandOpen = true }, onBell = { ui.bellOpen = !ui.bellOpen }) }
+                item(key = "bar") { PhoneTopBar(state, onProjects = openDrawer, onTapBar = toTop, onSearch = { ui.commandOpen = true }, onBell = { ui.bellOpen = !ui.bellOpen }, onAccount = { ui.alertsOpen = true }) }
                 item(key = "header") { FeedHeader(ui, compact = true, Modifier.padding(top = 12.dp, bottom = 16.dp)) }
                 feedItems(ui, Density.Compact, list)
             }
@@ -428,7 +429,7 @@ private fun PhoneFeed(ui: FeedUi, safeArea: SafeArea, startAt: String?, widthPx:
 }
 
 @Composable
-private fun PhoneTopBar(state: FeedState, onProjects: () -> Unit, onTapBar: () -> Unit, onSearch: () -> Unit, onBell: () -> Unit) {
+private fun PhoneTopBar(state: FeedState, onProjects: () -> Unit, onTapBar: () -> Unit, onSearch: () -> Unit, onBell: () -> Unit, onAccount: () -> Unit) {
     val colors = AgentTheme.colors
     val shape = AgentTheme.shapes.pill
     Row(
@@ -448,7 +449,7 @@ private fun PhoneTopBar(state: FeedState, onProjects: () -> Unit, onTapBar: () -
         PhoneWaitingButton()
         IconAction(Icons.Search, "Search", onClick = onSearch)
         BellButton(state.bell.unseen) { onBell() }
-        Box(Modifier.pressable("Your account", CircleShape) {}, contentAlignment = Alignment.Center) {
+        Box(Modifier.pressable("Alerts on this device", CircleShape, onClick = onAccount), contentAlignment = Alignment.Center) {
             Avatar(state.owner, 30.dp)
         }
     }

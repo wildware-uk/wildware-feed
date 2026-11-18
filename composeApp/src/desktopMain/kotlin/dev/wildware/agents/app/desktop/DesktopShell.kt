@@ -83,7 +83,7 @@ class DesktopShell(
         val rules = NotificationRules()
         combine(dashboard.ready, dashboard.waiting, dashboard.everything.state, dashboard.status) { ready, waiting, feed, status ->
             tray.show(TrayLook.of(waiting.size, offline = status == StreamStatus.Offline))
-            rules.next(ready, waiting, feed)
+            rules.next(ready, waiting, feed, session.alerts.value.prefs)
         }.collectLatest { notices ->
             if (mutableSettings.value.doNotDisturb || windowFocused()) return@collectLatest
             notices.forEach { notice -> notifier.show(notice) { open(notice.focusId) } }

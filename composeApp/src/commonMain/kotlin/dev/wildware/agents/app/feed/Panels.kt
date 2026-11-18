@@ -217,7 +217,7 @@ fun Sidebar(
             }
             Spacer(Modifier.height(18.dp))
         }
-        OwnerRow(state.owner, onToggleTheme = { ui.emit(FeedEvent.ToggleTheme) }) { ui.emit(FeedEvent.SignOut) }
+        OwnerRow(state.owner, onAlerts = { ui.alertsOpen = true }, onToggleTheme = { ui.emit(FeedEvent.ToggleTheme) }) { ui.emit(FeedEvent.SignOut) }
     }
 }
 
@@ -279,7 +279,7 @@ private fun AgentRow(agent: Agent) {
 }
 
 @Composable
-private fun OwnerRow(owner: Author.Owner, onToggleTheme: () -> Unit, onSignOut: () -> Unit) {
+private fun OwnerRow(owner: Author.Owner, onAlerts: () -> Unit, onToggleTheme: () -> Unit, onSignOut: () -> Unit) {
     val colors = AgentTheme.colors
     Row(
         Modifier
@@ -288,10 +288,16 @@ private fun OwnerRow(owner: Author.Owner, onToggleTheme: () -> Unit, onSignOut: 
             .padding(horizontal = 18.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Avatar(owner, 28.dp)
-        Column(Modifier.padding(start = 10.dp).weight(1f)) {
-            Text(owner.name, color = colors.text, style = AgentTheme.type.label)
-            MetaText("Owner")
+        // You and your settings: the alerts this device gets, as the avatar opens on a phone.
+        Row(
+            Modifier.weight(1f).clip(AgentTheme.shapes.small).pressable("Alerts on this device", AgentTheme.shapes.small, onClick = onAlerts),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Avatar(owner, 28.dp)
+            Column(Modifier.padding(start = 10.dp).weight(1f)) {
+                Text(owner.name, color = colors.text, style = AgentTheme.type.label, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                MetaText("Alerts")
+            }
         }
         IconAction(Icons.Moon, if (AgentTheme.colors.isDark) "Switch to light" else "Switch to dark", onClick = onToggleTheme)
         IconAction(Icons.SignOut, "Sign out", onClick = onSignOut)

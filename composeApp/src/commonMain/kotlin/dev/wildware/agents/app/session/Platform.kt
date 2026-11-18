@@ -43,6 +43,11 @@ class AppPlatform(
     val feedCache: TextStore = MemoryTextStore(),
     /** Hands media to the system. Null uses the platform's own; tests pass a fake. */
     val media: MediaHandler? = null,
+    /**
+     * Whether the dashboard pushes this device its alerts (an iPhone). Otherwise the app raises
+     * its own while it runs, which covers questions and replies only.
+     */
+    val pushAlerts: Boolean = false,
 ) {
     companion object {
         /** Everything in memory: for tests and previews. */

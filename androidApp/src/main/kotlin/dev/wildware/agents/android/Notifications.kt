@@ -124,7 +124,7 @@ class Alerts(
         val rules = NotificationRules()
         combine(dashboard.ready, dashboard.waiting, dashboard.everything.state) { ready, waiting, feed ->
             onWaiting(waiting.size)
-            rules.next(ready, waiting, feed)
+            rules.next(ready, waiting, feed, session.alerts.value.prefs)
         }.collectLatest { notices ->
             if (onScreen()) return@collectLatest
             notices.forEach(notifier::show)

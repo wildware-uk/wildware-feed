@@ -182,6 +182,27 @@ class DashboardClientTest {
     }
 
     @Test
+    fun `the device reads which alerts it chose`() = runTest {
+        val prefs = client { json("""{"prefs":{"types":["request","update"],"levels":["error"]}}""") }.alertPrefs()
+
+        val (request, _) = seen.single()
+        assertEquals(HttpMethod.Get, request.method)
+        assertEquals("https://dash.test/api/devices/current/alert-prefs", request.url.toString())
+        assertEquals(AlertPrefs(types = listOf("request", "update"), levels = listOf("error")), prefs)
+        assertEquals(null, client { json("""{"prefs":null}""") }.alertPrefs())
+    }
+
+    @Test
+    fun `the device saves its choice and every alert is null`() = runTest {
+        val saved = client { json("""{"ok":true,"prefs":{"types":["request"]}}""") }.setAlertPrefs(AlertPrefs(types = listOf("request")))
+        client { json("""{"ok":true,"prefs":null}""") }.setAlertPrefs(null)
+
+        assertEquals(AlertPrefs(types = listOf("request")), saved)
+        assertEquals(listOf(HttpMethod.Put, HttpMethod.Put), seen.map { it.first.method })
+        assertEquals(listOf("""{"prefs":{"types":["request"]}}""", """{"prefs":null}"""), seen.map { it.second })
+    }
+
+    @Test
     fun `a focus filter names the projects that may still alert`() = runTest {
         client { json("""{"ok":true}""") }.setAlertProjects(listOf("garden-game", "harbor-app", "garden-game"))
 

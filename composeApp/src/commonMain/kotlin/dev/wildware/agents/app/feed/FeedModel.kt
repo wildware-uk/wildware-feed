@@ -2,6 +2,7 @@
 
 package dev.wildware.agents.app.feed
 
+import dev.wildware.agents.AlertPrefs
 import androidx.compose.runtime.Immutable
 import kotlin.experimental.ExperimentalObjCName
 import kotlin.native.ObjCName
@@ -334,6 +335,8 @@ data class FeedState(
     /** Every word the projects on screen use for their cards, for the tag picker. */
     val tags: List<CardTag> = emptyList(),
     val bell: Bell = Bell(),
+    /** Which alerts this device gets. */
+    val alerts: AlertSettings = AlertSettings(),
 ) {
     fun item(id: String): FeedItem? = sections.firstNotNullOfOrNull { s -> s.items.firstOrNull { it.id == id } }
 }
@@ -353,6 +356,13 @@ data class BellItem(
     val unread: Boolean,
     val path: String,
 )
+
+/**
+ * Which alerts this device gets, as the dashboard keeps it. [loaded] is false until it has been
+ * read; [problem] says why it couldn't be read or saved.
+ */
+@Immutable
+data class AlertSettings(val prefs: AlertPrefs? = null, val loaded: Boolean = false, val problem: String? = null)
 
 /** The live connection, as the header says it. */
 enum class LinkStatus(val label: String) {

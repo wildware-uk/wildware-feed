@@ -1,5 +1,6 @@
 package dev.wildware.agents.app.desktop
 
+import dev.wildware.agents.AlertPrefs
 import dev.wildware.agents.FeedCard
 import dev.wildware.agents.FeedState
 import dev.wildware.agents.MessageView
@@ -34,7 +35,8 @@ class NotificationRules(private val maxBody: Int = 140) {
     private val seen = HashSet<String>()
     private var watermark = Long.MIN_VALUE
 
-    fun next(ready: Boolean, waiting: List<RequestCard>, feed: FeedState): List<DesktopNotice> {
+    /** What changed since the last call that deserves a notice. [prefs] is the device's choice of alerts; null is all. */
+    fun next(ready: Boolean, waiting: List<RequestCard>, feed: FeedState, prefs: AlertPrefs? = null): List<DesktopNotice> {
         if (!ready) return emptyList()
         val threads = threadsOf(feed, waiting)
         if (!baselined) {
@@ -48,6 +50,7 @@ class NotificationRules(private val maxBody: Int = 140) {
         val notices = mutableListOf<DesktopNotice>()
         for (card in waiting) {
             if (!seen.add(requestKey(card.id))) continue
+            if (!AlertPrefs.allows(prefs, AlertPrefs.Request)) continue
             notices += DesktopNotice(requestKey(card.id), title(card.agentName, card.projectName), plain(card.request.question), card.id)
         }
         for (thread in threads) {
@@ -57,6 +60,7 @@ class NotificationRules(private val maxBody: Int = 140) {
                 if (message.createdAt < watermark) continue
                 if (message.agentId == null) continue
                 if (!answersOwner(message, thread) && !mentionsOwner(message.body)) continue
+                if (!AlertPrefs.allows(prefs, AlertPrefs.Message)) continue
                 notices += DesktopNotice(messageKey(message.id), title(line.authorName, thread.projectName), plain(message.body), thread.cardId)
             }
         }

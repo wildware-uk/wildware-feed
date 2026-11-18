@@ -11,6 +11,7 @@ import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.test.performTextReplacement
 import dev.wildware.agents.RequestConfig
 import dev.wildware.agents.RequestView
@@ -326,6 +327,20 @@ class EngineWiringTest {
         app()
         // Drawn a line each; said in one go.
         waitForNode(hasContentDescription("forge, online, claude-opus-5-5, on build-box, in /work/garden-game, last seen just now"))
+    }
+
+    @Test
+    fun theAlertSettingsOpenOnWhatIsSavedAndSaveEachChange() = runDesktopComposeUiTest(width = 1440, height = 900) {
+        server.alertPrefs = """{"prefs":{"types":["request","message"]}}"""
+        app()
+        waitFor("Fixed the unread counts")
+        waitForNode(hasContentDescription("Alerts on this device")).performClick()
+        // A desktop raises its own alerts, so it offers the two kinds it has.
+        waitForNode(hasText("Questions") and SemanticsMatcher.expectValue(SemanticsProperties.ToggleableState, ToggleableState.On))
+        waitForNode(hasText("Replies to me") and SemanticsMatcher.expectValue(SemanticsProperties.ToggleableState, ToggleableState.On))
+        waitForNode(hasText("Questions")).performClick()
+        assertEquals("""{"prefs":{"types":["message"]}}""", waitForWrite("PUT", "/api/devices/current/alert-prefs"))
+        waitForNode(hasText("Questions") and SemanticsMatcher.expectValue(SemanticsProperties.ToggleableState, ToggleableState.Off))
     }
 
     @Test

@@ -23,6 +23,9 @@ import dev.wildware.agents.app.feed.WorkStatus
 import dev.wildware.agents.app.feed.FileAttachment
 import dev.wildware.agents.app.feed.Sound
 import dev.wildware.agents.app.feed.VideoSource
+import dev.wildware.agents.AlertPrefs
+import dev.wildware.agents.app.feed.AlertSettings
+import dev.wildware.agents.app.feed.LocalPushAlerts
 import dev.wildware.agents.app.feed.FeedItem
 import dev.wildware.agents.app.feed.Gallery
 import dev.wildware.agents.app.feed.MenuTarget
@@ -298,6 +301,22 @@ class ScreenshotTest {
             for (dark in listOf(false, true)) {
                 shoot("${size.label}-${if (dark) "dark" else "light"}-bell", size, dark) {
                     AgentsPreview(dark = dark, state = state, safeArea = size.safeArea, preview = ScreenPreview(bellOpen = true))
+                }
+            }
+        }
+    }
+
+    /** The alert settings: a phone that is pushed its alerts has every filter, a desktop two. */
+    @Test
+    fun alertSettings() {
+        val alerts = AlertSettings(AlertPrefs(types = listOf("request", "message", "update"), levels = listOf("error", "warn")), loaded = true)
+        val state = FakeFeed.state.copy(alerts = alerts)
+        for (size in Size.entries) {
+            for (dark in listOf(false, true)) {
+                shoot("${size.label}-${if (dark) "dark" else "light"}-alerts", size, dark) {
+                    CompositionLocalProvider(LocalPushAlerts provides (size == Size.Phone)) {
+                        AgentsPreview(dark = dark, state = state, safeArea = size.safeArea, preview = ScreenPreview(alertsOpen = true))
+                    }
                 }
             }
         }

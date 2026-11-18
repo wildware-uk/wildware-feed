@@ -245,6 +245,20 @@ class DashboardClient(
         }.requireSuccess()
     }
 
+    /** Which alerts this device chose, or null for every alert. */
+    @Throws(Exception::class)
+    suspend fun alertPrefs(): AlertPrefs? = http.get("api/devices/current/alert-prefs") { authorise() }.decoded<AlertPrefsBody>().prefs
+
+    /** Saves which alerts this device wants (null for every alert); answers what the dashboard kept. */
+    @Throws(Exception::class)
+    suspend fun setAlertPrefs(prefs: AlertPrefs?): AlertPrefs? =
+        http.put("api/devices/current/alert-prefs") {
+            authorise()
+            jsonBody(buildJsonObject {
+                put("prefs", prefs?.let { json.encodeToJsonElement(AlertPrefs.serializer(), it) } ?: JsonNull)
+            })
+        }.decoded<AlertPrefsBody>().prefs
+
     /** Swaps the web view's login cookie for a long-lived device key. */
     @Throws(Exception::class)
     suspend fun registerDevice(name: String, sessionCookie: String): DeviceRegistration =
@@ -423,3 +437,6 @@ class DashboardClient(
         else -> "Shared ${attachments.size} files from my phone"
     }
 }
+
+@kotlinx.serialization.Serializable
+internal data class AlertPrefsBody(val prefs: AlertPrefs? = null)

@@ -331,8 +331,8 @@ config error → treated as off (`src/domain/apns.ts:59-65`).
 
 ### 6.3 Selection
 
-`sendApnsAlert` (`:416-446`): `notifies(null, about)` (always true with defaults — phones have
-no type prefs); devices with `apnsToken !== null` and `deviceWantsAlert`:
+`sendApnsAlert` (`:416-446`): devices with `apnsToken !== null`, `notifies(device.alertPrefs, about)`
+(the phone's own kinds/levels/priorities, migration 047; NULL = every alert), and `deviceWantsAlert`:
 `projectId === null || alertProjectIds === null || alertProjectIds.includes(projectId)`
 (`src/domain/devices.ts:184-190`). Same three events as Web Push (`:462-501`), same null rules
 (builders are reused from `push.ts`).
@@ -563,8 +563,8 @@ Feeds `GET /api/summary` and the Live Activity.
 7. `replyMessage` does not check `deletedAt`; the bell builder does (`push.ts:563` vs
    `notifications.ts:175`). Harmless at creation time.
 8. A message addressed with `@name` only to other agents still pushes the owner as a "comment".
-9. Phones have no per-type prefs: `sendApnsAlert` uses `notifies(null, …)`, so `alert-projects`
-   is the only filter. Web Push has type/level/priority prefs but no project filter.
+9. Phones filter by kind/level/priority (`alert-prefs`) and by project (`alert-projects`). Web Push
+   has type/level/priority prefs but no project filter.
 10. Live Activity uses the device's **alert** token's `apns_environment`. A phone that registered LA
     tokens but never an alert token goes to production, which breaks sandbox builds
     (`apns.ts:259`).

@@ -1,5 +1,6 @@
 package dev.wildware.agents.app
 
+import dev.wildware.agents.AlertPrefs
 import dev.wildware.agents.FeedCard
 import dev.wildware.agents.FeedState
 import dev.wildware.agents.MessageView
@@ -73,6 +74,31 @@ class DesktopIntegrationTest {
         val notices = rules.next(true, listOf(question("r1", "Ship **v2** to [prod](https://x)?")), feed())
         assertEquals(listOf(DesktopNotice("request-r1", "Builder · Mega", "Ship v2 to prod?", "r1")), notices)
         assertTrue(rules.next(true, listOf(question("r1")), feed()).isEmpty())
+    }
+
+    @Test
+    fun `a device that turned questions off is not told about them`() {
+        val rules = NotificationRules()
+        rules.next(true, emptyList(), feed())
+
+        val off = AlertPrefs(types = listOf(AlertPrefs.Message))
+        assertTrue(rules.next(true, listOf(question("r1")), feed(), off).isEmpty())
+        assertEquals(listOf("request-r2"), rules.next(true, listOf(question("r2")), feed(), null).map { it.key })
+    }
+
+    @Test
+    fun `a device that turned replies off is not told about them`() {
+        val rules = NotificationRules()
+        val talked = message("m1", "human", "Can you check?", 2_000)
+        rules.next(true, emptyList(), feed(update("u1", talked)))
+
+        val notices = rules.next(
+            true,
+            emptyList(),
+            feed(update("u1", talked, message("m2", "agent:a1", "Checked", 5_000, updateId = "u1"))),
+            AlertPrefs(types = listOf(AlertPrefs.Request)),
+        )
+        assertTrue(notices.isEmpty())
     }
 
     @Test

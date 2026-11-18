@@ -80,6 +80,12 @@ object Icons {
     val Play = icon("play", "M7 4 19 12 7 20Z")
     val Pause = icon("pause", "M8 5V19", "M16 5V19")
     val File = icon("file", "M14 2H6A2 2 0 0 0 4 4V20A2 2 0 0 0 6 22H18A2 2 0 0 0 20 20V8Z", "M14 2V8H20")
+    val Sliders = icon(
+        "sliders",
+        "M4 6H13", "M19 6H20", circle(16f, 6f, 2.5f),
+        "M4 12H7", "M13 12H20", circle(10f, 12f, 2.5f),
+        "M4 18H13", "M19 18H20", circle(16f, 18f, 2.5f),
+    )
 }
 
 private fun icon(name: String, vararg paths: String): ImageVector =

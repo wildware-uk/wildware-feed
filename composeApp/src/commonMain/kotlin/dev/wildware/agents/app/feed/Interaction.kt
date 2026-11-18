@@ -1,5 +1,6 @@
 package dev.wildware.agents.app.feed
 
+import dev.wildware.agents.AlertPrefs
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.State
@@ -58,6 +59,8 @@ sealed interface FeedEvent {
     data class ChooseStatus(val targetId: String, val current: WorkStatus?) : FeedEvent
     /** Set a card's work state, or null for "Not work". */
     data class SetStatus(val targetId: String, val status: WorkStatus?) : FeedEvent
+    /** Save which alerts this device gets; null is every alert. */
+    data class SetAlertPrefs(val prefs: AlertPrefs?) : FeedEvent
     data class DropUnsent(val outboxId: String) : FeedEvent
     data object MarkAllRead : FeedEvent
     data object ToggleTheme : FeedEvent
@@ -163,6 +166,8 @@ data class ScreenPreview(
     val statusPick: StatusPick? = null,
     /** The feed's filter chip, already chosen. */
     val filter: FeedFilter = FeedFilter.All,
+    /** The alert settings, open. */
+    val alertsOpen: Boolean = false,
 )
 
 /**
@@ -219,6 +224,8 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
     var bellOpen by mutableStateOf(preview.bellOpen)
     /** The work-state choice, when it is open. */
     var statusPick by mutableStateOf(preview.statusPick)
+    /** The alert settings for this device. */
+    var alertsOpen by mutableStateOf(preview.alertsOpen)
     val composerFocus = FocusRequester()
 
     /** Words and files shared in from another app, waiting for the next project composer on screen. */

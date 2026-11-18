@@ -28,6 +28,7 @@ import dev.wildware.agents.app.feed.FeedState
 import dev.wildware.agents.app.feed.LocalMediaAuth
 import dev.wildware.agents.app.feed.LocalMediaHandler
 import dev.wildware.agents.app.feed.rememberPlatformMediaHandler
+import dev.wildware.agents.app.feed.LocalPushAlerts
 import dev.wildware.agents.app.feed.LocalFilePicker
 import dev.wildware.agents.app.feed.LocalVoiceInput
 import dev.wildware.agents.app.feed.FilePicker
@@ -107,6 +108,7 @@ fun AgentsApp(
                         LocalMediaAuth provides MediaAuth(session.client.serverUrl, session.client.authorizationHeader),
                         LocalFilePicker provides platform.filePicker,
                         LocalMediaHandler provides (platform.media ?: rememberPlatformMediaHandler(platform.httpEngine)),
+                        LocalPushAlerts provides platform.pushAlerts,
                         LocalVoiceInput provides platform.voiceInput,
                         LocalAppCommands provides commands,
                     ) {

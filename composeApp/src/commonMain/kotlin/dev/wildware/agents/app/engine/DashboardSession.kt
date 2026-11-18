@@ -28,6 +28,9 @@ import dev.wildware.agents.app.session.AppPlatform
 import dev.wildware.agents.app.session.SavedSession
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import dev.wildware.agents.AlertPrefs
+import dev.wildware.agents.app.feed.AlertSettings
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -78,6 +81,11 @@ class DashboardSession(
     private val actions = OwnerActions(outbox)
     private val mapper = FeedMapper(client.serverUrl, clock)
 
+    private val mutableAlerts = MutableStateFlow(AlertSettings())
+
+    /** Which alerts this device gets, read from the dashboard when the session starts. */
+    val alerts: StateFlow<AlertSettings> = mutableAlerts
+
     private val selected = MutableStateFlow<String?>(null)
     private var feed: Feed = dashboard.everything
     private val feeds = MutableStateFlow(feed)
@@ -99,18 +107,48 @@ class DashboardSession(
         dashboard.everything.state,
         dashboard.projects,
         dashboard.notifications,
-    ) { shown, everything, projects, notifications ->
+        mutableAlerts,
+    ) { shown, everything, projects, notifications, alerts ->
         // Search looks across every project's loaded cards, whichever feed is on screen.
         val all = if (shown.current.slug == null) shown else mapper.map(everything, projects, emptyList(), emptyList(), null)
         // Parse what the feed will draw before handing it over, here off the UI thread, so a card
         // that scrolls into view (or arrives) finds its markdown ready instead of parsing mid-frame.
-        shown.copy(searchIndex = searchEntriesOf(all.sections), bell = mapper.bell(notifications)).also { MarkdownCache.warm(markdownIn(it).asIterable()) }
+        shown.copy(searchIndex = searchEntriesOf(all.sections), bell = mapper.bell(notifications), alerts = alerts).also { MarkdownCache.warm(markdownIn(it).asIterable()) }
     }.stateIn(scope, SharingStarted.Eagerly, mapper.map(feed.state.value, emptyList(), emptyList(), emptyList(), null))
 
     /** True once the dashboard has stopped taking this device's key. */
     val signedOut: StateFlow<Boolean> = dashboard.status
         .map { it == StreamStatus.SignedOut }
         .stateIn(scope, SharingStarted.Eagerly, false)
+
+    private suspend fun loadAlerts() {
+        mutableAlerts.value = try {
+            AlertSettings(client.alertPrefs(), loaded = true)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failed: Throwable) {
+            AlertSettings(problem = "Couldn't read this device's alert settings. The dashboard may need updating.")
+        }
+    }
+
+    /**
+     * Shows the new choice at once and saves it. A save that fails puts the old choice back and says
+     * so, so the screen never claims a setting the dashboard doesn't have.
+     */
+    private fun saveAlerts(prefs: AlertPrefs?) {
+        val before = mutableAlerts.value
+        if (!before.loaded) return
+        mutableAlerts.value = before.copy(prefs = prefs, problem = null)
+        scope.launch {
+            mutableAlerts.value = try {
+                AlertSettings(client.setAlertPrefs(prefs), loaded = true)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failed: Throwable) {
+                before.copy(problem = "Couldn't save that. Check the connection and try again.")
+            }
+        }
+    }
 
     /** Marks every card on the all-projects feed read, and every waiting question: the tray's "Mark all read". */
     fun markAllRead() {
@@ -124,6 +162,7 @@ class DashboardSession(
     fun start() {
         outbox.start()
         dashboard.start()
+        scope.launch { loadAlerts() }
         // Another process queued, sent or dropped something: show it, and send what is new.
         scope.launch { outboxChanged.collect { outbox.reload() } }
         scope.launch { foreground.collect { resume() } }
@@ -194,6 +233,7 @@ class DashboardSession(
             is FeedEvent.MarkAllRead -> markAllRead()
             is FeedEvent.OpenNotification -> dashboard.markNotificationsSeen(listOf(event.id))
             is FeedEvent.ClearNotifications -> dashboard.markNotificationsSeen(null)
+            is FeedEvent.SetAlertPrefs -> saveAlerts(event.prefs)
             is FeedEvent.SelectProject -> select(event.slug)
             is FeedEvent.Refresh -> {
                 dashboard.revive(reconnect = true)

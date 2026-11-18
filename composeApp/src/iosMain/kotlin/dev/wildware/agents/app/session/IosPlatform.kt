@@ -68,6 +68,7 @@ fun iosPlatform(
         outboxChanged = OutboxSignals.changes,
         foreground = AppLifecycle.foregrounds,
         feedCache = IosTextStore(feedCache),
+        pushAlerts = true,
         clearLocalData = {
             outbox.clear()
             remove(readMarks)
