@@ -558,6 +558,13 @@ internal class ThreadsReader(
                 tracked { load(replace = true) }
                 continue
             }
+            // A project's feed that can't yet tell its own project's id can't sort a thread read's
+            // messages by project: read its whole scope instead, which the server sorts.
+            if (projectSlug != null && projectId() == null) {
+                wanted.clear()
+                wholeWanted = true
+                continue
+            }
             val key = wanted.first()
             wanted.remove(key)
             threadReads += 1
@@ -610,7 +617,10 @@ internal class ThreadsReader(
             is ThreadKey.Post -> message.id == key.id || message.replyTo == key.id
             is ThreadKey.Task -> message.taskId == key.id
         }
-        val fresh = part.messages.filter(::inThread)
+        // A thread read isn't scoped to a project: some events (an ack, a finished picture) don't
+        // say which project their message is in. A project's feed keeps only its own.
+        val scope = projectSlug?.let { projectId() }
+        val fresh = part.messages.filter { inThread(it) && (projectSlug == null || it.projectId == scope) }
         val replaced = snapshot.messages.filter(::inThread).mapTo(HashSet()) { it.id } + fresh.map { it.id }
         val current = snapshot
         snapshot = keepAdopted(current.copy(
