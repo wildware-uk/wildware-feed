@@ -98,7 +98,8 @@ internal class FeedMapper(
                 failedId = failed.firstOrNull()?.id,
                 failedMessage = failed.firstOrNull()?.lastError,
             ),
-            loaded = feed.loaded,
+            // Cards kept from last time are shown as loaded: the read that replaces them follows.
+            loaded = feed.loaded || feed.cached,
             loading = feed.loading,
             hasMore = feed.hasMore,
         )

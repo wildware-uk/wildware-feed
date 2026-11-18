@@ -3,6 +3,7 @@ package dev.wildware.agents.app.engine
 import dev.wildware.agents.CardKinds
 import dev.wildware.agents.CardRef
 import dev.wildware.agents.Dashboard
+import dev.wildware.agents.FeedCache
 import dev.wildware.agents.DraftPrefix
 import dev.wildware.agents.DashboardClient
 import dev.wildware.agents.Feed
@@ -71,7 +72,11 @@ class DashboardSession(
     private val outboxChanged = platform.outboxChanged
     private val foreground = platform.foreground
     /** The engine itself, for what lives outside the feed screen: the desktop tray and notifications. */
-    val dashboard = Dashboard(client, scope, ReadMarks(platform.readMarks), outbox)
+    val dashboard = Dashboard(
+        client, scope, ReadMarks(platform.readMarks), outbox,
+        // Opens onto the feed as it last was on this device, for this dashboard and key only.
+        cache = FeedCache(platform.feedCache, FeedCache.ownerOf(client.serverUrl, client.authorizationHeader)),
+    )
     private val actions = OwnerActions(outbox)
     private val mapper = FeedMapper(client.serverUrl, clock)
 

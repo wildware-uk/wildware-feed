@@ -52,6 +52,8 @@ fun iosPlatform(
     val caches = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, true).firstOrNull() as? String
     makeDir(dataDir)
     val readMarks = "$dataDir/read-marks.json"
+    // In Caches: iOS may clear it when space runs short, which costs only a slower next start.
+    val feedCache = (caches ?: dataDir) + "/feed-cache.json"
     val outbox = IosOutboxStorage(outboxDir)
     outbox.adoptOldAppOutbox("$dataDir/AppOutbox")
     return AppPlatform(
@@ -65,9 +67,11 @@ fun iosPlatform(
         voiceInput = voiceInput,
         outboxChanged = OutboxSignals.changes,
         foreground = AppLifecycle.foregrounds,
+        feedCache = IosTextStore(feedCache),
         clearLocalData = {
             outbox.clear()
             remove(readMarks)
+            remove(feedCache)
         },
     )
 }

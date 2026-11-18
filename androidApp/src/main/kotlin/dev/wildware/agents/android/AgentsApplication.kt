@@ -126,6 +126,8 @@ fun androidPlatform(context: Context, hooks: ActivityHooks, scope: CoroutineScop
     val dir = context.filesDir
     val outbox = FileOutboxStorage(File(dir, "outbox"))
     val readMarks = File(dir, "read-marks.json")
+    // In the cache folder: Android may clear it when space runs short, which costs only a slower next start.
+    val feedCache = File(context.cacheDir, "feed-cache.json")
     return AppPlatform(
         sessions = SealedSessionStore(File(dir, "session.bin"), KeystoreSecretBox()),
         readMarks = FileTextStore(readMarks),
@@ -136,8 +138,10 @@ fun androidPlatform(context: Context, hooks: ActivityHooks, scope: CoroutineScop
         clearLocalData = {
             outbox.clear()
             readMarks.delete()
+            feedCache.delete()
         },
         settings = FileTextStore(File(dir, "settings.txt")),
+        feedCache = FileTextStore(feedCache),
         filePicker = AndroidPhotoPicker(hooks, context.contentResolver, scope),
         // No recogniser on the phone (some builds without Google's apps): no mic, rather than one that can't work.
         voiceInput = if (SpeechRecognizer.isRecognitionAvailable(context)) SpeechVoiceInput(context, hooks) else null,

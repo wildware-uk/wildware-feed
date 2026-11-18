@@ -38,6 +38,8 @@ class AppPlatform(
     val outboxChanged: Flow<Unit> = emptyFlow(),
     /** Fires when the app comes back to the front after being away, so the live connection is renewed. */
     val foreground: Flow<Unit> = emptyFlow(),
+    /** The feed as it last was, so the app opens onto it at once. Removed by [clearLocalData]. */
+    val feedCache: TextStore = MemoryTextStore(),
 ) {
     companion object {
         /** Everything in memory: for tests and previews. */

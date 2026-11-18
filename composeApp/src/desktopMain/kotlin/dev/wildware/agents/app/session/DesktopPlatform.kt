@@ -113,6 +113,7 @@ fun desktopDeviceName(): String {
 fun desktopPlatform(dir: File = desktopConfigDir()): AppPlatform {
     val outbox = FileOutboxStorage(File(dir, "outbox").apply { mkdirs() })
     val readMarks = File(dir, "read-marks.json")
+    val feedCache = File(dir, "feed-cache.json")
     return AppPlatform(
         sessions = FileSessionStore(File(dir, "session.json")),
         readMarks = FileTextStore(readMarks),
@@ -123,8 +124,10 @@ fun desktopPlatform(dir: File = desktopConfigDir()): AppPlatform {
         clearLocalData = {
             outbox.clear()
             readMarks.delete()
+            feedCache.delete()
         },
         settings = FileTextStore(File(dir, "settings.txt")),
+        feedCache = FileTextStore(feedCache),
         filePicker = AwtFilePicker { java.awt.Frame.getFrames().firstOrNull { it.isActive } },
     )
 }
