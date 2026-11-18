@@ -18,6 +18,9 @@ import kotlin.concurrent.withLock
 class Database private constructor(private val connection: Connection) : AutoCloseable {
     private val lock = ReentrantLock()
 
+    /** Whether this thread is inside [withConnection] or [transaction] right now. */
+    val heldByCurrentThread: Boolean get() = lock.isHeldByCurrentThread
+
     /** Run [block] with the connection, alone. */
     fun <T> withConnection(block: (Connection) -> T): T = lock.withLock { block(connection) }
 

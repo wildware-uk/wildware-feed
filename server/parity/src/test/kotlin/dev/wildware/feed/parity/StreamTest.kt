@@ -14,7 +14,7 @@ import kotlin.time.Duration.Companion.seconds
 
 /** The live streams. Spec: server/spec/04-stream-and-events.md (numbers refer to its parity notes). */
 class StreamTest : ParityTest() {
-    private val ownerHeaders: io.ktor.client.request.HttpRequestBuilder.() -> Unit = { header(HttpHeaders.Cookie, owner.cookie) }
+    private val ownerHeaders: io.ktor.client.request.HttpRequestBuilder.() -> Unit get() = owner.auth
 
     private suspend fun lastSeq() = owner.get("/api/snapshot?limit=1").obj()["seq"].long
 
