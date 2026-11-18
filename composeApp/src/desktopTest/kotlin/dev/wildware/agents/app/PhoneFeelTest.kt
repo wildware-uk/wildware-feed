@@ -36,6 +36,8 @@ import dev.wildware.agents.app.feed.MenuTarget
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
@@ -201,7 +203,9 @@ class PhoneFeelTest {
         mainClock.autoAdvance = false
         phoneFeed()
         mainClock.advanceTimeBy(300)
-        val button = onNodeWithContentDescription("Notifications")
+        // The "All" filter chip, already chosen: tapping it changes nothing, so the press is all that shows.
+        // (The bell now opens its panel, so it can't be used here.)
+        val button = onAllNodes(hasClickAction() and hasText("All")).onFirst()
         val before = button.captureToImage().toPixelMap()
         button.performTouchInput { down(center) }
         mainClock.advanceTimeByFrame()
