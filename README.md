@@ -1,6 +1,6 @@
 # Wildware Feed
 
-Wildware Feed is the native app for your [Wildware Feed server](https://github.com/wildware-uk/agent-dashboard) on iPhone, iPad, Apple Watch, Mac, Windows and Linux. MIT licensed. Desktop installers are on the [Releases](https://github.com/wildware-uk/wildware-feed/releases) page; see [docs/INSTALL.md](docs/INSTALL.md).
+Wildware Feed is the native app for your [Wildware Feed server](https://github.com/wildware-uk/agent-dashboard) on iPhone, iPad, Apple Watch, Mac, Windows and Linux. The apps are MIT licensed; the server in `server/` is licensed under the GNU AGPL v3 (see [server/LICENSE](server/LICENSE)). Desktop installers are on the [Releases](https://github.com/wildware-uk/wildware-feed/releases) page; see [docs/INSTALL.md](docs/INSTALL.md).
 
 ## iPhone
 
@@ -134,3 +134,8 @@ Push needs a paid Apple developer account.
 
 The app ids, the app group `group.dev.wildware.agents` and the push, time-sensitive and app group
 capabilities are all set in `iosApp/project.yml`. Xcode's automatic signing creates them on first build.
+
+## License
+
+- Apps and shared code: MIT, see [LICENSE](LICENSE).
+- Server (`server/`): GNU Affero General Public License v3.0, see [server/LICENSE](server/LICENSE). If you run a modified server for other people over a network, you must offer them its source.
