@@ -89,7 +89,7 @@ class McpTransportTest : ParityTest() {
     fun `malformed transport requests are refused by the SDK`() = parity {
         assertEquals(406, raw("""{"jsonrpc":"2.0","id":1,"method":"ping"}""", accept = "application/json").status.value)
         // A text/plain POST is a "form" to SvelteKit's CSRF check: without a matching Origin it never reaches MCP.
-        assertEquals(403, raw("""{"jsonrpc":"2.0","id":1,"method":"ping"}""", type = ContentType.Text.Plain).status.value)
+        if (Parity.web) assertEquals(403, raw("""{"jsonrpc":"2.0","id":1,"method":"ping"}""", type = ContentType.Text.Plain).status.value)
         assertEquals(415, raw("""{"jsonrpc":"2.0","id":1,"method":"ping"}""", type = ContentType.Text.Plain, origin = Parity.baseUrl).status.value)
         val notJson = raw("{not json")
         assertEquals(400, notJson.status.value)

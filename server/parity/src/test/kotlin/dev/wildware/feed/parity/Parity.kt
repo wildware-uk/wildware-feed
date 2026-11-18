@@ -31,12 +31,20 @@ import kotlin.random.Random
  *                          data, e.g. `node build/cli.js` with the server's environment. The suite runs
  *                          `$PARITY_CLI mint-token <name>` (the token is the output line of 43 base64url
  *                          characters) and `$PARITY_CLI revoke-token <agent id>` (required)
+ * - PARITY_OWNER_AUTH      `device` to act as the owner with a device key instead of the login form
+ * - PARITY_WEB             `0` for a server without the deprecated website (no pages, no login form)
  * - PARITY_DATA_DIR        the server's DATA_DIR, only for checks that look at files on disk (optional)
  */
 object Parity {
     val baseUrl: String = env("PARITY_BASE_URL")?.trimEnd('/') ?: ""
     val adminPassword: String = env("PARITY_ADMIN_PASSWORD") ?: ""
     val cli: String = env("PARITY_CLI") ?: ""
+
+    /** How the owner signs in: `cookie` (the login form, default) or `device` (a device key). */
+    val ownerAuth: String = env("PARITY_OWNER_AUTH") ?: "cookie"
+
+    /** False for a server without the deprecated website (PARITY_WEB=0): no pages, no login form. */
+    val web: Boolean = env("PARITY_WEB") != "0"
 
     val configured: Boolean get() = baseUrl.isNotEmpty() && adminPassword.isNotEmpty() && cli.isNotEmpty()
 

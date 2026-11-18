@@ -10,6 +10,21 @@ carry the decided fixes below.
 Every claim cites `src/path.ts:line` in that tree. Each file ends with **Surprises** (bugs, traps,
 inconsistencies — encoded as they are, not fixed) and **Parity test notes** (black-box checks).
 
+## Scope of the Kotlin server
+
+The website is deprecated (not to be used or worked on). The Kotlin server ports what the native app
+and agents use: the owner JSON API (device sign-in and device keys), the live streams, MCP, uploads,
+media, push and the background jobs. It does **not** port the web pages, the
+`/login`/`/logout` forms, the session cookie, the static site and service worker, or SvelteKit's
+browser-only behaviours (the CSRF form check, 303 redirects to `/login`); where the TS server would
+redirect a stranger, the Kotlin server answers `401 {"error":"unauthenticated"}`. Share links are
+dropped too: no `/s/[token]` page, no `/s/[token]/media/…`, no `POST|DELETE /api/updates/[id]/share`
+(an owner gets the 404 JSON of an unknown API path), and an update in the snapshot never carries a
+`share` key, even when the database holds a live share from the TS server. No MCP tool makes share
+links, so `tools/list` is the same on both servers. `09-web-frontend.md`
+and the cookie and form parts of `01-config-and-auth.md` describe the TS server only. Parity tests
+for those parts are tagged `tsOnly`.
+
 ## Files
 
 | File | Covers |
@@ -92,6 +107,13 @@ Places where the Kotlin server cannot match the TS server exactly, kept small an
   and emoji, letters with a stroke, and compatibility characters, so realistic names sort the same
   (`LocaleCompareTest`). One tie still differs: names equal except for case and `ß`/`ss` sort
   `strasse` < `straße` < `Strasse` in Kotlin and `strasse` < `Strasse` < `straße` in Node.
+
+Deliberate differences, by decision rather than by limit (see "Scope of the Kotlin server" above):
+
+- **No website.** No pages, `/login`, `/logout`, session cookie or CSRF form check; strangers get
+  `401 {"error":"unauthenticated"}` instead of a redirect. Tests tagged `tsOnly`.
+- **No share links.** No `/s/...` routes, no `POST|DELETE /api/updates/[id]/share`, no `share` key on
+  updates. `MediaTest` 16 is tagged `tsOnly`.
 
 ## The parity suite
 

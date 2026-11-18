@@ -18,9 +18,11 @@ ref="${TS_SERVER_REF:-bef26e7be05aa0d2feb6e1eae9282e751d100abe}"
 remote="${TS_SERVER_REPO:-https://github.com/wildware-uk/agent-dashboard.git}"
 password="parity-$(openssl rand -hex 12)"
 # Phase 1: boot, auth and reads.
-kotlin_tests="${KOTLIN_TESTS:-SmokeTest AuthTest DatabaseTest McpToolsListTest ReadParityTest RateLimitTest}"
+# Phases 1-2: boot, auth, reads, writes, streams, the core MCP tools.
+kotlin_tests="${KOTLIN_TESTS:-SmokeTest AuthTest DatabaseTest McpToolsListTest ReadParityTest FeedApiTest RequestsTest DevicesTest StreamTest McpTransportTest RateLimitTest}"
 # Tests inside those classes that need a later phase.
-exclude_tags="${KOTLIN_EXCLUDE_TAGS:-media}"
+# tsOnly: the deprecated website (pages, login form, cookie, CSRF), which the Kotlin server does not have.
+exclude_tags="${KOTLIN_EXCLUDE_TAGS:-media,tsOnly}"
 
 work="$(mktemp -d "${TMPDIR:-/tmp}/parity-kt.XXXXXX")"
 server_pid=""
@@ -37,7 +39,9 @@ trap cleanup EXIT
 
 wait_for_server() {
     for _ in $(seq 90); do
-        if curl -fsS -o /dev/null "http://127.0.0.1:$port/login" 2>/dev/null; then return 0; fi
+        # Any HTTP answer will do: the Kotlin server has no /login page to ask for.
+        code="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$port/api/summary" 2>/dev/null || true)"
+        if [ -n "$code" ] && [ "$code" != "000" ]; then return 0; fi
         kill -0 "$server_pid" 2>/dev/null || { echo "server died:"; cat "$1"; return 1; }
         sleep 1
     done
@@ -121,6 +125,7 @@ for t in $kotlin_tests; do filters+=(--tests "*.$t"); done
 echo "== running against the Kotlin server: $kotlin_tests"
 status=0
 (cd "$repo_root" && env "${common_env[@]}" PARITY_CLI="$work/kt-cli.sh" PARITY_READS=compare PARITY_EXCLUDE_TAGS="$exclude_tags" \
+    PARITY_OWNER_AUTH=device PARITY_WEB=0 \
     timeout 1500 ./gradlew --no-daemon -Dorg.gradle.jvmargs=-Xmx3g :server-parity:test "${filters[@]}" ${@+"$@"}) \
     || status=$?
 if [ "$status" -ne 0 ]; then echo "== Kotlin server log (last 80 lines)"; tail -80 "$work/kt.log"; fi

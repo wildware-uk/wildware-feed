@@ -5,6 +5,17 @@ drop-in: same HTTP API, streams, MCP tools, SQLite file and secrets. It is also 
 desktop app can host itself (`spec/10-embedding.md`). The contract is `spec/`; the referee is the
 parity suite in `parity/`, run against both servers in CI.
 
+## Scope
+
+The website is deprecated: it is not ported and not worked on. The Kotlin server serves what the
+native app and agents use — the owner JSON API with device sign-in and device keys, the live streams,
+MCP, uploads and media, push, and the background jobs. Not ported: the web pages, the
+`/login` and `/logout` forms, the session cookie, the static site and service worker, and SvelteKit's
+browser-only behaviours (the CSRF form check, redirects to `/login`), and share links: with no
+`/s/[token]` page to open, a link is pointless, so their owner routes and the `share` key on updates go
+too. A stranger on an owner path
+gets `401 {"error":"unauthenticated"}` everywhere. Parity tests for the website are tagged `tsOnly`.
+
 ## Shape
 
 - Gradle module `:server` (this folder): a library (`dev.wildware.feed.server`) plus a standalone
@@ -21,24 +32,24 @@ parity suite in `parity/`, run against both servers in CI.
 Each phase ends with its parity tests passing against the Kotlin server in CI, beside the TS run.
 
 1. **Boot, auth and reads.** Config and its boot checks; open the database and run migrations
-   001–046 with checksums; owner login form, session cookie, logout, login limiter; device sign-in
-   and device keys; agent-token checks on `/mcp` (401s and 429s only); the CLI's `hash-password`,
+   001–046 with checksums; device sign-in, device keys and the sign-in limiter; agent-token checks on `/mcp` (401s and 429s only); the CLI's `hash-password`,
    `mint-token`, `list-tokens`, `revoke-token`; the read-only owner API (`/api/summary`,
    `/api/snapshot*`, `GET /api/messages`, project tags, devices, notifications, push status).
    Reads are checked differentially: the TS server builds a rich database, every read is recorded,
    then the Kotlin server opens the same file and must answer the same (`ReadParityTest`).
 2. **Writes and the live streams.** Every owner write route; the event bus with the replay ring,
-   boot id and seq order; `GET /api/stream` and `GET /api/agent/stream`; presence.
-3. **MCP.** Stateless Streamable HTTP; all 31 tools with the exact `tools/list`; the long-poll
-   holds; the SDK's error wording.
+   boot id and seq order; `GET /api/stream` and `GET /api/agent/stream`; presence; revocation closes
+   streams. Also the MCP `tools/call` dispatcher and the tools the write and stream tests set up with
+   (projects, updates, messages, cards, tags, fields, reactions, acks, requests, sessions), because
+   only agents can create updates and requests.
+3. **The rest of MCP.** The remaining tools (embeds, apps, uploads) and `McpToolsTest`'s exact edge
+   cases: the SDK's argument-error wording, every summary line.
 4. **Media, push and jobs.** Uploads with sniffing and limits; derivatives (ffmpeg, thumbnails —
-   the WebP question in `spec/10-embedding.md`); serving with ranges and ETags; share links;
+   the WebP question in `spec/10-embedding.md`); serving with ranges and ETags;
    sweepers; Web Push; APNs and Live Activity.
-5. **Web.** Serve the built website (static SPA plus JSON bootstrap, per `spec/09`), the share page
-   with its preview tags, compression, the SvelteKit behaviours clients see (CSRF, 405, 308).
-6. **Side by side.** Run the Kotlin server on a copy of the live database next to the TS one; replay
+5. **Side by side.** Run the Kotlin server on a copy of the live database next to the TS one; replay
    real traffic; compare.
-7. **Cut-over.** Swap the service; keep the TS build ready to swap back (the database stays
+6. **Cut-over.** Swap the service; keep the TS build ready to swap back (the database stays
    compatible both ways while no new migration exists).
 
 ## Phase 1 detail

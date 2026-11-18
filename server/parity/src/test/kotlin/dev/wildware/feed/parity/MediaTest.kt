@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Assumptions.assumeTrue
 import java.io.ByteArrayInputStream
 import java.security.MessageDigest
 import javax.imageio.ImageIO
+import org.junit.jupiter.api.Tag
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
@@ -96,10 +97,12 @@ class MediaTest : ParityTest() {
         assertEquals(400, noBody.status.value)
         assertEquals("invalid_argument", noBody.obj()["error"].s)
         assertTrue(noBody.obj()["message"].s.startsWith("the request had no body."))
-        // A text/plain PUT from nowhere is stopped by the CSRF rule, not spent either.
-        val crossSite = Media.put(reserved["upload_url"].s, png, "text/plain")
-        assertEquals(403, crossSite.status.value)
-        assertEquals("Cross-site PUT form submissions are forbidden", crossSite.bodyAsText())
+        // A text/plain PUT from nowhere is stopped by the website's CSRF rule, not spent either.
+        if (Parity.web) {
+            val crossSite = Media.put(reserved["upload_url"].s, png, "text/plain")
+            assertEquals(403, crossSite.status.value)
+            assertEquals("Cross-site PUT form submissions are forbidden", crossSite.bodyAsText())
+        }
         assertEquals(201, Media.put(reserved["upload_url"].s, png, "image/png").status.value)
 
         // Too big: refused, and (decided fix 7) a refused upload does not spend the link.
@@ -204,8 +207,12 @@ class MediaTest : ParityTest() {
         }
 
         val anonymous = call(HttpMethod.Get, "/media/$id/original")
-        assertEquals(303, anonymous.status.value)
-        assertEquals("/login?redirectTo=%2Fmedia%2F$id%2Foriginal", anonymous.headers[HttpHeaders.Location])
+        if (Parity.web) {
+            assertEquals(303, anonymous.status.value)
+            assertEquals("/login?redirectTo=%2Fmedia%2F$id%2Foriginal", anonymous.headers[HttpHeaders.Location])
+        } else {
+            assertEquals(401, anonymous.status.value)
+        }
         assertEquals(200, Device.signIn().get("/media/$id/original").status.value, "a device key may fetch media")
     }
 
@@ -252,6 +259,7 @@ class MediaTest : ParityTest() {
     }
 
     @Test
+    @Tag("tsOnly")
     fun `16 share links show one update and its media to anyone holding the link`() = parity {
         val (update, card) = readyOnUpdate(Media.png(200, 100), "share.png", "image/png")
         val minted = owner.post("/api/updates/$update/share")

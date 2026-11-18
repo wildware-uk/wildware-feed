@@ -1,7 +1,6 @@
 package dev.wildware.feed.server.http
 
 import dev.wildware.feed.server.App
-import dev.wildware.feed.server.auth.Sessions
 import dev.wildware.feed.server.domain.DomainError
 import io.ktor.http.HttpMethod
 import io.ktor.server.application.Application
@@ -17,27 +16,29 @@ import io.ktor.server.request.path
 import io.ktor.server.request.uri
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.RoutingContext
-import io.ktor.server.routing.method
 import io.ktor.server.routing.route
 import io.ktor.server.routing.routing
 
 /** Start the server for [app] on its configured host and port. */
-fun serve(app: App, wait: Boolean = true): EmbeddedServer<*, *> =
-    embeddedServer(CIO, port = app.config.port, host = app.config.host) { feed(app) }.start(wait = wait)
+fun serve(app: App, wait: Boolean = true): EmbeddedServer<*, *> {
+    app.startJobs()
+    return embeddedServer(CIO, port = app.config.port, host = app.config.host) { feed(app) }.start(wait = wait)
+}
 
 /** The whole HTTP surface, as a Ktor module the desktop app can mount too. */
 fun Application.feed(app: App) {
     intercept(ApplicationCallPipeline.Plugins) {
-        if (csrfRefused(call, app)) return@intercept finish()
         if (guardRefused(call, app)) return@intercept finish()
     }
     routing {
-        authRoutes(app)
-        pageRoutes(app)
         deviceRoutes(app)
         // No event bus yet (phase 2): every snapshot is stamped seq 0.
-        readRoutes(app, lastSeq = { 0L })
+        readRoutes(app, lastSeq = { app.bus.lastSeq })
         agentRoutes(app)
+        streamRoutes(app)
+        feedRoutes(app)
+        requestRoutes(app)
+        sessionRoutes(app)
 
         // Anything else. Under /api the guard has already turned strangers away: the owner gets a
         // JSON 404 (decided fix 12b). Elsewhere it is the site's own 404 page.
@@ -46,7 +47,7 @@ fun Application.feed(app: App) {
                 if (Guard.isApi(call.request.path())) {
                     call.respondJson(404, Wire.error("not_found", "no such API route: ${call.request.path()}"))
                 } else {
-                    call.respondRaw(404, Pages.notFound(), "text/html")
+                    call.respondRaw(404, "Not Found", "text/plain;charset=utf-8")
                 }
             }
         }
@@ -54,54 +55,23 @@ fun Application.feed(app: App) {
 }
 
 /**
- * SvelteKit's CSRF rule: a form-shaped write from another origin is refused before anything runs
- * (spec/01-config-and-auth.md §3.1).
+ * The owner: a device key (`Authorization: Bearer`). The TS server also takes its web session
+ * cookie; the Kotlin server does not, because the website is deprecated (spec/README.md, scope).
  */
-private suspend fun csrfRefused(call: ApplicationCall, app: App): Boolean {
-    val method = call.request.httpMethod.value
-    if (method !in setOf("POST", "PUT", "PATCH", "DELETE")) return false
-    val type = call.request.headers["Content-Type"]?.substringBefore(';')?.trim()?.lowercase() ?: return false
-    if (type !in setOf("application/x-www-form-urlencoded", "multipart/form-data", "text/plain", "application/x-sveltekit-formdata")) return false
-    if (call.request.headers["Origin"] == app.config.origin) return false
-    val message = "Cross-site $method form submissions are forbidden"
-    if (call.request.headers["Accept"] == "application/json") {
-        call.respondRaw(403, """{"message":"$message"}""", Wire.JSON)
-    } else {
-        call.respondRaw(403, message, null)
-    }
-    return true
-}
-
-/** The owner by device key (a bearer decides on its own) or by cookie. */
 fun App.isOwner(call: ApplicationCall): Boolean {
-    val bearer = Guard.bearer(call.request.headers["Authorization"])
-    if (bearer != null) return devices.authenticate(bearer) != null
-    return hasSessionCookie(call)
+    val bearer = Guard.bearer(call.request.headers["Authorization"]) ?: return false
+    return devices.authenticate(bearer) != null
 }
-
-fun App.hasSessionCookie(call: ApplicationCall): Boolean =
-    Sessions.valid(call.request.cookies[Sessions.COOKIE, io.ktor.http.CookieEncoding.RAW], config.sessionSecret, clock())
 
 /**
- * The guard (spec/01 §3.3): under `/api` a stranger gets 401 JSON; pages need the cookie (they never
- * look at a bearer); `/media` and `/apps` take either.
+ * The guard: every path that is not token-authed or public needs the owner. A stranger gets
+ * `401 {"error":"unauthenticated"}` everywhere — there is no login page to redirect to.
  */
 private suspend fun guardRefused(call: ApplicationCall, app: App): Boolean {
     val path = call.request.path()
     if (!Guard.requiresSession(path)) return false
-    if (Guard.isApi(path)) {
-        if (app.isOwner(call)) return false
-        call.respondRaw(401, """{"error":"unauthenticated"}""", Wire.JSON)
-        return true
-    }
-    val normal = Guard.normalise(path)
-    val handlerAuth = normal.startsWith("/media/") || normal.startsWith("/apps/")
-    val ok = if (handlerAuth) app.isOwner(call) else {
-        val bearer = Guard.bearer(call.request.headers["Authorization"])
-        (bearer == null || app.devices.authenticate(bearer) != null) && app.hasSessionCookie(call)
-    }
-    if (ok) return false
-    call.respondRedirect303(Guard.loginRedirect(call.request.uri))
+    if (app.isOwner(call)) return false
+    call.respondRaw(401, """{"error":"unauthenticated"}""", Wire.JSON)
     return true
 }
 
@@ -118,27 +88,38 @@ fun ApplicationCall.clientAddress(): String {
 }
 
 /**
- * One path with its methods. Any other method gets SvelteKit's 405: `<METHOD> method not allowed`,
- * with `Allow` listing what there is.
+ * One path with its methods. Several calls for the same path add to one table, so feature files can
+ * each register theirs. Any other method gets SvelteKit's 405: `<METHOD> method not allowed`, with
+ * `Allow` listing what there is.
  */
 fun Route.endpoint(path: String, vararg handlers: Pair<HttpMethod, suspend RoutingContext.() -> Unit>) {
+    val table = endpointTables.getOrPut(this) { HashMap() }
+    val methods = table[path]
+    if (methods != null) {
+        methods.putAll(handlers)
+        return
+    }
+    val fresh = LinkedHashMap<HttpMethod, suspend RoutingContext.() -> Unit>().apply { putAll(handlers) }
+    table[path] = fresh
     route(path) {
-        for ((m, h) in handlers) {
-            method(m) {
-                handle {
-                    try {
-                        h()
-                    } catch (e: DomainError) {
-                        call.respondDomainError(e)
-                    }
-                }
-            }
-        }
-        val allowed = handlers.map { it.first.value }
         handle {
-            val m = call.request.httpMethod.value
-            if (m == "HEAD" && "GET" in allowed) return@handle
-            call.respondRaw(405, "$m method not allowed", "text/plain;charset=utf-8", "Allow" to allowed.joinToString(", "))
+            val m = call.request.httpMethod
+            val h = fresh[m] ?: if (m == HttpMethod.Head) fresh[HttpMethod.Get] else null
+            if (h == null) {
+                // SvelteKit's `allowed_methods`: its fixed method order, then HEAD wherever GET is.
+                val order = listOf("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD")
+                val allowed = order.filter { o -> fresh.keys.any { it.value == o } } +
+                    (if (fresh.keys.any { it == HttpMethod.Get }) listOf("HEAD") else emptyList())
+                call.respondRaw(405, "${m.value} method not allowed", "text/plain;charset=utf-8", "Allow" to allowed.joinToString(", "))
+                return@handle
+            }
+            try {
+                h()
+            } catch (e: DomainError) {
+                call.respondDomainError(e)
+            }
         }
     }
 }
+
+private val endpointTables = java.util.WeakHashMap<Route, HashMap<String, LinkedHashMap<HttpMethod, suspend RoutingContext.() -> Unit>>>()

@@ -58,18 +58,22 @@ class RateLimitTest : ParityTest() {
     @Order(3)
     fun `five wrong passwords lock the login, form and device sign-in alike`() = parity {
         assumeTrue(System.getenv("PARITY_SKIP_LOCKOUT") != "1", "PARITY_SKIP_LOCKOUT=1")
-        owner // make sure the shared session exists before the door shuts
+        owner // make sure the shared owner exists before the door shuts
         Device.signIn() // a success resets the count
+        // The login form and device sign-in share one limiter; without the website, only the latter.
         repeat(5) { i ->
-            assertEquals(400, Owner.loginForm("wrong-$i").status.value, "attempt ${i + 1}")
+            val status = if (Parity.web) Owner.loginForm("wrong-$i").status.value
+            else call(HttpMethod.Post, "/api/devices/sign-in", obj("name" to "x", "password" to "wrong-$i")).status.value
+            assertEquals(400, status, "attempt ${i + 1}")
         }
-        val locked = Owner.loginForm(Parity.adminPassword)
-        assertEquals(429, locked.status.value)
-        assertContains(locked.bodyAsText(), "Too many attempts. Try again later.")
-        assertNull(locked.headers[HttpHeaders.RetryAfter], "the form's 429 has no Retry-After")
-
-        val empty = Owner.loginForm("")
-        assertEquals(400, empty.status.value, "an empty password is answered before the limiter")
+        if (Parity.web) {
+            val locked = Owner.loginForm(Parity.adminPassword)
+            assertEquals(429, locked.status.value)
+            assertContains(locked.bodyAsText(), "Too many attempts. Try again later.")
+            assertNull(locked.headers[HttpHeaders.RetryAfter], "the form's 429 has no Retry-After")
+            val empty = Owner.loginForm("")
+            assertEquals(400, empty.status.value, "an empty password is answered before the limiter")
+        }
 
         val device = call(HttpMethod.Post, "/api/devices/sign-in", obj("name" to "x", "password" to Parity.adminPassword))
         assertEquals(429, device.status.value)
@@ -77,7 +81,7 @@ class RateLimitTest : ParityTest() {
         val retry = device.headers[HttpHeaders.RetryAfter]!!.toInt()
         assertTrue(retry in 800..900, "retry-after about 15 minutes: $retry")
 
-        // A session from before the lockout still works.
+        // The owner signed in before the lockout still works.
         assertEquals(200, owner.get("/api/summary").status.value)
     }
 }

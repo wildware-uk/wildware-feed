@@ -80,15 +80,11 @@ class Reads(private val db: Database, private val clock: () -> Long = System::cu
         val ids = updates.map { it.str("id")!! }
         val reactions = reactionsFor("update", ids)
         val items = updates.zip(ids).map { (update, id) ->
-            val share = db.one("SELECT views, created_at FROM update_shares WHERE update_id = ? AND revoked_at IS NULL", id) {
-                buildJsonObject { put("views", it.getLong(1)); put("sharedAt", it.getLong(2)) }
-            }
             val extra = mutableListOf<Pair<String, JsonElement>>(
                 "media" to JsonArray(mediaFor("update_id", id)),
                 "embeds" to JsonArray(embedsFor("update_id", id)),
                 "reactions" to JsonArray(reactions.filter { it["card"].str("id") == id }),
             )
-            if (share != null) extra += "share" to share
             update.plus(*extra.toTypedArray())
         }
         val nextCursor = if (hasMore && updates.isNotEmpty()) JsonPrimitive(updates.last()["seq"].toString()) else JsonNull

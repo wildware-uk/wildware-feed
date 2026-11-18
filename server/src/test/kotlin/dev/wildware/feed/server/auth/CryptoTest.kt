@@ -8,7 +8,6 @@ import kotlin.test.assertTrue
 
 /** Test vectors from spec/01-config-and-auth.md, each checked against the TS server there. */
 class CryptoTest {
-    private val s32 = "s".repeat(32)
     private val t32 = "t".repeat(32)
 
     @Test
@@ -35,20 +34,6 @@ class CryptoTest {
         assertEquals("01HZY3M5X8Q7R2T4V6W8Y0A2C4", Tokens.verifyUpload("01HZY3M5X8Q7R2T4V6W8Y0A2C4.N6mosJLXY_82aUyijaTlwhVZalq3a-FEniDWbkU2J-E", t32))
         assertNull(Tokens.verifyUpload("01hzy3m5x8q7r2t4v6w8y0a2c4.N6mosJLXY_82aUyijaTlwhVZalq3a-FEniDWbkU2J-E", t32))
         assertNull(Tokens.verifyUpload("01HZY3M5X8Q7R2T4V6W8Y0A2C4.N6mosJLXY_82aUyijaTlwhVZalq3a-FEniDWbkU2J-E.x", t32))
-    }
-
-    @Test
-    fun `the session cookie matches the TS server's bytes`() {
-        val value = Sessions.issue(s32, issuedAt = 1_700_000_000_000)
-        assertEquals(
-            "eyJpc3N1ZWRBdCI6MTcwMDAwMDAwMDAwMCwiZXhwaXJlc0F0IjoxNzAyNTkyMDAwMDAwfQ.VaTNC-sXCNyk_rloaqTvm5YrV47-gvu8B6NCkd4aGj4",
-            value,
-        )
-        assertTrue(Sessions.valid(value, s32, now = 1_700_000_000_001))
-        assertFalse(Sessions.valid(value, s32, now = 1_702_592_000_000), "expired at expiresAt")
-        assertFalse(Sessions.valid(value.dropLast(1) + "A", s32, now = 1_700_000_000_001))
-        assertFalse(Sessions.valid(value, "x".repeat(32), now = 1_700_000_000_001))
-        assertFalse(Sessions.valid("", s32))
     }
 
     @Test

@@ -5,6 +5,7 @@ import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
 import java.util.Base64
+import org.junit.jupiter.api.Tag
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -18,6 +19,7 @@ class AuthTest : ParityTest() {
         Regex("^ad_session=[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]{43}; Max-Age=2592000; Path=/; HttpOnly; Secure; SameSite=Lax$")
 
     @Test
+    @Tag("tsOnly")
     fun `pages redirect to login and the API answers 401 without a session`() = parity {
         val root = call(HttpMethod.Get, "/")
         assertEquals(303, root.status.value)
@@ -37,6 +39,17 @@ class AuthTest : ParityTest() {
     }
 
     @Test
+    fun `the API answers 401 to a stranger, trailing slash or not`() = parity {
+        val api = call(HttpMethod.Get, "/api/summary")
+        assertEquals(401, api.status.value)
+        assertTrue(api.headers[HttpHeaders.ContentType]!!.startsWith("application/json"))
+        assertEquals("""{"error":"unauthenticated"}""", api.bodyAsText())
+        assertNotEquals(200, call(HttpMethod.Get, "/api/summary/").status.value, "a trailing slash is no bypass")
+        assertEquals(401, call(HttpMethod.Get, "/api/summary") { bearer("A".repeat(43)) }.status.value, "an unknown key")
+        assertEquals(401, call(HttpMethod.Get, "/api/summary") { bearer(alpha.token) }.status.value, "an agent token is not a device key")
+    }
+
+    @Test
     fun `an unknown API path answers JSON, never the login page`() = parity {
         val anonymous = call(HttpMethod.Get, "/api/does-not-exist")
         assertEquals(401, anonymous.status.value)
@@ -48,6 +61,7 @@ class AuthTest : ParityTest() {
     }
 
     @Test
+    @Tag("tsOnly")
     fun `a wrong password is refused and a right one sets the session cookie`() = parity {
         val wrongHtml = Owner.loginForm("wrong-password")
         assertEquals(400, wrongHtml.status.value)
@@ -80,6 +94,7 @@ class AuthTest : ParityTest() {
     }
 
     @Test
+    @Tag("tsOnly")
     fun `login only redirects to safe local paths`() = parity {
         suspend fun landing(redirectTo: String): String? {
             val response = call(HttpMethod.Post, "/login?redirectTo=" + java.net.URLEncoder.encode(redirectTo, "UTF-8")) {
@@ -97,6 +112,7 @@ class AuthTest : ParityTest() {
     }
 
     @Test
+    @Tag("tsOnly")
     fun `a form post without a matching Origin is refused before anything runs`() = parity {
         val html = call(HttpMethod.Post, "/login") {
             header(HttpHeaders.Accept, "text/html")
@@ -114,17 +130,19 @@ class AuthTest : ParityTest() {
     }
 
     @Test
+    @Tag("tsOnly")
     fun `a tampered or expired cookie is not a session`() = parity {
         val expired = Owner("ad_session=eyJpc3N1ZWRBdCI6MTcwMDAwMDAwMDAwMCwiZXhwaXJlc0F0IjoxNzAyNTkyMDAwMDAwfQ.VaTNC-sXCNyk_rloaqTvm5YrV47-gvu8B6NCkd4aGj4")
         assertEquals(401, expired.get("/api/summary").status.value)
 
-        val good = owner.cookie
+        val good = Owner.signInWithCookie().cookie!!
         val last = good.last()
         val flipped = Owner(good.dropLast(1) + (if (last == 'A') 'B' else 'A'))
         assertEquals(401, flipped.get("/api/summary").status.value)
     }
 
     @Test
+    @Tag("tsOnly")
     fun `logout clears the cookie`() = parity {
         val session = Owner.signIn()
         val out = session.send(HttpMethod.Post, "/logout") {
@@ -143,6 +161,7 @@ class AuthTest : ParityTest() {
     }
 
     @Test
+    @Tag("tsOnly")
     fun `a bearer header decides on its own, even beside a good cookie`() = parity {
         val fake = "A".repeat(43)
         val withBoth = owner.get("/api/summary") { bearer(fake) }
@@ -169,9 +188,11 @@ class AuthTest : ParityTest() {
 
         val device = Device(body["device"]["id"].s, body["token"].s)
         assertEquals(200, device.get("/api/summary").status.value)
-        val page = device.get("/")
-        assertEquals(303, page.status.value)
-        assertEquals("/login", page.headers[HttpHeaders.Location])
+        if (Parity.web) {
+            val page = device.get("/")
+            assertEquals(303, page.status.value)
+            assertEquals("/login", page.headers[HttpHeaders.Location])
+        }
 
         val removed = owner.delete("/api/devices/${device.id}")
         assertEquals(200, removed.status.value)
@@ -201,6 +222,7 @@ class AuthTest : ParityTest() {
     }
 
     @Test
+    @Tag("tsOnly")
     fun `device-only routes say so to a cookie`() = parity {
         val response = owner.put("/api/devices/current/apns", obj("token" to "abc"))
         assertEquals(400, response.status.value)

@@ -4,6 +4,7 @@ import io.ktor.client.request.header
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
+import org.junit.jupiter.api.Tag
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -13,8 +14,9 @@ import kotlin.test.assertTrue
 /**
  * The website at the level of routes: who gets a page, who is redirected where, and what the
  * public share page promises crawlers. Markup is deliberately not compared — the Kotlin server
- * may render it differently. Spec: server/spec/09-web-frontend.md.
+ * may render it differently. Tagged tsOnly: the website is deprecated and the Kotlin server has none. Spec: server/spec/09-web-frontend.md.
  */
+@Tag("tsOnly")
 class WebTest : ParityTest() {
     private suspend fun location(path: String, signedIn: Boolean = false) =
         (if (signedIn) owner.get(path) else call(HttpMethod.Get, path)).let { it.status.value to it.headers[HttpHeaders.Location] }

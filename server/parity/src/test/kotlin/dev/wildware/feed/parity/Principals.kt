@@ -20,15 +20,21 @@ import kotlin.test.assertEquals
 import kotlin.test.fail
 
 /**
- * The owner in a browser: the session cookie from the login form, sent by hand because the
- * cookie is marked Secure and the server under test is plain http. Every write carries an
- * Origin header the way a browser's fetch would.
+ * The owner. By default the session cookie from the login form (sent by hand: it is marked Secure
+ * and the server under test is plain http), with an Origin header on every request as a browser's
+ * fetch sends. With PARITY_OWNER_AUTH=device the owner is a device key instead, which is all a
+ * server without the deprecated website accepts.
  */
-class Owner(val cookie: String) {
+class Owner(val cookie: String? = null, val key: String? = null) {
+    /** The owner's credentials on a request. */
+    val auth: HttpRequestBuilder.() -> Unit = {
+        if (key != null) bearer(key) else header(HttpHeaders.Cookie, cookie!!)
+        header(HttpHeaders.Origin, Parity.baseUrl)
+    }
+
     suspend fun send(method: HttpMethod, path: String, body: JsonElement? = null, configure: HttpRequestBuilder.() -> Unit = {}) =
         call(method, path, body) {
-            header(HttpHeaders.Cookie, cookie)
-            header(HttpHeaders.Origin, Parity.baseUrl)
+            auth()
             configure()
         }
 
@@ -39,11 +45,15 @@ class Owner(val cookie: String) {
     suspend fun delete(path: String, body: JsonElement? = null) = send(HttpMethod.Delete, path, body)
 
     companion object {
+        /** The owner as PARITY_OWNER_AUTH says: the login form (default) or a device key. */
+        suspend fun signIn(password: String = Parity.adminPassword): Owner =
+            if (Parity.ownerAuth == "device") Owner(key = Device.signIn("parity-owner").token) else signInWithCookie(password)
+
         /** Sign in through the login form exactly as the browser does. */
-        suspend fun signIn(password: String = Parity.adminPassword): Owner {
+        suspend fun signInWithCookie(password: String = Parity.adminPassword): Owner {
             val response = loginForm(password)
             val cookie = sessionCookie(response) ?: fail("login set no ad_session cookie: ${response.status}")
-            return Owner(cookie)
+            return Owner(cookie = cookie)
         }
 
         suspend fun loginForm(password: String, accept: String = "text/html"): HttpResponse =

@@ -38,10 +38,16 @@ class ReadParityTest : ParityTest() {
         if (mode == "record") record() else compare()
     }
 
+    /**
+     * Reads go through one device, made at the end of seeding and handed to compare mode in the
+     * file, so they work against a server with or without the login cookie. Its own entry in
+     * `/api/devices` (its last-seen time moves with every read) is left out of the comparison.
+     */
     private suspend fun record() {
         val paths = seed()
-        val recorded = paths.map { path ->
-            val r = owner.get(path)
+        val reader = Device.signIn(READER)
+        val recorded = listOf(Recorded(READER_ENTRY, 0, null, null, reader.token)) + paths.map { path ->
+            val r = reader.get(path)
             Recorded(path, r.status.value, r.headers[HttpHeaders.ContentType], r.headers[HttpHeaders.CacheControl], r.bodyAsText())
         }
         file.parentFile?.mkdirs()
@@ -50,10 +56,12 @@ class ReadParityTest : ParityTest() {
     }
 
     private suspend fun compare() {
-        val recorded = Parity.json.decodeFromString(ListSerializer(Recorded.serializer()), file.readText())
+        val all = Parity.json.decodeFromString(ListSerializer(Recorded.serializer()), file.readText())
+        val reader = Device("", all.first { it.path == READER_ENTRY }.body)
+        val recorded = all.filter { it.path != READER_ENTRY }
         val failures = mutableListOf<String>()
         for (want in recorded) {
-            val r = owner.get(want.path)
+            val r = reader.get(want.path)
             val got = Recorded(want.path, r.status.value, r.headers[HttpHeaders.ContentType], r.headers[HttpHeaders.CacheControl], r.bodyAsText())
             val problems = buildList {
                 if (got.status != want.status) add("status ${got.status}, want ${want.status}")
@@ -70,9 +78,22 @@ class ReadParityTest : ParityTest() {
     }
 
     /** The stream position and the clock differ between any two servers; everything else must not. */
-    private fun normalise(body: String) = body
+    private fun normalise(body: String) = withoutReader(body)
         .replaceFirst(Regex("^\\{\"seq\":\\d+,\"at\":\"[^\"]*\""), "{\"seq\":0,\"at\":\"\"")
         .replaceFirst(Regex("^\\{\"at\":\"[^\"]*\""), "{\"at\":\"\"")
+
+    /** `/api/devices` without the reader's own entry. */
+    private fun withoutReader(body: String): String {
+        if (!body.startsWith("{\"devices\":")) return body
+        val parsed = Parity.json.parseToJsonElement(body).o
+        val kept = parsed["devices"].arr.filter { it["name"].str != READER }
+        return kotlinx.serialization.json.JsonObject(parsed + ("devices" to kotlinx.serialization.json.JsonArray(kept))).toString()
+    }
+
+    private companion object {
+        const val READER = "parity-reader"
+        const val READER_ENTRY = "#reader"
+    }
 
     private fun excerpt(s: String, other: String): String {
         val i = s.zip(other).indexOfFirst { (x, y) -> x != y }.let { if (it < 0) minOf(s.length, other.length) else it }
@@ -107,7 +128,6 @@ class ReadParityTest : ParityTest() {
         val uri = "ui://parity-${Parity.suffix()}/board"
         a.ok("register_app", obj("uri" to uri, "name" to "Board", "html" to "<p>hi</p>"))
         a.ok("post_update", obj("project" to main.slug, "body" to "with an app", "apps" to arr(obj("app" to uri, "data" to obj("n" to 1), "title" to "B"))))
-        owner.post("/api/updates/$u1/share")
 
         // Cards: status, tags, fields, reactions, pins.
         owner.post("/api/cards/update/$u1/status", obj("status" to "in_progress"))

@@ -23,24 +23,11 @@ class WireTest {
     }
 
     @Test
-    fun `the guard's redirects keep the way back only for owner pages`() {
-        assertEquals("/login", Guard.loginRedirect("/"))
-        assertEquals("/login?redirectTo=%2Fprojects%2Fdemo%3Fx%3D1", Guard.loginRedirect("/projects/demo?x=1"))
-        assertEquals("/", Guard.safeRedirectTarget("//evil.com"))
-        assertEquals("/", Guard.safeRedirectTarget("/mcp"))
-        assertEquals("/", Guard.safeRedirectTarget("/logout"))
-        assertEquals("/projects/a", Guard.safeRedirectTarget("/projects/a"))
+    fun `the guard knows which paths need the owner`() {
         assertTrue(Guard.requiresSession("/mcp-docs"))
         assertFalse(Guard.requiresSession("/mcp/x"))
         assertFalse(Guard.requiresSession("/api/devices/sign-in"))
-    }
-
-    @Test
-    fun `form actions answer JSON unless HTML is preferred`() {
-        assertTrue(wantsActionJson(null))
-        assertTrue(wantsActionJson("*/*"))
-        assertTrue(wantsActionJson("application/json"))
-        assertFalse(wantsActionJson("text/html"))
-        assertFalse(wantsActionJson("text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"))
+        assertTrue(Guard.requiresSession("/api/summary"))
+        assertTrue(Guard.isApi("/api/summary/"))
     }
 }

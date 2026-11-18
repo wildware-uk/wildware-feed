@@ -119,7 +119,7 @@ class ReadsTest {
     }
 
     @Test
-    fun `an update page checks its cursor before its project, and carries a live share`() {
+    fun `an update page checks its cursor before its project, and carries no share (share links are not ported)`() {
         setup()
         (1..3).forEach { update("U$it") }
         db.update("INSERT INTO update_shares (id, update_id, token_hash, created_at, revoked_at, views) VALUES ('S1', 'U3', 'h1', 7, 8, 1)")
@@ -127,7 +127,7 @@ class ReadsTest {
         val page = reads.updatesPage(null, 2, null)
         assertEquals(listOf("U3", "U2"), page.ids)
         assertEquals("2", page.json["nextCursor"]!!.jsonPrimitive.content)
-        assertEquals("""{"views":4,"sharedAt":9}""", Wire.encode(page.json["items"]!!.jsonArray[0].jsonObject["share"]!!))
+        assertEquals(null, page.json["items"]!!.jsonArray[0].jsonObject["share"], "a live share row from the TS server is ignored")
         assertEquals(null, page.json["items"]!!.jsonArray[1].jsonObject["share"])
         assertEquals(listOf("U1"), reads.updatesPage("web", 50, "2").ids)
         assertEquals(emptyList(), reads.updatesPage(null, 50, "99999999999999999999999").ids.drop(3))
