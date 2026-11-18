@@ -1,5 +1,6 @@
 package dev.wildware.agents
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -198,6 +199,7 @@ class Dashboard internal constructor(
 
     private val requests = RequestsReader(client, confined, ::changed).also { it.cache = cache }
     private val presence = PresenceReader(client, confined, ::changed).also { it.cache = cache }
+    private val bell = NotificationsReader(client, confined, ::changed)
     private val feeds = mutableMapOf<String?, Feed>()
     private var timers: Job? = null
     private var now = clock()
@@ -214,6 +216,11 @@ class Dashboard internal constructor(
 
     /** The sidebar: every project (archived ones last), with its badges. */
     val projects: StateFlow<List<ProjectSummary>> = mutableProjects.asStateFlow()
+
+    private val mutableNotifications = MutableStateFlow(NotificationList())
+
+    /** The bell: what the owner was told about, newest first, and how many are new. */
+    val notifications: StateFlow<NotificationList> = mutableNotifications.asStateFlow()
 
     private val mutableReady = MutableStateFlow(false)
 
@@ -236,6 +243,7 @@ class Dashboard internal constructor(
         stream.start { event -> receive(event) }
         requests.start()
         presence.start()
+        bell.start()
         feeds.values.forEach { it.startReaders() }
         timers = confined.launch {
             launch {
@@ -327,7 +335,26 @@ class Dashboard internal constructor(
     suspend fun refresh() = withContext(confined.coroutineContext) {
         requests.refreshNow(replace = true)
         presence.refreshNow(replace = true)
+        bell.refreshNow(replace = true)
         feeds.values.forEach { it.refreshNow() }
+    }
+
+    /**
+     * Marks [ids] seen, or all of them for null. The list is read again afterwards rather than
+     * edited here, so a clear that failed never shows as done: the bell stays lit.
+     */
+    fun markNotificationsSeen(ids: List<String>?) {
+        confined.launch {
+            val done = try {
+                client.markNotificationsSeen(ids)
+                true
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Throwable) {
+                false
+            }
+            if (done) bell.refreshNow(replace = true)
+        }
     }
 
     /** Marks a card's comments as seen: its unread badge clears. */
@@ -338,11 +365,12 @@ class Dashboard internal constructor(
         }
     }
 
-    private fun readers(): List<FeedReader> = listOf(requests, presence) + feeds.values.flatMap { it.readers }
+    private fun readers(): List<FeedReader> = listOf(requests, presence, bell) + feeds.values.flatMap { it.readers }
 
     private suspend fun receive(event: StreamEvent) {
         requests.receive(event)
         presence.receive(event)
+        bell.receive(event)
         feeds.values.toList().forEach { it.receive(event) }
     }
 
@@ -374,6 +402,7 @@ class Dashboard internal constructor(
         mutableWaiting.value = requests.items.map { context.requestCard(it, everything) }
         feeds.values.forEach { it.publish(context, stream.status.value, requests.loading) }
         mutableProjects.value = summaries(everything.state.value)
+        mutableNotifications.value = bell.list
         if (!mutableReady.value && requests.loaded && everything.state.value.loaded) mutableReady.value = true
     }
 
@@ -401,6 +430,12 @@ class Dashboard internal constructor(
 }
 
 /** What every feed needs to build its cards, worked out once per change. */
+/** The bell: what the owner was told about, newest first, and how many of them are new. */
+data class NotificationList(
+    val items: List<NotificationView> = emptyList(),
+    val unseen: Int = 0,
+)
+
 internal class FeedContext(
     private val names: Map<String, String>,
     val projectsById: Map<String, ProjectView>,

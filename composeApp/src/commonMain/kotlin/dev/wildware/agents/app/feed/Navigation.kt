@@ -105,17 +105,23 @@ internal fun FollowNavigation(ui: FeedUi, navigator: AppNavigator?) {
     LaunchedEffect(ui, navigator) {
         navigator.requests.filterNotNull().collect { open ->
             navigator.handled(open)
-            ui.menu = null
-            ui.viewer = null
-            ui.drawer.snap(false)
-            if (open.project != ui.state.current.slug) ui.emit(FeedEvent.SelectProject(open.project))
-            val id = open.cardId ?: return@collect
-            val item = withTimeoutOrNull(CardWaitMillis) { snapshotFlow { ui.state.item(id) }.filterNotNull().first() }
-            if (item != null) ui.reveal(id)
-            if (item is Threaded) {
-                ui.openThread(id, phone = ui.isPhone)
-                ui.emit(FeedEvent.OpenThread(id))
-            }
+            ui.goTo(open)
         }
+    }
+}
+
+/** Shows [open]'s project, then its card with the thread open, waiting a while for the card to load. */
+internal suspend fun FeedUi.goTo(open: OpenCard) {
+    menu = null
+    viewer = null
+    bellOpen = false
+    drawer.snap(false)
+    if (open.project != state.current.slug) emit(FeedEvent.SelectProject(open.project))
+    val id = open.cardId ?: return
+    val item = withTimeoutOrNull(CardWaitMillis) { snapshotFlow { state.item(id) }.filterNotNull().first() }
+    if (item != null) reveal(id)
+    if (item is Threaded) {
+        openThread(id, phone = isPhone)
+        emit(FeedEvent.OpenThread(id))
     }
 }

@@ -17,6 +17,9 @@ import dev.wildware.agents.UpdateCard
 import dev.wildware.agents.UpdateView
 import dev.wildware.agents.app.engine.FeedMapper
 import dev.wildware.agents.app.feed.AgentDetails
+import dev.wildware.agents.NotificationList
+import dev.wildware.agents.NotificationView
+import dev.wildware.agents.app.feed.BellItem
 import dev.wildware.agents.app.feed.FeedItem
 import dev.wildware.agents.app.feed.Level
 import dev.wildware.agents.app.feed.LinkStatus
@@ -178,6 +181,24 @@ class MappingTest {
         val bare = LiveAgentView(agentId = "a1", name = "forge", lastHeartbeatAt = noon, host = " ", cwd = "", model = null)
         val details = mapper.map(feed(emptyList()), listOf(mega), listOf(bare), emptyList(), null).agents.single().details
         assertEquals(AgentDetails(model = null, host = null, cwd = null, sessions = 1, lastSeen = "just now"), details)
+    }
+
+    @Test
+    fun theBellKeepsItsOrderCountAndWhereEachLeads() {
+        val list = NotificationList(
+            items = listOf(
+                NotificationView(id = "n2", title = "scout replied", body = "Looks good", projectName = "Mega", createdAt = noon, path = "/projects/mega?focus=u1"),
+                NotificationView(id = "n1", title = "forge posted", body = "", createdAt = noon - 86_400_000L, seenAt = noon, path = "/"),
+            ),
+            unseen = 1,
+        )
+        val bell = mapper.bell(list)
+        assertEquals(1, bell.unseen)
+        assertEquals(listOf("n2", "n1"), bell.items.map { it.id })
+        val first = bell.items.first()
+        assertEquals(BellItem("n2", "scout replied", "Looks good", "Mega", mapper.timeLabel(noon), unread = true, path = "/projects/mega?focus=u1"), first)
+        assertEquals(false, bell.items.last().unread)
+        assertEquals("Yesterday", bell.items.last().time)
     }
 
     @Test

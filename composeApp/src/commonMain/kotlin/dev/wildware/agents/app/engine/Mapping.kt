@@ -15,6 +15,9 @@ import dev.wildware.agents.StreamStatus
 import dev.wildware.agents.ThreadLine
 import dev.wildware.agents.UpdateCard
 import dev.wildware.agents.app.feed.AgentDetails
+import dev.wildware.agents.NotificationList
+import dev.wildware.agents.app.feed.Bell
+import dev.wildware.agents.app.feed.BellItem
 import dev.wildware.agents.app.feed.Acks
 import dev.wildware.agents.app.feed.Agent
 import dev.wildware.agents.app.feed.Attachment
@@ -294,6 +297,22 @@ internal class FeedMapper(
         val rest = lines.dropWhile { it != first }.drop(1).joinToString("\n").trim()
         return PlainText.clip(PlainText.fromMarkdown(first), 140) to rest
     }
+
+    /** The bell's rows, in the server's order (newest first). */
+    fun bell(list: NotificationList): Bell = Bell(
+        unseen = list.unseen,
+        items = list.items.map {
+            BellItem(
+                id = it.id,
+                title = it.title,
+                body = it.body,
+                project = it.projectName,
+                time = timeLabel(it.createdAt),
+                unread = it.seenAt == null,
+                path = it.path,
+            )
+        },
+    )
 
     fun timeLabel(millis: Long): String {
         val then = Instant.fromEpochMilliseconds(millis).toLocalDateTime(zone)

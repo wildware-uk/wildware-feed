@@ -100,10 +100,11 @@ class DashboardSession(
         },
         dashboard.everything.state,
         dashboard.projects,
-    ) { shown, everything, projects ->
+        dashboard.notifications,
+    ) { shown, everything, projects, notifications ->
         // Search looks across every project's loaded cards, whichever feed is on screen.
         val all = if (shown.current.slug == null) shown else mapper.map(everything, projects, emptyList(), emptyList(), null)
-        shown.copy(searchIndex = searchEntriesOf(all.sections))
+        shown.copy(searchIndex = searchEntriesOf(all.sections), bell = mapper.bell(notifications))
     }.stateIn(scope, SharingStarted.Eagerly, mapper.map(feed.state.value, emptyList(), emptyList(), emptyList(), null))
 
     /** True once the dashboard has stopped taking this device's key. */
@@ -199,6 +200,8 @@ class DashboardSession(
             is FeedEvent.Tag -> cardRef(event.targetId)?.let { actions.tag(it, event.tag, event.on, event.create) }
             is FeedEvent.OpenThread -> dashboard.markRead(event.cardId)
             is FeedEvent.MarkAllRead -> markAllRead()
+            is FeedEvent.OpenNotification -> dashboard.markNotificationsSeen(listOf(event.id))
+            is FeedEvent.ClearNotifications -> dashboard.markNotificationsSeen(null)
             is FeedEvent.SelectProject -> select(event.slug)
             is FeedEvent.Refresh -> {
                 dashboard.revive(reconnect = true)

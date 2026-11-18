@@ -125,6 +125,19 @@ class DashboardClient(
     @Throws(Exception::class)
     suspend fun liveAgents(): AgentsSnapshot = http.get("api/snapshot/agents") { authorise() }.decoded()
 
+    /** The bell: what the owner was told about, newest first, and how many are new. */
+    @Throws(Exception::class)
+    suspend fun notifications(): NotificationsSnapshot = http.get("api/notifications") { authorise() }.decoded()
+
+    /** Marks [ids] seen, or every notification when [ids] is null ("Mark all read"). */
+    @Throws(Exception::class)
+    suspend fun markNotificationsSeen(ids: List<String>?) {
+        http.post("api/notifications/seen") {
+            authorise()
+            jsonBody(buildJsonObject { if (ids != null) put("ids", JsonArray(ids.map(::JsonPrimitive))) })
+        }.requireSuccess()
+    }
+
     // --- The owner's actions, sent straight away. The outbox calls these. ----------------------
 
     /** Posts or replies as the owner. The live stream brings it back into the feed. */

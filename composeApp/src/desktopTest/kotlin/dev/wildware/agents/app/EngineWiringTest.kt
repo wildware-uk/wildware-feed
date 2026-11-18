@@ -14,6 +14,7 @@ import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.performTextReplacement
 import dev.wildware.agents.RequestConfig
 import dev.wildware.agents.RequestView
+import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.doubleClick
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasText
@@ -35,6 +36,7 @@ import dev.wildware.agents.app.session.MemorySessionStore
 import dev.wildware.agents.app.session.SavedSession
 import kotlin.test.AfterTest
 import kotlin.test.Test
+import dev.wildware.agents.NotificationView
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
@@ -185,6 +187,46 @@ class EngineWiringTest {
         waitFor("At least 3 characters (2 so far).")
         waitForNode(hasText("Commit") and SemanticsMatcher.keyIsDefined(SemanticsProperties.Disabled))
         assertEquals(null, server.wrote("POST", "/api/requests/r9/answer"))
+    }
+
+    private fun notice(id: String, title: String, seen: Boolean = false, focus: String = "u1") = NotificationView(
+        id = id, seq = 9, kind = "update", projectId = "p1", projectSlug = "mega", projectName = "Mega", updateId = focus,
+        title = title, body = "Counts are per connection now.", createdAt = System.currentTimeMillis() - 60_000,
+        seenAt = if (seen) System.currentTimeMillis() else null, path = "/projects/mega?focus=$focus",
+    )
+
+    @Test
+    fun theBellCountsWhatIsNewAndARowGoesToItsCard() = runDesktopComposeUiTest(width = 1440, height = 900) {
+        server.notifications = listOf(notice("n2", "scout replied"), notice("n1", "forge posted an update", seen = true))
+        app()
+        waitForNode(hasContentDescription("Notifications, 1 new")).performClick()
+        waitFor("scout replied")
+        waitFor("forge posted an update")
+        waitForNode(hasText("scout replied")).performClick()
+        val body = waitForWrite("POST", "/api/notifications/seen")
+        assertEquals("""{"ids":["n2"]}""", body)
+        // The panel closes on the card, whose thread sits under it on a desktop.
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasText("forge posted an update")).fetchSemanticsNodes().isEmpty() }
+        waitFor("Fixed the unread counts")
+        waitFor("Confirmed on my side.")
+    }
+
+    @Test
+    fun markAllReadClearsTheBell() = runDesktopComposeUiTest(width = 1440, height = 900) {
+        server.notifications = listOf(notice("n2", "scout replied"), notice("n1", "forge posted an update"))
+        app()
+        waitForNode(hasContentDescription("Notifications, 2 new")).performClick()
+        val inPanel = hasAnyAncestor(SemanticsMatcher.expectValue(SemanticsProperties.PaneTitle, "Notifications"))
+        waitForNode(hasText("Mark all read") and hasClickAction() and inPanel).performClick()
+        assertEquals("{}", waitForWrite("POST", "/api/notifications/seen"))
+    }
+
+    @Test
+    fun anEmptyBellSaysWhatWillLandThere() = runDesktopComposeUiTest(width = 1440, height = 900) {
+        app()
+        waitFor("Fixed the unread counts")
+        waitForNode(hasContentDescription("Notifications")).performClick()
+        waitFor("Nothing yet", substring = true)
     }
 
     @Test

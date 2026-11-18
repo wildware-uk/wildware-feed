@@ -1,5 +1,7 @@
 package dev.wildware.agents.app
 
+import dev.wildware.agents.NotificationsSnapshot
+import dev.wildware.agents.NotificationView
 import dev.wildware.agents.AgentsSnapshot
 import dev.wildware.agents.FeedSnapshot
 import dev.wildware.agents.LiveAgentView
@@ -59,6 +61,7 @@ class FakeServer {
     var agents = listOf(
         LiveAgentView(agentId = "a1", name = "forge", lastHeartbeatAt = now(), host = "build-box", cwd = "/work/garden-game", model = "claude-opus-5-5"),
     )
+    var notifications = listOf<NotificationView>()
     var seq = 10L
 
     /** Make every write fail, as when the server is down: the outbox keeps them waiting. */
@@ -117,6 +120,9 @@ class FakeServer {
             "/api/messages" -> ok(json.encodeToString(MessagesSnapshot.serializer(), MessagesSnapshot(seq = seq, messages = messages, reactions = reactions)))
             "/api/snapshot/requests" -> ok(json.encodeToString(RequestsSnapshot.serializer(), RequestsSnapshot(seq, requests = requests)))
             "/api/snapshot/agents" -> ok(json.encodeToString(AgentsSnapshot.serializer(), AgentsSnapshot(seq, agents = agents)))
+            "/api/notifications" -> ok(json.encodeToString(NotificationsSnapshot.serializer(), NotificationsSnapshot(
+                seq, notifications = notifications, unseen = notifications.count { it.seenAt == null },
+            )))
             else -> ok("""{"error":"not_found"}""", HttpStatusCode.NotFound)
         }
     }

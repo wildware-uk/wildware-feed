@@ -36,6 +36,10 @@ class FakeDashboard(scheduler: TestCoroutineScheduler) {
     var reactions = listOf<ReactionView>()
     var requests = listOf<RequestView>()
     var agents = listOf<LiveAgentView>()
+    var notifications = listOf<NotificationView>()
+
+    /** An older dashboard, from before the bell: `/api/notifications` is a 404. */
+    var notificationsMissing = false
     var agentNames = mapOf("a1" to "Builder", "a2" to "Scout")
 
     /** The newest event seq: every read is stamped with it. */
@@ -151,6 +155,11 @@ class FakeDashboard(scheduler: TestCoroutineScheduler) {
             )))
             "/api/snapshot/requests" -> ok(json.encodeToString(RequestsSnapshot.serializer(), RequestsSnapshot(seq, requests = requests)))
             "/api/snapshot/agents" -> ok(json.encodeToString(AgentsSnapshot.serializer(), AgentsSnapshot(seq, agents = agents)))
+            "/api/notifications" -> if (notificationsMissing) ok("""{"error":"not_found"}""", HttpStatusCode.NotFound) else ok(json.encodeToString(NotificationsSnapshot.serializer(), NotificationsSnapshot(
+                seq = seq,
+                notifications = notifications.sortedByDescending { it.seq },
+                unseen = notifications.count { it.seenAt == null },
+            )))
             else -> ok("""{"error":"not_found"}""", HttpStatusCode.NotFound)
         }
     }
@@ -175,6 +184,13 @@ class FakeDashboard(scheduler: TestCoroutineScheduler) {
             replyTo: String? = null,
             requestId: String? = null,
         ) = MessageView(id = id, seq = seq, projectId = projectId, updateId = updateId, replyTo = replyTo, requestId = requestId, author = author, body = body, createdAt = createdAt)
+
+        fun notification(id: String, seq: Long, seen: Boolean = false, updateId: String? = "u$seq") = NotificationView(
+            id = id, seq = seq, kind = "update", projectId = "p1", projectSlug = "mega", projectName = "Mega",
+            updateId = updateId, title = "Builder posted an update", body = "Body $id",
+            createdAt = seq * 1000, seenAt = if (seen) seq * 1000 + 1 else null,
+            path = "/projects/mega" + (updateId?.let { "?focus=$it" } ?: ""),
+        )
 
         fun request(id: String, seq: Long, projectId: String? = "p1", messageId: String? = null, kind: String = "confirm") =
             RequestView(id = id, seq = seq, agentId = "a1", projectId = projectId, messageId = messageId, kind = kind, question = "May I ship $id?", expiresAt = 9_999_999_999_999)

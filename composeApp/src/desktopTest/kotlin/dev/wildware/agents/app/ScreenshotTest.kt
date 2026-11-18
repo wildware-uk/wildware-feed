@@ -13,6 +13,8 @@ import dev.wildware.agents.app.design.AgentTheme
 import dev.wildware.agents.app.signin.SignInScreen
 import androidx.compose.runtime.Composable
 import dev.wildware.agents.app.feed.AgentDetails
+import dev.wildware.agents.app.feed.Bell
+import dev.wildware.agents.app.feed.BellItem
 import dev.wildware.agents.app.feed.FakeFeed
 import dev.wildware.agents.app.feed.Presence
 import dev.wildware.agents.app.feed.FeedItem
@@ -214,6 +216,27 @@ class ScreenshotTest {
             }
             shoot("phone-$mode-agents", Size.Phone, dark) {
                 AgentsPreview(dark = dark, state = state, safeArea = Size.Phone.safeArea, preview = ScreenPreview(drawerOpen = true))
+            }
+        }
+    }
+
+    /** The bell open: two new rows, one read, a question, and the count on the bell. */
+    @Test
+    fun notificationBell() {
+        val bell = Bell(
+            unseen = 2,
+            items = listOf(
+                BellItem("n3", "relay is waiting on you", "Turn on reaction sounds for everyone?", "agent-dashboard", "10:14", unread = true, path = "/"),
+                BellItem("n2", "scout replied", "Confirmed from my side: counts match after 30 minutes of real traffic.", "agent-dashboard", "10:06", unread = true, path = "/"),
+                BellItem("n1", "forge posted an update", "Reading messages in one session no longer hides them from another", "ios-companion", "Yesterday", unread = false, path = "/"),
+            ),
+        )
+        val state = FakeFeed.state.copy(bell = bell)
+        for (size in Size.entries) {
+            for (dark in listOf(false, true)) {
+                shoot("${size.label}-${if (dark) "dark" else "light"}-bell", size, dark) {
+                    AgentsPreview(dark = dark, state = state, safeArea = size.safeArea, preview = ScreenPreview(bellOpen = true))
+                }
             }
         }
     }

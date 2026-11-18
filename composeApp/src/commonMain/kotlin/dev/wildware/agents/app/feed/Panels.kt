@@ -163,7 +163,7 @@ fun Sidebar(
                     softWrap = false,
                     overflow = TextOverflow.Ellipsis,
                 )
-                IconAction(Icons.Bell, "Notifications")
+                BellButton(state.bell.unseen) { ui.bellOpen = !ui.bellOpen }
             }
             Spacer(Modifier.height(14.dp))
             SearchField { ui.commandOpen = true }

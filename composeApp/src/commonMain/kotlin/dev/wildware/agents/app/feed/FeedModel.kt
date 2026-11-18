@@ -308,9 +308,26 @@ data class FeedState(
     val searchIndex: List<SearchEntry> = emptyList(),
     /** Every word the projects on screen use for their cards, for the tag picker. */
     val tags: List<CardTag> = emptyList(),
+    val bell: Bell = Bell(),
 ) {
     fun item(id: String): FeedItem? = sections.firstNotNullOfOrNull { s -> s.items.firstOrNull { it.id == id } }
 }
+
+/** The bell: everything the owner was told about, newest first, and how many are new. */
+@Immutable
+data class Bell(val unseen: Int = 0, val items: List<BellItem> = emptyList())
+
+/** One row under the bell. [path] is where it leads, e.g. `/projects/mega?focus=u1`. */
+@Immutable
+data class BellItem(
+    val id: String,
+    val title: String,
+    val body: String,
+    val project: String?,
+    val time: String,
+    val unread: Boolean,
+    val path: String,
+)
 
 /** The live connection, as the header says it. */
 enum class LinkStatus(val label: String) {

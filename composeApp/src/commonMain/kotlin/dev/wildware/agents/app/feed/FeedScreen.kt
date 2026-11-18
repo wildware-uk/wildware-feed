@@ -119,6 +119,7 @@ fun FeedScreen(
     val colors = AgentTheme.colors
     val ui = remember(state) { FeedUi(preview, state, onEvent) }
     ui.onEvent = onEvent
+    val scope = rememberCoroutineScope()
     BoxWithConstraints(Modifier.fillMaxSize().windowBackground(colors)) {
         val phone = maxWidth < PhoneBreakpoint
         ui.isPhone = phone
@@ -129,6 +130,7 @@ fun FeedScreen(
             ui.selecting?.let { SelectTextSheet(ui, it, safeArea) }
             if (ui.commandOpen) CommandBar(ui, if (phone) safeArea else SafeArea())
             ui.tagging?.let { TagPicker(ui, it) }
+            if (ui.bellOpen) NotificationPanel(ui, if (phone) safeArea else SafeArea()) { path -> scope.launch { ui.goTo(OpenCard.fromPath(path)) } }
         }
         FollowNavigation(ui, navigator)
         FollowSystemBack(ui, widthPx)
@@ -289,7 +291,7 @@ private fun PhoneFeed(ui: FeedUi, safeArea: SafeArea, startAt: String?, widthPx:
                 state = list,
                 contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = safeArea.top + 8.dp, bottom = safeArea.bottom + 96.dp),
             ) {
-                item(key = "bar") { PhoneTopBar(state, onProjects = openDrawer, onTapBar = toTop, onSearch = { ui.commandOpen = true }) }
+                item(key = "bar") { PhoneTopBar(state, onProjects = openDrawer, onTapBar = toTop, onSearch = { ui.commandOpen = true }, onBell = { ui.bellOpen = !ui.bellOpen }) }
                 item(key = "header") { FeedHeader(ui, compact = true, Modifier.padding(top = 12.dp, bottom = 16.dp)) }
                 feedItems(ui, Density.Compact, list)
             }
@@ -328,7 +330,7 @@ private fun PhoneFeed(ui: FeedUi, safeArea: SafeArea, startAt: String?, widthPx:
 }
 
 @Composable
-private fun PhoneTopBar(state: FeedState, onProjects: () -> Unit, onTapBar: () -> Unit, onSearch: () -> Unit) {
+private fun PhoneTopBar(state: FeedState, onProjects: () -> Unit, onTapBar: () -> Unit, onSearch: () -> Unit, onBell: () -> Unit) {
     val colors = AgentTheme.colors
     val shape = AgentTheme.shapes.pill
     Row(
@@ -347,7 +349,7 @@ private fun PhoneTopBar(state: FeedState, onProjects: () -> Unit, onTapBar: () -
         Spacer(Modifier.weight(1f))
         PhoneWaitingButton()
         IconAction(Icons.Search, "Search", onClick = onSearch)
-        IconAction(Icons.Bell, "Notifications")
+        BellButton(state.bell.unseen) { onBell() }
         Box(Modifier.pressable("Your account", CircleShape) {}, contentAlignment = Alignment.Center) {
             Avatar(state.owner, 30.dp)
         }

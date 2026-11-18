@@ -685,6 +685,25 @@ internal class RequestsReader(
     }
 }
 
+/** The bell's list. Re-read whenever one is added or the owner clears some, on this device or another. */
+internal class NotificationsReader(
+    private val client: DashboardClient,
+    scope: CoroutineScope,
+    onChange: () -> Unit,
+) : FeedReader(scope, onChange) {
+    var list: NotificationList = NotificationList(); private set
+
+    override val watched = setOf("notification.created", "notifications.seen", StreamEvent.Resync)
+
+    override suspend fun load(replace: Boolean) = apply(client.notifications())
+
+    internal fun apply(next: NotificationsSnapshot) {
+        list = NotificationList(next.notifications, next.unseen)
+        seq = next.seq
+        loaded = true
+    }
+}
+
 /** Who has beaten lately. Re-read on presence events and on a timer, since heartbeats publish nothing. */
 internal class PresenceReader(
     private val client: DashboardClient,

@@ -362,6 +362,40 @@ data class AgentsSnapshot(
     val agents: List<LiveAgentView> = emptyList(),
 )
 
+/**
+ * One thing the owner was told about (an update, a reply, a question), as the bell lists it.
+ * [path] is where it leads: a dashboard route such as `/projects/mega?focus=u5`.
+ */
+@Serializable
+data class NotificationView(
+    val id: String,
+    val seq: Long = 0,
+    /** "update", "reply" or "request". */
+    val kind: String = "update",
+    val projectId: String? = null,
+    val projectSlug: String? = null,
+    val projectName: String? = null,
+    val updateId: String? = null,
+    val messageId: String? = null,
+    val requestId: String? = null,
+    val agentId: String? = null,
+    val title: String = "",
+    val body: String = "",
+    val createdAt: Long = 0,
+    /** When the owner looked at it, or null while it is new. */
+    val seenAt: Long? = null,
+    val path: String = "/",
+)
+
+/** `GET /api/notifications`: newest first, with how many are still new. */
+@Serializable
+data class NotificationsSnapshot(
+    val seq: Long,
+    val at: String = "",
+    val notifications: List<NotificationView> = emptyList(),
+    val unseen: Int = 0,
+)
+
 /** What `POST /api/messages` sends. Exactly one of [project], [update], [replyTo], [request] or [task] says where. */
 @Serializable
 data class NewMessage(

@@ -48,6 +48,10 @@ sealed interface FeedEvent {
     data object Refresh : FeedEvent
     data object LoadOlder : FeedEvent
     data class RetrySend(val outboxId: String) : FeedEvent
+    /** A row under the bell was opened: that one is seen (the screen goes to its card itself). */
+    data class OpenNotification(val id: String) : FeedEvent
+    /** "Mark all read" under the bell. */
+    data object ClearNotifications : FeedEvent
     data class DropUnsent(val outboxId: String) : FeedEvent
     data object MarkAllRead : FeedEvent
     data object ToggleTheme : FeedEvent
@@ -113,6 +117,8 @@ data class ScreenPreview(
     val drawerOpen: Boolean = false,
     /** Phone only: the open thread is shown full screen. */
     val threadOpen: Boolean = false,
+    /** The notification list under the bell, open. */
+    val bellOpen: Boolean = false,
 )
 
 /**
@@ -158,6 +164,9 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
         }
         return null
     }
+
+    /** The notification list under the bell. */
+    var bellOpen by mutableStateOf(preview.bellOpen)
     val composerFocus = FocusRequester()
 
     /** Words and files shared in from another app, waiting for the next project composer on screen. */
