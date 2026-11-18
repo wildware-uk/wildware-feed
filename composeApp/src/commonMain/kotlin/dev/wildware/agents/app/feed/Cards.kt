@@ -3,6 +3,7 @@ package dev.wildware.agents.app.feed
 import dev.wildware.agents.app.ProductName
 import androidx.compose.runtime.key
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -37,6 +38,8 @@ import androidx.compose.ui.unit.dp
 import dev.wildware.agents.app.design.AgentTheme
 import dev.wildware.agents.app.design.Icons
 import dev.wildware.agents.app.design.pressable
+import dev.wildware.agents.app.design.focusRing
+import androidx.compose.ui.semantics.Role
 import dev.wildware.agents.app.design.TextInput
 import androidx.compose.foundation.text.input.clearText
 import androidx.compose.foundation.text.input.rememberTextFieldState
@@ -105,19 +108,21 @@ private fun CardHeader(
             Avatar(author, AvatarSize)
             Spacer(Modifier.width(10.dp))
         }
-        Row(Modifier.weight(1f).clearAndSetSemantics { }, verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
             Text(
                 if (compact && author is Author.Owner) "You" else author.name,
+                Modifier.clearAndSetSemantics { },
                 color = colors.text,
                 style = type.label.copy(fontWeight = FontWeight.SemiBold),
+                maxLines = 1,
             )
-            if (project != null && !compact) {
-                Spacer(Modifier.width(10.dp))
-                Icon(Icons.Hash, null, tint = colors.textFaint, modifier = Modifier.size(11.dp))
-                MetaText(project.name, Modifier.padding(start = 2.dp))
+            if (project != null && showsProject()) {
+                Spacer(Modifier.width(if (compact) 8.dp else 10.dp))
+                // Gives way first on a narrow screen: the name and time keep their room.
+                ProjectLabel(project, Modifier.weight(1f, fill = false))
             }
             Spacer(Modifier.width(10.dp))
-            MetaText(time)
+            MetaText(time, Modifier.clearAndSetSemantics { })
         }
         if (!compact) Chips(level, status)
     }
@@ -132,6 +137,43 @@ private fun Chips(level: Level?, status: WorkStatus?, modifier: Modifier = Modif
     ) {
         if (status != null) StatusChip(status)
         if (level != null) LevelTag(level)
+    }
+}
+
+/**
+ * Whether cards should say which project they are from: yes in "All projects", where cards from
+ * every project are mixed together; no inside one project, where it would only repeat the title.
+ */
+@Composable
+private fun showsProject(): Boolean = LocalFeedUi.current?.state?.current?.slug == null
+
+/**
+ * "# project" beside the author, in the project's colour. Tapping it opens that project. It cuts
+ * its name short with an ellipsis before it pushes the time off a narrow phone.
+ */
+@Composable
+private fun ProjectLabel(project: Project, modifier: Modifier = Modifier) {
+    val colors = AgentTheme.colors
+    val ui = LocalFeedUi.current
+    val shape = AgentTheme.shapes.small
+    val slug = project.slug
+    Row(
+        modifier
+            .clip(shape)
+            .focusRing(shape)
+            .semantics(mergeDescendants = true) { contentDescription = "In project ${project.name}" }
+            .then(
+                if (ui != null && slug != null) {
+                    Modifier.clickable(role = Role.Button, onClickLabel = "Open ${project.name}") {
+                        ui.emit(FeedEvent.SelectProject(slug))
+                    }
+                } else Modifier,
+            )
+            .padding(horizontal = 3.dp, vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Hash, null, tint = colors.agent(project.hue), modifier = Modifier.size(11.dp))
+        MetaText(project.name, Modifier.padding(start = 2.dp).clearAndSetSemantics { })
     }
 }
 
@@ -338,12 +380,14 @@ fun QuestionCard(item: FeedItem.Question, modifier: Modifier = Modifier, density
             Spacer(Modifier.width(10.dp))
             Text(
                 "WAITING ON YOU",
-                Modifier.weight(1f),
                 color = colors.waiting,
                 style = type.overline,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
+            Box(Modifier.weight(1f).padding(start = 8.dp, end = 8.dp)) {
+                if (showsProject()) ProjectLabel(item.project)
+            }
             Icon(Icons.Clock, null, tint = muted, modifier = Modifier.size(14.dp))
             MetaText("${item.expiresIn} left", Modifier.padding(start = 5.dp), color = muted)
         }

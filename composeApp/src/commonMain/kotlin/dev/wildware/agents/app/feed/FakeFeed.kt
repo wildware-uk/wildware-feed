@@ -174,4 +174,19 @@ object FakeFeed {
         openThread = fix,
         totalUnread = 19,
     )
+
+    /** "All projects": the same cards, spread over several projects, as the owner sees them all at once. */
+    val allProjects = FeedState(
+        owner = owner,
+        projects = state.projects,
+        agents = state.agents,
+        current = Project("all", "All projects", unread = 19, waiting = 2, hue = 0),
+        sections = listOf(
+            FeedSection("Waiting on you", listOf(question, pictureQuestion.copy(project = website))),
+            FeedSection("Today", listOf(fix, illustration.copy(project = website), ask, disk.copy(project = infra))),
+            FeedSection("Yesterday", listOf(push.copy(project = ios))),
+        ),
+        openThread = null,
+        totalUnread = 19,
+    )
 }

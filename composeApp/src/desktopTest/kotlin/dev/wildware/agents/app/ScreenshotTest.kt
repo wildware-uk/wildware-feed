@@ -65,6 +65,19 @@ class ScreenshotTest {
         shoot("phone-dark-gesture-viewer", Size.Phone, dark = true, preview = ScreenPreview(viewer = Gallery(images, index = 1)))
     }
 
+    /** "All projects" on a phone, where each card has to say which project it is from. */
+    @Test
+    fun allProjects() {
+        for (dark in listOf(false, true)) {
+            for (startAt in listOf(null, "u3")) {
+                val name = "phone-${if (dark) "dark" else "light"}-all-projects" + if (startAt != null) "-scrolled" else ""
+                shoot(name, Size.Phone, dark) {
+                    AgentsPreview(dark = dark, state = FakeFeed.allProjects, safeArea = Size.Phone.safeArea, startAt = startAt)
+                }
+            }
+        }
+    }
+
     /** The sign-in screen, before anything is typed. Nothing reaches a network. */
     @Test
     fun signIn() {
