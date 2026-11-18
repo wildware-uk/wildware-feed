@@ -107,9 +107,9 @@ targets:
         # Stays "development": archives are signed for development, and the App Store export
         # re-signs with the distribution profile, which turns it into "production".
         aps-environment: development
-        # Agents' faces on banners need the Communication Notifications capability ticked on the
-        # App ID first; then add: com.apple.developer.usernotifications.communication: true
-        # Until then banners show the robot, and nothing else changes.
+        # Alerts arrive as messages from the agent, with its face on the banner (NotificationService.swift).
+        # Needs the Communication Notifications capability on this App ID and the service extension's.
+        com.apple.developer.usernotifications.communication: true
         com.apple.developer.usernotifications.time-sensitive: true
         com.apple.security.application-groups: [group.dev.wildware.agents]
         keychain-access-groups: [$(AppIdentifierPrefix)dev.wildware.agents.shared]
@@ -274,6 +274,7 @@ targets:
       path: NotificationService/NotificationService.entitlements
       properties:
         com.apple.security.application-groups: [group.dev.wildware.agents]
+        com.apple.developer.usernotifications.communication: true
         keychain-access-groups: [$(AppIdentifierPrefix)dev.wildware.agents.shared]
     settings:
       base:
