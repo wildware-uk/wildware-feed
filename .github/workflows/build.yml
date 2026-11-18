@@ -51,6 +51,39 @@ jobs:
           path: composeApp/build/screenshots/*.png
           if-no-files-found: warn
 
+  # The parity suite against the TypeScript server it must match, cloned at the commit pinned in
+  # server/parity/run-against-ts.sh (TS_SERVER_REF).
+  server-parity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: gradle/actions/setup-gradle@v4
+      # The server derives video posters and audio waveforms with ffmpeg.
+      - name: Install ffmpeg
+        timeout-minutes: 5
+        run: sudo apt-get update -q && sudo apt-get install -yq ffmpeg
+      - name: Compile the suite
+        timeout-minutes: 10
+        run: ./gradlew --no-daemon :server-parity:testClasses
+      - name: Build the TypeScript server and run the suite against it
+        timeout-minutes: 30
+        run: server/parity/run-against-ts.sh
+      - if: always()
+        uses: actions/upload-artifact@v4
+        timeout-minutes: 5
+        with:
+          name: server-parity-report
+          path: server/parity/build/reports/tests/test
+          if-no-files-found: warn
+
   ios:
     runs-on: macos-26
     needs: shared-tests

@@ -1,0 +1,89 @@
+# Server spec
+
+What today's TypeScript server does, exactly, so a Kotlin (Ktor) server can replace it without
+anyone noticing: same HTTP API, same live streams, same MCP tools, same SQLite file, same secrets.
+
+**Source of truth:** `wildware-uk/agent-dashboard` as of 2026-11-18, before the fixes below, which is what was
+deployed when this was written (its `src/` is identical to the deployed tree). Later commits there
+carry the decided fixes below.
+
+Every claim cites `src/path.ts:line` in that tree. Each file ends with **Surprises** (bugs, traps,
+inconsistencies — encoded as they are, not fixed) and **Parity test notes** (black-box checks).
+
+## Files
+
+| File | Covers |
+| --- | --- |
+| [01-config-and-auth.md](01-config-and-auth.md) | Env vars and boot checks, the request pipeline (`hooks.server.ts`), CSRF, compression, owner password (argon2id), session cookie byte format, device keys, agent tokens, upload/share token formats, rate limits, the admin CLI |
+| [02-owner-api-feed.md](02-owner-api-feed.md) | Owner API for the feed: projects, updates, messages and threads, reactions, cards (pin, work status, tags, fields), tags, agent rename; the domain rules behind them (slugs, mentions, emoji, threading) |
+| [03-owner-api-requests-devices.md](03-owner-api-requests-devices.md) | Requests (`request_input`): kinds, states, answer rules, expiry; devices and sign-in; Web Push settings; notifications (the bell); `/api/summary`; apps; every snapshot shape |
+| [04-stream-and-events.md](04-stream-and-events.md) | The event bus and replay ring; every event type and who publishes it; `GET /api/stream` (owner) and `GET /api/agent/stream` (agents) byte framing, resume, `resync`, heartbeats |
+| [05-mcp.md](05-mcp.md) | MCP over Streamable HTTP (stateless, JSON responses); auth; long-poll holds; all 31 tools with errors, side effects and events. Appendix A is the exact `tools/list` payload (also in `../parity/src/test/resources/tools-list.json`) |
+| [06-database.md](06-database.md) | How the SQLite file is opened, the migration table and checksums, the full schema after migration 045 (verbatim DDL), what each of the 45 migrations did |
+| [07-media-uploads-shares.md](07-media-uploads-shares.md) | Upload tokens and `PUT /api/upload/:token`, sniffing and limits, the derive pipeline (sharp, ffmpeg), files on disk, `/media/:id/:variant` with ranges and ETags, agent media fetch, share links and `/s/:token`, the media sweeper |
+| [08-jobs-push-presence.md](08-jobs-push-presence.md) | Every timer and background job, presence and sessions, notifications, Web Push (VAPID), APNs alerts, Live Activity content state |
+| [09-web-frontend.md](09-web-frontend.md) | The five SvelteKit pages, their server loads and form actions, static assets, the service worker, what the browser calls, and options for serving the site from Kotlin |
+| [10-embedding.md](10-embedding.md) | What the server needs beyond plain code (native modules, ffmpeg, files, secrets, ports, proxy, service, agent setup) and what a desktop app hosting it would do about each |
+
+## Rules that cut across every file
+
+- **Key order is part of the wire format.** Clients don't care, but the parity suite compares some
+  bodies byte for byte, and the spec records key order wherever the TS server has a fixed one.
+- **Two naming and time styles.** The owner API (`/api/*`) is camelCase with times as epoch
+  milliseconds (`createdAt: 1795010600953`). MCP results are snake_case with ISO strings
+  (`created_at: "2026-11-18T14:00:41.720Z"`), except `list_apps`/`set_app_data` `updated_at`,
+  which is a number. ISO strings always have three millisecond digits — `Instant.toString()` drops
+  them when they are zero, so the Kotlin server needs its own formatter.
+- **One error envelope** for owner routes: `{"error":"<code>","message":"<text>"}` with codes
+  `invalid_argument` (400), `not_found` (404), `conflict` (409), `unauthenticated` (401),
+  `rate_limited` (429). MCP tool failures are `isError: true` results whose text is
+  `<code>: <message>`; argument-schema failures come from the MCP SDK as `MCP error -32602: …`
+  with zod's wording, which the Kotlin server must reproduce.
+- **SvelteKit behaviour is part of the contract**: 405 with `allow` for unexported methods, the
+  CSRF rule that refuses cross-origin `text/plain`/form/multipart POST/PUT/PATCH/DELETE with 403
+  before any route runs, form actions answering JSON when `Accept` is not HTML, trailing-slash
+  handling. See 01 §CSRF and 09.
+- **Text rules use JavaScript semantics** (`trim()`, `\s`, `\w`, `localeCompare`, UTF-16 lengths
+  for `maxLength`). Kotlin's defaults differ; use explicit character sets.
+- **State that lives only in memory** and resets on restart: the event sequence and replay ring,
+  every rate limiter, presence of open streams. A restart is visible to clients (see 04).
+
+## Surprises, and what was decided
+
+Each file's **Surprises** section lists what looks like a bug. The twelve that matter most were
+decided on 2026-11-18. **Keep** means the parity suite pins today's behaviour. **Fix** means the TS
+server was changed and the suite now requires the fixed behaviour; the area files above describe
+the server before these fixes, so where they disagree this table wins. (A future decided fix can be
+written as `pendingFix(n) { … }` first: skipped on a server that lacks it, required with
+`PARITY_REQUIRE_FIXES=1`.)
+
+| # | Surprise | Decision | State |
+| --- | --- | --- | --- |
+| 1 | Each migration's SQL text is checksummed (06) | **Keep**: the Kotlin server ships byte-identical SQL for every migration, and any new one is the same in both servers | pinned (`DatabaseTest`) |
+| 2 | `notification.created` (N+1) reached live streams before the `update.created` (N) that caused it (04, 08) | **Fix**: live events in seq order | fixed, required |
+| 3 | The event seq restarts at 1, so a cursor from before a restart silently missed events (04) | **Fix**: every connection opens with `event: hello` naming a boot id; ids are `<boot>-<seq>`; a cursor naming another boot gets `resync` with reason `restarted`. A bare `<seq>` cursor still works within one boot | fixed, required |
+| 4 | Answering a request that just expired marks it timed out, tells the agent, then answers 409 (03) | **Keep** | pinned |
+| 5 | Migration 038 lost the `media_request` and `media_task` indexes (06) | **Fix**: migration 046 recreates them, same SQL in both servers | fixed, required (`DatabaseTest`) |
+| 6 | With `VAPID_SUBJECT` unset and an `http://` base URL every push fails and ten failures delete the subscription (08) | **Fix**: refuse to boot | fixed; not black-box testable by the suite (needs a boot with that config) |
+| 7 | A failed upload (413, 415, empty body, 500) spent the upload link (07) | **Fix**: only a successful upload spends it | fixed, required |
+| 8 | The app still sends the removed `task` card kind (02) | App bug, fixed in the app | — |
+| 9 | `POST /api/notifications/seen` with a non-list `ids` cleared everything (03) | **Fix**: 400 `ids must be a list of notification ids, or left out to clear them all` | fixed, required |
+| 10 | A brand-new agent (no projects yet) is counted against the whole deployment (04, 05) | **Keep**: intended, so a new agent is not deaf to its first instruction | pinned |
+| 11 | Revoking a token or device key left its open streams running (04) | **Fix**: revocation closes them | fixed (closes within about 5 s), required |
+| 12 | (a) Page routes ignore device keys; (b) unknown `/api/*` paths redirected to `/login` (01, 09) | (a) **Keep**. (b) **Fix**: 401 `{"error":"unauthenticated"}` signed out, 404 `{"error":"not_found","message":"no such API route: <path>"}` signed in | (b) fixed, required |
+
+Note for the app: since fix 3 the stream `id:` is `<boot>-<seq>`. `LiveStream.kt` falls back to the
+envelope's `seq` when the id is not a number, so it keeps working, but it sends a bare seq on
+reconnect and so never hears `restarted`. It should send the id back as it came.
+
+## Which server the suite runs against
+
+The CI job (`server-parity` in `.github/workflows/build.yml`) clones `wildware-uk/agent-dashboard` at
+the commit pinned in `server/parity/run-against-ts.sh` (`TS_SERVER_REF`), builds it and runs the
+suite: all 114 tests pass against the pinned commit, which has every decided fix. Move the pin
+forward when the TS server changes.
+
+## The parity suite
+
+`server/parity/` (Gradle module `:server-parity`) runs these checks against any running server. See
+[../parity/README.md](../parity/README.md).

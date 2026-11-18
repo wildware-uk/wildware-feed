@@ -18,3 +18,7 @@ dependencyResolutionManagement {
 
 include(":shared")
 include(":composeApp")
+
+// The black-box parity suite for the server rewrite. Plain JVM; it talks to a running server over HTTP.
+include(":server-parity")
+project(":server-parity").projectDir = file("server/parity")
