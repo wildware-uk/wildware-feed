@@ -115,6 +115,16 @@ class GestureTest {
     }
 
     @Test
+    fun theDrawerFollowsTheWholeSwipeAndEndsFullyOpen() = runComposeUiTest {
+        phone()
+        // Slowly, as a finger does: every step has to reach the drawer, not just the first.
+        onRoot().performTouchInput { swipe(Offset(4f, 400f), Offset(300f, 400f), 900) }
+        waitForIdle()
+        val left = onNodeWithText("Hold to reorder").fetchSemanticsNode().boundsInRoot.left
+        assertTrue(left >= 0f, "the drawer stopped part way, its label at x=$left")
+    }
+
+    @Test
     fun projectsReorderFromTheScreenReaderToo() = runComposeUiTest {
         phone(ScreenPreview(drawerOpen = true))
         runCustomAction("Move ios-companion up")

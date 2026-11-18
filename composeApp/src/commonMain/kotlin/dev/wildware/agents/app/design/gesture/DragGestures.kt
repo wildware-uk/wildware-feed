@@ -56,11 +56,16 @@ class EdgeProgress(initial: Float = 0f) {
  *
  * [width] is how far a full swipe travels, in pixels. Letting go past a third of it, or
  * flicking, commits; otherwise it springs back.
+ *
+ * [canStart] is asked once, when a finger lands. It is a question for that moment, not a switch
+ * on the modifier: a condition like "the drawer is closed" turns false on the swipe's own first
+ * step, and taking the handler away then would leave the drawer stopped a sliver open.
  */
 fun Modifier.edgeSwipe(
     progress: EdgeProgress,
     width: () -> Float,
     enabled: Boolean = true,
+    canStart: () -> Boolean = { true },
     reverse: Boolean = false,
     onCommit: () -> Unit,
     onCancel: () -> Unit = {},
@@ -76,6 +81,7 @@ fun Modifier.edgeSwipe(
             val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
             // Opening: only from the edge strip. Closing an open drawer: from anywhere on it.
             if (!down.type.isTouchLike() || (!reverse && down.position.x > edgePx)) return@awaitEachGesture
+            if (!canStart()) return@awaitEachGesture
             val tracker = VelocityTracker()
             tracker.addPointerInputChange(down)
             var total = Offset.Zero

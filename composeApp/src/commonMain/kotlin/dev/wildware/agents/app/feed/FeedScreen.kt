@@ -257,10 +257,10 @@ private fun PhoneFeed(ui: FeedUi, safeArea: SafeArea, startAt: String?, widthPx:
             .edgeSwipe(
                 ui.drawer,
                 width = { drawerWidthPx },
-                // Only on the feed itself: not under a thread, a menu, the drawer or the picture viewer.
                 // Where the platform owns the left edge (the iPhone), its swipe opens the drawer instead.
-                enabled = !LocalSystemBack.current.ownsLeftEdge &&
-                    ui.phoneThread == null && ui.drawer.value == 0f && ui.viewer == null && ui.menu == null,
+                enabled = !LocalSystemBack.current.ownsLeftEdge,
+                // Only on the feed itself: not under a thread, a menu, the drawer or the picture viewer.
+                canStart = { ui.phoneThread == null && ui.drawer.value == 0f && ui.viewer == null && ui.menu == null },
                 onCommit = {},
             ),
     ) {
