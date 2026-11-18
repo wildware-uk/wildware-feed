@@ -372,6 +372,89 @@ class FeedApiTest : ParityTest() {
     }
 
     @Test
+    fun `the app's card tags - on, off, toggle, by id or word, refusals, and their events`() = parity {
+        val project = Fixtures.project()
+        val other = Fixtures.project()
+        val pid = project.id
+        val card = post("project" to project.slug, "body" to "tag this").obj()["message"]["id"].s
+        val foreign = owner.post("/api/projects/${other.slug}/tags", obj("name" to "elsewhere")).obj()["tag"]["id"].s
+        withStream("/api/stream", owner.auth) { stream ->
+            suspend fun tag(vararg fields: Pair<String, Any?>) = owner.post("/api/cards/message/$card/tags", obj(*fields))
+            val made = tag("tag" to "Needs Review", "create" to true)
+            assertEquals(200, made.status.value)
+            val body = made.obj()
+            assertEquals(listOf("card", "tag", "on"), body.keys.toList())
+            assertEquals(obj("kind" to "message", "id" to card), body["card"])
+            val t = body["tag"].o
+            assertEquals(listOf("seq", "id", "projectId", "name", "slug", "colour", "agentId", "createdAt"), t.keys.toList())
+            assertEquals("needs-review", t["slug"].s)
+            assertEquals(true, body["on"].bool)
+            val id = t["id"].s
+            fun expected(on: Boolean) = """{"card":{"kind":"message","id":"$card"},"tag":${t},"on":$on}"""
+
+            assertEquals(expected(true), tag("tag" to "needs-review", "on" to true).bodyAsText(), "already on: no change")
+            assertEquals(expected(false), tag("tag" to id, "on" to false).bodyAsText(), "by id, off")
+            assertEquals(expected(false), tag("tag" to "Needs Review", "on" to false).bodyAsText(), "already off")
+            assertEquals(expected(true), tag("tag" to "needs review").bodyAsText(), "no `on` toggles it back on")
+            assertEquals(expected(false), tag("tag" to id).bodyAsText(), "and off again")
+
+            tag("tag" to "  ").expectError(400, "invalid_argument", "tag must be a tag id, or the word itself")
+            tag("on" to true).expectError(400, "invalid_argument", "tag must be a tag id, or the word itself")
+            tag("tag" to foreign).expectError(400, "invalid_argument", "that tag belongs to another project")
+            tag("tag" to "nothing-here", "create" to "yes").expectError(404, "not_found", "this project has no tag called \"nothing-here\"")
+            owner.post("/api/cards/message/01ZZZZZZZZZZZZZZZZZZZZZZZZ/tags", obj("tag" to "x")).expectError(404, "not_found", "no such message: 01ZZZZZZZZZZZZZZZZZZZZZZZZ")
+
+            stream.drain(1000.milliseconds)
+            val events = stream.seen.filter { it.data?.contains(pid) == true && it.event in setOf("tags.changed", "message.updated") }
+                .map { it.event + " " + it.obj["payload"].toString() }
+            val changed = """tags.changed {"projectId":"$pid"}"""
+            val announced = """message.updated {"messageId":"$card","projectId":"$pid","author":""}"""
+            assertEquals(
+                listOf(changed, announced, changed, announced, changed, announced, changed, announced, changed),
+                events,
+                "creating the tag, then each of the four real changes: the card, then tags.changed",
+            )
+        }
+    }
+
+    @Test
+    fun `the app's card fields - exact bodies, every kind, limits, and their events`() = parity {
+        val project = Fixtures.project()
+        val pid = project.id
+        val update = Fixtures.update(project)["id"].s
+        val request = alpha.ok("request_input", obj("kind" to "confirm", "question" to "fields?", "project" to project.slug, "timeout_s" to 60))["request_id"].s
+        withStream("/api/stream", owner.auth) { stream ->
+            suspend fun field(kind: String, id: String, vararg fields: Pair<String, Any?>) = owner.post("/api/cards/$kind/$id/fields", obj(*fields))
+            val set = field("update", update, "name" to "Branch", "value" to " main ").obj()
+            assertEquals(listOf("card", "fields", "set"), set.keys.toList())
+            val row = set["fields"].arr.single().o
+            assertEquals(listOf("seq", "id", "card", "name", "slug", "value", "author", "createdAt", "updatedAt"), row.keys.toList())
+            assertEquals(obj("kind" to "update", "id" to update), row["card"])
+            assertEquals("main", row["value"].s)
+            assertEquals(set.toString(), field("update", update, "name" to "Branch", "value" to "main").bodyAsText(), "same name and value: nothing changes")
+
+            val onRequest = field("request", request, "name" to "Ticket", "value" to "ABC-1").obj()
+            assertEquals(obj("kind" to "request", "id" to request), onRequest["card"])
+            assertEquals(true, onRequest["set"].bool)
+
+            field("update", update, "name" to "  ", "value" to "x").expectError(400, "invalid_argument", "a field needs a name")
+            field("update", update, "name" to "n".repeat(41), "value" to "x").expectError(400, "invalid_argument", "a field name may be at most 40 characters")
+            field("update", update, "name" to "!!!", "value" to "x").expectError(400, "invalid_argument", "\"!!!\" has no letters or digits in it")
+            field("update", update, "name" to "Note", "value" to "  ").expectError(400, "invalid_argument", "a field needs a value, or null to remove it")
+            field("update", update, "name" to "Note", "value" to "v".repeat(501)).expectError(400, "invalid_argument", "a field value may be at most 500 characters")
+            field("update", update, "value" to "x").expectError(400, "invalid_argument", "name must be a string")
+            for (i in 2..20) field("update", update, "name" to "f$i", "value" to "v")
+            field("update", update, "name" to "f21", "value" to "v").expectError(400, "invalid_argument", "a card may carry at most 20 fields")
+            assertEquals(20, field("update", update, "name" to "f20", "value" to "changed").obj()["fields"].arr.size, "an existing field can still change")
+
+            stream.drain(1000.milliseconds)
+            val changes = stream.seen.filter { it.event == "fields.changed" && it.data?.contains(pid) == true }
+            assertEquals("""{"projectId":"$pid"}""", changes.first().obj["payload"].toString())
+            assertEquals(1 + 1 + 19 + 1, changes.size, "one per real change: Branch, the request's, f2-f20, f20 again")
+        }
+    }
+
+    @Test
     fun `25 card fields`() = parity {
         val project = Fixtures.project()
         val update = Fixtures.update(project)["id"].s
