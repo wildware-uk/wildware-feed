@@ -20,7 +20,7 @@ on:
         required: false
         default: ''
       upload:
-        description: 'Upload to TestFlight. Untick to only build and sign the .ipa (kept as a run artifact).'
+        description: 'Upload to TestFlight. Untick to only build and sign the .ipa (kept on the run for 1 day).'
         type: boolean
         required: false
         default: true
@@ -331,8 +331,19 @@ jobs:
         with:
           name: Wildware-Feed-${{ needs.check.outputs.version }}-${{ needs.check.outputs.build }}-ipa
           path: ${{ runner.temp }}/export/*.ipa
-          retention-days: 7
+          # The repo is public, so any signed-in GitHub user could download it: keep it one day only.
+          retention-days: 1
           if-no-files-found: error
+
+      - name: Say what happened to the .ipa
+        if: github.event.inputs.upload == 'false'
+        timeout-minutes: 1
+        run: |
+          {
+            echo "### Dry run: $VERSION ($BUILD) built and signed, not uploaded"
+            echo "The .ipa is on this run as an artifact for **1 day**, then GitHub deletes it."
+            echo "The repo is public, so anyone signed in to GitHub can download it until then."
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload to TestFlight
         if: github.event.inputs.upload != 'false'

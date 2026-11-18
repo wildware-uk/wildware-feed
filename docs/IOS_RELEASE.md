@@ -10,8 +10,8 @@ App Store Connect. It only runs when you start it, because Mac minutes are expen
    - **Version**: empty uses `agents.version` in `gradle.properties` (the desktop apps use it too).
    - **What to Test**: optional text for testers.
    - **Upload to TestFlight**: untick it for a dry run. It still builds and signs, and keeps the
-     `.ipa` as a download on the run for 7 days, but sends nothing to Apple.
-3. Wait about 40 to 60 minutes. The build number is the run number (`12.1` is run 12, first try),
+     `.ipa` as a download on the run for 1 day (the repo is public), but sends nothing to Apple.
+3. Wait about 30 minutes. The build number is the run number (`12.1` is run 12, first try),
    so every run gets a new one.
 4. Apple then processes it for 5 to 30 minutes, and it shows in TestFlight.
 
