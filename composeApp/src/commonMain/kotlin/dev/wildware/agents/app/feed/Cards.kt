@@ -101,11 +101,12 @@ private fun CardHeader(
     /** Opens the work-state choice when the status chip is tapped. */
     onStatus: (() -> Unit)? = null,
     high: Boolean = false,
+    pinned: Boolean = false,
 ) {
     val colors = AgentTheme.colors
     val type = AgentTheme.type
     val spoken = listOfNotNull(
-        author.name, role, time, "high priority".takeIf { high }, level?.label, status?.let { "status ${it.label}" },
+        author.name, role, time, "pinned".takeIf { pinned }, "high priority".takeIf { high }, level?.label, status?.let { "status ${it.label}" },
     ).joinToString(", ")
     Row(
         Modifier.fillMaxWidth().semantics(mergeDescendants = true) { contentDescription = spoken },
@@ -130,6 +131,7 @@ private fun CardHeader(
             }
             Spacer(Modifier.width(10.dp))
             MetaText(time, Modifier.clearAndSetSemantics { })
+            if (pinned) Icon(Icons.Pin, null, tint = colors.accent, modifier = Modifier.padding(start = 8.dp).size(13.dp))
         }
         if (!compact) Chips(level, status, high, onStatus = onStatus)
     }
@@ -209,7 +211,8 @@ fun UpdateCard(
     val type = AgentTheme.type
     val ui = LocalFeedUi.current
     val indent = if (density == Density.Compact) 0.dp else BodyIndent
-    val target = MenuTarget(item.id, item.agent.name, item.title, own = false, taggable = true, work = true, status = item.status)
+    val pinned = ui?.isPinned(item.id, item.pinned) ?: item.pinned
+    val target = MenuTarget(item.id, item.agent.name, item.title, own = false, taggable = true, work = true, status = item.status, pinned = pinned)
     val tags = ui?.tagsFor(item.id, item.tags) ?: item.tags
     val reactions = ui?.reactionsFor(item.id, item.reactions) ?: item.reactions
     val chooseStatus = { ui?.emit(FeedEvent.ChooseStatus(item.id, item.status)); Unit }
@@ -227,6 +230,7 @@ fun UpdateCard(
                 compact = density == Density.Compact,
                 onStatus = chooseStatus,
                 high = item.high,
+                pinned = pinned,
             )
             Column(Modifier.padding(start = indent, top = 8.dp)) {
                 if (density == Density.Compact) Chips(item.level, item.status, item.high, Modifier.padding(bottom = 8.dp), onStatus = chooseStatus)
@@ -591,7 +595,8 @@ fun PostCard(item: FeedItem.Post, modifier: Modifier = Modifier, density: Densit
     val ui = LocalFeedUi.current
     val own = item.author is Author.Owner
     val indent = if (density == Density.Compact) 0.dp else BodyIndent
-    val target = MenuTarget(item.id, if (own) "You" else item.author.name, item.body, own = own, taggable = true, work = true, status = item.status)
+    val pinned = ui?.isPinned(item.id, item.pinned) ?: item.pinned
+    val target = MenuTarget(item.id, if (own) "You" else item.author.name, item.body, own = own, taggable = true, work = true, status = item.status, pinned = pinned)
     val tags = ui?.tagsFor(item.id, item.tags) ?: item.tags
     val reactions = ui?.reactionsFor(item.id, item.reactions) ?: item.reactions
     val chooseStatus = { ui?.emit(FeedEvent.ChooseStatus(item.id, item.status)); Unit }
@@ -608,6 +613,7 @@ fun PostCard(item: FeedItem.Post, modifier: Modifier = Modifier, density: Densit
                 showAvatar = true,
                 compact = density == Density.Compact,
                 onStatus = chooseStatus,
+                pinned = pinned,
             )
             Column(Modifier.padding(start = indent, top = 8.dp)) {
                 if (density == Density.Compact && item.status != null) Chips(null, item.status, modifier = Modifier.padding(bottom = 8.dp), onStatus = chooseStatus)

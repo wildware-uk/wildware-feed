@@ -169,6 +169,7 @@ internal class FeedMapper(
                 unreadReplies = unread,
                 tags = tags.map { it.toCardTag() },
                 high = update.priority == "high",
+                pinned = pinned,
             )
         }
         is PostCard -> FeedItem.Post(
@@ -185,6 +186,7 @@ internal class FeedMapper(
             sending = post.sending,
             questions = post.questions.map { it.toQuestion(agents, project, threads) },
             status = workStatus(status),
+            pinned = pinned,
         )
     }
 

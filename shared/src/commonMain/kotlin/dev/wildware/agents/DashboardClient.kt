@@ -171,6 +171,15 @@ class DashboardClient(
         }.requireSuccess()
     }
 
+    /** Pins a card above the feed, or unpins it. Says which, so sending it twice does no harm. */
+    @Throws(Exception::class)
+    suspend fun pinCard(card: CardRef, pinned: Boolean) {
+        http.post("api/cards/${card.kind.encodeURLPathPart()}/${card.id.encodeURLPathPart()}/pin") {
+            authorise()
+            jsonBody(buildJsonObject { put("pinned", pinned) })
+        }.requireSuccess()
+    }
+
     /** Deletes an update card. */
     @Throws(Exception::class)
     suspend fun deleteUpdate(updateId: String) {

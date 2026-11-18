@@ -259,6 +259,8 @@ class OwnerActions(
     /** Puts a tag on a card or takes it off; with [create], [tag] is a new word to make on the way. */
     fun tag(card: CardRef, tag: String, on: Boolean, create: Boolean = false): String =
         queue(emptyList()) { id, _ -> Outbox.tag(id, clock(), card, tag, on, create) }
+    /** Pins a card above the feed, or unpins it. */
+    fun pin(card: CardRef, pinned: Boolean): String = queue(emptyList()) { id, _ -> Outbox.pin(id, clock(), card, pinned) }
 
     private fun queue(files: List<Attachment>, build: (String, List<OutboxFile>) -> OutboxItem): String {
         val id = newId()

@@ -142,6 +142,28 @@ class ScreenshotTest {
         shoot("desktop-light-high-priority", Size.Desktop, dark = false, startAt = "u3")
     }
 
+
+    /** The card menu offering Pin, on desktop and a phone; and a pinned card above the feed. */
+    @Test
+    fun pinning() {
+        val fix = FakeFeed.state.openThread as FeedItem.Update
+        val menu = MenuTarget(fix.id, fix.agent.name, fix.title, own = false, at = androidx.compose.ui.geometry.Offset(900f, 120f), pinned = false)
+        shoot("desktop-dark-pin-menu", Size.Desktop, dark = true, startAt = "u1", preview = ScreenPreview(menu = menu))
+        shoot("phone-dark-pin-menu", Size.Phone, dark = true, preview = ScreenPreview(menu = menu))
+        val disk = FakeFeed.state.sections.flatMap { it.items }.first { it.id == "u3" } as FeedItem.Update
+        // As the engine lays it out: Waiting on you, then Pinned, then the days.
+        val rest = FakeFeed.state.sections.map { s -> s.copy(items = s.items.filter { it.id != "u3" }) }
+        val pinnedState = FakeFeed.state.copy(
+            sections = rest.take(1) + dev.wildware.agents.app.feed.FeedSection("Pinned", listOf(disk.copy(pinned = true))) + rest.drop(1),
+        )
+        shoot("desktop-light-pinned", Size.Desktop, dark = false) {
+            AgentsPreview(dark = false, state = pinnedState, safeArea = Size.Desktop.safeArea)
+        }
+        shoot("phone-light-pinned", Size.Phone, dark = false) {
+            AgentsPreview(dark = false, state = pinnedState, safeArea = Size.Phone.safeArea)
+        }
+    }
+
     /** The sign-in screen, before anything is typed. Nothing reaches a network. */
     @Test
     fun signIn() {

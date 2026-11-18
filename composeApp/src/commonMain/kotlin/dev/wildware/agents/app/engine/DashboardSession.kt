@@ -189,6 +189,7 @@ class DashboardSession(
             is FeedEvent.Delete -> cardRef(event.targetId)?.let { actions.delete(it) }
             is FeedEvent.Tag -> cardRef(event.targetId)?.let { actions.tag(it, event.tag, event.on, event.create) }
             is FeedEvent.SetStatus -> cardRef(event.targetId)?.let { actions.setStatus(it, event.status?.wire) }
+            is FeedEvent.Pin -> cardRef(event.targetId)?.let { actions.pin(it, event.pinned) }
             is FeedEvent.OpenThread -> dashboard.markRead(event.cardId)
             is FeedEvent.MarkAllRead -> markAllRead()
             is FeedEvent.OpenNotification -> dashboard.markNotificationsSeen(listOf(event.id))

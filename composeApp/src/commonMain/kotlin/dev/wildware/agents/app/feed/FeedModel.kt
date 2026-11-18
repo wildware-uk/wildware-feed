@@ -238,6 +238,8 @@ sealed interface FeedItem {
         val tags: List<CardTag> = emptyList(),
         /** The agent marked it high priority. Shown as a red "High" chip; it doesn't change the order. */
         val high: Boolean = false,
+        /** Pinned above the rest of the feed. */
+        val pinned: Boolean = false,
     ) : Threaded {
         override val starter: Author get() = Author.AgentAuthor(agent)
     }
@@ -289,6 +291,8 @@ sealed interface FeedItem {
         val tags: List<CardTag> = emptyList(),
         /** Its work state, when someone marked it as work. */
         val status: WorkStatus? = null,
+        /** Pinned above the rest of the feed. */
+        val pinned: Boolean = false,
     ) : Threaded {
         override val title: String get() = body.lineSequence().first().take(120)
         override val starter: Author get() = author

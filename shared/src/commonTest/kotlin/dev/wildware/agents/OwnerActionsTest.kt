@@ -150,6 +150,26 @@ class OwnerActionsTest {
     }
 
     @Test
+    fun `pinning says pinned or unpinned and never toggles`() = runTest {
+        val server = FakeDashboard(testScheduler)
+        val (queue, actions) = setUp(server)
+
+        actions.pin(CardRef(CardKinds.Update, "u1"), pinned = true)
+        actions.pin(CardRef(CardKinds.Message, "m1"), pinned = false)
+        runCurrent()
+
+        assertEquals(
+            listOf(
+                "POST /api/cards/update/u1/pin" to """{"pinned":true}""",
+                "POST /api/cards/message/m1/pin" to """{"pinned":false}""",
+            ),
+            server.writes,
+        )
+        assertTrue(queue.items.value.isEmpty())
+    }
+
+
+    @Test
     fun `deleting or dismissing what is already gone counts as done`() = runTest {
         val server = FakeDashboard(testScheduler).apply {
             onWrite = { _, _ -> respond("""{"error":"not_found"}""", HttpStatusCode.NotFound) }

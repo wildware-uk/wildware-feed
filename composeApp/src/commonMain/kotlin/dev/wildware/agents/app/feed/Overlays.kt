@@ -113,6 +113,9 @@ private fun menuRows(target: MenuTarget, phone: Boolean = false): List<MenuRow> 
     add(MenuRow("Copy link", Icons.Link, false, FeedEvent.CopyLink(target.id)))
     if (target.taggable) add(MenuRow("Tags…", Icons.Hash, false, FeedEvent.EditTags(target.id)))
     if (target.work) add(MenuRow(if (target.status == null) "Mark as work…" else "Work state…", Icons.Check, false, FeedEvent.ChooseStatus(target.id, target.status)))
+    target.pinned?.let { pinned ->
+        add(MenuRow(if (pinned) "Unpin" else "Pin", Icons.Pin, false, FeedEvent.Pin(target.id, pinned = !pinned)))
+    }
     if (target.own) add(MenuRow("Delete", Icons.Trash, true, FeedEvent.Delete(target.id)))
 }
 

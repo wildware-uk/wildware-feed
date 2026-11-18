@@ -41,6 +41,8 @@ sealed interface FeedEvent {
     data class Tag(val targetId: String, val tag: String, val on: Boolean, val create: Boolean = false) : FeedEvent
     /** Open the tag picker for a card. The screen handles it; nothing is sent. */
     data class EditTags(val targetId: String) : FeedEvent
+    /** Pin a card above the feed, or unpin it. */
+    data class Pin(val targetId: String, val pinned: Boolean) : FeedEvent
     data class OpenThread(val cardId: String) : FeedEvent
     data class MoveProject(val from: Int, val to: Int) : FeedEvent
     /** Show one project's feed, or every project's for null. */
@@ -117,6 +119,8 @@ data class MenuTarget(
     val work: Boolean = false,
     /** Its work state now, when it is work. */
     val status: WorkStatus? = null,
+    /** Whether it is pinned now; null for what can't be pinned, such as a reply. */
+    val pinned: Boolean? = null,
 )
 
 /** The work-state choice, open on card [id], whose state is [current]. */
@@ -381,6 +385,11 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
         is FeedItem.Post -> item.project.id
         is FeedItem.Question -> item.project.id
     }
+    /** Cards pinned or unpinned here, drawn that way before the server says so. */
+    private val pinnedHere = mutableStateMapOf<String, Boolean>()
+
+    /** Whether card [id] shows as pinned: the owner's latest tap here, else what the server says. */
+    fun isPinned(id: String, server: Boolean): Boolean = pinnedHere[id] ?: server
 
     fun emit(event: FeedEvent) {
         if (event is FeedEvent.EditTags) {
@@ -416,6 +425,7 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
             is FeedEvent.Tag -> noteTag(event)
             is FeedEvent.ChooseStatus -> statusPick = StatusPick(event.targetId, event.current)
             is FeedEvent.SetStatus -> statusPick = null
+            is FeedEvent.Pin -> pinnedHere[event.targetId] = event.pinned
             is FeedEvent.SelectProject -> threadId = null
             else -> Unit
         }

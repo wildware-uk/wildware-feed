@@ -39,6 +39,8 @@ enum class OutboxKind {
     Tag,
     /** Sets [OutboxItem.card]'s work state to [OutboxItem.value] (JSON: a state, or null for "not work"). */
     Status,
+    /** Pins [OutboxItem.card] above the feed, or unpins it when [OutboxItem.on] is false. */
+    Pin,
 }
 
 /** A photo or file waiting to go up with its message. [name] is the file in the outbox's folder. */
@@ -96,7 +98,7 @@ data class OutboxItem(
         get() = when (kind) {
             OutboxKind.Answer -> "request=${answer?.requestId}"
             OutboxKind.RequestAnswer, OutboxKind.Dismiss -> "request=${card?.id}"
-            OutboxKind.React, OutboxKind.Delete, OutboxKind.Tag, OutboxKind.Status -> "card=${card?.kind}/${card?.id}"
+            OutboxKind.React, OutboxKind.Delete, OutboxKind.Tag, OutboxKind.Status, OutboxKind.Pin -> "card=${card?.kind}/${card?.id}"
             else -> thread.entries.sortedBy { it.key }.joinToString("&") { "${it.key}=${it.value}" }
         }
 
@@ -185,6 +187,8 @@ object Outbox {
         card = card,
         value = (status?.let(::JsonPrimitive) ?: JsonNull).toString(),
     )
+    fun pin(id: String, nowMillis: Long, card: CardRef, pinned: Boolean) =
+        OutboxItem(id, nowMillis, OutboxKind.Pin, if (pinned) "Pin" else "Unpin", card = card, on = pinned)
 
     /**
      * Whether a failure is worth trying again. Not reaching the dashboard, a timeout, rate limiting
@@ -345,6 +349,10 @@ internal suspend fun DashboardClient.deliverQueued(item: OutboxItem, attachments
                 val card = item.card ?: return DeliveryResult(DeliveryOutcome.GiveUp, message = "It has no card.")
                 val tag = item.value ?: return DeliveryResult(DeliveryOutcome.GiveUp, message = "It has no tag.")
                 tagCard(card, tag, item.on ?: true, create = item.create == true)
+            }
+            OutboxKind.Pin -> {
+                val card = item.card ?: return DeliveryResult(DeliveryOutcome.GiveUp, message = "It has no card.")
+                pinCard(card, item.on ?: true)
             }
         }
         DeliveryResult(DeliveryOutcome.Sent, 200, ticketMessageId = ticketMessageId, sent = sent)
