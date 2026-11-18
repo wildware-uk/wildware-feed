@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
@@ -49,6 +48,7 @@ import dev.wildware.agents.app.design.AppMark
 import dev.wildware.agents.app.feed.ButtonTone
 import dev.wildware.agents.app.feed.MetaText
 import dev.wildware.agents.app.feed.SafeArea
+import dev.wildware.agents.app.feed.safePadding
 import dev.wildware.agents.app.feed.windowBackground
 import kotlinx.coroutines.launch
 
@@ -125,8 +125,10 @@ fun SignInScreen(
         Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .imePadding()
-            .padding(top = safeArea.top + 24.dp, bottom = safeArea.bottom + 24.dp, start = 20.dp, end = 20.dp),
+            // The safe area's bottom already includes the keyboard; it is read while laying out, so
+            // the form follows the keyboard without redrawing.
+            .safePadding(safeArea, top = 24.dp, bottom = 24.dp)
+            .padding(horizontal = 20.dp),
         contentAlignment = Alignment.TopCenter,
     ) {
         Column(Modifier.widthIn(max = 420.dp).fillMaxWidth().padding(top = lift)) {

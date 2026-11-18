@@ -51,6 +51,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isCtrlPressed
@@ -469,6 +470,8 @@ fun Composer(
             runCatching { focus.requestFocus() }
         }
     }
+    // Read as a yes/no, so typing redraws only the text, not the whole box, on every key.
+    val blank by remember { derivedStateOf { text.text.isBlank() } }
     val send = {
         val typed = text.text.toString().trim()
         if (typed.isNotEmpty() || files.isNotEmpty()) {
@@ -516,10 +519,10 @@ fun Composer(
                 MetaText("⌘↵", Modifier.padding(horizontal = 6.dp))
             }
             // An empty box offers the mic; once there is something to send, the send button.
-            if (recorder != null && (recorder.active || (text.text.isBlank() && files.isEmpty()))) {
+            if (recorder != null && (recorder.active || (blank && files.isEmpty()))) {
                 MicButton(recorder)
             } else {
-                SendButton(enabled = text.text.isNotBlank() || files.isNotEmpty(), onClick = send)
+                SendButton(enabled = !blank || files.isNotEmpty(), onClick = send)
             }
         }
     }

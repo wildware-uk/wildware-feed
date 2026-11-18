@@ -41,6 +41,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
@@ -197,11 +199,12 @@ fun WithMenu(target: MenuTarget, modifier: Modifier = Modifier, content: @Compos
 }
 
 @Composable
-private fun Scrim(alpha: Float, label: String, onTap: () -> Unit) {
+private fun Scrim(alpha: () -> Float, label: String, onTap: () -> Unit) {
     Box(
         Modifier
             .fillMaxSize()
-            .background(Color.Black.copy(alpha = alpha))
+            // Read while drawing, so a scrim that fades with a drag redraws without recomposing.
+            .drawBehind { drawRect(Color.Black.copy(alpha = alpha().coerceIn(0f, 1f))) }
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
@@ -229,14 +232,14 @@ private fun DragHandle() {
  * tap outside, or press Cancel to close it.
  */
 @Composable
-fun ActionSheet(target: MenuTarget, bottomInset: androidx.compose.ui.unit.Dp) {
+fun ActionSheet(target: MenuTarget, safeArea: SafeArea) {
     val ui = LocalFeedUi.current ?: return
     val colors = AgentTheme.colors
     val run = rememberRunner(ui, target)
     val drag = remember { DismissDrag() }
     val shape = RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp)
     Box(Modifier.fillMaxSize()) {
-        Scrim(0.38f, "Close menu") { ui.menu = null }
+        Scrim({ 0.38f }, "Close menu") { ui.menu = null }
         Column(
             Modifier
                 .align(Alignment.BottomCenter)
@@ -247,7 +250,7 @@ fun ActionSheet(target: MenuTarget, bottomInset: androidx.compose.ui.unit.Dp) {
                 .background(colors.surfaceRaised)
                 .swipeDownToDismiss(drag) { ui.menu = null }
                 .semantics { paneTitle = "Actions" }
-                .padding(bottom = bottomInset),
+                .safePadding(safeArea, bottom = 0.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             DragHandle()
@@ -324,11 +327,11 @@ fun ImageViewer(gallery: Gallery, safeArea: SafeArea) {
         scope.launch { if (motion.reduced) pager.scrollToPage(page) else pager.animateScrollToPage(page) }
     }
     val current = images[pager.currentPage]
-    val fade = (1f - drag.offsetPx / 900f).coerceIn(0.3f, 1f)
     Box(
         Modifier
             .fillMaxSize()
-            .background(Color.Black.copy(alpha = fade))
+            // Fades as it is pulled down. Read while drawing, so the drag never recomposes the viewer.
+            .drawBehind { drawRect(Color.Black.copy(alpha = (1f - drag.offsetPx / 900f).coerceIn(0.3f, 1f))) }
             .semantics {
                 paneTitle = "Pictures"
                 customActions = listOfNotNull(
@@ -407,7 +410,7 @@ fun ImageViewer(gallery: Gallery, safeArea: SafeArea) {
             }
         }
         Column(
-            Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = safeArea.bottom + 16.dp),
+            Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(start = 20.dp, end = 20.dp).safePadding(safeArea, bottom = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text(current.altText, color = Color.White.copy(alpha = 0.85f), style = AgentTheme.type.body)
@@ -428,7 +431,10 @@ fun ImageViewer(gallery: Gallery, safeArea: SafeArea) {
  */
 @Composable
 fun ProjectsDrawer(ui: FeedUi, progress: EdgeProgress, widthPx: Float, safeArea: SafeArea) {
-    if (progress.value <= 0f) return
+    // Whether it shows at all is read as a yes/no; how far it is open is read only while laying out
+    // and drawing, so dragging it moves it without redrawing its rows each frame.
+    val shown by remember(progress) { derivedStateOf { progress.value > 0f } }
+    if (!shown) return
     val colors = AgentTheme.colors
     val motion = AgentTheme.motion
     val scope = rememberCoroutineScope()
@@ -441,7 +447,7 @@ fun ProjectsDrawer(ui: FeedUi, progress: EdgeProgress, widthPx: Float, safeArea:
             .edgeSwipe(progress, width = { widthPx }, reverse = true, onCommit = {})
             .onKeyEvent { e -> if (e.key == Key.Escape && e.type == KeyEventType.KeyUp) { close(); true } else false },
     ) {
-        Scrim(0.42f * progress.value, "Close projects", close)
+        Scrim({ 0.42f * progress.value }, "Close projects", close)
         Column(
             Modifier
                 .width(width)
@@ -456,7 +462,8 @@ fun ProjectsDrawer(ui: FeedUi, progress: EdgeProgress, widthPx: Float, safeArea:
                 )
                 .semantics { paneTitle = "Projects" }
                 .verticalScroll(rememberScrollState())
-                .padding(top = safeArea.top + 8.dp, start = 14.dp, end = 14.dp, bottom = safeArea.bottom + 12.dp),
+                .safePadding(safeArea, top = 8.dp, bottom = 12.dp)
+                .padding(start = 14.dp, end = 14.dp),
         ) {
             Row(Modifier.padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 AppMark(30.dp)
@@ -612,7 +619,8 @@ fun InteractiveReply(reply: Reply, modifier: Modifier = Modifier) {
         ReplyView(
             reply.copy(reactions = shown),
             Modifier
-                .background(if (swipe.offsetPx != 0f) colors.background else Color.Transparent)
+                // Read while drawing, so a swipe moves the reply without recomposing it.
+                .drawBehind { if (swipe.offsetPx != 0f) drawRect(colors.background) }
                 .feedItemGestures(target)
                 .padding(vertical = 10.dp),
         )
@@ -640,7 +648,8 @@ fun PhoneThreadScreen(ui: FeedUi, item: Threaded, widthPx: Float, safeArea: Safe
         }
     }
     Box(Modifier.fillMaxSize()) {
-        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.25f * (1f - ui.threadBack.value))))
+        // Read while drawing: the thread slides in and out without its replies redrawing every frame.
+        Box(Modifier.fillMaxSize().drawBehind { drawRect(Color.Black.copy(alpha = 0.25f * (1f - ui.threadBack.value).coerceIn(0f, 1f))) })
         Column(
             Modifier
                 .fillMaxSize()
@@ -697,7 +706,7 @@ fun PhoneThreadScreen(ui: FeedUi, item: Threaded, widthPx: Float, safeArea: Safe
                 }
                 Spacer(Modifier.height(12.dp))
             }
-            ThreadComposer(ui, item.id, Modifier.padding(start = 12.dp, end = 12.dp, bottom = safeArea.bottom + 6.dp, top = 6.dp))
+            ThreadComposer(ui, item.id, Modifier.padding(start = 12.dp, end = 12.dp, top = 6.dp).safePadding(safeArea, bottom = 6.dp))
         }
     }
 }

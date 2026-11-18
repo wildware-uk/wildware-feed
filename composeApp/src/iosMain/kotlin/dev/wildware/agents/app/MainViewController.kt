@@ -1,13 +1,9 @@
 package dev.wildware.agents.app
 
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.safeDrawing
-import androidx.compose.runtime.Composable
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.uikit.OnFocusBehavior
 import androidx.compose.ui.window.ComposeUIViewController
 import dev.wildware.agents.app.feed.AppNavigator
-import dev.wildware.agents.app.feed.SafeArea
+import dev.wildware.agents.app.feed.rememberSystemSafeArea
 import dev.wildware.agents.app.session.SessionStore
 import dev.wildware.agents.app.feed.FilePicker
 import dev.wildware.agents.app.feed.VoiceInput
@@ -38,15 +34,9 @@ fun MainViewController(
             onFocusBehavior = OnFocusBehavior.DoNothing
         },
     ) {
-        val safeArea = safeArea()
+        // One safe area for the app's life. The keyboard moves its bottom every frame while it
+        // slides; only the padding that reads it moves, nothing redraws.
+        val safeArea = rememberSystemSafeArea()
         if (sample) AgentsPreview(safeArea = safeArea) else AgentsApp(platform, safeArea = safeArea, navigator = navigator)
     }
-}
-
-/** The status bar and notch above, and the home indicator or the keyboard (whichever is taller) below. */
-@Composable
-private fun safeArea(): SafeArea {
-    val density = LocalDensity.current
-    val insets = WindowInsets.safeDrawing
-    return with(density) { SafeArea(top = insets.getTop(density).toDp(), bottom = insets.getBottom(density).toDp()) }
 }

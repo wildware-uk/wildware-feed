@@ -84,12 +84,79 @@ import dev.wildware.agents.app.design.AgentTheme
 import dev.wildware.agents.app.design.Icons
 import dev.wildware.agents.app.design.pressable
 import dev.wildware.agents.app.design.AppMark
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.runtime.Stable
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.constrainHeight
+import androidx.compose.ui.unit.offset
 
 /** Below this width the app uses the phone layout. */
 val PhoneBreakpoint = 700.dp
 
-/** Insets the phone layout keeps clear for the status bar and home indicator. */
-data class SafeArea(val top: Dp = 0.dp, val bottom: Dp = 0.dp)
+/**
+ * Insets the phone layout keeps clear for the status bar and home indicator (or the keyboard).
+ *
+ * A live one ([SafeArea.live]) reads the system's insets each time it is asked. The keyboard moves
+ * the bottom inset every frame while it slides, so screens read it while laying out
+ * ([safePadding], [safeContentPadding]), not while composing: the composer then glides with the
+ * keyboard and nothing else redraws.
+ */
+@Stable
+class SafeArea private constructor(private val topOf: () -> Dp, private val bottomOf: () -> Dp, private val fixed: Boolean) {
+    constructor(top: Dp = 0.dp, bottom: Dp = 0.dp) : this({ top }, { bottom }, fixed = true)
+
+    val top: Dp get() = topOf()
+    val bottom: Dp get() = bottomOf()
+
+    override fun equals(other: Any?): Boolean =
+        this === other || (other is SafeArea && fixed && other.fixed && top == other.top && bottom == other.bottom)
+
+    override fun hashCode(): Int = if (fixed) 31 * top.hashCode() + bottom.hashCode() else super.hashCode()
+    override fun toString() = "SafeArea(top=$top, bottom=$bottom)"
+
+    companion object {
+        /** Insets that change while the screen is up: [top] and [bottom] are read afresh each time. */
+        fun live(top: () -> Dp, bottom: () -> Dp) = SafeArea(top, bottom, fixed = false)
+    }
+}
+
+/**
+ * The system's safe area (status bar, notch, home indicator, keyboard), as one [SafeArea] that
+ * keeps its identity while the insets move, so the app above it never redraws for them.
+ */
+@Composable
+fun rememberSystemSafeArea(): SafeArea {
+    val density = LocalDensity.current
+    val insets = WindowInsets.safeDrawing
+    return remember(density, insets) {
+        val top = derivedStateOf { with(density) { insets.getTop(density).toDp() } }
+        val bottom = derivedStateOf { with(density) { insets.getBottom(density).toDp() } }
+        SafeArea.live(top = { top.value }, bottom = { bottom.value })
+    }
+}
+
+/**
+ * Padding that keeps clear of [area] on the sides given, plus that much more, worked out while
+ * laying out. A side left null is not padded. A moving keyboard then shifts what this wraps
+ * without redrawing it.
+ */
+fun Modifier.safePadding(area: SafeArea, top: Dp? = null, bottom: Dp? = null): Modifier = layout { measurable, constraints ->
+    val t = top?.let { (area.top + it).roundToPx().coerceAtLeast(0) } ?: 0
+    val b = bottom?.let { (area.bottom + it).roundToPx().coerceAtLeast(0) } ?: 0
+    val placeable = measurable.measure(constraints.offset(vertical = -(t + b)))
+    layout(placeable.width, constraints.constrainHeight(placeable.height + t + b)) { placeable.place(0, t) }
+}
+
+/** A list's padding that keeps clear of [area], read while the list lays out. */
+@Stable
+fun safeContentPadding(area: SafeArea, horizontal: Dp, top: Dp, bottom: Dp): PaddingValues = object : PaddingValues {
+    override fun calculateLeftPadding(layoutDirection: LayoutDirection) = horizontal
+    override fun calculateRightPadding(layoutDirection: LayoutDirection) = horizontal
+    override fun calculateTopPadding() = area.top + top
+    override fun calculateBottomPadding() = area.bottom + bottom
+}
 
 @Composable
 fun FeedScreen(
@@ -289,7 +356,7 @@ private fun PhoneFeed(ui: FeedUi, safeArea: SafeArea, startAt: String?, widthPx:
             LazyColumn(
                 Modifier.fillMaxSize().listActions(refresh, toTop, openDrawer),
                 state = list,
-                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = safeArea.top + 8.dp, bottom = safeArea.bottom + 96.dp),
+                contentPadding = remember(safeArea) { safeContentPadding(safeArea, horizontal = 16.dp, top = 8.dp, bottom = 96.dp) },
             ) {
                 item(key = "bar") { PhoneTopBar(state, onProjects = openDrawer, onTapBar = toTop, onSearch = { ui.commandOpen = true }, onBell = { ui.bellOpen = !ui.bellOpen }) }
                 item(key = "header") { FeedHeader(ui, compact = true, Modifier.padding(top = 12.dp, bottom = 16.dp)) }
@@ -314,7 +381,8 @@ private fun PhoneFeed(ui: FeedUi, safeArea: SafeArea, startAt: String?, widthPx:
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .background(bottomFade(colors.background))
-                .padding(start = 12.dp, end = 12.dp, top = 18.dp, bottom = safeArea.bottom + 6.dp),
+                .padding(start = 12.dp, end = 12.dp, top = 18.dp)
+                .safePadding(safeArea, bottom = 6.dp),
         ) {
             Composer(
                 focus = ui.composerFocus,
@@ -325,7 +393,7 @@ private fun PhoneFeed(ui: FeedUi, safeArea: SafeArea, startAt: String?, widthPx:
         }
         ui.phoneThread?.let { PhoneThreadScreen(ui, it, widthPx, safeArea) }
         ProjectsDrawer(ui, ui.drawer, drawerWidthPx, safeArea)
-        ui.menu?.let { ActionSheet(it, safeArea.bottom) }
+        ui.menu?.let { ActionSheet(it, safeArea) }
     }
 }
 
