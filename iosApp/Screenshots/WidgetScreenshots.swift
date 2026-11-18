@@ -175,6 +175,34 @@ final class WidgetScreenshots: XCTestCase {
         }
     }
 
+    /// The biggest text sizes people pick: everything must still read, and nothing important may be cut.
+    func testLargeText() throws {
+        let big = DynamicTypeSize.xxxLarge
+        try save("large-widget-small", status(.systemSmall, snapshot), scheme: .dark, width: 158, height: 158, textSize: big)
+        try save("large-widget-medium", status(.systemMedium, snapshot), scheme: .dark, width: 338, height: 158, textSize: big)
+        try save("large-project-medium", project(.systemMedium), scheme: .dark, width: 338, height: 158, textSize: big)
+        var working = quietState
+        working.working = Self.working
+        for (name, state) in [("question", waiting), ("working", working)] {
+            let card = LockScreenView(state: state)
+                .padding(14)
+                .frame(width: 361, alignment: .leading)
+                .frame(maxHeight: 160, alignment: .top)
+                .background(state.showsQuestion ? Theme.waitingSoft : Theme.surface)
+                .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+            try save("large-live-activity-\(name)", card, scheme: .dark, textSize: big)
+        }
+        let huge = DynamicTypeSize.accessibility2
+        for (name, model) in [("question", Samples.confirm()), ("pictures", Samples.pictures()), ("reply", Samples.reply())] {
+            let card = AlertCard(model: model).clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+            try save("large-alert-\(name)", card, scheme: .dark, width: 361, textSize: huge)
+        }
+        let siri = StatusSnippet(waiting: 2, working: 4, online: 3, top: snapshot.top)
+            .background(Theme.surface)
+            .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        try save("large-siri-status", siri, scheme: .dark, width: 361, textSize: huge)
+    }
+
     private static let working: [AgentsActivityAttributes.ContentState.Working] = [
         .init(agentId: "a-rover", agent: "Rover", task: "Fixing fee rounding at checkout", since: Int(Date.now.timeIntervalSince1970) - 12 * 60),
         .init(agentId: "a-lumen", agent: "Lumen", task: "Porting the share sheet to Compose", since: Int(Date.now.timeIntervalSince1970) - 40 * 60),
@@ -241,12 +269,16 @@ final class WidgetScreenshots: XCTestCase {
         }
     }
 
-    private func save(_ name: String, _ view: some View, scheme: Scheme, width: CGFloat? = nil, height: CGFloat? = nil) throws {
+    private func save(
+        _ name: String, _ view: some View, scheme: Scheme, width: CGFloat? = nil, height: CGFloat? = nil,
+        textSize: DynamicTypeSize = .large
+    ) throws {
         let framed = view
             .frame(width: width, height: height)
             .padding(28)
             .background(LinearGradient(colors: scheme.wallpaper, startPoint: .topLeading, endPoint: .bottomTrailing))
             .environment(\.colorScheme, scheme.colorScheme)
+            .environment(\.dynamicTypeSize, textSize)
         let renderer = ImageRenderer(content: framed)
         renderer.scale = 3
         let png = try XCTUnwrap(renderer.uiImage?.pngData(), "\(name) drew nothing")
