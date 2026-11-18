@@ -130,7 +130,16 @@ private struct StatusSmall: View {
         if let top = snapshot.top {
             VStack(alignment: .leading, spacing: 0) {
                 HStack {
-                    DotLabel(text: "\(snapshot.waiting) waiting", color: Theme.waiting).widgetAccentable()
+                    // At the biggest text sizes the word won't fit beside the mark, so the count stands alone.
+                    ViewThatFits(in: .horizontal) {
+                        DotLabel(text: "\(snapshot.waiting) waiting", color: Theme.waiting).fixedSize()
+                        DotLabel(text: "\(snapshot.waiting)", color: Theme.waiting).fixedSize()
+                    }
+                    .widgetAccentable()
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("\(snapshot.waiting) waiting")
+                    // Offered the row's room before the spacer, so the word shows whenever it fits.
+                    .layoutPriority(1)
                     Spacer(minLength: 0)
                     AppMarkTile(size: 16)
                 }
