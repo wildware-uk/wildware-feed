@@ -27,9 +27,17 @@ fun interface Chunks {
 }
 
 /** Where media lives on disk (spec/07 §6). */
-class MediaPaths(dataDir: String) {
+class MediaPaths(dataDir: String, store: MediaStore? = null) {
     val root: Path = Path.of(dataDir, "media").toAbsolutePath().normalize()
     val tempRoot: Path = Path.of(dataDir, "tmp", "uploads").toAbsolutePath().normalize()
+    /** Scratch space for derivations; always on local disk. */
+    val workRoot: Path = Path.of(dataDir, "tmp", "derive").toAbsolutePath().normalize()
+
+    /** Where the bytes live: [root] on disk unless a bucket is configured. */
+    val store: MediaStore = store ?: LocalMediaStore(root)
+
+    fun originalKey(id: String, mime: String) = relative(id, "original.${Mime.extensionOf(mime)}")
+    fun folder(id: String) = "${id.substring(0, 2)}/$id/"
 
     fun dir(id: String): Path = root.resolve(id.substring(0, 2)).resolve(id)
     fun original(id: String, mime: String): Path = dir(id).resolve("original.${Mime.extensionOf(mime)}")
@@ -229,25 +237,15 @@ class Uploads(
         }
     }
 
-    /** Move the temp file into place, or hard-link a twin with the same bytes and type. */
+    /** Move the temp file into the store, or link a twin with the same bytes and type (a hard link, or a copy in the bucket). */
     private fun place(id: String, temp: Path, mime: String, sha256: String): Boolean {
-        val target = paths.original(id, mime)
-        Files.createDirectories(target.parent)
+        val key = paths.originalKey(id, mime)
         val twin = db.one("SELECT id, mime FROM media WHERE sha256 = ? ORDER BY seq DESC LIMIT 1", sha256) { it.getString(1) to it.getString(2) }
-        if (twin != null && twin.first != id && twin.second == mime) {
-            try {
-                Files.createLink(target, paths.original(twin.first, twin.second))
-                Files.deleteIfExists(temp)
-                return true
-            } catch (_: Exception) {
-                // fall back to moving the bytes in
-            }
+        if (twin != null && twin.first != id && twin.second == mime && paths.store.link(paths.originalKey(twin.first, twin.second), key)) {
+            Files.deleteIfExists(temp)
+            return true
         }
-        try {
-            Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
-        } catch (_: FileAlreadyExistsException) {
-            Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING)
-        }
+        paths.store.put(key, temp, mime)
         return false
     }
 
@@ -268,7 +266,7 @@ class Uploads(
             now - 3_600_000,
         ) { it.getString(1) }
         for (id in ids) {
-            runCatching { paths.dir(id).toFile().deleteRecursively() }
+            runCatching { paths.store.deletePrefix(paths.folder(id)) }
             db.update("DELETE FROM media WHERE id = ?", id)
         }
         db.update("DELETE FROM upload_tokens WHERE used_at IS NULL AND expires_at <= ?", now)

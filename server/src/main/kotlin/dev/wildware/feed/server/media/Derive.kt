@@ -144,7 +144,7 @@ class Derive(
         } ?: return
         if (media.sha256.isEmpty() || media.status == "ready") return
         if (media.kind == "file") {
-            Files.deleteIfExists(failureFile(id))
+            runCatching { paths.store.delete(failureKey(id)) }
             ready(id, null, null, null)
             return
         }
@@ -165,7 +165,7 @@ class Derive(
                 Ulid.next(clock()), id, f.kind, paths.relative(id, f.name), f.bytes, f.width, f.height,
             )
         }
-        runCatching { Files.deleteIfExists(failureFile(id)) }
+        runCatching { paths.store.delete(failureKey(id)) }
         ready(id, measured.width, measured.height, measured.durationMs)
     }
 
@@ -183,13 +183,30 @@ class Derive(
         bus.publish("media.ready", payload)
     }
 
-    private fun failureFile(id: String) = paths.dir(id).resolve("error.txt")
+    private fun failureKey(id: String) = paths.relative(id, "error.txt")
 
     private fun fail(id: String, reason: String) {
         db.update("UPDATE media SET status = 'failed' WHERE id = ?", id)
-        runCatching {
-            Files.createDirectories(paths.dir(id))
-            Files.writeString(failureFile(id), "${Wire.isoOf(clock())} $reason\n")
+        runCatching { paths.store.writeText(failureKey(id), "${Wire.isoOf(clock())} $reason\n") }
+    }
+
+    /**
+     * Runs [block] with the original as a local file and an empty work folder, then moves what it
+     * made into the store. The work folder is always removed.
+     */
+    private fun withFiles(media: Row, block: (source: Path, work: Path) -> Measured): Measured {
+        val work = paths.workRoot.resolve(media.id)
+        work.toFile().deleteRecursively()
+        Files.createDirectories(work)
+        try {
+            val measured = paths.store.local(paths.originalKey(media.id, media.mime)) { source -> block(source, work) }
+                ?: throw IllegalStateException("the original file is missing")
+            for (f in measured.files) {
+                paths.store.put(paths.relative(media.id, f.name), work.resolve(f.name), CONTENT_TYPES.getValue(f.name.substringAfterLast('.')))
+            }
+            return measured
+        } finally {
+            work.toFile().deleteRecursively()
         }
     }
 
@@ -198,8 +215,9 @@ class Derive(
         return flat.ifEmpty { "unknown failure" }.take(500)
     }
 
-    private fun image(media: Row): Measured {
-        val source = paths.original(media.id, media.mime)
+    private fun image(media: Row): Measured = withFiles(media) { source, work -> image(source, work) }
+
+    private fun image(source: Path, work: Path): Measured {
         val head = Files.newInputStream(source).use { it.readNBytes(256 * 1024) }
         val orientation = Orientation.of(head)
         if (!tools.available) {
@@ -216,11 +234,10 @@ class Derive(
         val rawW = probe.width ?: throw IllegalStateException("Input file contains unsupported image format")
         val rawH = probe.height ?: throw IllegalStateException("Input file contains unsupported image format")
         val (w, h) = if (Orientation.swapsAxes(orientation)) rawH to rawW else rawW to rawH
-        Files.createDirectories(paths.dir(media.id))
         val files = THUMB_WIDTHS.map { width ->
             val height = maxOf(1, Math.round(h.toDouble() * width / w).toInt())
             val name = "thumb-$width.webp"
-            val target = paths.dir(media.id).resolve(name)
+            val target = work.resolve(name)
             val filters = listOfNotNull(Orientation.filter(orientation), "scale=$width:$height:flags=lanczos").joinToString(",")
             tools.ffmpeg(
                 listOf("-y", "-noautorotate", "-i", source.toString(), "-frames:v", "1", "-vf", filters, "-c:v", "libwebp", "-quality", "80", "-f", "webp", target.toString()),
@@ -232,16 +249,20 @@ class Derive(
     }
 
     private fun audio(media: Row): Measured {
-        val duration = if (tools.available) runCatching { tools.probe(paths.original(media.id, media.mime)).durationMs }.getOrNull() else null
+        val duration = if (tools.available) {
+            runCatching { paths.store.local(paths.originalKey(media.id, media.mime)) { tools.probe(it).durationMs } }.getOrNull()
+        } else {
+            null
+        }
         return Measured(emptyList(), null, null, duration)
     }
 
-    private fun video(media: Row): Measured {
-        val source = paths.original(media.id, media.mime)
+    private fun video(media: Row): Measured = withFiles(media) { source, work -> video(media, source, work) }
+
+    private fun video(media: Row, source: Path, work: Path): Measured {
         val probe = tools.probe(source)
-        Files.createDirectories(paths.dir(media.id))
         val files = mutableListOf<Produced>()
-        val poster = paths.dir(media.id).resolve("poster.jpg")
+        val poster = work.resolve("poster.jpg")
         var wrote = false
         for (seek in listOf(FfmpegTools.posterSeconds(probe.durationMs), 0.0)) {
             tools.ffmpeg(listOf("-y", "-ss", FfmpegTools.js(seek), "-i", source.toString(), "-frames:v", "1", "-an", "-q:v", "3", "-f", "image2", poster.toString()))
@@ -251,7 +272,7 @@ class Derive(
         val posterDims = runCatching { javax.imageio.ImageIO.read(poster.toFile())?.let { it.width to it.height } }.getOrNull()
         files += Produced("poster", posterDims?.first ?: probe.width, posterDims?.second ?: probe.height, "poster.jpg", Files.size(poster))
         if (!FfmpegTools.webPlayable(media.mime, probe)) {
-            val video = paths.dir(media.id).resolve("video.mp4")
+            val video = work.resolve("video.mp4")
             tools.ffmpeg(
                 listOf(
                     "-y", "-i", source.toString(), "-map", "0:v:0", "-map", "0:a?", "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
@@ -268,6 +289,7 @@ class Derive(
 
     companion object {
         val THUMB_WIDTHS = listOf(640, 1600)
+        private val CONTENT_TYPES = mapOf("webp" to "image/webp", "jpg" to "image/jpeg", "mp4" to "video/mp4")
         const val WORKER_INTERVAL_MS = 1000L
     }
 }

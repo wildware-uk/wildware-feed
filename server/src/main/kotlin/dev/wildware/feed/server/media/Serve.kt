@@ -1,12 +1,10 @@
 package dev.wildware.feed.server.media
 
 import dev.wildware.feed.server.db.Database
-import java.nio.file.Files
-import java.nio.file.Path
 
 /** Which file answers `/media/<id>/<variant>` (spec/07 §7, TS `src/media/serve.ts`). */
 class Serve(private val db: Database, private val paths: MediaPaths) {
-    class MediaFile(val path: Path, val size: Long, val mime: String, val etag: String, val disposition: String)
+    class MediaFile(val key: String, val size: Long, val mime: String, val etag: String, val disposition: String)
 
     /** The file, or null for every kind of miss (all of them answer the same 404). */
     fun open(id: String, variant: String): MediaFile? {
@@ -19,9 +17,9 @@ class Serve(private val db: Database, private val paths: MediaPaths) {
         val download = row.kind == "file"
         if (!download && !Mime.isAllowed(row.mime)) return null
         if (download && variant != "original") return null
-        val (path, mime) = if (variant == "original") {
+        val (key, mime) = if (variant == "original") {
             if (row.sha256.isEmpty()) return null
-            paths.original(id, row.mime) to if (download) Mime.DOWNLOAD else row.mime
+            paths.originalKey(id, row.mime) to if (download) Mime.DOWNLOAD else row.mime
         } else {
             val (kind, width) = when (variant) {
                 "thumb-640" -> "thumb" to 640L
@@ -33,15 +31,15 @@ class Serve(private val db: Database, private val paths: MediaPaths) {
                 "SELECT path FROM derivatives WHERE media_id = ? AND kind = ? AND (? IS NULL OR width = ?) ORDER BY width LIMIT 1",
                 id, kind, width, width,
             ) { it.getString(1) } ?: return null
-            val resolved = paths.stored(stored) ?: return null
-            resolved to when (variant) {
+            if (paths.stored(stored) == null) return null
+            stored to when (variant) {
                 "poster" -> "image/jpeg"
                 "video" -> "video/mp4"
                 else -> "image/webp"
             }
         }
-        if (!Files.isRegularFile(path)) return null
-        return MediaFile(path, Files.size(path), mime, "\"${row.sha256}-$variant\"", disposition(download, row.filename))
+        val size = paths.store.size(key) ?: return null
+        return MediaFile(key, size, mime, "\"${row.sha256}-$variant\"", disposition(download, row.filename))
     }
 
     companion object {

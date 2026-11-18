@@ -146,7 +146,7 @@ object Attachments {
             if (variant !in item.variants) continue
             val file = runCatching { app.serve.open(item.id, variant) }.getOrNull() ?: continue
             if (file.size > maxBytes) continue
-            val bytes = runCatching { Files.readAllBytes(file.path) }.getOrNull() ?: continue
+            val bytes = runCatching { app.mediaPaths.store.read(file.key, 0, file.size)?.use { it.readAllBytes() } }.getOrNull() ?: continue
             return file.mime to bytes
         }
         return null

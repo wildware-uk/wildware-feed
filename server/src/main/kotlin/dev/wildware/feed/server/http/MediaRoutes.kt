@@ -133,20 +133,20 @@ private suspend fun ApplicationCall.serveMedia(app: App, id: String, variant: St
         "ETag" to file.etag,
     )
     if (Serve.notModified(request.headers["If-None-Match"], file.etag)) {
-        return respond(FileContent(HttpStatusCode.NotModified, base, null, null, 0))
+        return respond(FileContent(HttpStatusCode.NotModified, base, null, file.key, null, 0))
     }
     val head = request.httpMethod == HttpMethod.Head
     when (val range = Serve.range(request.headers["Range"], file.size)) {
         Serve.Companion.Range.Unsatisfiable ->
-            respond(FileContent(HttpStatusCode.RequestedRangeNotSatisfiable, base + ("Content-Range" to "bytes */${file.size}"), null, null, 0))
+            respond(FileContent(HttpStatusCode.RequestedRangeNotSatisfiable, base + ("Content-Range" to "bytes */${file.size}"), null, file.key, null, 0))
         Serve.Companion.Range.Whole ->
-            respond(FileContent(HttpStatusCode.OK, base, file.path.takeUnless { head }, file.size, 0))
+            respond(FileContent(HttpStatusCode.OK, base, app.mediaPaths.store.takeUnless { head }, file.key, file.size, 0))
         is Serve.Companion.Range.Span -> {
             val length = range.end - range.start + 1
             respond(
                 FileContent(
                     HttpStatusCode.PartialContent, base + ("Content-Range" to "bytes ${range.start}-${range.end}/${file.size}"),
-                    file.path.takeUnless { head }, length, range.start,
+                    app.mediaPaths.store.takeUnless { head }, file.key, length, range.start,
                 ),
             )
         }
@@ -157,11 +157,12 @@ private fun dev.wildware.feed.server.db.Database.mediaAttached(id: String) = one
     "SELECT 1 FROM media WHERE id = ? AND (update_id IS NOT NULL OR message_id IS NOT NULL OR request_id IS NOT NULL)", id,
 ) { 1 } != null
 
-/** A file span (or nothing) with exact headers; [length] null means no Content-Length at all. */
+/** A span of a stored object (or nothing) with exact headers; [contentLength] null means no Content-Length at all. */
 private class FileContent(
     override val status: HttpStatusCode,
     private val extra: List<Pair<String, String>>,
-    private val path: java.nio.file.Path?,
+    private val store: dev.wildware.feed.server.media.MediaStore?,
+    private val key: String,
     override val contentLength: Long?,
     private val start: Long,
 ) : OutgoingContent.WriteChannelContent() {
@@ -169,17 +170,15 @@ private class FileContent(
     override val headers: Headers get() = Headers.build { extra.forEach { (k, v) -> append(k, v) } }
 
     override suspend fun writeTo(channel: ByteWriteChannel) {
-        val file = path ?: return
+        val from = store ?: return
         var left = contentLength ?: return
-        FileChannel.open(file, StandardOpenOption.READ).use { fc ->
-            fc.position(start)
-            val buffer = java.nio.ByteBuffer.allocate(64 * 1024)
+        val input = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { from.read(key, start, left) } ?: return
+        input.use { stream ->
+            val buffer = ByteArray(64 * 1024)
             while (left > 0) {
-                buffer.clear()
-                if (left < buffer.capacity()) buffer.limit(left.toInt())
-                val n = fc.read(buffer)
+                val n = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { stream.read(buffer, 0, minOf(left, buffer.size.toLong()).toInt()) }
                 if (n < 0) break
-                channel.writeFully(buffer.array(), 0, n)
+                channel.writeFully(buffer, 0, n)
                 left -= n
             }
         }

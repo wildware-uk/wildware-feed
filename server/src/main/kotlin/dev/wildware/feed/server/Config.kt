@@ -30,7 +30,14 @@ data class Config(
     val trustLoopback: Boolean = false,
     /** DATABASE_URL: Postgres (Heroku's `postgres://` form or a JDBC URL). Unset: SQLite in [dataDir]. */
     val databaseUrl: String? = null,
+    /** MEDIA_STORE=s3 and S3_*: media in a bucket (Cloudflare R2, S3, MinIO). Null: on disk under [dataDir]. */
+    val s3: S3? = null,
 ) {
+    /** A private S3-compatible bucket, addressed path-style. [toString] leaves the secret out. */
+    data class S3(val endpoint: String, val bucket: String, val accessKeyId: String, val secretAccessKey: String, val region: String) {
+        override fun toString() = "S3(endpoint=$endpoint, bucket=$bucket)"
+    }
+
     data class Apns(val keyId: String, val teamId: String, val keyPath: String, val bundleId: String)
 
     class Invalid(val issues: List<String>) :
@@ -95,6 +102,22 @@ data class Config(
                 issues += "APNS_KEY_ID, APNS_TEAM_ID, APNS_KEY_PATH and APNS_BUNDLE_ID must be set together, or none"
             }
 
+            val s3 = when (val store = get("MEDIA_STORE") ?: "local") {
+                "local" -> null
+                "s3" -> {
+                    val parts = listOf("S3_ENDPOINT", "S3_BUCKET", "S3_ACCESS_KEY_ID", "S3_SECRET_ACCESS_KEY").associateWith(get)
+                    parts.filterValues { it == null }.keys.forEach { issues += "$it: $it is required when MEDIA_STORE is s3" }
+                    val endpoint = parts["S3_ENDPOINT"]
+                    if (endpoint != null && !Regex("^https?://[^/]+").containsMatchIn(endpoint)) issues += "S3_ENDPOINT: S3_ENDPOINT must be an absolute http(s) URL"
+                    if (parts.values.all { it != null }) {
+                        S3(endpoint!!.trimEnd('/'), parts["S3_BUCKET"]!!, parts["S3_ACCESS_KEY_ID"]!!, parts["S3_SECRET_ACCESS_KEY"]!!, get("S3_REGION") ?: "auto")
+                    } else {
+                        null
+                    }
+                }
+                else -> { issues += "MEDIA_STORE: MEDIA_STORE must be local or s3, not $store"; null }
+            }
+
             if (issues.isNotEmpty()) throw Invalid(issues)
 
             val port = env["PORT"]?.takeIf { it.isNotBlank() }?.toIntOrNull() ?: 3000
@@ -118,6 +141,7 @@ data class Config(
                 addressHeader = env["ADDRESS_HEADER"]?.takeIf { it.isNotBlank() }?.lowercase(),
                 xffDepth = env["XFF_DEPTH"]?.toIntOrNull() ?: 1,
                 databaseUrl = env["DATABASE_URL"]?.takeIf { it.isNotBlank() },
+                s3 = s3,
             )
         }
 

@@ -10,20 +10,24 @@ import java.io.File
  * TS server's CLI, so it lives beside it.
  */
 object Migrate {
-    const val USAGE = """feed-server migrate --from <data dir> [--verify-only]
+    const val USAGE = """feed-server migrate --from <data dir> [--verify-only] [--sizes-only]
 
   Copies <data dir>/agent-dashboard.db into the Postgres database at DATABASE_URL (which must be new),
-  then checks every table's row count and checksum. --verify-only skips the copy and only checks.
-  Stop the old server first, so nothing changes while it copies."""
+  then checks every table's row count and checksum. With MEDIA_STORE=s3 (and the S3_* settings) it
+  also copies <data dir>/media into the bucket, skipping objects already there, then checks every
+  original's SHA-256 (or only its size, with --sizes-only) and every derivative's size.
+  --verify-only skips the copies and only checks. Stop the old server first, so nothing changes."""
 
     fun run(args: List<String>, env: Map<String, String>, out: (String) -> Unit, err: (String) -> Unit): Int {
         var from: String? = null
         var verifyOnly = false
+        var sizesOnly = false
         val it = args.iterator()
         while (it.hasNext()) {
             when (val a = it.next()) {
                 "--from" -> from = if (it.hasNext()) it.next() else null
                 "--verify-only" -> verifyOnly = true
+                "--sizes-only" -> sizesOnly = true
                 "-h", "--help" -> { out(USAGE); return 0 }
                 else -> { err("unknown argument: $a"); err(USAGE); return 2 }
             }
@@ -48,12 +52,37 @@ object Migrate {
                     out("Checking…")
                     val checked = tool.verify(source, target)
                     out("Identical: ${checked.sumOf { it.rows }} rows in ${checked.size} tables")
+                    val store = bucket(env) ?: return@use 0
+                    val media = dev.wildware.feed.server.media.MediaToStore(File(from, "media").toPath().toAbsolutePath(), store, out)
+                    if (!verifyOnly) {
+                        out("Copying media…")
+                        val c = media.copy()
+                        out("Media: ${c.files} files; ${c.uploaded} sent (${c.bytesSent / 1_000_000} MB), ${c.linked} copied in the bucket, ${c.skipped} already there")
+                    }
+                    out(if (sizesOnly) "Checking media sizes…" else "Checking media bytes…")
+                    val v = media.verify(target, hashes = !sizesOnly)
+                    if (v.problems.isNotEmpty()) {
+                        v.problems.take(20).forEach(err)
+                        err("${v.problems.size} media problems")
+                        return@use 1
+                    }
+                    out("Media identical: ${v.originals} originals${if (sizesOnly) " by size" else " by SHA-256"}, ${v.derivatives} derivatives by size")
+                    0
                 }
             }
-            0
         } catch (e: Exception) {
             err(e.message ?: e.toString())
             1
         }
+    }
+
+    /** The bucket MEDIA_STORE=s3 names, or null when media stays on disk. */
+    private fun bucket(env: Map<String, String>): dev.wildware.feed.server.media.MediaStore? {
+        if (env["MEDIA_STORE"] != "s3") return null
+        fun need(name: String) = env[name]?.takeIf { it.isNotBlank() } ?: throw IllegalArgumentException("$name is required when MEDIA_STORE is s3")
+        val client = dev.wildware.feed.server.media.S3Client(
+            need("S3_ENDPOINT"), need("S3_BUCKET"), need("S3_ACCESS_KEY_ID"), need("S3_SECRET_ACCESS_KEY"), env["S3_REGION"]?.takeIf { it.isNotBlank() } ?: "auto",
+        )
+        return dev.wildware.feed.server.media.S3MediaStore(client, java.nio.file.Files.createTempDirectory("feed-migrate"))
     }
 }

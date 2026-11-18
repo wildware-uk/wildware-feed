@@ -47,7 +47,15 @@ class App(val config: Config, val db: Database, val clock: () -> Long = System::
     /** Its own 120 a minute per agent token, apart from /mcp's (spec/07 §8). */
     val agentMediaLimiter = SlidingLimiter(limit = 120, windowMs = 60_000, clock = clock)
 
-    val mediaPaths = dev.wildware.feed.server.media.MediaPaths(config.dataDir)
+    val mediaPaths = dev.wildware.feed.server.media.MediaPaths(
+        config.dataDir,
+        config.s3?.let {
+            dev.wildware.feed.server.media.S3MediaStore(
+                dev.wildware.feed.server.media.S3Client(it.endpoint, it.bucket, it.accessKeyId, it.secretAccessKey, it.region),
+                java.nio.file.Path.of(config.dataDir, "tmp", "fetch").toAbsolutePath(),
+            )
+        },
+    )
 
     /** Reserving uploads and taking their bytes. */
     val uploads = dev.wildware.feed.server.media.Uploads(
