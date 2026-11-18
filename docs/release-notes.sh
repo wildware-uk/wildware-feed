@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Writes a release's notes: what to download and how to install it, per computer.
-#   release-notes.sh <version> <mac signed> <mac notarized> <windows signed>
+#   release-notes.sh <version> <mac signed> <mac notarized> <windows signed> [android signed]
 set -euo pipefail
-version="$1"; mac_signed="${2:-false}"; mac_notarized="${3:-false}"; windows_signed="${4:-false}"
+version="$1"; mac_signed="${2:-false}"; mac_notarized="${3:-false}"; windows_signed="${4:-false}"; android_signed="${5:-false}"
 
 cat <<NOTES
 ## Download
@@ -14,6 +14,14 @@ cat <<NOTES
 | Ubuntu, Debian | \`wildware-feed_${version}_amd64.deb\` |
 | Fedora, openSUSE | \`wildware-feed-$version.x86_64.rpm\` |
 | Any other Linux | \`Wildware-Feed-$version-x86_64.AppImage\` |
+NOTES
+
+# The Android files exist only when the release was signed with the real key.
+if [ "$android_signed" = "true" ]; then
+  echo "| Android phone or tablet | \`Wildware-Feed-$version-android.apk\` |"
+fi
+
+cat <<NOTES
 
 \`SHA256SUMS.txt\` has each file's checksum.
 
@@ -48,6 +56,16 @@ cat <<NOTES
 - Fedora, openSUSE: \`sudo dnf install ./wildware-feed-$version.x86_64.rpm\`
 - Anything else: \`chmod +x Wildware-Feed-$version-x86_64.AppImage\` and run it.
 - On GNOME, the tray icon needs the "AppIndicator and KStatusNotifierItem Support" extension.
+NOTES
+
+if [ "$android_signed" = "true" ]; then
+  cat <<NOTES
+
+**Android** (8.0 or newer): open the .apk on the phone and let your browser or file manager install apps when it asks. Later versions install over the top the same way.
+NOTES
+fi
+
+cat <<NOTES
 
 Then sign in with your dashboard's address and owner password. More detail: [docs/INSTALL.md](https://github.com/wildware-uk/wildware-feed/blob/master/docs/INSTALL.md).
 NOTES
