@@ -316,7 +316,9 @@ class DashboardSession(
             is FeedEvent.SendReply -> cardRef(event.threadId)?.let {
                 actions.reply(it, event.text.ifBlank { null }, answers = event.answers, files = event.files.map(::upload))
             }
-            is FeedEvent.Post -> postTarget()?.let { actions.post(it, event.text.ifBlank { null }, event.files.map(::upload)) }
+            is FeedEvent.Post -> (event.project?.let(::projectRef) ?: postTarget())?.let {
+                actions.post(it, event.text.ifBlank { null }, event.files.map(::upload))
+            }
             is FeedEvent.Delete -> cardRef(event.targetId)?.let { actions.delete(it) }
             is FeedEvent.Tag -> cardRef(event.targetId)?.let { actions.tag(it, event.tag, event.on, event.create) }
             is FeedEvent.SetStatus -> cardRef(event.targetId)?.let { actions.setStatus(it, event.status?.wire) }
@@ -400,8 +402,9 @@ class DashboardSession(
     private fun upload(file: PendingFile) = dev.wildware.agents.Attachment(file.name, file.mimeType, file.bytes)
 
     /** New posts go to the project on screen. "All projects" has no single place to post. */
-    private fun postTarget(): ProjectRef? {
-        val slug = selected.value ?: return null
+    private fun postTarget(): ProjectRef? = selected.value?.let(::projectRef)
+
+    private fun projectRef(slug: String): ProjectRef {
         val name = dashboard.projects.value.firstOrNull { it.project.slug == slug }?.project?.name ?: slug
         return ProjectRef(slug, name)
     }

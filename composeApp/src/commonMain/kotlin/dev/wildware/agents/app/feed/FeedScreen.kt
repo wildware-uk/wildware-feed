@@ -309,7 +309,8 @@ private fun DesktopColumns(ui: FeedUi, showRail: Boolean, startAt: String?) {
             LazyColumn(
                 Modifier.fillMaxSize().closesComposer(ui).listActions(refresh, toTop, null),
                 state = list,
-                contentPadding = PaddingValues(start = 36.dp, end = 36.dp, top = 28.dp, bottom = 110.dp),
+                // The composer floats over the end of the feed; on "All projects" it has its project picker too.
+                contentPadding = PaddingValues(start = 36.dp, end = 36.dp, top = 28.dp, bottom = 110.dp + if (state.current.slug == null) PickerRoom else 0.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 item(key = "header") {
@@ -322,8 +323,11 @@ private fun DesktopColumns(ui: FeedUi, showRail: Boolean, startAt: String?) {
             ScrollToTopWhenAsked(ui, list)
             HoldArrivalsWhileAway(ui, list)
             NewOrBackToTop(ui, list, scrolledPast = 3, Modifier.align(Alignment.TopCenter).padding(top = 14.dp), toTop)
-            // "All projects" has no one place to post to, so the box shows once a project is open.
-            if (state.current.slug != null) Box(
+            // On "All projects" the box says which project a post goes to, and can change it.
+            val target = if (state.current.slug == null) ui.postProject else state.current
+            // Only the slug is captured, so a new engine state doesn't redraw the composer.
+            val postTo = if (state.current.slug == null) target?.slug else null
+            if (target != null) Box(
                 Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
@@ -331,13 +335,15 @@ private fun DesktopColumns(ui: FeedUi, showRail: Boolean, startAt: String?) {
                     .padding(horizontal = 36.dp, vertical = 18.dp),
                 contentAlignment = Alignment.Center,
             ) {
-                Composer(
-                    focus = ui.composerFocus,
-                    placeholder = "Write to everyone in ${state.current.name}…",
-                    onSend = { text, files -> ui.emit(FeedEvent.Post(text, files)) },
-                    draftKey = "project:${state.current.slug}",
-                    modifier = Modifier.widthIn(max = FeedMaxWidth),
-                )
+                Column(Modifier.widthIn(max = FeedMaxWidth)) {
+                    if (state.current.slug == null) PostToPicker(ui, target, Modifier.padding(bottom = 8.dp))
+                    Composer(
+                        focus = ui.composerFocus,
+                        placeholder = "Write to everyone in ${target.name}…",
+                        onSend = { text, files -> ui.emit(FeedEvent.Post(text, files, project = postTo)) },
+                        draftKey = "project:${target.slug}",
+                    )
+                }
             }
         }
         }
@@ -412,7 +418,9 @@ private fun PhoneFeed(ui: FeedUi, safeArea: SafeArea, startAt: String?, widthPx:
             LazyColumn(
                 Modifier.fillMaxSize().closesComposer(ui).listActions(refresh, toTop, openDrawer),
                 state = list,
-                contentPadding = remember(safeArea) { safeContentPadding(safeArea, horizontal = 16.dp, top = 8.dp, bottom = 96.dp) },
+                contentPadding = remember(safeArea, state.current.slug == null) {
+                    safeContentPadding(safeArea, horizontal = 16.dp, top = 8.dp, bottom = 96.dp + if (state.current.slug == null) PickerRoom else 0.dp)
+                },
             ) {
                 item(key = "bar") { PhoneTopBar(state, onProjects = openDrawer, onTapBar = toTop, onSearch = { ui.commandOpen = true }, onBell = { ui.bellOpen = !ui.bellOpen }, onAccount = { ui.alertsOpen = true }) }
                 item(key = "header") { FeedHeader(ui, compact = true, Modifier.padding(top = 12.dp, bottom = 16.dp)) }
@@ -432,7 +440,10 @@ private fun PhoneFeed(ui: FeedUi, safeArea: SafeArea, startAt: String?, widthPx:
         )
         HoldArrivalsWhileAway(ui, list)
         NewOrBackToTop(ui, list, scrolledPast = 4, Modifier.align(Alignment.TopCenter).padding(top = safeArea.top + 8.dp), toTop)
-        if (state.current.slug != null) Column(
+        val target = if (state.current.slug == null) ui.postProject else state.current
+        // Only the slug is captured, so a new engine state doesn't redraw the composer.
+        val postTo = if (state.current.slug == null) target?.slug else null
+        if (target != null) Column(
             Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
@@ -440,11 +451,12 @@ private fun PhoneFeed(ui: FeedUi, safeArea: SafeArea, startAt: String?, widthPx:
                 .padding(start = 12.dp, end = 12.dp, top = 18.dp)
                 .safePadding(safeArea, bottom = 6.dp),
         ) {
+            if (state.current.slug == null) PostToPicker(ui, target, Modifier.padding(bottom = 6.dp, start = 4.dp))
             Composer(
                 focus = ui.composerFocus,
-                placeholder = "Message ${state.current.name}…",
-                onSend = { text, files -> ui.emit(FeedEvent.Post(text, files)) },
-                draftKey = "project:${state.current.slug}",
+                placeholder = "Message ${target.name}…",
+                onSend = { text, files -> ui.emit(FeedEvent.Post(text, files, project = postTo)) },
+                draftKey = "project:${target.slug}",
                 compact = true,
             )
         }
@@ -539,6 +551,9 @@ private fun EmptyFeed(state: FeedState, filter: FeedFilter, modifier: Modifier) 
         )
     }
 }
+
+/** Room the "To" project picker takes above the composer on "All projects". */
+private val PickerRoom = 34.dp
 
 /** Fades the feed out above the composer, then hides it fully so no text shows behind the box. */
 private fun bottomFade(background: Color) = Brush.verticalGradient(

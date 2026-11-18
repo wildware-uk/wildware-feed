@@ -194,8 +194,9 @@ private fun commandsFor(ui: FeedUi, query: String, extra: List<AppCommand>, clos
             val id = state.current.id
             add(Command("Actions", "Project settings", "Rename ${state.current.name}, set its colours or archive it", Icons.Settings, done { ui.projectDialog = ProjectDialog.Settings(id) }))
         }
-        if (state.current.slug != null && wanted("New post", "write")) {
-            add(Command("Actions", "New post", "Write to everyone in ${state.current.name}", Icons.Plus, done { ui.focusComposer() }))
+        val postTarget = if (state.current.slug == null) ui.postProject else state.current
+        if (postTarget != null && wanted("New post", "write")) {
+            add(Command("Actions", "New post", "Write to everyone in ${postTarget.name}", Icons.Plus, done { ui.focusComposer() }))
         }
         if (wanted("Refresh", "reload")) add(Command("Actions", "Refresh", "Read everything again", Icons.Refresh, done { ui.emit(FeedEvent.Refresh) }))
         if (wanted("Alerts on this device", "notifications", "settings")) add(Command("Actions", "Alerts on this device", "Which alerts this device gets", Icons.Sliders, done { ui.alertsOpen = true }))

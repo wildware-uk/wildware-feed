@@ -34,6 +34,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.MenuDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -806,4 +809,50 @@ internal fun NewDivider(count: Int, newAbove: Boolean = false) {
 @Composable
 fun VerticalRule(modifier: Modifier = Modifier) {
     Box(modifier.fillMaxHeight().width(1.dp).background(AgentTheme.colors.border))
+}
+
+/**
+ * "To #garden-game ▾" above the composer on "All projects", which has no one place to post: says
+ * where a post will go, and picks another project.
+ */
+@Composable
+fun PostToPicker(ui: FeedUi, target: Project, modifier: Modifier = Modifier) {
+    val colors = AgentTheme.colors
+    val shape = AgentTheme.shapes.pill
+    var open by remember { mutableStateOf(false) }
+    Box(modifier) {
+        Row(
+            Modifier
+                .clip(shape)
+                .pressable("Posting to ${target.name}. Choose a project", shape) { open = true }
+                .padding(horizontal = 6.dp, vertical = 2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            MetaText("To", color = colors.textMuted)
+            Box(Modifier.padding(start = 6.dp).size(8.dp).clip(CircleShape).background(colors.agent(target.hue)))
+            Text(target.name, Modifier.padding(start = 5.dp), color = colors.text, style = AgentTheme.type.label)
+            Icon(Icons.ChevronDown, null, tint = colors.textMuted, modifier = Modifier.padding(start = 2.dp).size(16.dp))
+        }
+        DropdownMenu(
+            expanded = open,
+            onDismissRequest = { open = false },
+            shape = AgentTheme.shapes.medium,
+            containerColor = colors.surfaceRaised,
+            border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
+        ) {
+            ui.projects.filter { !it.archived && it.slug != null }.forEach { p ->
+                DropdownMenuItem(
+                    text = { Text(p.name, style = AgentTheme.type.label) },
+                    leadingIcon = { Box(Modifier.size(9.dp).clip(CircleShape).background(colors.agent(p.hue))) },
+                    trailingIcon = if (p.id == target.id) ({ Icon(Icons.Check, null, tint = colors.accent, modifier = Modifier.size(16.dp)) }) else null,
+                    onClick = {
+                        ui.postTo = p.slug
+                        open = false
+                    },
+                    modifier = Modifier.semantics { contentDescription = "Post to ${p.name}" },
+                    colors = MenuDefaults.itemColors(textColor = colors.text),
+                )
+            }
+        }
+    }
 }

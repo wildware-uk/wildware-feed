@@ -33,6 +33,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.v2.runDesktopComposeUiTest
@@ -311,7 +312,8 @@ class EngineWiringTest {
     fun aFileIsSavedWhenTapped() = runDesktopComposeUiTest(width = 1440, height = 900) {
         withMedia()
         app()
-        waitForNode(hasContentDescription("Download build.log, 1.5 KB")).performScrollTo().performClick()
+        // Its own click: scrolled to the edge, it can sit under the composer that floats over the feed's end.
+        waitForNode(hasContentDescription("Download build.log, 1.5 KB")).performScrollTo().performSemanticsAction(SemanticsActions.OnClick)
         waitFor("Saved to Downloads")
         assertEquals(listOf("https://dash.test/media/doc/original"), media.saved)
     }
@@ -330,7 +332,7 @@ class EngineWiringTest {
     fun onDesktopASoundPlaysInTheApp() = runDesktopComposeUiTest(width = 1440, height = 900) {
         withMedia()
         app()
-        waitForNode(hasContentDescription("Play sound 1 of 1, 0:09")).performScrollTo().performClick()
+        waitForNode(hasContentDescription("Play sound 1 of 1, 0:09")).performScrollTo().performSemanticsAction(SemanticsActions.OnClick)
         waitForIdle()
         assertTrue(media.opened.isEmpty(), "nothing handed to the system's player: ${media.opened}")
     }
@@ -388,7 +390,11 @@ class EngineWiringTest {
         runCustomAction("Reply", on = hasAnyDescendant(hasText("Confirmed on my side.")))
         waitFor("Replying to scout")
         onNodeWithContentDescription("Reply").performTextInput("Thanks, shipping it")
-        onNodeWithContentDescription("Send", useUnmergedTree = false).performClick()
+        // The thread's Send sits on the reply box's own row; the feed's composer floats nearby.
+        val field = onNodeWithContentDescription("Reply").fetchSemanticsNode().boundsInRoot
+        val sends = onAllNodes(hasContentDescription("Send"))
+        val thread = sends.fetchSemanticsNodes().indexOfFirst { it.boundsInRoot.top == field.top }
+        sends[thread].performSemanticsAction(SemanticsActions.OnClick)
         val body = waitForWrite("POST", "/api/messages")
         assertTrue("\"update\":\"u1\"" in body && "\"answers\":\"m1\"" in body && "Thanks, shipping it" in body, body)
     }
@@ -441,6 +447,19 @@ class EngineWiringTest {
         waitForNode(hasContentDescription("Project settings")).performClick()
         waitForNode(hasText("Archive project")).performClick()
         assertEquals("""{"status":"archived"}""", waitForWrite("PATCH", "/api/projects/mega"))
+    }
+
+    @Test
+    fun postingFromAllProjectsGoesToThePickedProject() = runDesktopComposeUiTest(width = 1440, height = 900) {
+        app()
+        waitFor("Fixed the unread counts")
+        waitForNode(hasContentDescription("Posting to", substring = true)).performClick()
+        waitForNode(hasContentDescription("Post to Other")).performClick()
+        waitForLabel("Message")
+        onNodeWithContentDescription("Message").performTextInput("Hello from everything")
+        onNodeWithContentDescription("Send").performClick()
+        val body = waitForWrite("POST", "/api/messages")
+        assertTrue("\"project\":\"other\"" in body && "Hello from everything" in body, body)
     }
 
     @Test

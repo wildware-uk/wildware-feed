@@ -35,7 +35,8 @@ sealed interface FeedEvent {
     /** Send a reply into a card's thread, answering [answers] when set. */
     data class SendReply(val threadId: String, val text: String, val answers: String?, val files: List<PendingFile> = emptyList()) : FeedEvent
     /** Write a new post into the project on screen. */
-    data class Post(val text: String, val files: List<PendingFile> = emptyList()) : FeedEvent
+    /** Write a new post: into [project] (a slug) when given, as from "All projects", else the project on screen. */
+    data class Post(val text: String, val files: List<PendingFile> = emptyList(), val project: String? = null) : FeedEvent
     data class CopyText(val targetId: String) : FeedEvent
     /** Phones: show this card's or line's words with all of them selected, to pick some out. */
     data class SelectText(val targetId: String) : FeedEvent
@@ -326,6 +327,16 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
         get() = state.searchIndex.ifEmpty { searchEntriesOf(state.sections) }
 
     /** Puts the cursor in the composer, for "New post". */
+    /** On "All projects", the project a new post goes to, by slug; null for the first one. */
+    var postTo by mutableStateOf<String?>(null)
+
+    /** Where a post written on "All projects" goes: the one picked, else the first project still in use. */
+    val postProject: Project?
+        get() {
+            val active = projects.filter { !it.archived && it.slug != null }
+            return active.firstOrNull { it.slug == postTo } ?: active.firstOrNull()
+        }
+
     fun focusComposer() {
         runCatching { composerFocus.requestFocus() }
     }
