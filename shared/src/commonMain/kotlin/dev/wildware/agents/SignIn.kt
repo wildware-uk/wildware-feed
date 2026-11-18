@@ -19,7 +19,7 @@ enum class SignInFailure {
     /** The address didn't answer at all: a typo, no signal, or the server is down. */
     Unreachable,
 
-    /** Something answered, but it isn't an Agent Dashboard. */
+    /** Something answered, but it isn't a Wildware Feed server. */
     NotADashboard,
 
     WrongPassword,
@@ -61,7 +61,7 @@ object SignIn {
                     contentType(ContentType.Application.Json)
                     setBody(buildJsonObject {
                         put("password", password)
-                        put("name", deviceName.trim().ifEmpty { "Agent Dashboard app" }.take(100))
+                        put("name", deviceName.trim().ifEmpty { "Wildware Feed app" }.take(100))
                     }.toString())
                 }
             } catch (cancelled: CancellationException) {
@@ -73,7 +73,7 @@ object SignIn {
             val text = runCatching { response.bodyAsText() }.getOrDefault("")
             if (status == 201 || status == 200) {
                 val registration = runCatching { json.decodeFromString(DeviceRegistration.serializer(), text) }.getOrNull()
-                    ?: throw SignInException(SignInFailure.NotADashboard, "$base answered, but not like an Agent Dashboard.", status)
+                    ?: throw SignInException(SignInFailure.NotADashboard, "$base answered, but not like a Wildware Feed server.", status)
                 return SignedIn(base, registration.token, registration.device)
             }
             val error = runCatching { json.decodeFromString(ErrorBody.serializer(), text) }.getOrNull()
@@ -92,7 +92,7 @@ object SignIn {
                     SignInException(SignInFailure.Refused, error.message ?: "The dashboard won't take that device name.", status)
                 // A dashboard from before this sign-in existed, or not a dashboard at all.
                 status == 404 || status == 405 || error == null && status < 500 ->
-                    SignInException(SignInFailure.NotADashboard, "There is no Agent Dashboard at $base, or it needs updating.", status)
+                    SignInException(SignInFailure.NotADashboard, "There is no Wildware Feed server at $base, or it needs updating.", status)
                 status >= 500 -> SignInException(SignInFailure.Unreachable, "The dashboard had a problem ($status). Try again soon.", status)
                 else -> SignInException(SignInFailure.Refused, error?.message ?: "The dashboard refused the sign-in ($status).", status)
             }

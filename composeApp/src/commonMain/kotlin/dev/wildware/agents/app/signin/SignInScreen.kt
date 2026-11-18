@@ -60,7 +60,7 @@ private data class Problem(val field: Field, val message: String)
 /** What each failure says, in words that tell the owner what to do next. */
 private fun SignInException.problem(): Problem = when (failure) {
     SignInFailure.Unreachable -> Problem(Field.Server, message ?: "Couldn't reach that address. Check it and your connection.")
-    SignInFailure.NotADashboard -> Problem(Field.Server, message ?: "That address isn't an Agent Dashboard.")
+    SignInFailure.NotADashboard -> Problem(Field.Server, message ?: "That address isn't a Wildware Feed server.")
     SignInFailure.WrongPassword -> Problem(Field.Password, "That password isn't right. Try again.")
     SignInFailure.TooManyAttempts -> Problem(
         Field.General,
@@ -135,7 +135,7 @@ fun SignInScreen(
             Text("Sign in", Modifier.semantics { heading() }, color = colors.text, style = type.display)
             Spacer(Modifier.height(6.dp))
             Text(
-                "Connect ${dev.wildware.agents.app.ProductName} to your Agent Dashboard. The password is used once; the device keeps its own key.",
+                "Connect ${dev.wildware.agents.app.ProductName} to your dashboard. The password is used once; the device keeps its own key.",
                 color = colors.textMuted,
                 style = type.body,
             )

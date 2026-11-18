@@ -68,7 +68,7 @@ struct WaitingView: View {
 
     private var sentence: String {
         switch entry.waiting {
-        case nil: "Open Feed"
+        case nil: "Open Wildware Feed"
         case 0?: "Nobody waiting"
         case 1?: "1 question waiting"
         case let waiting?: "\(waiting) questions waiting"
@@ -99,7 +99,7 @@ struct WaitingView: View {
             Label(sentence, systemImage: "hand.raised.fill")
         default:
             VStack(alignment: .leading, spacing: 2) {
-                Label("Feed", systemImage: "hand.raised.fill")
+                Label("Wildware Feed", systemImage: "hand.raised.fill")
                     .font(.headline)
                     .foregroundStyle(tint)
                 Text(sentence)

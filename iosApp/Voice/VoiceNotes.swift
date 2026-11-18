@@ -13,7 +13,7 @@ enum VoiceNoteError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .microphoneOff: "Open Wildware Feed and allow the microphone once, then try again."
-        case .liveActivitiesOff: "Turn on Live Activities for Feed in Settings to record without unlocking."
+        case .liveActivitiesOff: "Turn on Live Activities for Wildware Feed in Settings to record without unlocking."
         case .couldNotRecord: "The microphone is busy. Try again in a moment."
         case .noProject: "There's no project to send it to yet."
         case .nothingHeard: "No words were picked up, so nothing was sent."

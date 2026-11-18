@@ -293,7 +293,7 @@ All subscriptions in parallel. Per subscription:
 ### 5.7 Service worker contract (`src/service-worker.ts`)
 
 - No `fetch` handler (no caching). `install` → `skipWaiting()`; `activate` → `clients.claim()`.
-- `push`: `event.data.json()` (bad/empty → `{}`). `showNotification(title ?? 'Agent Dashboard', {body: body ?? 'An agent is waiting on you.', tag: tag ?? 'owner-request', icon: '/icons/icon-192.png', badge: '/icons/icon-192.png', actions: [{action,title}], data: {url: url ?? '/', requestId, actions}})` (`:47-79`).
+- `push`: `event.data.json()` (bad/empty → `{}`). `showNotification(title ?? 'Wildware Feed', {body: body ?? 'An agent is waiting on you.', tag: tag ?? 'owner-request', icon: '/icons/icon-192.png', badge: '/icons/icon-192.png', actions: [{action,title}], data: {url: url ?? '/', requestId, actions}})` (`:47-79`).
 - `notificationclick`: closes; if the clicked action matches one in `data.actions` and `requestId`
   exists → `POST /api/requests/<encodeURIComponent(id)>/answer`, `credentials:'include'`,
   body `{"value": <action.value>}`; `response.ok` → done. Otherwise focus the first window
