@@ -44,6 +44,10 @@ sealed interface FeedEvent {
     data class EditTags(val targetId: String) : FeedEvent
     /** Pin a card above the feed, or unpin it. */
     data class Pin(val targetId: String, val pinned: Boolean) : FeedEvent
+    /** Set a field on a card, correct it, or take it off with a null [value]. */
+    data class SetField(val targetId: String, val name: String, val value: String?) : FeedEvent
+    /** Open a card's details, to read or add fields. The screen handles it; nothing is sent. */
+    data class OpenDetails(val targetId: String) : FeedEvent
     data class OpenThread(val cardId: String) : FeedEvent
     data class MoveProject(val from: Int, val to: Int) : FeedEvent
     /** Show one project's feed, or every project's for null. */
@@ -126,6 +130,8 @@ data class MenuTarget(
     val pinned: Boolean? = null,
     /** Whether the owner may delete it: their own lines, and any update. */
     val deletable: Boolean = own,
+    /** A card that can carry fields: an update or a post, not a reply. */
+    val hasDetails: Boolean = false,
 )
 
 /** The work-state choice, open on card [id], whose state is [current]. */
@@ -410,6 +416,20 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
     /** Whether card [id] shows as pinned: the owner's latest tap here, else what the server says. */
     fun isPinned(id: String, server: Boolean): Boolean = pinnedHere[id] ?: server
 
+    /** Cards whose details are open. */
+    val detailsOpen = androidx.compose.runtime.mutableStateSetOf<String>()
+
+    /** Fields set or removed here, by card then name (null for removed), drawn before the server answers. */
+    private val fieldsHere = mutableStateMapOf<String, Map<String, String?>>()
+
+    /** The fields a card shows: the server's, with the owner's changes here on top. */
+    fun fieldsFor(id: String, base: List<CardField>): List<CardField> {
+        val changes = fieldsHere[id] ?: return base
+        val kept = base.mapNotNull { f -> if (f.name in changes) changes[f.name]?.let { CardField(f.name, it) } else f }
+        val added = changes.filter { (name, value) -> value != null && base.none { it.name == name } }.map { CardField(it.key, it.value!!) }
+        return kept + added
+    }
+
     /** The delete waiting for the owner to say yes. Nothing is deleted until they do. */
     var deleting by mutableStateOf<DeleteAsk?>(null)
 
@@ -445,6 +465,11 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
     }
 
     fun emit(event: FeedEvent) {
+        if (event is FeedEvent.OpenDetails) {
+            detailsOpen += event.targetId
+            menu = null
+            return
+        }
         if (event is FeedEvent.EditTags) {
             tagging = event.targetId
             menu = null
@@ -481,6 +506,7 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
             }
             is FeedEvent.SendReply -> replyingTo = null
             is FeedEvent.SelectText -> selecting = textOf(event.targetId)?.let { SelectingText(event.targetId, it) }
+            is FeedEvent.SetField -> fieldsHere[event.targetId] = fieldsHere[event.targetId].orEmpty() + (event.name to event.value)
             is FeedEvent.Tag -> noteTag(event)
             is FeedEvent.ChooseStatus -> statusPick = StatusPick(event.targetId, event.current)
             is FeedEvent.SetStatus -> statusPick = null

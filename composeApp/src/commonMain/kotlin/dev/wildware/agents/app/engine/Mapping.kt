@@ -27,6 +27,7 @@ import dev.wildware.agents.app.feed.Agent
 import dev.wildware.agents.app.feed.Attachment
 import dev.wildware.agents.app.feed.Author
 import dev.wildware.agents.app.feed.CardTag
+import dev.wildware.agents.app.feed.CardField
 import dev.wildware.agents.app.feed.Choice
 import dev.wildware.agents.app.feed.FeedItem
 import dev.wildware.agents.app.feed.FeedSection
@@ -174,6 +175,7 @@ internal class FeedMapper(
                 replies = replies(replies, unread, agents, project, threads),
                 unreadReplies = unread,
                 tags = tags.map { it.toCardTag() },
+                fields = fields.map { CardField(it.name, it.value) },
                 high = update.priority == "high",
                 pinned = pinned,
             )
@@ -188,6 +190,7 @@ internal class FeedMapper(
             replies = replies(replies, unread, agents, project, threads),
             unreadReplies = unread,
             tags = tags.map { it.toCardTag() },
+            fields = fields.map { CardField(it.name, it.value) },
             reactions = reactions(reactions),
             sending = post.sending,
             questions = post.questions.map { it.toQuestion(agents, project, threads) },

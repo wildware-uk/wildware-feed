@@ -150,6 +150,25 @@ class OwnerActionsTest {
     }
 
     @Test
+    fun `a field is set or changed or taken off by name`() = runTest {
+        val server = FakeDashboard(testScheduler)
+        val (queue, actions) = setUp(server)
+
+        actions.setField(CardRef(CardKinds.Update, "u1"), "branch", "fix/unread")
+        actions.setField(CardRef(CardKinds.Message, "m1"), "branch", null)
+        runCurrent()
+
+        assertEquals(
+            listOf(
+                "POST /api/cards/update/u1/fields" to """{"name":"branch","value":"fix/unread"}""",
+                "POST /api/cards/message/m1/fields" to """{"name":"branch","value":null}""",
+            ),
+            server.writes,
+        )
+        assertTrue(queue.items.value.isEmpty())
+    }
+
+    @Test
     fun `pinning says pinned or unpinned and never toggles`() = runTest {
         val server = FakeDashboard(testScheduler)
         val (queue, actions) = setUp(server)

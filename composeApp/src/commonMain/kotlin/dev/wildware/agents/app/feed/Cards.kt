@@ -213,7 +213,7 @@ fun UpdateCard(
     val ui = LocalFeedUi.current
     val indent = if (density == Density.Compact) 0.dp else BodyIndent
     val pinned = ui?.isPinned(item.id, item.pinned) ?: item.pinned
-    val target = MenuTarget(item.id, item.agent.name, item.title, own = false, taggable = true, work = true, status = item.status, pinned = pinned, deletable = true)
+    val target = MenuTarget(item.id, item.agent.name, item.title, own = false, taggable = true, work = true, status = item.status, pinned = pinned, deletable = true, hasDetails = true)
     val tags = ui?.tagsFor(item.id, item.tags) ?: item.tags
     val reactions = ui?.reactionsFor(item.id, item.reactions) ?: item.reactions
     val chooseStatus = { ui?.emit(FeedEvent.ChooseStatus(item.id, item.status)); Unit }
@@ -250,6 +250,7 @@ fun UpdateCard(
                 }
                 if (item.sounds.isNotEmpty()) Sounds(item.sounds, Modifier.padding(top = 10.dp))
                 if (item.files.isNotEmpty()) Files(item.files, Modifier.padding(top = 10.dp))
+                CardDetails(item.id, ui?.fieldsFor(item.id, item.fields) ?: item.fields, Modifier.padding(top = 8.dp))
                 TagChips(tags, Modifier.padding(top = 10.dp))
                 val inline = LocalInlineThreads.current && !inThread
                 val showThread = item.replies.isNotEmpty() && !inThread && !inline
@@ -602,7 +603,7 @@ fun PostCard(item: FeedItem.Post, modifier: Modifier = Modifier, density: Densit
     val own = item.author is Author.Owner
     val indent = if (density == Density.Compact) 0.dp else BodyIndent
     val pinned = ui?.isPinned(item.id, item.pinned) ?: item.pinned
-    val target = MenuTarget(item.id, if (own) "You" else item.author.name, item.body, own = own, taggable = true, work = true, status = item.status, pinned = pinned)
+    val target = MenuTarget(item.id, if (own) "You" else item.author.name, item.body, own = own, taggable = true, work = true, status = item.status, pinned = pinned, hasDetails = true)
     val tags = ui?.tagsFor(item.id, item.tags) ?: item.tags
     val reactions = ui?.reactionsFor(item.id, item.reactions) ?: item.reactions
     val chooseStatus = { ui?.emit(FeedEvent.ChooseStatus(item.id, item.status)); Unit }
@@ -625,6 +626,7 @@ fun PostCard(item: FeedItem.Post, modifier: Modifier = Modifier, density: Densit
                 if (density == Density.Compact && item.status != null) Chips(null, item.status, modifier = Modifier.padding(bottom = 8.dp), onStatus = chooseStatus)
                 val body = @Composable { if (own) PlainBody(item.body) else MarkdownBody(item.body) }
                 if (inThread) body() else Clamp(item.id, "the whole post") { body() }
+                CardDetails(item.id, ui?.fieldsFor(item.id, item.fields) ?: item.fields, Modifier.padding(top = 8.dp))
                 TagChips(tags, Modifier.padding(top = 10.dp))
                 val inline = LocalInlineThreads.current && !inThread
                 val showThread = item.replies.isNotEmpty() && !inThread && !inline

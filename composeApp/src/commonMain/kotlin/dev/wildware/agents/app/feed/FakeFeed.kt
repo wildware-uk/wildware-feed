@@ -88,6 +88,10 @@ object FakeFeed {
         replies = fixReplies,
         unreadReplies = 2,
         tags = listOf(bugTag, sessionsTag),
+        fields = listOf(
+            CardField("branch", "fix/unread-per-connection"),
+            CardField("PR", "https://example.com/pull/42"),
+        ),
     )
 
     private val question = FeedItem.Question(

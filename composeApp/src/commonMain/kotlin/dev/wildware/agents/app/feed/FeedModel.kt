@@ -128,6 +128,10 @@ const val SendingAlpha = 0.6f
 @Immutable
 data class CardTag(val id: String, val name: String, val colour: String? = null, val projectId: String? = null)
 
+/** A named note on a card, such as "branch: fix/unread". Agents and the owner both set them. */
+@Immutable
+data class CardField(val name: String, val value: String)
+
 @Immutable
 data class Reply(
     val id: String,
@@ -243,6 +247,7 @@ sealed interface FeedItem {
         override val replies: List<Reply> = emptyList(),
         override val unreadReplies: Int = 0,
         val tags: List<CardTag> = emptyList(),
+        val fields: List<CardField> = emptyList(),
         /** The agent marked it high priority. Shown as a red "High" chip; it doesn't change the order. */
         val high: Boolean = false,
         /** Pinned above the rest of the feed. */
@@ -298,6 +303,7 @@ sealed interface FeedItem {
         /** Questions an agent asked under the post itself, shown at the top of its thread. */
         val questions: List<Question> = emptyList(),
         val tags: List<CardTag> = emptyList(),
+        val fields: List<CardField> = emptyList(),
         /** Its work state, when someone marked it as work. */
         val status: WorkStatus? = null,
         /** Pinned above the rest of the feed. */

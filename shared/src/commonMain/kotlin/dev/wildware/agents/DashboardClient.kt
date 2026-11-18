@@ -171,6 +171,18 @@ class DashboardClient(
         }.requireSuccess()
     }
 
+    /** Sets a field on a card, corrects it, or takes it off when [value] is null. */
+    @Throws(Exception::class)
+    suspend fun setCardField(card: CardRef, name: String, value: String?) {
+        http.post("api/cards/${card.kind.encodeURLPathPart()}/${card.id.encodeURLPathPart()}/fields") {
+            authorise()
+            jsonBody(buildJsonObject {
+                put("name", name)
+                put("value", value)
+            })
+        }.requireSuccess()
+    }
+
     /** Pins a card above the feed, or unpins it. Says which, so sending it twice does no harm. */
     @Throws(Exception::class)
     suspend fun pinCard(card: CardRef, pinned: Boolean) {

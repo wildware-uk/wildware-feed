@@ -41,6 +41,9 @@ enum class OutboxKind {
     Status,
     /** Pins [OutboxItem.card] above the feed, or unpins it when [OutboxItem.on] is false. */
     Pin,
+
+    /** Sets the field [OutboxItem.field] on [OutboxItem.card] to [OutboxItem.value], or takes it off when that is null. */
+    Field,
 }
 
 /** A photo or file waiting to go up with its message. [name] is the file in the outbox's folder. */
@@ -88,17 +91,19 @@ data class OutboxItem(
     val emoji: String? = null,
     /** For a reaction: on or off. Never a toggle, so sending twice can't undo it. */
     val on: Boolean? = null,
-    /** An in-app answer, as JSON text; for a tag, the tag's id or new word. */
+    /** An in-app answer, as JSON text; for a tag, the tag's id or new word; for a field, its new value. */
     val value: String? = null,
     /** For a tag: make the word on the way, as the project doesn't have it yet. */
     val create: Boolean? = null,
+    /** For a field: its name. */
+    val field: String? = null,
 ) {
     /** Items in one thread go in the order they were written. */
     val threadKey: String
         get() = when (kind) {
             OutboxKind.Answer -> "request=${answer?.requestId}"
             OutboxKind.RequestAnswer, OutboxKind.Dismiss -> "request=${card?.id}"
-            OutboxKind.React, OutboxKind.Delete, OutboxKind.Tag, OutboxKind.Status, OutboxKind.Pin -> "card=${card?.kind}/${card?.id}"
+            OutboxKind.React, OutboxKind.Delete, OutboxKind.Tag, OutboxKind.Status, OutboxKind.Pin, OutboxKind.Field -> "card=${card?.kind}/${card?.id}"
             else -> thread.entries.sortedBy { it.key }.joinToString("&") { "${it.key}=${it.value}" }
         }
 
@@ -187,6 +192,9 @@ object Outbox {
         card = card,
         value = (status?.let(::JsonPrimitive) ?: JsonNull).toString(),
     )
+    fun field(id: String, nowMillis: Long, card: CardRef, name: String, value: String?) =
+        OutboxItem(id, nowMillis, OutboxKind.Field, if (value == null) "Remove $name" else "Set $name", card = card, field = name, value = value)
+
     fun pin(id: String, nowMillis: Long, card: CardRef, pinned: Boolean) =
         OutboxItem(id, nowMillis, OutboxKind.Pin, if (pinned) "Pin" else "Unpin", card = card, on = pinned)
 
@@ -349,6 +357,11 @@ internal suspend fun DashboardClient.deliverQueued(item: OutboxItem, attachments
                 val card = item.card ?: return DeliveryResult(DeliveryOutcome.GiveUp, message = "It has no card.")
                 val tag = item.value ?: return DeliveryResult(DeliveryOutcome.GiveUp, message = "It has no tag.")
                 tagCard(card, tag, item.on ?: true, create = item.create == true)
+            }
+            OutboxKind.Field -> {
+                val card = item.card ?: return DeliveryResult(DeliveryOutcome.GiveUp, message = "It has no card.")
+                val name = item.field ?: return DeliveryResult(DeliveryOutcome.GiveUp, message = "It has no field name.")
+                setCardField(card, name, item.value)
             }
             OutboxKind.Pin -> {
                 val card = item.card ?: return DeliveryResult(DeliveryOutcome.GiveUp, message = "It has no card.")

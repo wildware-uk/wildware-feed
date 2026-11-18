@@ -229,6 +229,7 @@ class DashboardSession(
             is FeedEvent.Tag -> cardRef(event.targetId)?.let { actions.tag(it, event.tag, event.on, event.create) }
             is FeedEvent.SetStatus -> cardRef(event.targetId)?.let { actions.setStatus(it, event.status?.wire) }
             is FeedEvent.Pin -> cardRef(event.targetId)?.let { actions.pin(it, event.pinned) }
+            is FeedEvent.SetField -> cardRef(event.targetId)?.let { actions.setField(it, event.name, event.value) }
             is FeedEvent.OpenThread -> dashboard.markRead(event.cardId)
             is FeedEvent.MarkAllRead -> markAllRead()
             is FeedEvent.OpenNotification -> dashboard.markNotificationsSeen(listOf(event.id))
@@ -243,7 +244,7 @@ class DashboardSession(
             is FeedEvent.LoadOlder -> scope.launch { runCatching { feed.loadOlder() } }
             is FeedEvent.RetrySend -> outbox.retryNow(event.outboxId)
             is FeedEvent.DropUnsent -> outbox.remove(event.outboxId)
-            is FeedEvent.ChooseStatus, is FeedEvent.Reply, is FeedEvent.EditTags, is FeedEvent.CopyText, is FeedEvent.SelectText, is FeedEvent.CopyLink, is FeedEvent.MoveProject, is FeedEvent.SignOut, is FeedEvent.ToggleTheme -> Unit
+            is FeedEvent.ChooseStatus, is FeedEvent.Reply, is FeedEvent.OpenDetails, is FeedEvent.EditTags, is FeedEvent.CopyText, is FeedEvent.SelectText, is FeedEvent.CopyLink, is FeedEvent.MoveProject, is FeedEvent.SignOut, is FeedEvent.ToggleTheme -> Unit
         }
     }
 

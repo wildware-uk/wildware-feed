@@ -70,6 +70,8 @@ object Icons {
     val ZoomOut = icon("zoom-out", circle(11f, 11f, 7f), "M21 21 16.5 16.5", "M8 11H14")
     val Link = icon("link", "M10 13A5 5 0 0 0 17.54 13.54L20.54 10.54A5 5 0 0 0 13.47 3.47L11.75 5.18", "M14 11A5 5 0 0 0 6.46 10.46L3.46 13.46A5 5 0 0 0 10.53 20.53L12.24 18.82")
     val Trash = icon("trash", "M3 6H21", "M19 6V20A2 2 0 0 1 17 22H7A2 2 0 0 1 5 20V6", "M8 6V4A2 2 0 0 1 10 2H14A2 2 0 0 1 16 4V6")
+    val Pencil = icon("pencil", "M12 20H21", "M16.5 3.5A2.12 2.12 0 0 1 19.5 6.5L7 19L3 20L4 16Z")
+    val Details = icon("details", "M8 6H21", "M8 12H21", "M8 18H21", "M3 6H3.01", "M3 12H3.01", "M3 18H3.01")
     val Download = icon("download", "M21 15V19A2 2 0 0 1 19 21H5A2 2 0 0 1 3 19V15", "M7 10 12 15 17 10", "M12 15V3")
     val Pin = icon(
         "pin",
