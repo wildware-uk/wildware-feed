@@ -113,6 +113,32 @@ both servers, every difference listed.
   - hardening: `NoNewPrivileges`, `ProtectSystem=strict`, `ReadWritePaths=<DATA_DIR>`, `PrivateTmp`.
 
   A README shows install, upgrade and logs. It uses no real paths.
+- **Self-updates (an option; not decided).** Nothing updates itself today. Three routes, from
+  least to most work. Whichever is chosen, it's off unless the owner turns it on.
+  1. **Docker:** publish versioned images (`:1.4.2`, `:1`, `:latest`) from release tags. The owner
+     opts in with their own puller (a `docker compose pull && up -d` timer, or Watchtower). No
+     server code at all.
+  2. **systemd + dist:** a `feed-server update` CLI command and an optional daily timer.
+     - It reads the latest GitHub release, the same source and `SHA256SUMS.txt` the desktop app's
+       updater already uses (`composeApp/.../update/GitHubReleaseSource.kt`; the release-reading
+       part moves into a small shared JVM module rather than being copied).
+     - It downloads the dist tarball, checks the SHA-256, and verifies an Ed25519 signature over
+       the sums file against a public key built into the binary. A checksum from the same release
+       page alone doesn't protect against a tampered release.
+     - It unpacks to `versions/<v>`, takes a database backup first, flips the `current` symlink,
+       and exits. systemd then restarts it on the new version.
+     - Rollback means flipping the symlink back. That works only while the new version added no
+       migration; otherwise the old binary refuses the newer database, so the update keeps the
+       pre-update backup and prints how to restore it.
+     - It refuses to downgrade, and it refuses an update whose release notes say the cut-over or
+       a manual step is needed.
+  3. **Desktop standalone:** the server is inside the app, so it updates with the app's existing
+     updater (download, checksum, install, restart). The embedded server stops gracefully first.
+     Same migration caveat, same backup-before-update.
+
+  Recommended: 1 for Docker users, 3 comes free, and 2 only if a non-Docker self-host audience
+  shows up. Release signing (a key the owner holds, used in the release workflow) is the one new
+  thing it would need, and it would help the desktop updater too.
 - **Cut-over runbook (plan only; needs the owner's OK):**
   1. Build and smoke the Kotlin dist on the box.
   2. Take a backup with the TS `backup` command.
