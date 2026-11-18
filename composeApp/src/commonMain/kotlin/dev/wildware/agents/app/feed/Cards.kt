@@ -100,10 +100,13 @@ private fun CardHeader(
     compact: Boolean = false,
     /** Opens the work-state choice when the status chip is tapped. */
     onStatus: (() -> Unit)? = null,
+    high: Boolean = false,
 ) {
     val colors = AgentTheme.colors
     val type = AgentTheme.type
-    val spoken = listOfNotNull(author.name, role, time, level?.label, status?.let { "status ${it.label}" }).joinToString(", ")
+    val spoken = listOfNotNull(
+        author.name, role, time, "high priority".takeIf { high }, level?.label, status?.let { "status ${it.label}" },
+    ).joinToString(", ")
     Row(
         Modifier.fillMaxWidth().semantics(mergeDescendants = true) { contentDescription = spoken },
         verticalAlignment = Alignment.CenterVertically,
@@ -128,7 +131,7 @@ private fun CardHeader(
             Spacer(Modifier.width(10.dp))
             MetaText(time, Modifier.clearAndSetSemantics { })
         }
-        if (!compact) Chips(level, status, onStatus = onStatus)
+        if (!compact) Chips(level, status, high, onStatus = onStatus)
     }
 }
 
@@ -137,12 +140,13 @@ private fun CardHeader(
  * from the card's actions ("Work state…"), so the chips themselves stay out of the spoken header.
  */
 @Composable
-private fun Chips(level: Level?, status: WorkStatus?, modifier: Modifier = Modifier, onStatus: (() -> Unit)? = null) {
+private fun Chips(level: Level?, status: WorkStatus?, high: Boolean = false, modifier: Modifier = Modifier, onStatus: (() -> Unit)? = null) {
     Row(
         modifier.clearAndSetSemantics { },
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        if (high) HighChip()
         if (status != null) {
             val shape = AgentTheme.shapes.pill
             StatusChip(status, if (onStatus != null) Modifier.clip(shape).clickable(onClick = onStatus) else Modifier)
@@ -222,9 +226,10 @@ fun UpdateCard(
                 showAvatar = true,
                 compact = density == Density.Compact,
                 onStatus = chooseStatus,
+                high = item.high,
             )
             Column(Modifier.padding(start = indent, top = 8.dp)) {
-                if (density == Density.Compact) Chips(item.level, item.status, Modifier.padding(bottom = 8.dp), onStatus = chooseStatus)
+                if (density == Density.Compact) Chips(item.level, item.status, item.high, Modifier.padding(bottom = 8.dp), onStatus = chooseStatus)
                 Text(
                     item.title,
                     Modifier.semantics { heading() },
@@ -605,7 +610,7 @@ fun PostCard(item: FeedItem.Post, modifier: Modifier = Modifier, density: Densit
                 onStatus = chooseStatus,
             )
             Column(Modifier.padding(start = indent, top = 8.dp)) {
-                if (density == Density.Compact && item.status != null) Chips(null, item.status, Modifier.padding(bottom = 8.dp), onStatus = chooseStatus)
+                if (density == Density.Compact && item.status != null) Chips(null, item.status, modifier = Modifier.padding(bottom = 8.dp), onStatus = chooseStatus)
                 if (own) PlainBody(item.body) else MarkdownBody(item.body)
                 TagChips(tags, Modifier.padding(top = 10.dp))
                 val inline = LocalInlineThreads.current && !inThread

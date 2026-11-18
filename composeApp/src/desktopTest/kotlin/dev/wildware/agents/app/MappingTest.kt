@@ -255,4 +255,12 @@ class MappingTest {
         val state = mapper.map(feed(emptyList()), listOf(mega, other), emptyList(), emptyList(), "mega", everyQuestion = all)
         assertEquals(listOf("here"), waitingOf(state).map { it.id })
     }
+
+    @Test
+    fun aHighPriorityUpdateIsMarkedHigh() {
+        val high = update("u1", noon, "Disk", "").let { it.copy(update = it.update.copy(priority = "high")) }
+        val low = update("u2", noon - 1, "Other", "").let { it.copy(update = it.update.copy(priority = "low")) }
+        val items = mapper.map(feed(listOf(high, low)), listOf(mega), emptyList(), emptyList(), null).sections.flatMap { it.items }
+        assertEquals(mapOf("u1" to true, "u2" to false), items.filterIsInstance<FeedItem.Update>().associate { it.id to it.high })
+    }
 }

@@ -158,6 +158,7 @@ object FakeFeed {
         title = "Build box disk is 86% full",
         body = "Old Gradle caches are most of it. I will run `gradle --stop` and prune caches older than 30 days at lunch unless you say otherwise.",
         acks = Acks(read = listOf(forge, scout)),
+        high = true,
     )
 
     private val push = FeedItem.Update(

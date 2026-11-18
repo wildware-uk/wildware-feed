@@ -236,6 +236,8 @@ sealed interface FeedItem {
         override val replies: List<Reply> = emptyList(),
         override val unreadReplies: Int = 0,
         val tags: List<CardTag> = emptyList(),
+        /** The agent marked it high priority. Shown as a red "High" chip; it doesn't change the order. */
+        val high: Boolean = false,
     ) : Threaded {
         override val starter: Author get() = Author.AgentAuthor(agent)
     }

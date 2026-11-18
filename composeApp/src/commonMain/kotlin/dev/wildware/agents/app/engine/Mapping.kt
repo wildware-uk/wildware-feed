@@ -168,6 +168,7 @@ internal class FeedMapper(
                 replies = replies(replies, unread, agents, project, threads),
                 unreadReplies = unread,
                 tags = tags.map { it.toCardTag() },
+                high = update.priority == "high",
             )
         }
         is PostCard -> FeedItem.Post(

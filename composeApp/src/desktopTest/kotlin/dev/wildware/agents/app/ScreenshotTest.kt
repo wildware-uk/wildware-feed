@@ -135,6 +135,13 @@ class ScreenshotTest {
         }
     }
 
+    /** The high-priority disk update, on a phone and on desktop. */
+    @Test
+    fun highPriority() {
+        shoot("phone-dark-high-priority", Size.Phone, dark = true, startAt = "u3")
+        shoot("desktop-light-high-priority", Size.Desktop, dark = false, startAt = "u3")
+    }
+
     /** The sign-in screen, before anything is typed. Nothing reaches a network. */
     @Test
     fun signIn() {

@@ -168,6 +168,25 @@ fun LevelTag(level: Level, modifier: Modifier = Modifier) {
     }
 }
 
+/** A red "High" chip: the agent marked this high priority. Read aloud with the card's header. */
+@Composable
+fun HighChip(modifier: Modifier = Modifier) {
+    val colors = AgentTheme.colors
+    val c = colors.error
+    Row(
+        modifier
+            .clip(AgentTheme.shapes.pill)
+            .background(c.copy(alpha = if (colors.isDark) 0.18f else 0.10f))
+            .border(1.dp, c.copy(alpha = 0.45f), AgentTheme.shapes.pill)
+            .padding(horizontal = 9.dp, vertical = 3.dp)
+            .semantics(mergeDescendants = true) { contentDescription = "High priority" },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(dev.wildware.agents.app.design.Icons.ArrowUp, contentDescription = null, tint = c, modifier = Modifier.size(12.dp))
+        Text("HIGH", Modifier.padding(start = 4.dp), color = c, style = AgentTheme.type.overline)
+    }
+}
+
 @Composable
 fun StatusChip(status: WorkStatus, modifier: Modifier = Modifier) {
     val colors = AgentTheme.colors
