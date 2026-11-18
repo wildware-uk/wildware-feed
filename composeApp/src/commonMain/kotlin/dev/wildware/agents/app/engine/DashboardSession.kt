@@ -15,7 +15,11 @@ import dev.wildware.agents.RequestCard
 import dev.wildware.agents.RequestKind
 import dev.wildware.agents.StreamStatus
 import dev.wildware.agents.ThreadLine
+import dev.wildware.agents.app.feed.Author
 import dev.wildware.agents.app.feed.FeedEvent
+import dev.wildware.agents.app.feed.FeedItem
+import dev.wildware.agents.app.feed.MarkdownCache
+import dev.wildware.agents.app.feed.Threaded
 import dev.wildware.agents.app.feed.FeedState
 import dev.wildware.agents.app.feed.PendingFile
 import dev.wildware.agents.app.feed.searchEntriesOf
@@ -29,6 +33,8 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
@@ -108,6 +114,25 @@ class DashboardSession(
         // Another process queued, sent or dropped something: show it, and send what is new.
         scope.launch { outboxChanged.collect { outbox.reload() } }
         scope.launch { foreground.collect { resume() } }
+        // Parse what the feed will draw here, off the UI thread, so a card scrolling into view finds
+        // its markdown ready instead of parsing it mid-frame.
+        scope.launch {
+            state.collectLatest { shown ->
+                for (text in markdownIn(shown)) {
+                    ensureActive()
+                    MarkdownCache.warm(listOf(text))
+                }
+            }
+        }
+    }
+
+    private fun markdownIn(state: FeedState): Sequence<String> = state.sections.asSequence().flatMap { it.items.asSequence() }.flatMap { item ->
+        val own = when (item) {
+            is FeedItem.Update -> sequenceOf(item.body)
+            is FeedItem.Post -> if (item.author is Author.Owner) emptySequence() else sequenceOf(item.body)
+            is FeedItem.Question -> sequenceOf(item.body)
+        }
+        own + ((item as? Threaded)?.replies?.asSequence()?.map { it.body } ?: emptySequence())
     }
 
     /**

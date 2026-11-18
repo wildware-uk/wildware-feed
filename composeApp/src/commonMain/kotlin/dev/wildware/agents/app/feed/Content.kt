@@ -54,7 +54,10 @@ import com.mikepenz.markdown.m3.Markdown
 import com.mikepenz.markdown.m3.markdownColor
 import com.mikepenz.markdown.m3.markdownTypography
 import com.mikepenz.markdown.model.markdownPadding
-import com.mikepenz.markdown.model.rememberMarkdownState
+import com.mikepenz.markdown.model.State
+import com.mikepenz.markdown.model.parseMarkdown
+import kotlin.concurrent.atomics.AtomicReference
+import kotlin.concurrent.atomics.ExperimentalAtomicApi
 import dev.snipme.highlights.Highlights
 import dev.snipme.highlights.model.SyntaxTheme
 import dev.wildware.agents.app.design.AgentTheme
@@ -63,15 +66,48 @@ import dev.wildware.agents.app.design.Icons
 import dev.wildware.agents.app.design.pressable
 
 /**
+ * Markdown parsed once per text, not once per time a card is drawn. A card that scrolls away and
+ * back, or redraws because a reply arrived, finds its body here instead of parsing it again on the
+ * UI thread. [warm] lets the feed parse what is coming before it is on screen, off the UI thread.
+ */
+@OptIn(ExperimentalAtomicApi::class)
+object MarkdownCache {
+    private const val Capacity = 600
+
+    /** Copied on write: readers on the UI thread never wait for a parse on another. */
+    private val parsed = AtomicReference<Map<String, State>>(emptyMap())
+
+    fun get(markdown: String): State = parsed.load()[markdown] ?: parse(markdown)
+
+    /** Parses what isn't held yet. Safe from any thread. */
+    fun warm(texts: Iterable<String>) {
+        for (text in texts) if (text !in parsed.load()) parse(text)
+    }
+
+    private fun parse(markdown: String): State {
+        val state = parseMarkdown(markdown)
+        while (true) {
+            val held = parsed.load()
+            val next = LinkedHashMap<String, State>(held.size + 1)
+            // Oldest out first, so a long session keeps what is on screen now.
+            held.entries.drop(if (held.size >= Capacity) Capacity / 4 else 0).forEach { next[it.key] = it.value }
+            next[markdown] = state
+            if (parsed.compareAndSet(held, next)) return state
+        }
+    }
+}
+
+/**
  * A card's markdown body, drawn with the theme's type and colours. Parsed straight
  * away rather than in the background: bodies are short, and a card that changes height a frame
- * after it appears makes the feed jump.
+ * after it appears makes the feed jump. The parse is kept in [MarkdownCache], and the renderer's
+ * styles are kept across redraws, so a card that redraws with the same text skips its body.
  */
 @Composable
 fun MarkdownBody(markdown: String, modifier: Modifier = Modifier, color: Color = AgentTheme.colors.text) {
     val colors = AgentTheme.colors
     val type = AgentTheme.type
-    val state = rememberMarkdownState(markdown, immediate = true)
+    val state = remember(markdown) { MarkdownCache.get(markdown) }
     val code = colors.code
     val highlights = remember(code) { Highlights.Builder().theme(code.toSyntaxTheme()) }
     val inlineCodeBackground = colors.text.copy(alpha = if (colors.isDark) 0.10f else 0.06f)
@@ -80,7 +116,7 @@ fun MarkdownBody(markdown: String, modifier: Modifier = Modifier, color: Color =
     val annotator = rememberInlineCodeAnnotator(inlineCode, inlineCodeBackground, copy)
     SelectableText(modifier, copy) {
     Markdown(
-        markdownState = state,
+        state = state,
         modifier = Modifier.fillMaxWidth(),
         colors = markdownColor(
             text = color,

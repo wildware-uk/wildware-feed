@@ -2,6 +2,7 @@ package dev.wildware.agents.app.feed
 
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.Stable
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
@@ -106,8 +107,10 @@ data class ScreenPreview(
  * screen knows about. It outlives each new [state] from the engine.
  */
 @Stable
-class FeedUi(preview: ScreenPreview, initial: FeedState, var onEvent: (FeedEvent) -> Unit) {
-    var state by mutableStateOf(initial)
+class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var onEvent: (FeedEvent) -> Unit) {
+    /** The engine's latest. Each reader is redrawn when it changes, and nothing else is. */
+    val state: FeedState get() = source.value
+    private val initial = source.value
     var menu by mutableStateOf(preview.menu)
     var viewer by mutableStateOf(preview.viewer)
 
@@ -156,9 +159,27 @@ class FeedUi(preview: ScreenPreview, initial: FeedState, var onEvent: (FeedEvent
     }
     var isPhone = false
 
-    /** The sections as the chips narrow them, empty sections dropped. */
+    /**
+     * The sections as the chips narrow them, empty sections dropped. Worked out once per new state
+     * or filter rather than on every read: the list, the header and the search all ask for it.
+     */
     val sections: List<FeedSection>
-        get() = state.sections.map { it.copy(items = it.items.filter(filter::matches)) }.filter { it.items.isNotEmpty() }
+        get() {
+            val from = state.sections
+            val by = filter
+            if (from === sectionsFrom && by == sectionsFilter) return filteredSections
+            val filtered = when {
+                by == FeedFilter.All && from.all { it.items.isNotEmpty() } -> from
+                else -> from.map { it.copy(items = it.items.filter(by::matches)) }.filter { it.items.isNotEmpty() }
+            }
+            sectionsFrom = from
+            sectionsFilter = by
+            filteredSections = filtered
+            return filtered
+        }
+    private var sectionsFrom: List<FeedSection>? = null
+    private var sectionsFilter: FeedFilter? = null
+    private var filteredSections: List<FeedSection> = emptyList()
     val drawer = EdgeProgress(if (preview.drawerOpen) 1f else 0f)
 
     /** 0 while the phone thread is in place; rises towards 1 as it is swiped away. */

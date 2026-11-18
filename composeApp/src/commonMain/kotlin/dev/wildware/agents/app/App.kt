@@ -100,7 +100,7 @@ fun AgentsApp(
                 )
                 is AppScreen.Signed -> {
                     val session = screen.session
-                    val state by session.state.collectAsState()
+                    val state = session.state.collectAsState()
                     CompositionLocalProvider(
                         LocalMediaAuth provides MediaAuth(session.client.serverUrl, session.client.authorizationHeader),
                         LocalFilePicker provides platform.filePicker,

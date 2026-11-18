@@ -28,7 +28,6 @@ import androidx.compose.foundation.focusable
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.snapshotFlow
 import kotlinx.coroutines.flow.first
 import androidx.compose.material3.Text
@@ -53,6 +52,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.State
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -97,13 +98,25 @@ fun FeedScreen(
     /** Where notifications, widgets and search ask the feed to go. */
     navigator: AppNavigator? = null,
     onEvent: (FeedEvent) -> Unit = {},
+) = FeedScreen(rememberUpdatedState(state), safeArea, startAt, preview, navigator, onEvent)
+
+/**
+ * The feed over a live [state], as the engine's flow gives it. Read where it is used, so a new
+ * state redraws only what reads it, in the frame it arrives, and nothing is written while drawing.
+ */
+@Composable
+fun FeedScreen(
+    state: State<FeedState>,
+    safeArea: SafeArea = SafeArea(),
+    startAt: String? = null,
+    preview: ScreenPreview = ScreenPreview(),
+    /** Where notifications, widgets and search ask the feed to go. */
+    navigator: AppNavigator? = null,
+    onEvent: (FeedEvent) -> Unit = {},
 ) {
     val colors = AgentTheme.colors
-    val ui = remember { FeedUi(preview, state, onEvent) }
-    SideEffect {
-        ui.state = state
-        ui.onEvent = onEvent
-    }
+    val ui = remember(state) { FeedUi(preview, state, onEvent) }
+    ui.onEvent = onEvent
     BoxWithConstraints(Modifier.fillMaxSize().windowBackground(colors)) {
         val phone = maxWidth < PhoneBreakpoint
         ui.isPhone = phone
@@ -408,11 +421,12 @@ private fun LazyListScope.feedItems(ui: FeedUi, density: Density) {
         item(key = "empty") { EmptyFeed(state, ui.filter, Modifier.widthIn(max = FeedMaxWidth).fillMaxWidth()) }
     }
     sections.forEachIndexed { s, section ->
-        item(key = "section-$s") {
+        item(key = "section-$s", contentType = "section") {
             SectionHeading(section, first = s == 0, Modifier.widthIn(max = FeedMaxWidth).fillMaxWidth())
         }
         section.items.forEachIndexed { i, item ->
-            item(key = item.id) {
+            // By kind, so a card scrolling in takes over the layout of one of its kind that scrolled out.
+            item(key = item.id, contentType = item::class) {
                 Box(Modifier.widthIn(max = FeedMaxWidth).fillMaxWidth()) {
                     FeedRow(
                         item,

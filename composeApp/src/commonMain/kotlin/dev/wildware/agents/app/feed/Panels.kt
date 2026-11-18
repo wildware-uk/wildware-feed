@@ -349,9 +349,12 @@ fun FeedHeader(ui: FeedUi, compact: Boolean, modifier: Modifier = Modifier) {
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            val all = state.sections.flatMap { it.items }
+            val counts = remember(state.sections) {
+                val all = state.sections.flatMap { it.items }
+                FeedFilter.entries.associateWith { f -> all.count(f::matches) }
+            }
             FeedFilter.entries.filter { !compact || it != FeedFilter.FromYou }.forEach { f ->
-                val count = all.count(f::matches)
+                val count = counts.getValue(f)
                 Chip(f.label, selected = ui.filter == f, count = count.takeIf { f != FeedFilter.Updates && it > 0 }) { ui.filter = f }
             }
         }
