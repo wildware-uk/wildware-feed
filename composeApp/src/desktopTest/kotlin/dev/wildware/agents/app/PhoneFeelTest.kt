@@ -242,6 +242,10 @@ class PhoneFeelTest {
     @Test
     fun theUiThreadNeverParsesMarkdown() = runComposeUiTest {
         val server = FakeServer()
+        // Bodies no other test has seen, so the cache (shared by every test) cannot already hold them.
+        val unique = System.nanoTime()
+        server.updates = server.updates.map { it.copy(body = "${it.body} ($unique)") }
+        server.messages = server.messages.map { it.copy(body = "${it.body} ($unique)") }
         val parsedOn = java.util.concurrent.ConcurrentLinkedQueue<Thread>()
         var uiThread: Thread? = null
         MarkdownCache.onParse = { parsedOn += Thread.currentThread() }
@@ -253,7 +257,7 @@ class PhoneFeelTest {
             }
             waitUntil(timeoutMillis = 10_000) { onAllNodes(hasText("Fixed the unread counts", substring = true)).fetchSemanticsNodes().isNotEmpty() }
             waitForIdle()
-            assertTrue(parsedOn.isNotEmpty(), "the engine parsed the feed's markdown")
+            assertTrue(parsedOn.size >= 2, "the engine parsed the feed's markdown (${parsedOn.size} parses)")
             assertTrue(parsedOn.none { it == uiThread }, "${parsedOn.count { it == uiThread }} parses ran on the UI thread")
         } finally {
             MarkdownCache.onParse = null
