@@ -8,6 +8,11 @@ import androidx.compose.runtime.CompositionTracer
 import androidx.compose.runtime.InternalComposeTracingApi
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.swipe
+import dev.wildware.agents.app.feed.FeedItem
+import dev.wildware.agents.app.feed.FeedSection
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.test.hasText
 import dev.wildware.agents.app.feed.MarkdownCache
@@ -254,6 +259,34 @@ class PhoneFeelTest {
             MarkdownCache.onParse = null
             server.close()
         }
+    }
+
+    /** Scrolling must only draw the cards that come into view: never the screen, the header or cards already shown. */
+    @Test
+    fun scrollingDrawsOnlyTheCardsComingIntoView() = runComposeUiTest {
+        val cards = FakeFeed.state.sections.flatMap { it.items }
+        val long = FakeFeed.state.copy(openThread = null, sections = List(12) { s ->
+            FeedSection("Day $s", cards.map { item ->
+                when (item) {
+                    is FeedItem.Update -> item.copy(id = "${item.id}-$s")
+                    is FeedItem.Post -> item.copy(id = "${item.id}-$s")
+                    is FeedItem.Question -> item.copy(id = "${item.id}-$s")
+                }
+            })
+        })
+        phone { FeedScreen(long, SafeArea(54.dp, 34.dp)) }
+        waitForIdle()
+        count()
+        // Five slow drags up, each a screen's height, as a thumb reads down the feed.
+        repeat(5) {
+            onRoot().performTouchInput { swipe(Offset(195f, 760f), Offset(195f, 120f), durationMillis = 400) }
+            waitForIdle()
+        }
+        val cardsDrawn = (calls["UpdateCard"] ?: 0) + (calls["PostCard"] ?: 0) + (calls["QuestionCard"] ?: 0)
+        println("Scrolling five screens drew $cardsDrawn cards and ${calls.values.sum()} composables")
+        assertEquals(0, calls["PhoneFeed"] ?: 0, "the screen redrew while scrolling: $calls")
+        assertEquals(0, calls["FeedHeader"] ?: 0, "the header redrew while scrolling")
+        assertTrue(cardsDrawn in 1..40, "drew $cardsDrawn cards for about five screens of scrolling")
     }
 
     @Test

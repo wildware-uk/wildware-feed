@@ -770,12 +770,13 @@ fun ThreadComposer(ui: FeedUi?, threadId: String, modifier: Modifier = Modifier,
     }
 }
 
-/** [BackToTop] once [shown], dropping in from above and lifting away again. */
+/** [BackToTop] while [shown] says so, dropping in from above and lifting away again. */
 @Composable
-fun BackToTopPill(shown: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
+fun BackToTopPill(shown: () -> Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val motion = AgentTheme.motion
+    // Read here, not by the caller, so the pill coming and going redraws only the pill.
     Presence(
-        Unit.takeIf { shown },
+        Unit.takeIf { shown() },
         fadeIn(motion.fast()) + slideInVertically(motion.pop()) { -it } + scaleIn(motion.pop(), initialScale = 0.8f),
         fadeOut(motion.fast()) + slideOutVertically(motion.fast()) { -it / 2 },
         modifier,

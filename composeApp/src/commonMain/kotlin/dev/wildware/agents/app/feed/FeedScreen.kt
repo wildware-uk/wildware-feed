@@ -286,7 +286,7 @@ private fun DesktopColumns(ui: FeedUi, showRail: Boolean, startAt: String?) {
             ScrollToRevealed(ui, list, itemsBefore = 1)
             ScrollToTopWhenAsked(ui, list)
             val scrolled by remember { derivedStateOf { list.firstVisibleItemIndex > 3 } }
-            BackToTopPill(scrolled, Modifier.align(Alignment.TopCenter).padding(top = 14.dp), toTop)
+            BackToTopPill({ scrolled }, Modifier.align(Alignment.TopCenter).padding(top = 14.dp), toTop)
             // "All projects" has no one place to post to, so the box shows once a project is open.
             if (state.current.slug != null) Box(
                 Modifier
@@ -394,7 +394,7 @@ private fun PhoneFeed(ui: FeedUi, safeArea: SafeArea, startAt: String?, widthPx:
                 .clearAndSetSemantics { },
         )
         val scrolled by remember { derivedStateOf { list.firstVisibleItemIndex > 4 } }
-        BackToTopPill(scrolled, Modifier.align(Alignment.TopCenter).padding(top = safeArea.top + 8.dp), toTop)
+        BackToTopPill({ scrolled }, Modifier.align(Alignment.TopCenter).padding(top = safeArea.top + 8.dp), toTop)
         if (state.current.slug != null) Column(
             Modifier
                 .align(Alignment.BottomCenter)
