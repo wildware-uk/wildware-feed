@@ -39,6 +39,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
@@ -335,7 +336,7 @@ fun ImageViewer(attachment: Attachment, safeArea: SafeArea) {
                         translationY = zoom.pan.y
                     }
                     .semantics { contentDescription = attachment.altText },
-            ) { SceneArt(attachment.scene, Modifier.fillMaxSize()) }
+            ) { AttachmentImage(attachment, Modifier.fillMaxSize(), ContentScale.Fit) }
         }
         Row(
             Modifier.fillMaxWidth().padding(top = safeArea.top + 4.dp, start = 8.dp, end = 8.dp),
@@ -427,7 +428,10 @@ fun ProjectsDrawer(ui: FeedUi, progress: EdgeProgress, widthPx: Float, safeArea:
                 label = { it.name },
                 onMove = { from, to -> ui.emit(FeedEvent.MoveProject(from, to)) },
             ) { p, dragging ->
-                DrawerProjectRow(p, selected = p.id == ui.state.current.id, dragging = dragging)
+                DrawerProjectRow(p, selected = p.id == ui.state.current.id, dragging = dragging) {
+                    ui.emit(FeedEvent.SelectProject(p.slug))
+                    close()
+                }
             }
             Spacer(Modifier.height(20.dp))
             SectionLabel("Agents", Modifier.padding(horizontal = 10.dp))
@@ -441,12 +445,15 @@ fun ProjectsDrawer(ui: FeedUi, progress: EdgeProgress, widthPx: Float, safeArea:
                     }
                 }
             }
+            Spacer(Modifier.height(20.dp))
+            Box(Modifier.fillMaxWidth().height(1.dp).background(colors.border))
+            SheetRow("Sign out", Icons.SignOut, destructive = false) { ui.emit(FeedEvent.SignOut) }
         }
     }
 }
 
 @Composable
-private fun DrawerProjectRow(p: Project, selected: Boolean, dragging: Boolean) {
+private fun DrawerProjectRow(p: Project, selected: Boolean, dragging: Boolean, onClick: () -> Unit) {
     val colors = AgentTheme.colors
     val shape = AgentTheme.shapes.medium
     Row(
@@ -462,7 +469,7 @@ private fun DrawerProjectRow(p: Project, selected: Boolean, dragging: Boolean) {
                 },
             )
             .then(if (dragging) Modifier.border(1.dp, colors.borderStrong, shape) else Modifier)
-            .pressable("${p.name}, ${p.unread} unread", shape, role = Role.Tab) {}
+            .pressable("${p.name}, ${p.unread} unread", shape, role = Role.Tab, onClick = onClick)
             .padding(horizontal = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -516,7 +523,7 @@ fun InteractiveReply(reply: Reply, modifier: Modifier = Modifier) {
 
 /** The thread on a phone: full screen, back with the button or a swipe from the left edge. */
 @Composable
-fun PhoneThreadScreen(ui: FeedUi, item: FeedItem.Update, widthPx: Float, safeArea: SafeArea) {
+fun PhoneThreadScreen(ui: FeedUi, item: Threaded, widthPx: Float, safeArea: SafeArea) {
     val colors = AgentTheme.colors
     val motion = AgentTheme.motion
     val preview = LocalPreview.current
@@ -524,7 +531,7 @@ fun PhoneThreadScreen(ui: FeedUi, item: FeedItem.Update, widthPx: Float, safeAre
     val back: () -> Unit = {
         scope.launch {
             ui.threadBack.settle(true, motion.normal())
-            ui.phoneThread = null
+            ui.phoneThreadOpen = false
             ui.threadBack.snap(false)
         }
     }
@@ -543,7 +550,7 @@ fun PhoneThreadScreen(ui: FeedUi, item: FeedItem.Update, widthPx: Float, safeAre
                 .lift(AgentTheme.elevation.overlay, androidx.compose.ui.graphics.RectangleShape)
                 .windowBackground(colors)
                 .edgeSwipe(ui.threadBack, width = { widthPx }, onCommit = {
-                    ui.phoneThread = null
+                    ui.phoneThreadOpen = false
                     ui.threadBack.snap(false)
                 })
                 .semantics { paneTitle = "Thread" }
@@ -576,12 +583,12 @@ fun PhoneThreadScreen(ui: FeedUi, item: FeedItem.Update, widthPx: Float, safeAre
                 Modifier.weight(1f).verticalScroll(scroll).padding(horizontal = 16.dp),
             ) {
                 Spacer(Modifier.height(8.dp))
-                UpdateCard(item, density = Density.Compact, inThread = true)
+                FeedItemView(item, selected = false, density = Density.Compact, inThread = true)
                 Spacer(Modifier.height(14.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    SectionLabel("${item.replies.size} replies")
+                    SectionLabel(if (item.replies.size == 1) "1 reply" else "${item.replies.size} replies")
                     Spacer(Modifier.weight(1f))
-                    MetaText("Swipe a reply right to answer it")
+                    if (item.replies.isNotEmpty()) MetaText("Swipe a reply right to answer it")
                 }
                 Spacer(Modifier.height(6.dp))
                 val firstUnread = item.replies.indexOfFirst { it.unread }
@@ -591,14 +598,14 @@ fun PhoneThreadScreen(ui: FeedUi, item: FeedItem.Update, widthPx: Float, safeAre
                 }
                 Spacer(Modifier.height(12.dp))
             }
-            ThreadComposer(ui, Modifier.padding(start = 12.dp, end = 12.dp, bottom = safeArea.bottom + 6.dp, top = 6.dp))
+            ThreadComposer(ui, item.id, Modifier.padding(start = 12.dp, end = 12.dp, bottom = safeArea.bottom + 6.dp, top = 6.dp))
         }
     }
 }
 
 /** The reply box, with "Replying to …" above it after a swipe or a menu Reply. */
 @Composable
-fun ThreadComposer(ui: FeedUi?, modifier: Modifier = Modifier) {
+fun ThreadComposer(ui: FeedUi?, threadId: String, modifier: Modifier = Modifier) {
     val colors = AgentTheme.colors
     Column(modifier) {
         val replying = ui?.replyingTo
@@ -620,7 +627,12 @@ fun ThreadComposer(ui: FeedUi?, modifier: Modifier = Modifier) {
                 IconAction(Icons.Close, "Stop replying to ${replying.author.name}") { ui.replyingTo = null }
             }
         }
-        Composer("", placeholder = "Reply to the thread…", compact = true)
+        Composer(
+            placeholder = replying?.let { "Answer ${it.author.name}…" } ?: "Reply to the thread…",
+            label = "Reply",
+            compact = true,
+            onSend = { text -> ui?.emit(FeedEvent.SendReply(threadId, text, replying?.id)) },
+        )
     }
 }
 

@@ -54,6 +54,7 @@ object Icons {
         "M21 15 17.91 11.91A2 2 0 0 0 15.09 11.91L6 21",
     )
     val Clock = icon("clock", circle(12f, 12f, 10f), "M12 6V12L16 14")
+    val SignOut = icon("sign-out", "M9 21H5A2 2 0 0 1 3 19V5A2 2 0 0 1 5 3H9", "M16 17 21 12 16 7", "M21 12H9")
     val Moon = icon("moon", "M12 3A6 6 0 0 0 21 12 9 9 0 1 1 12 3Z")
     val Grip = icon("grip", "M5 9H19", "M5 15H19")
     val ZoomIn = icon("zoom-in", circle(11f, 11f, 7f), "M21 21 16.5 16.5", "M11 8V14", "M8 11H14")

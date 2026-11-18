@@ -270,7 +270,7 @@ fun AttachmentView(attachment: Attachment, modifier: Modifier = Modifier, onOpen
                 .border(1.dp, colors.border, shape)
                 .pressable("Image: ${attachment.altText}. Open full size", shape, role = Role.Image, onClick = onOpen),
         ) {
-            SceneArt(attachment.scene, Modifier.fillMaxSize())
+            AttachmentImage(attachment, Modifier.fillMaxSize())
         }
         Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Image, null, tint = colors.textFaint, modifier = Modifier.size(14.dp))

@@ -19,6 +19,14 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.flow.first
+import androidx.compose.material3.Text
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
@@ -79,9 +87,14 @@ fun FeedScreen(
     onEvent: (FeedEvent) -> Unit = {},
 ) {
     val colors = AgentTheme.colors
-    val ui = remember(state) { FeedUi(preview, state, onEvent) }
+    val ui = remember { FeedUi(preview, state, onEvent) }
+    SideEffect {
+        ui.state = state
+        ui.onEvent = onEvent
+    }
     BoxWithConstraints(Modifier.fillMaxSize().windowBackground(colors)) {
         val phone = maxWidth < PhoneBreakpoint
+        ui.isPhone = phone
         val widthPx = constraints.maxWidth.toFloat()
         CompositionLocalProvider(LocalFeedUi provides ui, LocalIsPhone provides phone, LocalPreview provides preview) {
             if (phone) PhoneFeed(ui, safeArea, startAt, widthPx) else DesktopFeed(ui, showThread = maxWidth >= 1100.dp, startAt)
@@ -119,7 +132,7 @@ private fun DesktopFeed(ui: FeedUi, showThread: Boolean, startAt: String?) {
             }
         },
     ) {
-        Sidebar(state, Modifier.width(272.dp))
+        Sidebar(ui, Modifier.width(272.dp))
         VerticalRule()
         Box(Modifier.weight(1f).fillMaxHeight()) {
             LazyColumn(
@@ -129,13 +142,15 @@ private fun DesktopFeed(ui: FeedUi, showThread: Boolean, startAt: String?) {
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 item(key = "header") {
-                    FeedHeader(state, compact = false, Modifier.widthIn(max = FeedMaxWidth).fillMaxWidth().padding(bottom = 20.dp))
+                    FeedHeader(ui, compact = false, Modifier.widthIn(max = FeedMaxWidth).fillMaxWidth().padding(bottom = 20.dp))
                 }
-                feedItems(state, Density.Comfortable)
+                feedItems(ui, Density.Comfortable)
             }
+            LoadOlderWhenNearEnd(ui, list)
             val scrolled by remember { derivedStateOf { list.firstVisibleItemIndex > 3 } }
             if (scrolled) BackToTop(Modifier.align(Alignment.TopCenter).padding(top = 14.dp), toTop)
-            Box(
+            // "All projects" has no one place to post to, so the box shows once a project is open.
+            if (state.current.slug != null) Box(
                 Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
@@ -143,13 +158,17 @@ private fun DesktopFeed(ui: FeedUi, showThread: Boolean, startAt: String?) {
                     .padding(horizontal = 36.dp, vertical = 18.dp),
                 contentAlignment = Alignment.Center,
             ) {
-                Composer(state.current.name, Modifier.widthIn(max = FeedMaxWidth))
+                Composer(
+                    placeholder = "Write to everyone in ${state.current.name}…",
+                    onSend = { ui.emit(FeedEvent.Post(it)) },
+                    modifier = Modifier.widthIn(max = FeedMaxWidth),
+                )
             }
         }
-        val thread = state.openThread
+        val thread = ui.thread
         if (showThread && thread != null) {
             VerticalRule()
-            ThreadPane(thread, state.current.name, Modifier.width(392.dp))
+            ThreadPane(thread, Modifier.width(392.dp))
         }
     }
 }
@@ -172,9 +191,11 @@ private fun PhoneFeed(ui: FeedUi, safeArea: SafeArea, startAt: String?, widthPx:
         ui.emit(FeedEvent.Refresh)
     }
     // Until the live store reports back, a refresh shows for a moment and then settles.
+    // The spinner stays for a moment at least, then until the re-read has landed.
     LaunchedEffect(ui.refreshing) {
         if (ui.refreshing) {
-            delay(1200)
+            delay(600)
+            snapshotFlow { ui.state.loading }.first { !it }
             ui.refreshing = false
         }
     }
@@ -210,9 +231,10 @@ private fun PhoneFeed(ui: FeedUi, safeArea: SafeArea, startAt: String?, widthPx:
                 contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = safeArea.top + 8.dp, bottom = safeArea.bottom + 96.dp),
             ) {
                 item(key = "bar") { PhoneTopBar(state, onProjects = openDrawer, onTapBar = toTop) }
-                item(key = "header") { FeedHeader(state, compact = true, Modifier.padding(top = 12.dp, bottom = 16.dp)) }
-                feedItems(state, Density.Compact)
+                item(key = "header") { FeedHeader(ui, compact = true, Modifier.padding(top = 12.dp, bottom = 16.dp)) }
+                feedItems(ui, Density.Compact)
             }
+            LoadOlderWhenNearEnd(ui, list)
         }
         // Tapping the status bar area scrolls to the top, as it does across iOS.
         Box(
@@ -224,14 +246,18 @@ private fun PhoneFeed(ui: FeedUi, safeArea: SafeArea, startAt: String?, widthPx:
         )
         val scrolled by remember { derivedStateOf { list.firstVisibleItemIndex > 4 } }
         if (scrolled) BackToTop(Modifier.align(Alignment.TopCenter).padding(top = safeArea.top + 8.dp), toTop)
-        Column(
+        if (state.current.slug != null) Column(
             Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .background(bottomFade(colors.background))
                 .padding(start = 12.dp, end = 12.dp, top = 18.dp, bottom = safeArea.bottom + 6.dp),
         ) {
-            Composer(state.current.name, compact = true, placeholder = "Message ${state.current.name}…")
+            Composer(
+                placeholder = "Message ${state.current.name}…",
+                onSend = { ui.emit(FeedEvent.Post(it)) },
+                compact = true,
+            )
         }
         ui.phoneThread?.let { PhoneThreadScreen(ui, it, widthPx, safeArea) }
         ProjectsDrawer(ui, ui.drawer, drawerWidthPx, safeArea)
@@ -265,6 +291,30 @@ private fun PhoneTopBar(state: FeedState, onProjects: () -> Unit, onTapBar: () -
     }
 }
 
+/** What an empty feed says: still loading, or really nothing here. */
+@Composable
+private fun EmptyFeed(state: FeedState, filter: FeedFilter, modifier: Modifier) {
+    val colors = AgentTheme.colors
+    Column(modifier.padding(vertical = 48.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        AppMark(36.dp)
+        Spacer(Modifier.height(14.dp))
+        Text(
+            when {
+                !state.loaded -> "Loading the feed…"
+                filter != FeedFilter.All -> "Nothing matches “${filter.label}”"
+                else -> "Nothing here yet"
+            },
+            color = colors.text,
+            style = AgentTheme.type.title,
+        )
+        Spacer(Modifier.height(4.dp))
+        MetaText(
+            if (state.loaded) "Updates and questions from your agents will show up here." else "This takes a moment the first time.",
+            color = colors.textMuted,
+        )
+    }
+}
+
 /** Fades the feed out above the composer, then hides it fully so no text shows behind the box. */
 private fun bottomFade(background: Color) = Brush.verticalGradient(
     0f to background.copy(alpha = 0f),
@@ -280,8 +330,27 @@ private fun startIndex(state: FeedState, key: String?, itemsBefore: Int): Int {
 }
 
 /** The sections and their cards, hung off a timeline rail. */
-private fun LazyListScope.feedItems(state: FeedState, density: Density) {
-    state.sections.forEachIndexed { s, section ->
+/** Reads further into the past once the end of the list comes into view. */
+@Composable
+private fun LoadOlderWhenNearEnd(ui: FeedUi, list: LazyListState) {
+    val nearEnd by remember {
+        derivedStateOf {
+            val info = list.layoutInfo
+            info.totalItemsCount > 0 && (info.visibleItemsInfo.lastOrNull()?.index ?: 0) >= info.totalItemsCount - 3
+        }
+    }
+    LaunchedEffect(nearEnd, ui.state.hasMore, ui.state.loading) {
+        if (nearEnd && ui.state.hasMore && !ui.state.loading) ui.emit(FeedEvent.LoadOlder)
+    }
+}
+
+private fun LazyListScope.feedItems(ui: FeedUi, density: Density) {
+    val state = ui.state
+    val sections = ui.sections
+    if (sections.isEmpty()) {
+        item(key = "empty") { EmptyFeed(state, ui.filter, Modifier.widthIn(max = FeedMaxWidth).fillMaxWidth()) }
+    }
+    sections.forEachIndexed { s, section ->
         item(key = "section-$s") {
             SectionHeading(section, first = s == 0, Modifier.widthIn(max = FeedMaxWidth).fillMaxWidth())
         }
@@ -290,7 +359,7 @@ private fun LazyListScope.feedItems(state: FeedState, density: Density) {
                 Box(Modifier.widthIn(max = FeedMaxWidth).fillMaxWidth()) {
                     FeedRow(
                         item,
-                        selected = density == Density.Comfortable && item.id == state.openThread?.id,
+                        selected = density == Density.Comfortable && item.id == ui.threadId,
                         density = density,
                         first = i == 0,
                         last = i == section.items.lastIndex,
@@ -330,7 +399,7 @@ private fun Modifier.rail(item: FeedItem, first: Boolean, last: Boolean): Modifi
     val colors = AgentTheme.colors
     val dot = when (item) {
         is FeedItem.Update -> colors.level(item.level)
-        is FeedItem.OwnerPost -> colors.text
+        is FeedItem.Post -> colors.text
         is FeedItem.Question -> colors.waiting
     }
     val line = colors.border

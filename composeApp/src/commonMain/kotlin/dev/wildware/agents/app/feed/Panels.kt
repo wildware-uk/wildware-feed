@@ -32,6 +32,8 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -39,6 +41,9 @@ import androidx.compose.ui.unit.sp
 import dev.wildware.agents.app.design.AgentTheme
 import dev.wildware.agents.app.design.Icons
 import dev.wildware.agents.app.design.pressable
+import dev.wildware.agents.app.design.TextInput
+import androidx.compose.foundation.text.input.clearText
+import androidx.compose.foundation.text.input.rememberTextFieldState
 
 /** The app's mark: three stacked bars, a feed in miniature. */
 @Composable
@@ -102,6 +107,7 @@ private fun NavRow(
     leading: @Composable () -> Unit,
     trailing: @Composable () -> Unit = {},
     spoken: String = label,
+    onClick: () -> Unit = {},
 ) {
     val colors = AgentTheme.colors
     val shape = AgentTheme.shapes.small
@@ -111,7 +117,7 @@ private fun NavRow(
             .fillMaxWidth()
             .clip(shape)
             .background(bg)
-            .pressable(spoken, shape, role = Role.Tab, labelIsShown = spoken == label) {}
+            .pressable(spoken, shape, role = Role.Tab, labelIsShown = spoken == label, onClick = onClick)
             .semantics { this.selected = selected }
             .padding(horizontal = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -131,7 +137,8 @@ private fun NavRow(
 
 /** Projects, people and the way in to everything else. Desktop only; phones use the top bar. */
 @Composable
-fun Sidebar(state: FeedState, modifier: Modifier = Modifier) {
+fun Sidebar(ui: FeedUi, modifier: Modifier = Modifier) {
+    val state = ui.state
     val colors = AgentTheme.colors
     Column(
         modifier
@@ -154,15 +161,17 @@ fun Sidebar(state: FeedState, modifier: Modifier = Modifier) {
             SearchField()
             Spacer(Modifier.height(14.dp))
             NavRow(
-                "Inbox",
-                selected = false,
+                "All projects",
+                selected = state.current.slug == null,
                 leading = { Icon(Icons.Inbox, null, tint = colors.textMuted, modifier = Modifier.size(18.dp)) },
                 trailing = { UnreadBadge(state.totalUnread) },
-                spoken = "Inbox, ${state.totalUnread} unread",
+                spoken = "All projects, ${state.totalUnread} unread",
+                onClick = { ui.emit(FeedEvent.SelectProject(null)) },
             )
             NavRow(
                 "Waiting on you",
-                selected = false,
+                selected = ui.filter == FeedFilter.Waiting,
+                onClick = { ui.filter = if (ui.filter == FeedFilter.Waiting) FeedFilter.All else FeedFilter.Waiting },
                 leading = { Icon(Icons.Clock, null, tint = colors.waiting, modifier = Modifier.size(18.dp)) },
                 trailing = {
                     val waiting = state.projects.sumOf { it.waiting }
@@ -178,7 +187,7 @@ fun Sidebar(state: FeedState, modifier: Modifier = Modifier) {
             Spacer(Modifier.height(22.dp))
             SectionLabel("Projects", Modifier.padding(horizontal = 10.dp))
             Spacer(Modifier.height(8.dp))
-            state.projects.forEach { p ->
+            ui.projects.forEach { p ->
                 val selected = p.id == state.current.id
                 NavRow(
                     p.name,
@@ -186,6 +195,7 @@ fun Sidebar(state: FeedState, modifier: Modifier = Modifier) {
                     leading = { ProjectGlyph(p) },
                     trailing = { UnreadBadge(p.unread, emphasised = selected) },
                     spoken = "${p.name}, ${p.unread} unread" + if (p.waiting > 0) ", ${p.waiting} waiting on you" else "",
+                    onClick = { ui.emit(FeedEvent.SelectProject(p.slug)) },
                 )
             }
             Spacer(Modifier.height(22.dp))
@@ -195,9 +205,10 @@ fun Sidebar(state: FeedState, modifier: Modifier = Modifier) {
             }
             Spacer(Modifier.height(8.dp))
             state.agents.forEach { a -> AgentRow(a) }
+            if (state.agents.isEmpty()) MetaText("No agents online right now", Modifier.padding(horizontal = 10.dp))
             Spacer(Modifier.height(18.dp))
         }
-        OwnerRow(state.owner)
+        OwnerRow(state.owner) { ui.emit(FeedEvent.SignOut) }
     }
 }
 
@@ -229,7 +240,7 @@ private fun AgentRow(agent: Agent) {
 }
 
 @Composable
-private fun OwnerRow(owner: Author.Owner) {
+private fun OwnerRow(owner: Author.Owner, onSignOut: () -> Unit) {
     val colors = AgentTheme.colors
     Row(
         Modifier
@@ -243,21 +254,21 @@ private fun OwnerRow(owner: Author.Owner) {
             Text(owner.name, color = colors.text, style = AgentTheme.type.label)
             MetaText("Owner")
         }
-        IconAction(Icons.Moon, "Switch light or dark")
-        IconAction(Icons.Settings, "Settings")
+        IconAction(Icons.SignOut, "Sign out", onClick = onSignOut)
     }
 }
 
 /** The title area above the feed: where you are, who is around, and the filters. */
 @Composable
-fun FeedHeader(state: FeedState, compact: Boolean, modifier: Modifier = Modifier) {
+fun FeedHeader(ui: FeedUi, compact: Boolean, modifier: Modifier = Modifier) {
+    val state = ui.state
     val colors = AgentTheme.colors
     val type = AgentTheme.type
     val online = state.agents.filter { it.presence == Presence.Online }
     Column(modifier) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                MetaText("PROJECT", style = type.overline)
+                MetaText(if (state.current.slug == null) "EVERYTHING" else "PROJECT", style = type.overline)
                 Spacer(Modifier.height(2.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
@@ -274,13 +285,13 @@ fun FeedHeader(state: FeedState, compact: Boolean, modifier: Modifier = Modifier
                 }
                 Spacer(Modifier.height(4.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(7.dp).clip(CircleShape).background(colors.online))
+                    LinkBadge(state.link)
                     MetaText(
-                        "${online.size} agents online · ${state.current.unread} new since you looked",
-                        Modifier.padding(start = 7.dp),
+                        " · ${online.size} online · ${state.current.unread} new",
                         color = colors.textMuted,
                     )
                 }
+                OutboxLine(ui)
             }
             if (!compact) {
                 Row(horizontalArrangement = Arrangement.spacedBy((-8).dp), modifier = Modifier.semantics(mergeDescendants = true) {
@@ -291,7 +302,9 @@ fun FeedHeader(state: FeedState, compact: Boolean, modifier: Modifier = Modifier
                     }
                 }
                 Spacer(Modifier.width(14.dp))
-                AppButton("Mark all read", ButtonTone.Secondary, icon = Icons.Check)
+                AppButton("Mark all read", ButtonTone.Secondary, icon = Icons.Check, enabled = state.totalUnread > 0) {
+                    ui.emit(FeedEvent.MarkAllRead)
+                }
             }
         }
         Spacer(Modifier.height(if (compact) 12.dp else 18.dp))
@@ -300,28 +313,96 @@ fun FeedHeader(state: FeedState, compact: Boolean, modifier: Modifier = Modifier
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Chip("All", selected = true, count = 12)
-            Chip("Waiting", selected = false, count = 1)
-            Chip("Updates", selected = false)
-            Chip("Errors", selected = false, count = 1)
-            if (!compact) Chip("From you", selected = false)
-            if (!compact) {
-                Spacer(Modifier.weight(1f))
-                Kbd("J")
-                Spacer(Modifier.width(3.dp))
-                Kbd("K")
-                MetaText("to move", Modifier.padding(start = 6.dp))
+            val all = state.sections.flatMap { it.items }
+            FeedFilter.entries.filter { !compact || it != FeedFilter.FromYou }.forEach { f ->
+                val count = all.count(f::matches)
+                Chip(f.label, selected = ui.filter == f, count = count.takeIf { f != FeedFilter.Updates && it > 0 }) { ui.filter = f }
             }
         }
     }
 }
 
-/** The box for writing to everyone in the project. */
+/** The live connection in a word, with a dot: green when live, amber while it reconnects. */
 @Composable
-fun Composer(projectName: String, modifier: Modifier = Modifier, placeholder: String? = null, compact: Boolean = false) {
+private fun LinkBadge(link: LinkStatus) {
+    val colors = AgentTheme.colors
+    val dot = when (link) {
+        LinkStatus.Live -> colors.online
+        LinkStatus.Connecting, LinkStatus.Reconnecting -> colors.warning
+        LinkStatus.Offline -> colors.textFaint
+    }
+    Row(
+        Modifier.semantics(mergeDescendants = true) {
+            contentDescription = "Connection: ${link.label}"
+            liveRegion = LiveRegionMode.Polite
+        },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.size(7.dp).clip(CircleShape).background(dot))
+        MetaText(link.label, Modifier.padding(start = 7.dp).clearAndSetSemantics { }, color = colors.textMuted)
+    }
+}
+
+/** "2 waiting to send", and a way out when the dashboard refused something. Hidden when all is sent. */
+@Composable
+private fun OutboxLine(ui: FeedUi) {
+    val outbox = ui.state.outbox
+    if (outbox.waiting == 0 && outbox.failed == 0) return
+    val colors = AgentTheme.colors
+    Row(Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        if (outbox.waiting > 0) {
+            Icon(Icons.Clock, null, tint = colors.warning, modifier = Modifier.size(13.dp))
+            MetaText(
+                if (outbox.waiting == 1) "1 waiting to send" else "${outbox.waiting} waiting to send",
+                Modifier.padding(start = 5.dp, end = 10.dp).semantics { liveRegion = LiveRegionMode.Polite },
+                color = colors.warning,
+            )
+        }
+        val failed = outbox.failedId
+        if (failed != null) {
+            Icon(Icons.Close, null, tint = colors.error, modifier = Modifier.size(13.dp))
+            MetaText(
+                if (outbox.failed == 1) "1 couldn't send" else "${outbox.failed} couldn't send",
+                Modifier.padding(start = 5.dp),
+                color = colors.error,
+            )
+            TextAction("Retry") { ui.emit(FeedEvent.RetrySend(failed)) }
+            TextAction("Drop") { ui.emit(FeedEvent.DropUnsent(failed)) }
+        }
+    }
+}
+
+/** A small word you can press, sized for a finger however small it looks. */
+@Composable
+private fun TextAction(label: String, onClick: () -> Unit) {
+    val shape = AgentTheme.shapes.small
+    Box(Modifier.clip(shape).pressable(label, shape, labelIsShown = true, onClick = onClick).padding(horizontal = 6.dp), contentAlignment = Alignment.Center) {
+        Text(label, color = AgentTheme.colors.text, style = AgentTheme.type.meta.copy(fontWeight = FontWeight.SemiBold))
+    }
+}
+
+/**
+ * The box for writing: to everyone in a project, or into a thread. Enter adds a line;
+ * Cmd+Enter or Ctrl+Enter (or the arrow) sends.
+ */
+@Composable
+fun Composer(
+    placeholder: String,
+    onSend: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    compact: Boolean = false,
+    label: String = "Message",
+) {
     val colors = AgentTheme.colors
     val shape = AgentTheme.shapes.large
-    val text = placeholder ?: "Write to everyone in $projectName…"
+    val text = rememberTextFieldState()
+    val send = {
+        val typed = text.text.toString().trim()
+        if (typed.isNotEmpty()) {
+            onSend(typed)
+            text.clearText()
+        }
+    }
     Row(
         modifier
             .fillMaxWidth()
@@ -329,31 +410,28 @@ fun Composer(projectName: String, modifier: Modifier = Modifier, placeholder: St
             .clip(shape)
             .background(colors.surfaceRaised)
             .border(1.dp, colors.border, shape)
-            .padding(start = 6.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
+            .padding(start = 14.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        IconAction(Icons.Plus, "Attach a file or photo")
-        Box(
-            Modifier.weight(1f).pressable("Message. $text", AgentTheme.shapes.small) {},
-            contentAlignment = Alignment.CenterStart,
-        ) {
-            Text(text, color = colors.textFaint, style = AgentTheme.type.body, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
+        TextInput(text, label = label, placeholder = placeholder, modifier = Modifier.weight(1f), multiline = true, onSubmit = send)
         if (!compact) {
-            IconAction(Icons.At, "Mention an agent")
+            IconAction(Icons.At, "Mention an agent") { text.edit { append("@") } }
             MetaText("⌘↵", Modifier.padding(horizontal = 6.dp))
         }
-        SendButton()
+        SendButton(enabled = text.text.isNotBlank(), onClick = send)
     }
 }
 
 @Composable
-private fun SendButton() {
+private fun SendButton(enabled: Boolean, onClick: () -> Unit) {
     val colors = AgentTheme.colors
     val shape = AgentTheme.shapes.medium
-    Box(Modifier.pressable("Send", shape) {}, contentAlignment = Alignment.Center) {
-        Box(Modifier.size(34.dp).clip(shape).background(colors.accent), contentAlignment = Alignment.Center) {
-            Icon(Icons.Send, null, tint = colors.onAccent, modifier = Modifier.size(18.dp))
+    Box(Modifier.pressable("Send", shape, onClick = onClick), contentAlignment = Alignment.Center) {
+        Box(
+            Modifier.size(34.dp).clip(shape).background(if (enabled) colors.accent else colors.text.copy(alpha = 0.1f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(Icons.Send, null, tint = if (enabled) colors.onAccent else colors.textFaint, modifier = Modifier.size(18.dp))
         }
     }
 }
@@ -390,7 +468,8 @@ fun ReplyView(reply: Reply, modifier: Modifier = Modifier) {
 
 /** A thread opened beside the feed: the card it hangs off, its replies, and a reply box. */
 @Composable
-fun ThreadPane(item: FeedItem.Update, projectName: String, modifier: Modifier = Modifier) {
+fun ThreadPane(item: Threaded, modifier: Modifier = Modifier) {
+    val ui = LocalFeedUi.current
     val colors = AgentTheme.colors
     Column(
         modifier
@@ -411,13 +490,14 @@ fun ThreadPane(item: FeedItem.Update, projectName: String, modifier: Modifier = 
                 )
             }
             IconAction(Icons.More, "More thread actions")
-            IconAction(Icons.Close, "Close thread")
+            IconAction(Icons.Close, "Close thread") { ui?.threadId = null }
         }
         Box(Modifier.fillMaxWidth().height(1.dp).background(colors.border))
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Avatar(Author.AgentAuthor(item.agent), 22.dp)
-                MetaText("${item.agent.name} started this · ${item.time}", Modifier.padding(start = 8.dp), color = colors.textMuted)
+                Avatar(item.starter, 22.dp)
+                val who = if (item.starter is Author.Owner) "You" else item.starter.name
+                MetaText("$who started this · ${item.time}", Modifier.padding(start = 8.dp), color = colors.textMuted)
             }
             Spacer(Modifier.height(12.dp))
             val firstUnread = item.replies.indexOfFirst { it.unread }
@@ -425,8 +505,9 @@ fun ThreadPane(item: FeedItem.Update, projectName: String, modifier: Modifier = 
                 if (i == firstUnread) NewDivider(item.unreadReplies)
                 InteractiveReply(reply)
             }
+            if (item.replies.isEmpty()) MetaText("No replies yet. Start the thread below.", color = colors.textMuted)
         }
-        ThreadComposer(LocalFeedUi.current, Modifier.padding(14.dp))
+        ThreadComposer(ui, item.id, Modifier.padding(14.dp))
     }
 }
 

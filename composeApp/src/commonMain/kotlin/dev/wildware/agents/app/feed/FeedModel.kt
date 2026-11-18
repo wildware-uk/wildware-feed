@@ -3,13 +3,15 @@ package dev.wildware.agents.app.feed
 import androidx.compose.runtime.Immutable
 
 /*
- * What the feed screen draws. These are view shapes only, shaped for the screen; the data layer in
- * :shared will map its own models onto them.
+ * What the feed screen draws. These are view shapes only, shaped for the screen. The engine's
+ * models are mapped onto them in `engine/Mapping.kt`; [FakeFeed] fills them for screenshots.
  */
 
 enum class Level(val label: String) { Info("Info"), Success("Success"), Warning("Warning"), Error("Error") }
 
-enum class WorkStatus(val label: String) { Todo("To do"), InProgress("In progress"), Blocked("Blocked"), Done("Done") }
+enum class WorkStatus(val label: String) {
+    Todo("To do"), InProgress("In progress"), Blocked("Blocked"), Done("Done"), Cancelled("Cancelled"),
+}
 
 enum class Presence(val label: String) { Online("Online"), Idle("Idle"), Offline("Offline") }
 
@@ -32,6 +34,8 @@ data class Project(
     val unread: Int,
     val waiting: Int = 0,
     val hue: Int,
+    /** The project's address on the dashboard; null for "All projects". */
+    val slug: String? = null,
 )
 
 sealed interface Author {
@@ -52,7 +56,15 @@ data class Reaction(val emoji: String, val count: Int, val mine: Boolean, val sp
 data class Acks(val read: List<Agent> = emptyList(), val thinking: List<Agent> = emptyList())
 
 @Immutable
-data class Attachment(val title: String, val altText: String, val aspect: Float, val scene: Scene = Scene.Dusk)
+data class Attachment(
+    val title: String,
+    val altText: String,
+    val aspect: Float,
+    /** The stand-in picture when there is no [url]: previews and screenshots. */
+    val scene: Scene = Scene.Dusk,
+    /** Where the real image is. Loaded with the device key. */
+    val url: String? = null,
+)
 
 /** Which stand-in picture to paint until real images load. */
 enum class Scene { Dusk, Dawn, Night }
@@ -88,6 +100,20 @@ enum class QuestionKind {
 
     /** Pick any number, then send. */
     MultiChoice,
+
+    /** Answer in words. */
+    Text,
+
+    /** A kind this app can't answer yet (a form): it says to answer on the website. */
+    Unsupported,
+}
+
+/** A card that can have a thread under it. */
+sealed interface Threaded : FeedItem {
+    val title: String
+    val starter: Author
+    val replies: List<Reply>
+    val unreadReplies: Int
 }
 
 sealed interface FeedItem {
@@ -101,16 +127,18 @@ sealed interface FeedItem {
         val agent: Agent,
         val project: Project,
         val level: Level,
-        val title: String,
+        override val title: String,
         val body: String,
         val status: WorkStatus? = null,
         val attachment: Attachment? = null,
         val reactions: List<Reaction> = emptyList(),
         val acks: Acks = Acks(),
-        val replies: List<Reply> = emptyList(),
-        val unreadReplies: Int = 0,
+        override val replies: List<Reply> = emptyList(),
+        override val unreadReplies: Int = 0,
         val tags: List<String> = emptyList(),
-    ) : FeedItem
+    ) : Threaded {
+        override val starter: Author get() = Author.AgentAuthor(agent)
+    }
 
     @Immutable
     data class Question(
@@ -124,20 +152,30 @@ sealed interface FeedItem {
         val allowsText: Boolean,
         val expiresIn: String,
         val kind: QuestionKind = QuestionKind.Buttons,
+        /** An answer is in the outbox, waiting for signal. */
+        val sending: Boolean = false,
+        /** A picture on the question itself, not on an option. */
+        val attachment: Attachment? = null,
     ) : FeedItem {
         val hasPictures: Boolean get() = choices.any { it.image != null }
     }
 
+    /** Something written straight into the feed, by the owner or by an agent. */
     @Immutable
-    data class OwnerPost(
+    data class Post(
         override val id: String,
         override val time: String,
-        val author: Author.Owner,
+        val author: Author,
         val project: Project,
         val body: String,
         val acks: Acks = Acks(),
-        val replies: List<Reply> = emptyList(),
-    ) : FeedItem
+        override val replies: List<Reply> = emptyList(),
+        override val unreadReplies: Int = 0,
+        val reactions: List<Reaction> = emptyList(),
+    ) : Threaded {
+        override val title: String get() = body.lineSequence().first().take(120)
+        override val starter: Author get() = author
+    }
 }
 
 @Immutable
@@ -151,6 +189,33 @@ data class FeedState(
     val current: Project,
     val sections: List<FeedSection>,
     /** The card whose thread is open in the side pane. */
-    val openThread: FeedItem.Update?,
+    val openThread: Threaded?,
     val totalUnread: Int,
+    val link: LinkStatus = LinkStatus.Live,
+    val outbox: OutboxSummary = OutboxSummary(),
+    /** The first read has landed: an empty feed is really empty, not still loading. */
+    val loaded: Boolean = true,
+    val loading: Boolean = false,
+    /** There are older cards to read further down. */
+    val hasMore: Boolean = false,
+) {
+    fun item(id: String): FeedItem? = sections.firstNotNullOfOrNull { s -> s.items.firstOrNull { it.id == id } }
+}
+
+/** The live connection, as the header says it. */
+enum class LinkStatus(val label: String) {
+    Live("Live"),
+    Connecting("Connecting…"),
+    Reconnecting("Reconnecting…"),
+    Offline("Offline"),
+}
+
+/** What the owner did that hasn't reached the dashboard yet. */
+@Immutable
+data class OutboxSummary(
+    val waiting: Int = 0,
+    val failed: Int = 0,
+    /** The first item the dashboard refused, to retry or drop. */
+    val failedId: String? = null,
+    val failedMessage: String? = null,
 )

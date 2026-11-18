@@ -10,11 +10,11 @@ object FakeFeed {
 
     private val owner = Author.Owner("Shaun")
 
-    private val dashboard = Project("p1", "agent-dashboard", unread = 4, waiting = 1, hue = 0)
-    private val ios = Project("p2", "ios-companion", unread = 12, hue = 2)
-    private val engine = Project("p3", "rust-engine", unread = 0, hue = 1)
-    private val website = Project("p4", "website", unread = 2, hue = 3)
-    private val infra = Project("p5", "infra", unread = 1, waiting = 1, hue = 4)
+    private val dashboard = Project("p1", "agent-dashboard", unread = 4, waiting = 1, hue = 0, slug = "agent-dashboard")
+    private val ios = Project("p2", "ios-companion", unread = 12, hue = 2, slug = "ios-companion")
+    private val engine = Project("p3", "rust-engine", unread = 0, hue = 1, slug = "rust-engine")
+    private val website = Project("p4", "website", unread = 2, hue = 3, slug = "website")
+    private val infra = Project("p5", "infra", unread = 1, waiting = 1, hue = 4, slug = "infra")
 
     private val fixReplies = listOf(
         Reply(
@@ -127,7 +127,7 @@ object FakeFeed {
         acks = Acks(read = listOf(forge)),
     )
 
-    private val ask = FeedItem.OwnerPost(
+    private val ask = FeedItem.Post(
         id = "o1",
         time = "8:57",
         author = owner,

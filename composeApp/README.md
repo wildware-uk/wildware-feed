@@ -2,15 +2,23 @@
 
 The new app, drawn with Compose Multiplatform. One codebase for iPhone, Mac, Windows and Linux.
 
-Right now it shows the feed with made-up data. The look is dark-first and precise: near-black
+It signs in to a dashboard and shows its live feed through the engine in `:shared`. The look is dark-first and precise: near-black
 panels with hairline edges, a lime highlight, facts in Geist Mono, and a timeline rail joining
 the updates. There is a matching light theme and a high contrast version of each.
 
 ## Run it
 
 ```sh
-./gradlew :composeApp:run           # desktop window
-./gradlew :composeApp:desktopTest   # gesture tests, and PNGs in composeApp/build/screenshots/
+./gradlew --no-daemon :composeApp:run           # the desktop app, "Agents"
+./gradlew --no-daemon :composeApp:desktopTest   # tests, and PNGs in composeApp/build/screenshots/
+```
+
+The desktop app keeps its files in `~/.config/agents` (Linux), `~/Library/Application Support/Agents`
+(Mac) or `%APPDATA%\Agents` (Windows): the device key (`session.json`, readable only by you),
+read marks, the outbox, the image cache and the window's size and place. Signing out deletes the
+key, the read marks and the outbox.
+
+```
 ```
 
 ## Where things are
@@ -19,7 +27,12 @@ the updates. There is a matching light theme and a high contrast version of each
 - `design/gesture/`: the gesture layer every screen shares.
 - `design/PictureGrid.kt`: options you choose by picture, for questions whose options carry images.
 - `feed/`: the feed screen. Wide windows get sidebar + feed + thread; phones get one column.
-- `FakeFeed.kt`: the made-up data. The live feed from `:shared` will replace it.
+- `engine/`: the link to `:shared`. `AppModel` signs in and out; `DashboardSession` turns the
+  engine's flows into the screen's state and every `FeedEvent` into an engine call; `Mapping.kt`
+  does the translation and is tested on its own.
+- `signin/`: the sign-in screen.
+- `session/`: where the device key and local data live on each platform.
+- `FakeFeed.kt`: made-up data for screenshots and previews only.
 
 ## Accessibility
 

@@ -35,6 +35,9 @@ import androidx.compose.ui.unit.dp
 import dev.wildware.agents.app.design.AgentTheme
 import dev.wildware.agents.app.design.Icons
 import dev.wildware.agents.app.design.pressable
+import dev.wildware.agents.app.design.TextInput
+import androidx.compose.foundation.text.input.clearText
+import androidx.compose.foundation.text.input.rememberTextFieldState
 import dev.wildware.agents.app.design.PickMode
 import dev.wildware.agents.app.design.PictureGrid
 import dev.wildware.agents.app.design.PictureOption
@@ -220,7 +223,7 @@ private fun Tag(text: String) {
 
 /** "4 replies · 2 new", with the faces of who replied. Opens the thread. */
 @Composable
-private fun ThreadButton(item: FeedItem.Update) {
+private fun ThreadButton(item: Threaded) {
     val colors = AgentTheme.colors
     val shape = AgentTheme.shapes.pill
     val n = item.replies.size
@@ -229,7 +232,7 @@ private fun ThreadButton(item: FeedItem.Update) {
     val ui = LocalFeedUi.current
     val isPhone = LocalIsPhone.current
     val open = {
-        if (isPhone) ui?.phoneThread = item
+        ui?.openThread(item.id, phone = isPhone)
         ui?.emit(FeedEvent.OpenThread(item.id))
     }
     Box(Modifier.clip(shape).pressable(spoken, shape) { open() }, contentAlignment = Alignment.CenterStart) {
@@ -272,12 +275,12 @@ fun QuestionCard(item: FeedItem.Question, modifier: Modifier = Modifier, density
         .background(colors.waitingSoft)
         .border(1.dp, colors.waiting.copy(alpha = 0.4f), shape)
     val ui = LocalFeedUi.current
-    val primary = item.choices.firstOrNull { it.primary } ?: item.choices.first()
+    val primary = item.choices.firstOrNull { it.primary } ?: item.choices.firstOrNull()
     val decline = item.choices.lastOrNull { !it.primary }
     val answer = { choice: Choice -> ui?.emit(FeedEvent.Answer(item.id, listOf(choice.label))); Unit }
     val dismiss = { ui?.emit(FeedEvent.DismissQuestion(item.id)); Unit }
     // Buttons answer on the spot; choice and multi-choice gather picks, then send them.
-    val gathers = item.kind != QuestionKind.Buttons
+    val gathers = item.kind == QuestionKind.Choice || item.kind == QuestionKind.MultiChoice
     val picks = ui?.picksFor(item.id) ?: emptySet()
     val send = {
         if (picks.isNotEmpty()) ui?.emit(FeedEvent.Answer(item.id, item.choices.map { it.label }.filter { it in picks }))
@@ -297,11 +300,13 @@ fun QuestionCard(item: FeedItem.Question, modifier: Modifier = Modifier, density
         modifier = modifier,
         state = swipe,
         startAction = when {
-            !gathers -> GestureAction(primary.label, Icons.Check, colors.success, Color.White) { answer(primary) }
+            item.sending -> null
+            !gathers && primary != null -> GestureAction(primary.label, Icons.Check, colors.success, Color.White) { answer(primary) }
             picks.isNotEmpty() -> GestureAction(sendLabel, Icons.Send, colors.success, Color.White) { send() }
             else -> null
         },
         endAction = when {
+            item.sending -> null
             !gathers && decline != null -> GestureAction(decline.label, Icons.Close, colors.textMuted, colors.background) { answer(decline) }
             else -> GestureAction("Not now", Icons.Close, colors.textMuted, colors.background) { dismiss() }
         },
@@ -316,7 +321,7 @@ fun QuestionCard(item: FeedItem.Question, modifier: Modifier = Modifier, density
                 val number = listOf(Key.One, Key.Two, Key.Three, Key.Four, Key.Five).indexOf(e.key)
                 when {
                     gathers && (e.key == Key.Enter || e.key == Key.Y) -> { send(); true }
-                    e.key == Key.Y -> { answer(primary); true }
+                    e.key == Key.Y && primary != null -> { answer(primary); true }
                     e.key == Key.N && decline != null && !gathers -> { answer(decline); true }
                     e.key == Key.N -> { dismiss(); true }
                     number in item.choices.indices -> { pick(item.choices[number]); true }
@@ -349,6 +354,10 @@ fun QuestionCard(item: FeedItem.Question, modifier: Modifier = Modifier, density
         )
         Spacer(Modifier.height(6.dp))
         MarkdownBody(item.body)
+        if (item.attachment != null) {
+            Spacer(Modifier.height(10.dp))
+            AttachmentView(item.attachment) { ui?.viewer = item.attachment }
+        }
         Spacer(Modifier.height(16.dp))
         if (item.hasPictures) {
             PictureGrid(
@@ -357,19 +366,20 @@ fun QuestionCard(item: FeedItem.Question, modifier: Modifier = Modifier, density
                     QuestionKind.Buttons -> PickMode.Instant
                     QuestionKind.Choice -> PickMode.One
                     QuestionKind.MultiChoice -> PickMode.Many
+                    QuestionKind.Text, QuestionKind.Unsupported -> PickMode.Instant
                 },
                 onPick = { i -> pick(item.choices[i]) },
                 onLookCloser = { i -> item.choices[i].image?.let { ui?.viewer = it } },
             ) { i, m ->
                 val image = item.choices[i].image
-                if (image != null) SceneArt(image.scene, m) else Box(m.background(colors.surfaceSunken))
+                if (image != null) AttachmentImage(image, m) else Box(m.background(colors.surfaceSunken))
             }
         }
         if (gathers) {
             if (item.hasPictures) Spacer(Modifier.height(14.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                AppButton(sendLabel, ButtonTone.Waiting, icon = Icons.Send, enabled = picks.isNotEmpty(), onClick = send)
-                AppButton("Not now", ButtonTone.Secondary, onClick = dismiss)
+                AppButton(sendLabel, ButtonTone.Waiting, icon = Icons.Send, enabled = picks.isNotEmpty() && !item.sending, onClick = send)
+                AppButton("Not now", ButtonTone.Secondary, enabled = !item.sending, onClick = dismiss)
             }
         }
         if (!item.hasPictures) FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -380,20 +390,31 @@ fun QuestionCard(item: FeedItem.Question, modifier: Modifier = Modifier, density
                     choice.label,
                     if (choice.primary) ButtonTone.Waiting else ButtonTone.Secondary,
                     icon = if (choice.primary) Icons.Check else null,
+                    enabled = !item.sending,
                     trailing = hint,
                 ) { pick(choice) }
             }
         }
+        if (item.kind == QuestionKind.Unsupported) {
+            MetaText("Answer this one on the website: the app can't show its form yet.", color = colors.textMuted)
+        }
         if (item.allowsText) {
             Spacer(Modifier.height(10.dp))
-            AnswerField()
+            AnswerField(enabled = !item.sending) { text -> ui?.emit(FeedEvent.AnswerText(item.id, text)) }
+        }
+        if (item.sending) {
+            Row(Modifier.padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Clock, null, tint = colors.textMuted, modifier = Modifier.size(14.dp))
+                MetaText("Answer waiting to send", Modifier.padding(start = 6.dp), color = colors.textMuted)
+            }
         }
         if (LocalIsPhone.current) {
             Text(
                 when {
                     item.hasPictures && gathers -> "Tap to pick · hold to look closer · swipe right to send"
                     item.hasPictures -> "Tap a picture to answer · hold to look closer"
-                    else -> "Swipe right: ${primary.label} · left: ${decline?.label ?: "Dismiss"}"
+                    primary != null -> "Swipe right: ${primary.label} · left: ${decline?.label ?: "Dismiss"}"
+                    else -> "Swipe left: Not now"
                 },
                 Modifier.padding(top = 10.dp).clearAndSetSemantics { },
                 color = muted.copy(alpha = 0.8f),
@@ -404,41 +425,50 @@ fun QuestionCard(item: FeedItem.Question, modifier: Modifier = Modifier, density
 }
 }
 
-/** "Or write an answer", a one-line field that grows into the reply. */
+/** "Or write an answer": a one-line box that sends on Enter or its arrow. */
 @Composable
-private fun AnswerField() {
+private fun AnswerField(enabled: Boolean, onSend: (String) -> Unit) {
     val colors = AgentTheme.colors
     val shape = AgentTheme.shapes.medium
     val bg = colors.surface.copy(alpha = if (colors.isDark) 0.6f else 0.85f)
-    val fg = colors.textFaint
+    val text = rememberTextFieldState()
+    val send = {
+        val typed = text.text.toString().trim()
+        if (typed.isNotEmpty()) {
+            onSend(typed)
+            text.clearText()
+        }
+    }
     Row(
         Modifier
             .fillMaxWidth()
             .clip(shape)
             .background(bg)
             .border(1.dp, colors.border, shape)
-            .pressable("Write your own answer", shape) {}
-            .padding(start = 14.dp, end = 6.dp),
+            .padding(start = 14.dp, end = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text("Or write an answer…", Modifier.weight(1f), color = fg, style = AgentTheme.type.body)
-        Icon(Icons.Send, null, tint = fg, modifier = Modifier.size(18.dp))
-        Spacer(Modifier.width(8.dp))
+        TextInput(text, label = "Your answer", placeholder = "Or write an answer…", modifier = Modifier.weight(1f), enabled = enabled, onSubmit = send)
+        IconAction(Icons.Send, "Send answer", tint = if (text.text.isBlank()) colors.textFaint else colors.accent, onClick = send)
     }
 }
 
-/** Something the owner posted to the feed. Marked as theirs at a glance. */
+/** Something written straight into the feed, by the owner or an agent. */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun OwnerPostCard(item: FeedItem.OwnerPost, modifier: Modifier = Modifier, density: Density = Density.Comfortable) {
+fun PostCard(item: FeedItem.Post, modifier: Modifier = Modifier, density: Density = Density.Comfortable, inThread: Boolean = false) {
     val colors = AgentTheme.colors
+    val ui = LocalFeedUi.current
+    val own = item.author is Author.Owner
     val indent = if (density == Density.Compact) 0.dp else BodyIndent
-    val target = MenuTarget(item.id, "You", item.body, own = true)
+    val target = MenuTarget(item.id, if (own) "You" else item.author.name, item.body, own = own)
+    val reactions = ui?.reactionsFor(item.id, item.reactions) ?: item.reactions
     WithMenu(target, modifier) { gestures ->
     CardFrame(gestures, density = density) {
         Column {
             CardHeader(
                 author = item.author,
-                role = "You",
+                role = if (own) "You" else (item.author as? Author.AgentAuthor)?.agent?.role,
                 time = item.time,
                 level = null,
                 status = null,
@@ -447,7 +477,15 @@ fun OwnerPostCard(item: FeedItem.OwnerPost, modifier: Modifier = Modifier, densi
                 compact = density == Density.Compact,
             )
             Column(Modifier.padding(start = indent, top = 8.dp)) {
-                Text(item.body, color = colors.text, style = AgentTheme.type.body)
+                if (own) Text(item.body, color = colors.text, style = AgentTheme.type.body) else MarkdownBody(item.body)
+                val showThread = item.replies.isNotEmpty() && !inThread
+                if (reactions.isNotEmpty() || showThread) {
+                    Spacer(Modifier.height(12.dp))
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        ReactionRow(reactions)
+                        if (showThread) ThreadButton(item)
+                    }
+                }
                 if (item.acks.read.isNotEmpty() || item.acks.thinking.isNotEmpty()) {
                     Spacer(Modifier.height(10.dp))
                     AckLine(item.acks)
@@ -459,10 +497,10 @@ fun OwnerPostCard(item: FeedItem.OwnerPost, modifier: Modifier = Modifier, densi
 }
 
 @Composable
-fun FeedItemView(item: FeedItem, selected: Boolean, density: Density, modifier: Modifier = Modifier) {
+fun FeedItemView(item: FeedItem, selected: Boolean, density: Density, modifier: Modifier = Modifier, inThread: Boolean = false) {
     when (item) {
-        is FeedItem.Update -> UpdateCard(item, modifier, selected = selected, density = density)
+        is FeedItem.Update -> UpdateCard(item, modifier, selected = selected, density = density, inThread = inThread)
         is FeedItem.Question -> QuestionCard(item, modifier, density = density)
-        is FeedItem.OwnerPost -> OwnerPostCard(item, modifier, density = density)
+        is FeedItem.Post -> PostCard(item, modifier, density = density, inThread = inThread)
     }
 }

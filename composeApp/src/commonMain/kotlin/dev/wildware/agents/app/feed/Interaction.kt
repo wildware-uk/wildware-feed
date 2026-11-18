@@ -17,15 +17,47 @@ import dev.wildware.agents.app.design.gesture.EdgeProgress
  */
 sealed interface FeedEvent {
     data class Answer(val questionId: String, val choices: List<String>) : FeedEvent
+    /** An answer in words, for a question that asks for text. */
+    data class AnswerText(val questionId: String, val text: String) : FeedEvent
     data class DismissQuestion(val questionId: String) : FeedEvent
     data class React(val targetId: String, val emoji: String) : FeedEvent
+    /** Start replying to a line in a thread: the reply box says who it answers. */
     data class Reply(val targetId: String) : FeedEvent
+    /** Send a reply into a card's thread, answering [answers] when set. */
+    data class SendReply(val threadId: String, val text: String, val answers: String?) : FeedEvent
+    /** Write a new post into the project on screen. */
+    data class Post(val text: String) : FeedEvent
     data class CopyText(val targetId: String) : FeedEvent
     data class CopyLink(val targetId: String) : FeedEvent
     data class Delete(val targetId: String) : FeedEvent
-    data class OpenThread(val updateId: String) : FeedEvent
+    data class OpenThread(val cardId: String) : FeedEvent
     data class MoveProject(val from: Int, val to: Int) : FeedEvent
+    /** Show one project's feed, or every project's for null. */
+    data class SelectProject(val slug: String?) : FeedEvent
     data object Refresh : FeedEvent
+    data object LoadOlder : FeedEvent
+    data class RetrySend(val outboxId: String) : FeedEvent
+    data class DropUnsent(val outboxId: String) : FeedEvent
+    data object MarkAllRead : FeedEvent
+    data object SignOut : FeedEvent
+}
+
+/** The chips above the feed. They only narrow what is shown; nothing is fetched. */
+enum class FeedFilter(val label: String) {
+    All("All"),
+    Waiting("Waiting"),
+    Updates("Updates"),
+    Errors("Errors"),
+    FromYou("From you"),
+    ;
+
+    fun matches(item: FeedItem): Boolean = when (this) {
+        All -> true
+        Waiting -> item is FeedItem.Question
+        Updates -> item is FeedItem.Update
+        Errors -> item is FeedItem.Update && item.level == Level.Error
+        FromYou -> item is FeedItem.Post && item.author is Author.Owner
+    }
 }
 
 /** The thing a context menu is open on. */
@@ -61,19 +93,43 @@ data class ScreenPreview(
     val threadOpen: Boolean = false,
 )
 
-/** What the screen is showing on top of the feed, and what the owner has done locally. */
+/**
+ * What the screen is showing on top of the feed, and what the owner has done that only this
+ * screen knows about. It outlives each new [state] from the engine.
+ */
 @Stable
-class FeedUi(preview: ScreenPreview, val state: FeedState, val onEvent: (FeedEvent) -> Unit) {
+class FeedUi(preview: ScreenPreview, initial: FeedState, var onEvent: (FeedEvent) -> Unit) {
+    var state by mutableStateOf(initial)
     var menu by mutableStateOf(preview.menu)
     var viewer by mutableStateOf(preview.viewer)
-    var phoneThread by mutableStateOf(if (preview.threadOpen) state.openThread else null)
+
+    /** The thread open beside the feed (desktop) or over it (phone). */
+    var threadId by mutableStateOf(initial.openThread?.id)
+    var phoneThreadOpen by mutableStateOf(preview.threadOpen)
     var replyingTo by mutableStateOf<Reply?>(null)
     var refreshing by mutableStateOf(false)
+    var filter by mutableStateOf(FeedFilter.All)
+    var isPhone = false
+
+    /** The sections as the chips narrow them, empty sections dropped. */
+    val sections: List<FeedSection>
+        get() = state.sections.map { it.copy(items = it.items.filter(filter::matches)) }.filter { it.items.isNotEmpty() }
     val drawer = EdgeProgress(if (preview.drawerOpen) 1f else 0f)
 
     /** 0 while the phone thread is in place; rises towards 1 as it is swiped away. */
     val threadBack = EdgeProgress(0f)
-    val projects = mutableStateListOf<Project>().apply { addAll(state.projects) }
+
+    val thread: Threaded? get() = threadId?.let { state.item(it) as? Threaded }
+    val phoneThread: Threaded? get() = if (phoneThreadOpen) thread else null
+
+    /** The owner's own order for the project list, kept on this device. */
+    private var projectOrder by mutableStateOf<List<String>?>(null)
+
+    val projects: List<Project>
+        get() {
+            val order = projectOrder ?: return state.projects
+            return state.projects.sortedBy { p -> order.indexOf(p.id).let { if (it < 0) Int.MAX_VALUE else it } }
+        }
 
     /** What the owner has picked on choice questions but not sent yet, by question id. */
     val picks = mutableStateMapOf<String, Set<String>>().apply { putAll(preview.picked) }
@@ -90,29 +146,49 @@ class FeedUi(preview: ScreenPreview, val state: FeedState, val onEvent: (FeedEve
         }
     }
 
-    /** Reactions added here and not yet confirmed by the server, by target id. */
+    /** Reactions added here and not yet back from the server, by target id. */
     val added = mutableStateMapOf<String, String>()
+
+    fun openThread(id: String, phone: Boolean) {
+        threadId = id
+        if (phone) phoneThreadOpen = true
+        replyingTo = null
+    }
 
     fun emit(event: FeedEvent) {
         when (event) {
             is FeedEvent.React -> added[event.targetId] = event.emoji
-            is FeedEvent.MoveProject -> projects.add(event.to, projects.removeAt(event.from))
-            is FeedEvent.Answer -> picks.remove(event.questionId)
-            is FeedEvent.Reply -> replyingTo = state.openThread?.replies?.firstOrNull { it.id == event.targetId }
+            is FeedEvent.MoveProject -> projectOrder = projects.map { it.id }.toMutableList().apply { add(event.to, removeAt(event.from)) }
+            is FeedEvent.Answer, is FeedEvent.AnswerText, is FeedEvent.DismissQuestion -> picks.remove(questionIdOf(event))
+            // "Reply" on a card opens its thread; on a line in a thread it answers that line.
+            is FeedEvent.Reply -> if (state.item(event.targetId) is Threaded) {
+                openThread(event.targetId, phone = isPhone)
+            } else {
+                replyingTo = thread?.replies?.firstOrNull { it.id == event.targetId }
+            }
+            is FeedEvent.SendReply -> replyingTo = null
+            is FeedEvent.SelectProject -> threadId = null
             else -> Unit
         }
         menu = null
         onEvent(event)
     }
 
-    /** The reactions to draw: the item's own, plus any the owner just added here. */
+    private fun questionIdOf(event: FeedEvent): String? = when (event) {
+        is FeedEvent.Answer -> event.questionId
+        is FeedEvent.AnswerText -> event.questionId
+        is FeedEvent.DismissQuestion -> event.questionId
+        else -> null
+    }
+
+    /** The reactions to draw: the item's own, plus any the owner just added that the server hasn't echoed yet. */
     fun reactionsFor(id: String, base: List<Reaction>): List<Reaction> {
         val mine = added[id] ?: return base
         val existing = base.firstOrNull { it.emoji == mine }
-        return if (existing != null) {
-            base.map { if (it.emoji == mine && !it.mine) it.copy(count = it.count + 1, mine = true) else it }
-        } else {
-            base + Reaction(mine, 1, mine = true, spoken = mine)
+        return when {
+            existing == null -> base + Reaction(mine, 1, mine = true, spoken = mine)
+            existing.mine -> base
+            else -> base.map { if (it.emoji == mine) it.copy(count = it.count + 1, mine = true) else it }
         }
     }
 }

@@ -84,6 +84,7 @@ fun AgentColors.status(status: WorkStatus): Color = when (status) {
     WorkStatus.InProgress -> warning
     WorkStatus.Blocked -> error
     WorkStatus.Done -> success
+    WorkStatus.Cancelled -> textFaint
 }
 
 /** A round badge with the agent's initial on its identity colour. */
@@ -189,7 +190,7 @@ fun StatusChip(status: WorkStatus, modifier: Modifier = Modifier) {
 private fun StatusGlyph(status: WorkStatus, color: Color) {
     val icon = when (status) {
         WorkStatus.Done -> dev.wildware.agents.app.design.Icons.Check
-        WorkStatus.Blocked -> dev.wildware.agents.app.design.Icons.Close
+        WorkStatus.Blocked, WorkStatus.Cancelled -> dev.wildware.agents.app.design.Icons.Close
         WorkStatus.InProgress -> dev.wildware.agents.app.design.Icons.Clock
         WorkStatus.Todo -> dev.wildware.agents.app.design.Icons.Plus
     }

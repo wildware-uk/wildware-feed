@@ -4,6 +4,7 @@ plugins {
     alias(libs.plugins.kotlin.multiplatform)
     alias(libs.plugins.compose.multiplatform)
     alias(libs.plugins.compose.compiler)
+    alias(libs.plugins.kotlin.serialization)
 }
 
 kotlin {
@@ -31,18 +32,29 @@ kotlin {
             implementation(libs.markdown.renderer.m3)
             implementation(libs.markdown.renderer.code)
             implementation(libs.highlights)
+            implementation(libs.ktor.client.core)
+            implementation(libs.coroutines.core)
+            implementation(libs.serialization.json)
+            implementation(libs.coil.compose)
+            implementation(libs.coil.network.ktor)
+            implementation(libs.datetime)
         }
         val desktopMain by getting {
             dependencies {
                 implementation(compose.desktop.currentOs)
                 implementation(libs.coroutines.swing)
+                implementation(libs.ktor.client.okhttp)
             }
+        }
+        iosMain.dependencies {
+            implementation(libs.ktor.client.darwin)
         }
         val desktopTest by getting {
             dependencies {
                 implementation(kotlin("test"))
                 implementation(compose.desktop.currentOs)
                 implementation(libs.compose.ui.test)
+                implementation(libs.ktor.client.mock)
             }
         }
     }
