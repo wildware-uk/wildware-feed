@@ -303,6 +303,8 @@ sealed interface FeedItem {
         val files: List<FileAttachment> = emptyList(),
         /** A form question's field and actions; null for every other kind. */
         val form: FormField? = null,
+        /** A text question's box: the agent's placeholder, draft, lines and length. Null for every other kind. */
+        val text: FormField? = null,
         /** When it times out, in epoch milliseconds, for a live countdown. Null shows [expiresIn] as it is. */
         val expiresAt: Long? = null,
         /** For a question asked inside a thread: what it answers, such as "forge: The watch reads…". */

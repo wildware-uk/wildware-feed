@@ -508,7 +508,9 @@ fun QuestionCard(
         }
         if (item.allowsText) {
             Spacer(Modifier.height(10.dp))
-            AnswerField(enabled = !item.sending) { text -> ui?.emit(FeedEvent.AnswerText(item.id, text)) }
+            key(item.id) {
+                AnswerField(item.text, enabled = !item.sending) { text -> ui?.emit(FeedEvent.AnswerText(item.id, text)) }
+            }
         }
         if (item.sending) {
             Row(Modifier.padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -575,31 +577,50 @@ private fun DiscussButton(item: FeedItem.Question) {
     }
 }
 
-/** "Or write an answer": a one-line box that sends on Enter or its arrow. */
+/**
+ * "Or write an answer": a box that sends on Enter (Cmd/Ctrl+Enter when it takes several lines) or its
+ * arrow. A text question's [field] sets its placeholder, draft, lines and length, as the agent asked;
+ * outside the length it says why and doesn't send.
+ */
 @Composable
-private fun AnswerField(enabled: Boolean, onSend: (String) -> Unit) {
+private fun AnswerField(field: FormField?, enabled: Boolean, onSend: (String) -> Unit) {
     val colors = AgentTheme.colors
     val shape = AgentTheme.shapes.medium
     val bg = colors.surface.copy(alpha = if (colors.isDark) 0.6f else 0.85f)
-    val text = rememberTextFieldState()
+    val text = rememberTextFieldState(field?.initial.orEmpty())
+    val typed = text.text.toString()
+    // Empty is never sendable; past that, the agent's length rules. Said only once something is typed.
+    val problem = if (typed.isBlank()) null else field?.problem(typed)
+    val canSend = typed.isNotBlank() && problem == null
     val send = {
-        val typed = text.text.toString().trim()
-        if (typed.isNotEmpty()) {
-            onSend(typed)
+        if (canSend) {
+            onSend(typed.trim())
             text.clearText()
         }
     }
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .clip(shape)
-            .background(bg)
-            .border(1.dp, colors.border, shape)
-            .padding(start = 14.dp, end = 2.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        TextInput(text, label = "Your answer", placeholder = "Or write an answer…", modifier = Modifier.weight(1f), enabled = enabled, onSubmit = send)
-        IconAction(Icons.Send, "Send answer", tint = if (text.text.isBlank()) colors.textFaint else colors.accent, onClick = send)
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clip(shape)
+                .background(bg)
+                .border(1.dp, if (problem != null) colors.waiting.copy(alpha = 0.6f) else colors.border, shape)
+                .padding(start = 14.dp, end = 2.dp, top = if (field?.multiline == true) 8.dp else 0.dp),
+            verticalAlignment = if (field?.multiline == true) Alignment.Bottom else Alignment.CenterVertically,
+        ) {
+            TextInput(
+                text,
+                label = "Your answer",
+                placeholder = field?.placeholder?.ifBlank { null } ?: "Or write an answer…",
+                modifier = Modifier.weight(1f),
+                multiline = field?.multiline == true,
+                minLines = if (field?.multiline == true) 3 else 1,
+                enabled = enabled,
+                onSubmit = send,
+            )
+            IconAction(Icons.Send, "Send answer", tint = if (canSend) colors.accent else colors.textFaint, onClick = send)
+        }
+        problem?.let { MetaText(it, color = colors.textMuted) }
     }
 }
 
@@ -632,6 +653,7 @@ private fun FormAnswer(form: FormField, enabled: Boolean, onAnswer: (action: Str
                 placeholder = form.placeholder,
                 modifier = Modifier.fillMaxWidth(),
                 multiline = form.multiline,
+                minLines = if (form.multiline) 3 else 1,
                 enabled = enabled,
             )
         }

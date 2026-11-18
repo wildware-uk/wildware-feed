@@ -255,6 +255,18 @@ internal class FeedMapper(
             } else {
                 null
             },
+            // A text question exists because something must be typed: at least one character unless the agent says.
+            text = if (kind == QuestionKind.Text) {
+                FormField(
+                    placeholder = config?.placeholder.orEmpty(),
+                    initial = config?.defaultValue.orEmpty(),
+                    multiline = config?.multiline == true,
+                    min = config?.min ?: 1,
+                    max = config?.max,
+                )
+            } else {
+                null
+            },
             inReplyTo = request.messageId?.let { id ->
                 threads.find(id)?.second?.let { "${it.authorName}: ${PlainText.clip(PlainText.fromMarkdown(it.message.body), 80)}" }
                     ?: "Asked in a thread"

@@ -145,6 +145,22 @@ class MappingTest {
         assertEquals(null, q.form!!.problem(""))
     }
 
+    private fun textQuestion(config: RequestConfig?): FeedItem.Question {
+        val request = RequestCard(
+            RequestView(id = "r4", agentId = "a1", kind = "text", question = "Name it?", config = config),
+            agentName = "lumen", projectName = null, discussion = emptyList(), unread = 0, sending = false, tags = emptyList(), fields = emptyList(),
+        )
+        return mapper.map(feed(emptyList(), listOf(request)), listOf(mega), emptyList(), emptyList(), null).sections.single().items.single() as FeedItem.Question
+    }
+
+    @Test
+    fun aTextQuestionCarriesItsBoxSettings() {
+        val q = textQuestion(RequestConfig(placeholder = "A short name", defaultValue = "garden", multiline = true, min = 3, max = 40))
+        assertEquals(FormField(placeholder = "A short name", initial = "garden", multiline = true, min = 3, max = 40), q.text)
+        // A text question exists because something must be typed: one character at least, as on the website.
+        assertEquals(FormField(min = 1), textQuestion(null).text)
+    }
+
     private fun multi(config: RequestConfig?, options: List<String> = listOf("A", "B", "C", "D")): FeedItem.Question {
         val request = RequestCard(
             RequestView(id = "r3", agentId = "a1", kind = "multi_choice", question = "Which?", options = options, config = config),

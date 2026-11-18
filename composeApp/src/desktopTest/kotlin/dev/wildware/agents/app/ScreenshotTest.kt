@@ -513,6 +513,24 @@ class ScreenshotTest {
 
 
 
+    /** Text questions as the agent set them up: a placeholder in a several-line box, and an answer that is too short. */
+    @Test
+    fun textAnswerSettings() {
+        val base = FakeFeed.state.sections.flatMap { it.items }.filterIsInstance<FeedItem.Question>().first()
+        fun text(id: String, prompt: String, field: FormField) =
+            base.copy(id = id, prompt = prompt, body = "", kind = QuestionKind.Text, choices = emptyList(), allowsText = true, text = field)
+        val notes = text("qt1", "What should go in the release notes?", FormField(placeholder = "A few lines for the App Store", multiline = true, min = 1))
+        val name = text("qt2", "What should the release be called?", FormField(initial = "Jun", min = 5, max = 20))
+        val state = FakeFeed.state.copy(sections = listOf(FakeFeed.state.sections.first().copy(items = listOf(notes, name))))
+        for (dark in listOf(false, true)) {
+            val mode = if (dark) "dark" else "light"
+            shoot("phone-$mode-text-answer", Size.Phone, dark) { AgentsPreview(dark = dark, state = state, safeArea = Size.Phone.safeArea) }
+            shoot("desktop-$mode-text-answer", Size.Desktop, dark) { AgentsPreview(dark = dark, state = state, safeArea = Size.Desktop.safeArea) }
+        }
+    }
+
+
+
     /** Increase Contrast on, in both themes, and the largest common text size. */
     @Test
     fun accessibilityVariants() {

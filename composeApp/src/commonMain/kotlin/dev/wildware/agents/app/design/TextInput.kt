@@ -40,6 +40,8 @@ fun TextInput(
     placeholder: String,
     modifier: Modifier = Modifier,
     multiline: Boolean = false,
+    /** How many lines a multi-line input shows even when empty, so it looks like a box for several. */
+    minLines: Int = 1,
     secret: Boolean = false,
     enabled: Boolean = true,
     style: TextStyle = AgentTheme.type.body,
@@ -60,7 +62,7 @@ fun TextInput(
         .then(keys)
         .semantics { contentDescription = label }
     val decorator: @Composable (@Composable () -> Unit) -> Unit = { inner ->
-        Box(contentAlignment = Alignment.CenterStart) {
+        Box(contentAlignment = if (minLines > 1) Alignment.TopStart else Alignment.CenterStart) {
             if (state.text.isEmpty()) {
                 Text(placeholder, Modifier.clearAndSetSemantics { }, color = colors.textFaint, style = style, maxLines = 1)
             }
@@ -87,7 +89,7 @@ fun TextInput(
             textStyle = textStyle,
             keyboardOptions = keyboard,
             onKeyboardAction = { onSubmit?.invoke() },
-            lineLimits = if (multiline) TextFieldLineLimits.MultiLine(maxHeightInLines = 6) else TextFieldLineLimits.SingleLine,
+            lineLimits = if (multiline) TextFieldLineLimits.MultiLine(minHeightInLines = minLines, maxHeightInLines = maxOf(6, minLines)) else TextFieldLineLimits.SingleLine,
             cursorBrush = SolidColor(colors.accent),
             decorator = { inner -> decorator(inner) },
         )
