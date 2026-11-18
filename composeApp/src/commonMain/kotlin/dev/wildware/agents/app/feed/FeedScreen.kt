@@ -1,5 +1,12 @@
 package dev.wildware.agents.app.feed
 
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.CancellationException
+import androidx.compose.runtime.withFrameNanos
+import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.foundation.gestures.animateScrollBy
+import kotlinx.coroutines.flow.distinctUntilChanged
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
@@ -289,6 +296,7 @@ private fun DesktopColumns(ui: FeedUi, showRail: Boolean, startAt: String?) {
             }
             LoadOlderWhenNearEnd(ui, list)
             ScrollToRevealed(ui, list, itemsBefore = 1)
+            KeepReplyBoxClear(ui, list)
             ScrollToTopWhenAsked(ui, list)
             val scrolled by remember { derivedStateOf { list.firstVisibleItemIndex > 3 } }
             BackToTopPill({ scrolled }, Modifier.align(Alignment.TopCenter).padding(top = 14.dp), toTop)
@@ -558,6 +566,44 @@ private fun ScrollToRevealed(ui: FeedUi, list: LazyListState, itemsBefore: Int) 
             if (motion.reduced) list.scrollToItem(index, -room) else list.animateScrollToItem(index, -room)
         }
         if (ui.revealing == target) ui.revealing = null
+    }
+}
+
+/** Room the floating message box takes at the bottom of the desktop feed, with a little to spare. */
+private val FloatingComposerClearance = 110.dp
+
+/**
+ * On desktop the message box floats over the end of the list, so a card's reply box opening near the
+ * bottom would sit under it. When the open thread's card changes size (the box opens, "Replying to"
+ * shows, the text grows), the list scrolls just enough to lift it clear. Scrolling by hand is left be,
+ * and a thread already open when the screen appears doesn't move the feed.
+ */
+@Composable
+private fun KeepReplyBoxClear(ui: FeedUi, list: LazyListState) {
+    val id = ui.replyBoxOpened?.takeIf { it == ui.threadId } ?: return
+    val motion = AgentTheme.motion
+    val clearance = with(LocalDensity.current) { FloatingComposerClearance.roundToPx() }
+    LaunchedEffect(id) {
+        snapshotFlow { list.layoutInfo.visibleItemsInfo.firstOrNull { it.key == id }?.size }
+            .filterNotNull()
+            .distinctUntilChanged()
+            .collect {
+                // The box taking focus scrolls the list too, and can interrupt this: try again once it settles.
+                repeat(5) {
+                    val info = list.layoutInfo
+                    val card = info.visibleItemsInfo.firstOrNull { it.key == id } ?: return@collect
+                    // The box is at the card's end, so even a card taller than the screen lifts it clear.
+                    val over = card.offset + card.size - (info.viewportEndOffset - clearance)
+                    if (over <= 0) return@collect
+                    try {
+                        if (motion.reduced) list.scrollBy(over.toFloat()) else list.animateScrollBy(over.toFloat())
+                    } catch (interrupted: CancellationException) {
+                        // Our own cancellation ends here; another scroll taking over waits a frame and tries again.
+                        if (!currentCoroutineContext().isActive) throw interrupted
+                        withFrameNanos { }
+                    }
+                }
+            }
     }
 }
 

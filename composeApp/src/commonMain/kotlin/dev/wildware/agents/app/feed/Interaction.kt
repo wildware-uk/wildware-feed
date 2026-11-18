@@ -362,9 +362,15 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
 
     fun openThread(id: String, phone: Boolean) {
         threadId = id
-        if (phone) phoneThreadOpen = true
+        if (phone) phoneThreadOpen = true else replyBoxOpened = id
         replyingTo = null
     }
+
+    /**
+     * The card whose reply box the owner just opened on desktop, so the feed lifts it clear of the
+     * floating message box. Not set for a thread already open when the screen appears.
+     */
+    var replyBoxOpened by mutableStateOf<String?>(null)
 
     /** The card whose tag picker is open. */
     var tagging by mutableStateOf<String?>(null)
