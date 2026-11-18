@@ -48,5 +48,3 @@ class AppPlatform(
     }
 }
 
-/** The dashboard most people sign in to. */
-const val DefaultServer = "https://dashboard.example.com"

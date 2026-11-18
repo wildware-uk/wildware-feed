@@ -50,7 +50,6 @@ import dev.wildware.agents.app.feed.ButtonTone
 import dev.wildware.agents.app.feed.MetaText
 import dev.wildware.agents.app.feed.SafeArea
 import dev.wildware.agents.app.feed.windowBackground
-import dev.wildware.agents.app.session.DefaultServer
 import kotlinx.coroutines.launch
 
 /** Which box a sign-in problem belongs under, so the message sits where the fix is. */
@@ -90,7 +89,7 @@ fun SignInScreen(
     val colors = AgentTheme.colors
     val type = AgentTheme.type
     val scope = rememberCoroutineScope()
-    val server = rememberTextFieldState(DefaultServer)
+    val server = rememberTextFieldState()
     val password = rememberTextFieldState()
     val device = rememberTextFieldState(deviceName)
     var busy by remember { mutableStateOf(false) }
@@ -98,6 +97,10 @@ fun SignInScreen(
 
     val submit: () -> Unit = submit@{
         if (busy) return@submit
+        if (server.text.isBlank()) {
+            problem = Problem(Field.Server, "Type your dashboard's address.")
+            return@submit
+        }
         if (password.text.isEmpty()) {
             problem = Problem(Field.Password, "Type the owner password.")
             return@submit
@@ -143,6 +146,7 @@ fun SignInScreen(
             Spacer(Modifier.height(24.dp))
             LabelledField(
                 "Dashboard address", server, problem.takeIf { it?.field == Field.Server }?.message,
+                placeholder = "https://dashboard.example.com",
                 keyboard = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Next),
             )
             Spacer(Modifier.height(14.dp))
@@ -182,6 +186,7 @@ private fun LabelledField(
     state: TextFieldState,
     error: String?,
     secret: Boolean = false,
+    placeholder: String = "",
     hint: String? = null,
     keyboard: KeyboardOptions = KeyboardOptions.Default,
     onSubmit: (() -> Unit)? = null,
@@ -202,7 +207,7 @@ private fun LabelledField(
             TextInput(
                 state,
                 label = label,
-                placeholder = "",
+                placeholder = placeholder,
                 secret = secret,
                 keyboard = keyboard,
                 onSubmit = onSubmit,

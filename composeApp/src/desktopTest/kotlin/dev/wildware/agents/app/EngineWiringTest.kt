@@ -106,15 +106,26 @@ class EngineWiringTest {
     @Test
     fun aWrongPasswordSaysSoUnderThePasswordBox() = runDesktopComposeUiTest(width = 1440, height = 900) {
         app(MemorySessionStore())
+        onNodeWithContentDescription("Dashboard address").performTextInput("https://dashboard.test")
         onNodeWithContentDescription("Owner password").performTextInput("wrong")
         onNode(hasText("Sign in") and hasClickAction()).performClick()
         waitFor("That password isn't right. Try again.")
     }
 
     @Test
+    fun theAddressStartsEmptyAndIsAskedFor() = runDesktopComposeUiTest(width = 1440, height = 900) {
+        app(MemorySessionStore())
+        onNodeWithContentDescription("Owner password").performTextInput("right")
+        onNode(hasText("Sign in") and hasClickAction()).performClick()
+        waitFor("Type your dashboard's address.")
+        assertTrue(server.authorizations.isEmpty())
+    }
+
+    @Test
     fun signingInSavesTheKeyAndOpensTheLiveFeed() = runDesktopComposeUiTest(width = 1440, height = 900) {
         val sessions = MemorySessionStore()
         app(sessions)
+        onNodeWithContentDescription("Dashboard address").performTextInput("https://dashboard.test")
         onNodeWithContentDescription("Owner password").performTextInput("right")
         onNode(hasText("Sign in") and hasClickAction()).performClick()
         waitFor("Fixed the unread counts")
