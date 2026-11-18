@@ -200,23 +200,26 @@ struct RobotShape: Shape {
         func r(_ x: CGFloat, _ y: CGFloat, _ w: CGFloat, _ h: CGFloat) -> CGRect {
             CGRect(x: x * scale + dx, y: y * scale + dy, width: w * scale, height: h * scale)
         }
-        var path = Path()
-        path.addEllipse(in: r(474, 158, 76, 76))
-        path.addRect(r(500, 220, 24, 80))
-        path.addRoundedRect(in: r(252, 292, 520, 440), cornerSize: CGSize(width: 170 * scale, height: 170 * scale), style: .continuous)
-        path.addEllipse(in: r(342, 446, 104, 132))
-        path.addEllipse(in: r(578, 446, 104, 132))
-        return path
+        var body = Path()
+        body.addEllipse(in: r(474, 158, 76, 76))
+        body.addRect(r(500, 220, 24, 80))
+        body.addRoundedRect(in: r(252, 292, 520, 440), cornerSize: CGSize(width: 170 * scale, height: 170 * scale), style: .continuous)
+        var eyes = Path()
+        eyes.addEllipse(in: r(342, 446, 104, 132))
+        eyes.addEllipse(in: r(578, 446, 104, 132))
+        // Subtracted, not even-odd filled: the antenna overlaps the head and the ball, and must stay solid.
+        return body.normalized().subtracting(eyes)
     }
 }
 
-/// The robot in one colour, eyes see-through.
+/// The robot in one colour, eyes see-through. Where only an `Image` will do (inline widgets, labels),
+/// use the same drawing from the asset catalog: `Image("RobotMark")`.
 struct RobotMark: View {
     var color: Color = Theme.robot
 
     var body: some View {
         RobotShape()
-            .fill(color, style: FillStyle(eoFill: true))
+            .fill(color)
             .aspectRatio(560 / 610, contentMode: .fit)
             .accessibilityHidden(true)
     }

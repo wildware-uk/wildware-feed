@@ -268,10 +268,12 @@ private struct StatusInline: View {
     let snapshot: StatusSnapshot
 
     var body: some View {
-        if snapshot.waiting > 0 {
-            Label("\(snapshot.waiting) waiting · \(snapshot.inProgress) working", systemImage: "hand.raised.fill")
-        } else {
-            Label("\(snapshot.inProgress) working · \(snapshot.online.count) online", systemImage: "circle.fill")
+        Label {
+            Text(snapshot.waiting > 0
+                ? "\(snapshot.waiting) waiting · \(snapshot.inProgress) working"
+                : "\(snapshot.inProgress) working · \(snapshot.online.count) online")
+        } icon: {
+            Image("RobotMark")
         }
     }
 }

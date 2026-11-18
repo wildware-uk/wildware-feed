@@ -45,6 +45,7 @@ targetTemplates:
       - Common/Credentials.swift
       - Common/Dashboard.swift
       - Common/Theme.swift
+      - Common/Brand.xcassets
       - WatchCommon
       - path: Fonts
         buildPhase: resources

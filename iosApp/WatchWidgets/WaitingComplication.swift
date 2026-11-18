@@ -106,7 +106,11 @@ struct WaitingView: View {
                 }
                 .accessibilityLabel(sentence)
         case .accessoryInline:
-            Label(sentence, systemImage: isWaiting ? "hand.raised.fill" : "checkmark.circle")
+            Label {
+                Text(sentence)
+            } icon: {
+                Image("RobotMark")
+            }
         default:
             HStack(spacing: 8) {
                 RobotMark(color: renderingMode == .fullColor ? Theme.robot : .primary)

@@ -124,7 +124,11 @@ struct ProjectWidgetContent: View {
     private func content(_ card: ProjectCard) -> some View {
         switch family {
         case .accessoryInline:
-            Label("\(card.project.name): \(card.statusLine)", systemImage: card.waiting > 0 ? "hand.raised.fill" : "text.bubble")
+            Label {
+                Text("\(card.project.name): \(card.statusLine)")
+            } icon: {
+                Image("RobotMark")
+            }
         case .accessoryCircular:
             ZStack {
                 AccessoryWidgetBackground()
