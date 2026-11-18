@@ -40,8 +40,10 @@ the run revokes its throwaway development certificate at the end.
 
 ## Capabilities each bundle id needs
 
-Xcode turns these on by itself the first time. If a run says a capability or app group is missing,
-tick them on developer.apple.com, Certificates, Identifiers and Profiles, Identifiers.
+Each run registers any missing bundle id and turns on App Groups and Push Notifications through
+the API, before the Mac starts. Xcode then links the app group and Time Sensitive Notifications
+while signing. If a run still says a capability or app group is missing, tick them on
+developer.apple.com, Certificates, Identifiers and Profiles, Identifiers.
 
 | Bundle id | Capabilities |
 | --- | --- |
@@ -68,6 +70,9 @@ The first red line in the run says what is wrong. The full Xcode logs are on the
 - **"403" or "Cloud signing permission error"**: the key isn't Admin. Make a new Admin key.
 - **"No profiles for …" or "doesn't support the … capability"**: tick the capabilities above for
   that bundle id, then run again.
+- **"Authentication failed: Make sure a bearer token was provided"** during the archive: Apple
+  sometimes refuses one of Xcode's sign-ins. The run tries the archive 3 times by itself; if all
+  3 fail, run it again later, or check the key hasn't been revoked.
 - **"Your team has no devices"**: development signing needs at least one registered iPhone and
   one Apple Watch. Register them on developer.apple.com, Devices.
 - **"The build number has already been used"**: run the workflow again; the new run gets a new number.

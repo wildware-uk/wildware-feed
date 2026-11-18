@@ -109,11 +109,33 @@ jobs:
             python3 .github/scripts/asc.py check "$BUNDLE_ID" --require-app
           fi
 
+      # Xcode can sign with an App ID but is bad at making one: its call to register the watch's
+      # failed on the first run. So make sure all seven exist, with their capabilities, first.
+      - name: Make sure every bundle id is registered
+        timeout-minutes: 3
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8_BASE64: ${{ secrets.ASC_KEY_P8_BASE64 }}
+        run: |
+          set -euo pipefail
+          export ASC_KEY_PATH="$RUNNER_TEMP/asc-key.p8"
+          trap 'rm -f "$ASC_KEY_PATH"' EXIT
+          printf '%s' "$ASC_KEY_P8_BASE64" | base64 --decode > "$ASC_KEY_PATH"
+          python3 .github/scripts/asc.py ensure-ids \
+            "$BUNDLE_ID=Wildware Feed=APP_GROUPS,PUSH_NOTIFICATIONS" \
+            "$BUNDLE_ID.widgets=Wildware Feed Widgets=APP_GROUPS" \
+            "$BUNDLE_ID.share=Wildware Feed Share=APP_GROUPS" \
+            "$BUNDLE_ID.notifications=Wildware Feed Notifications=APP_GROUPS" \
+            "$BUNDLE_ID.notificationcontent=Wildware Feed Notification Content=APP_GROUPS" \
+            "$BUNDLE_ID.watchkitapp=Wildware Feed Watch=APP_GROUPS" \
+            "$BUNDLE_ID.watchkitapp.widgets=Wildware Feed Watch Widgets=APP_GROUPS"
+
   build:
     needs: check
     runs-on: macos-26
     # Two release Kotlin builds, an archive and an upload; a hang must still not run for hours.
-    timeout-minutes: 90
+    timeout-minutes: 100
     env:
       VERSION: ${{ needs.check.outputs.version }}
       BUILD: ${{ needs.check.outputs.build }}
@@ -184,29 +206,45 @@ jobs:
           echo "KEYCHAIN=$keychain" >> "$GITHUB_ENV"
 
       - name: Archive (Release, signed by Xcode)
-        timeout-minutes: 30
+        timeout-minutes: 45
         env:
           # The scheme's pre-action rebuilds Shared; this keeps it on the release one.
           SHARED_CONFIGURATION: Release
         run: |
-          set -uo pipefail
-          xcodebuild archive \
-            -project iosApp/Agents.xcodeproj \
-            -scheme Agents \
-            -configuration Release \
-            -destination 'generic/platform=iOS' \
-            -archivePath "$RUNNER_TEMP/Agents.xcarchive" \
-            -allowProvisioningUpdates \
-            -authenticationKeyPath "$ASC_KEY_PATH" \
-            -authenticationKeyID "$ASC_KEY_ID" \
-            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
-            DEVELOPMENT_TEAM="$TEAM_ID" \
-            CODE_SIGN_STYLE=Automatic \
-            MARKETING_VERSION="$VERSION" \
-            CURRENT_PROJECT_VERSION="$BUILD" \
-            > archive.log 2>&1
-          status=$?
-          grep -E "error:|ARCHIVE (SUCCEEDED|FAILED)" archive.log | head -60 || true
+          # Not -e: a failed archive must still reach the lines that say why.
+          set +e -uo pipefail
+          # Xcode asks Apple for several targets' profiles at once, and Apple sometimes refuses one
+          # of those sign-ins ("Authentication failed"). Profiles it did make stay made, so a retry
+          # only asks for the rest.
+          for try in 1 2 3; do
+            xcodebuild archive \
+              -project iosApp/Agents.xcodeproj \
+              -scheme Agents \
+              -configuration Release \
+              -destination 'generic/platform=iOS' \
+              -archivePath "$RUNNER_TEMP/Agents.xcarchive" \
+              -allowProvisioningUpdates \
+              -authenticationKeyPath "$ASC_KEY_PATH" \
+              -authenticationKeyID "$ASC_KEY_ID" \
+              -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+              DEVELOPMENT_TEAM="$TEAM_ID" \
+              CODE_SIGN_STYLE=Automatic \
+              MARKETING_VERSION="$VERSION" \
+              CURRENT_PROJECT_VERSION="$BUILD" \
+              > archive.log 2>&1
+            status=$?
+            if [ $status -eq 0 ] && grep -q "ARCHIVE SUCCEEDED" archive.log; then
+              break
+            fi
+            if [ $try -lt 3 ] && grep -q "error: Authentication failed" archive.log; then
+              echo "::warning::Apple refused one of Xcode's sign-ins while making profiles (try $try of 3). Trying again in 30 seconds."
+              grep -E "error:" archive.log | head -10
+              sleep 30
+              continue
+            fi
+            break
+          done
+          grep -E "error:|ARCHIVE (SUCCEEDED|FAILED)" archive.log | head -60
           if [ $status -ne 0 ] || ! grep -q "ARCHIVE SUCCEEDED" archive.log; then
             echo "::error::The archive failed. The lines above say why; the full log is in the run's xcodebuild-logs artifact. docs/IOS_RELEASE.md lists the usual causes."
             tail -40 archive.log
@@ -341,6 +379,20 @@ jobs:
           rm -rf "$RUNNER_TEMP/asc" "$RUNNER_TEMP/ExportOptions.plist"
           if [ -n "${KEYCHAIN:-}" ] && [ -f "$KEYCHAIN" ]; then security delete-keychain "$KEYCHAIN"; fi
           security default-keychain -s login.keychain-db 2>/dev/null || true
+
+      # xcodebuild prints its own command line, key and team ids included. The run's log hides them,
+      # but an artifact doesn't, and this repo is public.
+      - name: Blank the ids out of the logs
+        if: failure()
+        timeout-minutes: 2
+        run: |
+          for log in archive.log export.log upload.log; do
+            [ -f "$log" ] || continue
+            for value in "$ASC_KEY_ID" "$ASC_ISSUER_ID" "$TEAM_ID"; do
+              [ -n "$value" ] && sed -i '' "s/$value/***/g" "$log"
+            done
+          done
+          true
 
       - if: failure()
         uses: actions/upload-artifact@v4

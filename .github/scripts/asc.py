@@ -9,6 +9,7 @@ Reads the key from ASC_KEY_ID, ASC_ISSUER_ID and ASC_KEY_PATH (the .p8 file).
   asc.py check BUNDLE_ID [--require-app]        the key works; the app exists in App Store Connect
   asc.py notes BUNDLE_ID VERSION BUILD FILE     sets the TestFlight "What to Test" text
   asc.py revoke-certs SHA1 [SHA1 ...]           revokes the certificates with these fingerprints
+  asc.py ensure-ids "ID=Name=CAP,CAP" ...       registers missing bundle ids and turns capabilities on
 """
 
 import argparse
@@ -170,6 +171,39 @@ def revoke_certs(args):
         print("No matching certificate in the account; nothing to revoke.")
 
 
+def ensure_ids(args):
+    """Registers each bundle id if it's missing and turns on the capabilities it lists. Safe to run
+    again: it only adds what isn't there, and never renames or removes anything."""
+    for spec in args.specs:
+        try:
+            identifier, name, caps = spec.split("=")
+        except ValueError:
+            fail(f"Bad spec '{spec}': expected ID=Name=CAPABILITY,CAPABILITY.")
+        wanted = [c for c in caps.split(",") if c]
+        found = call("GET", "/v1/bundleIds", query={
+            "filter[identifier]": identifier, "fields[bundleIds]": "identifier,name,platform", "limit": "200"})["data"]
+        # filter[identifier] also matches ids that only start the same, so check it exactly.
+        bundle = next((b for b in found if b["attributes"]["identifier"] == identifier), None)
+        if bundle:
+            print(f"{identifier}: registered as \"{bundle['attributes']['name']}\".")
+        else:
+            bundle = call("POST", "/v1/bundleIds", body={"data": {
+                "type": "bundleIds",
+                "attributes": {"identifier": identifier, "name": name, "platform": "IOS"}}})["data"]
+            print(f"{identifier}: registered it as \"{name}\".")
+        have = {c["attributes"]["capabilityType"]
+                for c in call("GET", f"/v1/bundleIds/{bundle['id']}/bundleIdCapabilities")["data"]}
+        for capability in wanted:
+            if capability in have:
+                continue
+            call("POST", "/v1/bundleIdCapabilities", body={"data": {
+                "type": "bundleIdCapabilities",
+                "attributes": {"capabilityType": capability},
+                "relationships": {"bundleId": {"data": {"type": "bundleIds", "id": bundle["id"]}}}}})
+            print(f"{identifier}: turned on {capability}.")
+        print(f"{identifier}: has {', '.join(sorted(have | set(wanted))) or 'no capabilities'}.")
+
+
 def main():
     for name in ("ASC_KEY_ID", "ASC_ISSUER_ID", "ASC_KEY_PATH"):
         if not os.environ.get(name):
@@ -190,6 +224,9 @@ def main():
     p = commands.add_parser("revoke-certs")
     p.add_argument("sha1", nargs="+")
     p.set_defaults(run=revoke_certs)
+    p = commands.add_parser("ensure-ids")
+    p.add_argument("specs", nargs="+")
+    p.set_defaults(run=ensure_ids)
     args = parser.parse_args()
     args.run(args)
 
