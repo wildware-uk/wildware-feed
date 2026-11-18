@@ -54,6 +54,7 @@ fun iosPlatform(
     val readMarks = "$dataDir/read-marks.json"
     // In Caches: iOS may clear it when space runs short, which costs only a slower next start.
     val feedCache = (caches ?: dataDir) + "/feed-cache.json"
+    val cardFolds = "$dataDir/folded-cards.json"
     val outbox = IosOutboxStorage(outboxDir)
     outbox.adoptOldAppOutbox("$dataDir/AppOutbox")
     return AppPlatform(
@@ -68,11 +69,13 @@ fun iosPlatform(
         outboxChanged = OutboxSignals.changes,
         foreground = AppLifecycle.foregrounds,
         feedCache = IosTextStore(feedCache),
+        cardFolds = IosTextStore(cardFolds),
         pushAlerts = true,
         clearLocalData = {
             outbox.clear()
             remove(readMarks)
             remove(feedCache)
+            remove(cardFolds)
         },
     )
 }

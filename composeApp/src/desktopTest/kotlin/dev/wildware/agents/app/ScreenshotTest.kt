@@ -1,5 +1,7 @@
 package dev.wildware.agents.app
 
+import dev.wildware.agents.app.feed.CardFolds
+import dev.wildware.agents.app.feed.LocalCardFolds
 import dev.wildware.agents.app.feed.Choice
 import dev.wildware.agents.app.feed.PickBounds
 import dev.wildware.agents.app.feed.Reply
@@ -526,6 +528,26 @@ class ScreenshotTest {
             val mode = if (dark) "dark" else "light"
             shoot("phone-$mode-text-answer", Size.Phone, dark) { AgentsPreview(dark = dark, state = state, safeArea = Size.Phone.safeArea) }
             shoot("desktop-$mode-text-answer", Size.Desktop, dark) { AgentsPreview(dark = dark, state = state, safeArea = Size.Desktop.safeArea) }
+        }
+    }
+
+
+
+    /** Folded cards: the long update and a post, each down to its header and one line, beside open ones. */
+    @Test
+    fun foldedCards() {
+        val fix = FakeFeed.state.openThread!!
+        val post = FakeFeed.state.sections.flatMap { it.items }.filterIsInstance<FeedItem.Post>().first()
+        for (dark in listOf(false, true)) {
+            val mode = if (dark) "dark" else "light"
+            for (size in listOf(Size.Phone, Size.Desktop)) {
+                val folds = CardFolds(dev.wildware.agents.MemoryTextStore()).apply { set(fix.id, true); set(post.id, true) }
+                shoot("${size.label}-$mode-folded", size, dark) {
+                    CompositionLocalProvider(LocalCardFolds provides folds) {
+                        AgentsPreview(dark = dark, safeArea = size.safeArea, startAt = fix.id)
+                    }
+                }
+            }
         }
     }
 

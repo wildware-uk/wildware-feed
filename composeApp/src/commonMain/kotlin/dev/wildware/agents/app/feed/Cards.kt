@@ -1,6 +1,7 @@
 package dev.wildware.agents.app.feed
 
 import androidx.compose.ui.semantics.selected
+import androidx.compose.runtime.Immutable
 import dev.wildware.agents.app.ProductName
 import androidx.compose.runtime.key
 import androidx.compose.foundation.clickable
@@ -104,6 +105,8 @@ private fun CardHeader(
     onStatus: (() -> Unit)? = null,
     high: Boolean = false,
     pinned: Boolean = false,
+    /** Folding the card away; null where it can't fold (in its own thread). */
+    fold: Fold? = null,
 ) {
     val colors = AgentTheme.colors
     val type = AgentTheme.type
@@ -136,7 +139,40 @@ private fun CardHeader(
             if (pinned) Icon(Icons.Pin, null, tint = colors.accent, modifier = Modifier.padding(start = 8.dp).size(13.dp))
         }
         if (!compact) Chips(level, status, high, onStatus = onStatus)
+        // First thing a reader reaches for on a long feed, and the one control that changes nothing.
+        fold?.let { IconAction(if (it.folded) Icons.ChevronRight else Icons.ChevronDown, it.label, Modifier.padding(start = 4.dp), onClick = it.toggle) }
     }
+}
+
+/** A card's fold: whether it is folded, what the control is called, and how to flip it. */
+@Immutable
+internal class Fold(val folded: Boolean, val label: String, val toggle: () -> Unit)
+
+/** The fold for card [id], kept on this device; null in its own thread, where the whole card is the point. */
+@Composable
+private fun rememberFold(id: String, noun: String, name: String, inThread: Boolean): Fold? {
+    if (inThread) return null
+    val folds = LocalCardFolds.current
+    val folded = folds.isFolded(id)
+    return Fold(folded, "${if (folded) "Expand" else "Collapse"} $noun: $name") { folds.set(id, !folded) }
+}
+
+/**
+ * What a folded card still shows under its header: one line of what it said, and what is hidden,
+ * so the owner can tell whether they want it back without opening it.
+ */
+@Composable
+private fun FoldedSummary(body: String, replies: Int) {
+    val colors = AgentTheme.colors
+    val line = dev.wildware.agents.PlainText.fromMarkdown(body).lineSequence().map { it.trim() }.firstOrNull { it.isNotEmpty() }
+    Text(
+        line ?: "No words on this card.",
+        color = colors.textMuted,
+        style = AgentTheme.type.body,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+    )
+    if (replies > 0) MetaText(if (replies == 1) "1 reply hidden" else "$replies replies hidden", Modifier.padding(top = 4.dp))
 }
 
 /**
@@ -218,6 +254,7 @@ fun UpdateCard(
     val tags = ui?.tagsFor(item.id, item.tags) ?: item.tags
     val reactions = ui?.reactionsFor(item.id, item.reactions) ?: item.reactions
     val chooseStatus = { ui?.emit(FeedEvent.ChooseStatus(item.id, item.status)); Unit }
+    val fold = rememberFold(item.id, "update", item.title, inThread)
     WithMenu(target, modifier) { gestures ->
     CardFrame(gestures, selected = selected, density = density) {
         Column {
@@ -233,6 +270,7 @@ fun UpdateCard(
                 onStatus = chooseStatus,
                 high = item.high,
                 pinned = pinned,
+                fold = fold,
             )
             Column(Modifier.padding(start = indent, top = 8.dp)) {
                 if (density == Density.Compact) Chips(item.level, item.status, item.high, Modifier.padding(bottom = 8.dp), onStatus = chooseStatus)
@@ -243,35 +281,37 @@ fun UpdateCard(
                     style = type.title,
                 )
                 Spacer(Modifier.height(6.dp))
-                // In its own thread the whole update is the point; in the feed a long one folds.
-                if (inThread) MarkdownBody(item.body) else Clamp(item.id, "the whole update", fade = if (selected) colors.surfaceRaised else colors.surface) { MarkdownBody(item.body) }
-                if (item.attachments.isNotEmpty()) {
-                    Spacer(Modifier.height(10.dp))
-                    MediaGrid(item.attachments, onOpen = rememberTileOpener(item.attachments))
-                }
-                if (item.sounds.isNotEmpty()) Sounds(item.sounds, Modifier.padding(top = 10.dp))
-                if (item.files.isNotEmpty()) Files(item.files, Modifier.padding(top = 10.dp))
-                CardDetails(item.id, ui?.fieldsFor(item.id, item.fields) ?: item.fields, Modifier.padding(top = 8.dp))
-                TagChips(tags, Modifier.padding(top = 10.dp))
-                val inline = LocalInlineThreads.current && !inThread
-                val showThread = item.replies.isNotEmpty() && !inThread && !inline
-                val hasFooter = reactions.isNotEmpty() || showThread
-                if (hasFooter) {
-                    Spacer(Modifier.height(12.dp))
-                    FlowRow(
-                        Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp),
-                    ) {
-                        ReactionRow(reactions, item.id)
-                        if (showThread) ThreadButton(item)
+                if (fold?.folded == true) FoldedSummary(item.body, item.replies.size) else {
+                    // In its own thread the whole update is the point; in the feed a long one folds.
+                    if (inThread) MarkdownBody(item.body) else Clamp(item.id, "the whole update", fade = if (selected) colors.surfaceRaised else colors.surface) { MarkdownBody(item.body) }
+                    if (item.attachments.isNotEmpty()) {
+                        Spacer(Modifier.height(10.dp))
+                        MediaGrid(item.attachments, onOpen = rememberTileOpener(item.attachments))
                     }
+                    if (item.sounds.isNotEmpty()) Sounds(item.sounds, Modifier.padding(top = 10.dp))
+                    if (item.files.isNotEmpty()) Files(item.files, Modifier.padding(top = 10.dp))
+                    CardDetails(item.id, ui?.fieldsFor(item.id, item.fields) ?: item.fields, Modifier.padding(top = 8.dp))
+                    TagChips(tags, Modifier.padding(top = 10.dp))
+                    val inline = LocalInlineThreads.current && !inThread
+                    val showThread = item.replies.isNotEmpty() && !inThread && !inline
+                    val hasFooter = reactions.isNotEmpty() || showThread
+                    if (hasFooter) {
+                        Spacer(Modifier.height(12.dp))
+                        FlowRow(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            ReactionRow(reactions, item.id)
+                            if (showThread) ThreadButton(item)
+                        }
+                    }
+                    if (item.acks.read.isNotEmpty() || item.acks.thinking.isNotEmpty()) {
+                        Spacer(Modifier.height(if (hasFooter) 4.dp else 12.dp))
+                        AckLine(item.acks)
+                    }
+                    if (inline) InlineThread(item)
                 }
-                if (item.acks.read.isNotEmpty() || item.acks.thinking.isNotEmpty()) {
-                    Spacer(Modifier.height(if (hasFooter) 4.dp else 12.dp))
-                    AckLine(item.acks)
-                }
-                if (inline) InlineThread(item)
             }
         }
     }
@@ -702,6 +742,7 @@ fun PostCard(item: FeedItem.Post, modifier: Modifier = Modifier, density: Densit
     val tags = ui?.tagsFor(item.id, item.tags) ?: item.tags
     val reactions = ui?.reactionsFor(item.id, item.reactions) ?: item.reactions
     val chooseStatus = { ui?.emit(FeedEvent.ChooseStatus(item.id, item.status)); Unit }
+    val fold = rememberFold(item.id, "post", dev.wildware.agents.PlainText.clip(dev.wildware.agents.PlainText.fromMarkdown(item.body), 60), inThread)
     WithMenu(target, modifier.alpha(if (item.sending) SendingAlpha else 1f)) { gestures ->
     CardFrame(gestures, density = density) {
         Column {
@@ -716,9 +757,14 @@ fun PostCard(item: FeedItem.Post, modifier: Modifier = Modifier, density: Densit
                 compact = density == Density.Compact,
                 onStatus = chooseStatus,
                 pinned = pinned,
+                fold = fold,
             )
             Column(Modifier.padding(start = indent, top = 8.dp)) {
                 if (density == Density.Compact && item.status != null) Chips(null, item.status, modifier = Modifier.padding(bottom = 8.dp), onStatus = chooseStatus)
+                if (fold?.folded == true) {
+                    FoldedSummary(item.body, item.replies.size)
+                    return@Column
+                }
                 val body = @Composable { if (own) PlainBody(item.body) else MarkdownBody(item.body) }
                 if (inThread) body() else Clamp(item.id, "the whole post") { body() }
                 PostMedia(item.attachments, item.sounds, item.files)

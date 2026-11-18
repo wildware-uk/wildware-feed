@@ -1,5 +1,7 @@
 package dev.wildware.agents.app
 
+import dev.wildware.agents.app.feed.LocalCardFolds
+import dev.wildware.agents.app.feed.CardFolds
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -114,7 +116,9 @@ fun AgentsApp(
                 is AppScreen.Signed -> {
                     val session = screen.session
                     val state = session.state.collectAsState()
+                    val folds = remember(session) { CardFolds(platform.cardFolds) }
                     CompositionLocalProvider(
+                        LocalCardFolds provides folds,
                         LocalMediaAuth provides MediaAuth(session.client.serverUrl, session.client.authorizationHeader),
                         LocalFilePicker provides platform.filePicker,
                         LocalMediaHandler provides (platform.media ?: rememberPlatformMediaHandler(platform.httpEngine)),

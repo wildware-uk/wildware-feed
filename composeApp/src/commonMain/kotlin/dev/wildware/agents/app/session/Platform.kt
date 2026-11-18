@@ -41,6 +41,8 @@ class AppPlatform(
     val foreground: Flow<Unit> = emptyFlow(),
     /** The feed as it last was, so the app opens onto it at once. Removed by [clearLocalData]. */
     val feedCache: TextStore = MemoryTextStore(),
+    /** The cards folded away on this device (`CardFolds`). Removed by [clearLocalData]. */
+    val cardFolds: TextStore = MemoryTextStore(),
     /** Hands media to the system. Null uses the platform's own; tests pass a fake. */
     val media: MediaHandler? = null,
     /**
