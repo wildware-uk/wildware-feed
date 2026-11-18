@@ -10,8 +10,12 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.coroutines.ContinuationInterceptor
 import kotlin.time.Clock
 import kotlin.time.ExperimentalTime
+
+/** The id a line still in the outbox goes by until the dashboard gives it its own. */
+const val DraftPrefix = "outbox:"
 
 /** The comments under a card, each with what is said about it. */
 data class ThreadLine(
@@ -28,6 +32,8 @@ data class ThreadLine(
     val deliveries: List<DeliveryView>,
     /** Questions an agent asked under this line. They are answered here, not at the top of the feed. */
     val questions: List<RequestCard>,
+    /** The owner wrote it here and it is still on its way to the dashboard. */
+    val sending: Boolean = false,
 )
 
 /** One card in the feed. */
@@ -231,9 +237,15 @@ class Dashboard internal constructor(
                 }
             }
             launch {
+                var last = clock()
                 while (true) {
                     delay(TickMillis)
                     now = clock()
+                    // The clock jumped past the tick: the device slept, or the app was suspended. The
+                    // connection that was open then is very likely dead, and nothing on it will say so
+                    // until the heartbeat window runs out. Replace it now.
+                    if (now - last > TickMillis + SleepMillis) stream.revive(reconnect = true, reread = false)
+                    last = now
                     changed()
                 }
             }
@@ -245,11 +257,40 @@ class Dashboard internal constructor(
                 }
             }
         }
-        outbox?.let { queue -> confined.launch { queue.items.collect { changed() } } }
+        outbox?.let { queue ->
+            queue.onSent = { item, result -> withContext(confinedDispatcher) { sent(item, result) } }
+            confined.launch { queue.items.collect { changed() } }
+        }
+    }
+
+    private val confinedDispatcher = confined.coroutineContext[ContinuationInterceptor] ?: confined.coroutineContext
+
+    /** Outbox items already shown from the dashboard's answer, so their draft must go. */
+    private val delivered = HashSet<String>()
+    private var draftsFrom: List<OutboxItem>? = null
+    private var drafts: List<OutboxItem> = emptyList()
+
+    /** What the owner wrote that is still on its way: drawn in its thread straight away. */
+    private fun drafts(): List<OutboxItem> {
+        val items = outbox?.items?.value ?: return emptyList()
+        if (items === draftsFrom) return drafts
+        draftsFrom = items
+        delivered.retainAll(items.mapTo(HashSet()) { it.id })
+        drafts = items.filter { !it.gaveUp && it.id !in delivered && (it.kind == OutboxKind.Message || it.kind == OutboxKind.Ticket) }
+        return drafts
+    }
+
+    private fun sent(item: OutboxItem, result: DeliveryResult) {
+        val message = result.sent ?: return
+        feeds.values.forEach { it.adopt(message) }
+        delivered += item.id
+        draftsFrom = null
+        changed()
     }
 
     fun stop() {
         started = false
+        outbox?.onSent = null
         stream.stop()
         timers?.cancel()
         timers = null
@@ -257,7 +298,7 @@ class Dashboard internal constructor(
     }
 
     /** Call when the app comes to the front (reconnect if it was away a while) or the network returns (always reconnect). */
-    fun revive(reconnect: Boolean) = stream.revive(reconnect)
+    fun revive(reconnect: Boolean, reread: Boolean = true) = stream.revive(reconnect, reread)
 
     /**
      * One project's feed by slug, or every project's for null. The same slug gives the same feed.
@@ -312,6 +353,8 @@ class Dashboard internal constructor(
     }
 
     private fun publish() {
+        val pending = drafts()
+        feeds.values.forEach { it.drafts = pending }
         val names = names()
         val onlineAgents = presence.agents.filter { it.lastHeartbeatAt >= now - PresenceReader.WindowMillis }
         mutableOnline.value = onlineAgents
@@ -342,6 +385,9 @@ class Dashboard internal constructor(
     internal companion object {
         const val PollMillis = 20_000L
         const val TickMillis = 5_000L
+
+        /** A tick this much later than due means the device was asleep, not just busy. */
+        const val SleepMillis = 30_000L
     }
 }
 
@@ -433,11 +479,53 @@ class Feed internal constructor(
 
     // --- Building cards ---------------------------------------------------------------------
 
+    /** The owner's posts and replies still on their way, set before each publish. */
+    internal var drafts: List<OutboxItem> = emptyList()
+
     private var index = ThreadIndex(MessagesSnapshot(seq = 0))
+    private var indexedFrom: MessagesSnapshot? = null
+    private var indexedDrafts: List<OutboxItem>? = null
+    private var draftIds: Set<String> = emptySet()
 
     private fun indexed(): ThreadIndex {
-        if (index.snapshot !== threads.snapshot) index = ThreadIndex(threads.snapshot)
+        val snapshot = threads.snapshot
+        if (indexedFrom !== snapshot || indexedDrafts !== drafts) {
+            val lines = drafts.mapNotNull(::draftLine)
+            draftIds = lines.mapTo(HashSet()) { it.id }
+            index = ThreadIndex(if (lines.isEmpty()) snapshot else snapshot.copy(messages = snapshot.messages + lines))
+            indexedFrom = snapshot
+            indexedDrafts = drafts
+        }
         return index
+    }
+
+    /** An outbox item as the line it will be once the dashboard has it. Null when it doesn't belong here. */
+    private fun draftLine(item: OutboxItem): MessageView? {
+        val thread = item.thread
+        val slug = thread["project"]
+        val projectId = slug?.let { s -> timeline.projects.firstOrNull { it.slug == s }?.id }
+        if (slug != null && (projectId == null || projectSlug != null && slug != projectSlug)) return null
+        return MessageView(
+            id = DraftPrefix + item.id,
+            projectId = projectId,
+            updateId = thread["update"],
+            taskId = thread["task"],
+            replyTo = thread["replyTo"],
+            requestId = thread["request"],
+            answers = item.answers,
+            author = HumanAuthor,
+            body = item.text ?: item.files.joinToString(", ") { it.filename },
+            createdAt = item.createdAtMillis,
+        )
+    }
+
+    /** A post or reply the dashboard just took from the owner: shown now, not when the stream says so. */
+    internal fun adopt(message: MessageView) {
+        if (projectSlug != null) {
+            val projectId = timeline.projects.firstOrNull { it.slug == projectSlug }?.id
+            if (projectId == null || message.projectId != projectId) return
+        }
+        threads.adopt(message)
     }
 
     internal fun commentsOn(cardId: String): List<MessageView>? {
@@ -473,6 +561,7 @@ class Feed internal constructor(
             acks = context.acks(index.acks[message.id].orEmpty()),
             deliveries = index.deliveries[message.id].orEmpty(),
             questions = context.requests.filter { it.messageId == message.id }.map { context.requestCard(it, this) },
+            sending = message.id in draftIds,
         )
     }
 

@@ -113,6 +113,8 @@ data class DeliveryResult(
     val status: Int? = null,
     val message: String? = null,
     val ticketMessageId: String? = null,
+    /** A post or reply as the dashboard stored it, so the feed can show it without waiting for the stream. */
+    val sent: MessageView? = null,
 ) {
     val isSent: Boolean get() = outcome == DeliveryOutcome.Sent
 
@@ -269,9 +271,10 @@ object Outbox {
  */
 internal suspend fun DashboardClient.deliverQueued(item: OutboxItem, attachments: List<Attachment>): DeliveryResult {
     var ticketMessageId = item.ticketMessageId
+    var sent: MessageView? = null
     return try {
         when (item.kind) {
-            OutboxKind.Message -> send(item.thread + listOfNotNull(item.answers?.let { "answers" to it }), item.text, attachments)
+            OutboxKind.Message -> sent = sendMessage(item.thread + listOfNotNull(item.answers?.let { "answers" to it }), item.text, attachments).message
             OutboxKind.Ticket -> {
                 val slug = item.thread["project"] ?: return DeliveryResult(DeliveryOutcome.GiveUp, message = "It has no project.")
                 ticketMessageId = ticketMessageId ?: postToProject(slug, item.text.orEmpty())
@@ -310,7 +313,7 @@ internal suspend fun DashboardClient.deliverQueued(item: OutboxItem, attachments
                 }
             }
         }
-        DeliveryResult(DeliveryOutcome.Sent, 200, ticketMessageId = ticketMessageId)
+        DeliveryResult(DeliveryOutcome.Sent, 200, ticketMessageId = ticketMessageId, sent = sent)
     } catch (cancelled: CancellationException) {
         throw cancelled
     } catch (refused: DashboardException) {

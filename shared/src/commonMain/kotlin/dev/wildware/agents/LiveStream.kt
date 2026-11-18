@@ -114,8 +114,21 @@ internal interface StreamSink {
 
 /** Opens one connection to the stream and hands each frame on until it ends. Throws when it fails. */
 internal fun interface StreamOpener {
-    suspend fun open(cursor: Long, sink: StreamSink)
+    /** [cursor] is sent back as it is: `<boot>-<seq>`, or a bare seq. Null opens with no cursor. */
+    suspend fun open(cursor: String?, sink: StreamSink)
 }
+
+/**
+ * A stream `id:` taken apart: `<boot>-<seq>` from a server with boot ids, a bare `<seq>` from one
+ * without. Null for anything else.
+ */
+internal fun parseStreamId(raw: String?): Pair<String?, Long>? {
+    val match = StreamIdPattern.matchEntire(raw?.trim() ?: return null) ?: return null
+    val seq = match.groupValues[2].toLongOrNull() ?: return null
+    return match.groupValues[1].ifEmpty { null } to seq
+}
+
+private val StreamIdPattern = Regex("^(?:([0-9a-z]{1,32})-)?([0-9]+)$")
 
 /** How the live stream retries. The defaults suit a phone: quick at first, then patient. */
 data class StreamTiming(
@@ -130,7 +143,8 @@ data class StreamTiming(
  * The app's one connection to `GET /api/stream`, ported from the website's `src/web/stream.ts`.
  *
  * - Resume: the cursor is the newest seq seen. A reconnect sends it as `Last-Event-ID` (and as
- *   `last_event_id` in the query, as the website does), and the server replays exactly what was missed.
+ *   `last_event_id` in the query, as the website does), with the server's boot id in front as the
+ *   server wrote it (`<boot>-<seq>`), and the server replays exactly what was missed.
  * - `resync`: the server's word that the gap is too wide (or it restarted). Its seq is adopted as the
  *   cursor, not maxed, because a restarted server counts from zero again. Listeners refetch.
  * - Reconnect: on any drop, after a wait that doubles from [StreamTiming.firstRetryMillis] up to
@@ -154,6 +168,14 @@ class LiveStream internal constructor(
 
     /** The newest seq this app has seen on the stream: what a reconnect resumes from. */
     var cursor: Long = 0
+        private set
+
+    /**
+     * Which run of the server [cursor] counts in, from the ids it sends. The seq starts again at 1
+     * whenever the server restarts; sent back with the boot, a cursor from a run that has ended is
+     * told `resync` rather than being replayed the new run's events as if they were the old one's.
+     */
+    var boot: String? = null
         private set
 
     /** How many times it has connected. A test and a debug screen read it. */
@@ -182,10 +204,11 @@ class LiveStream internal constructor(
 
     /**
      * Brings the app back in line after it may have been asleep: on coming to the front, or when the
-     * network comes back. Every reader refetches (a `resync`), and with [reconnect] the connection is
-     * replaced too, because one that died while the app was suspended can look open.
+     * network comes back. With [reconnect] the connection is replaced, because one that died while the
+     * app was suspended can look open; the new one resumes from the cursor, so the server replays what
+     * was missed (or says `resync`). With [reread] every reader refetches too (a `resync` of its own).
      */
-    fun revive(reconnect: Boolean) {
+    fun revive(reconnect: Boolean, reread: Boolean = true) {
         if (listener == null) return
         if (reconnect || job?.isActive != true || mutableStatus.value == StreamStatus.SignedOut) {
             job?.cancel()
@@ -193,7 +216,7 @@ class LiveStream internal constructor(
             mutableStatus.value = if (mutableStatus.value == StreamStatus.Live) StreamStatus.Live else StreamStatus.Connecting
             job = scope.launch { run() }
         }
-        scope.launch { deliver(StreamEvent(StreamEvent.Resync, cursor, null)) }
+        if (reread) scope.launch { deliver(StreamEvent(StreamEvent.Resync, cursor, null)) }
     }
 
     /** One event at a time, in order, whichever coroutine it came from. */
@@ -206,9 +229,10 @@ class LiveStream internal constructor(
         var failures = 0
         while (true) {
             val resumeFrom = maxOf(cursor, floor())
+            val resumeId = if (resumeFrom > 0) boot?.let { "$it-$resumeFrom" } ?: resumeFrom.toString() else null
             try {
                 connections += 1
-                opener.open(resumeFrom, object : StreamSink {
+                opener.open(resumeId, object : StreamSink {
                     override fun opened() {
                         mutableStatus.value = StreamStatus.Live
                         failures = 0
@@ -242,13 +266,15 @@ class LiveStream internal constructor(
 
     private suspend fun receive(frame: SseFrame) {
         val envelope = runCatching { json.decodeFromString(StreamEnvelope.serializer(), frame.data) }.getOrNull()
-        val seq = frame.id?.trim()?.toLongOrNull()?.takeIf { it > 0 }
+        val id = parseStreamId(frame.id)
+        id?.first?.let { boot = it }
+        val seq = id?.second?.takeIf { it > 0 }
             ?: envelope?.seq
             ?: (envelope?.payload?.get("seq")?.jsonPrimitive?.longOrNull)
             ?: 0
         val type = frame.event.takeIf { it != "message" } ?: envelope?.type ?: return
         if (type == StreamEvent.Resync) {
-            val resyncSeq = frame.id?.trim()?.toLongOrNull() ?: resyncSeq(frame.data) ?: seq
+            val resyncSeq = id?.second ?: resyncSeq(frame.data) ?: seq
             cursor = resyncSeq
             deliver(StreamEvent(type, resyncSeq, null))
             return
@@ -273,8 +299,8 @@ internal fun DashboardClient.streamOpener(timing: StreamTiming): StreamOpener =
             authorise()
             header(HttpHeaders.Accept, "text/event-stream")
             header(HttpHeaders.CacheControl, "no-cache")
-            if (cursor > 0) {
-                header("Last-Event-ID", cursor.toString())
+            if (cursor != null) {
+                header("Last-Event-ID", cursor)
                 parameter("last_event_id", cursor)
             }
             timeout {

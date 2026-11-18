@@ -81,6 +81,12 @@ data class Gallery(val images: List<Attachment>, val index: Int = 0)
 /** Which stand-in picture to paint until real images load. */
 enum class Scene { Dusk, Dawn, Night }
 
+/** What a line or card still in the outbox says instead of its time. */
+const val SendingLabel = "Sending…"
+
+/** How faded a line still in the outbox is drawn. */
+const val SendingAlpha = 0.6f
+
 @Immutable
 data class Reply(
     val id: String,
@@ -89,6 +95,8 @@ data class Reply(
     val body: String,
     val reactions: List<Reaction> = emptyList(),
     val unread: Boolean = false,
+    /** Written here and still on its way to the dashboard. */
+    val sending: Boolean = false,
 )
 
 @Immutable
@@ -226,6 +234,8 @@ sealed interface FeedItem {
         override val replies: List<Reply> = emptyList(),
         override val unreadReplies: Int = 0,
         val reactions: List<Reaction> = emptyList(),
+        /** Written here and still on its way to the dashboard. */
+        val sending: Boolean = false,
     ) : Threaded {
         override val title: String get() = body.lineSequence().first().take(120)
         override val starter: Author get() = author

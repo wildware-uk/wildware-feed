@@ -41,6 +41,12 @@ class FakeDashboard(scheduler: TestCoroutineScheduler) {
     /** The newest event seq: every read is stamped with it. */
     var seq = 10L
 
+    /**
+     * The server's boot id. Set, every stream id is `<boot>-<seq>` and each connection opens with a
+     * `hello`, as the real server does; null is a server from before boot ids.
+     */
+    var boot: String? = null
+
     /** Set to make the stream refuse: 401 signs the device out. */
     var streamStatus: HttpStatusCode = HttpStatusCode.OK
 
@@ -51,8 +57,14 @@ class FakeDashboard(scheduler: TestCoroutineScheduler) {
     val writes = mutableListOf<Pair<String, String>>()
     val connections = mutableListOf<Connection>()
 
-    class Connection(val lastEventId: String?, val query: String?) {
+    class Connection(val lastEventId: String?, val query: String?, private val boot: String? = null) {
         val channel = ByteChannel(autoFlush = true)
+
+        private fun id(seq: Long) = boot?.let { "$it-$seq" } ?: "$seq"
+
+        suspend fun hello(seq: Long) {
+            channel.writeStringUtf8("id: ${id(seq)}\nevent: hello\ndata: {\"type\":\"hello\",\"boot\":\"$boot\",\"seq\":$seq}\n\n")
+        }
 
         suspend fun event(type: String, seq: Long, payload: JsonObject = JsonObject(emptyMap())) {
             val envelope = buildJsonObject {
@@ -61,11 +73,11 @@ class FakeDashboard(scheduler: TestCoroutineScheduler) {
                 put("at", "2026-11-18T10:00:00.000Z")
                 put("payload", payload)
             }
-            channel.writeStringUtf8("id: $seq\nevent: $type\ndata: $envelope\n\n")
+            channel.writeStringUtf8("id: ${id(seq)}\nevent: $type\ndata: $envelope\n\n")
         }
 
         suspend fun resync(seq: Long) {
-            channel.writeStringUtf8("id: $seq\nevent: resync\ndata: {\"type\":\"resync\",\"reason\":\"ahead\",\"from\":99,\"seq\":$seq}\n\n")
+            channel.writeStringUtf8("id: ${id(seq)}\nevent: resync\ndata: {\"type\":\"resync\",\"reason\":\"ahead\",\"from\":99,\"seq\":$seq}\n\n")
         }
 
         suspend fun heartbeat() = channel.writeStringUtf8(": heartbeat now\n\n")
@@ -106,9 +118,10 @@ class FakeDashboard(scheduler: TestCoroutineScheduler) {
         return when (path) {
             "/api/stream" -> {
                 if (streamStatus != HttpStatusCode.OK) return ok("""{"error":"unauthenticated"}""", streamStatus)
-                val connection = Connection(request.headers["Last-Event-ID"], request.url.parameters["last_event_id"])
+                val connection = Connection(request.headers["Last-Event-ID"], request.url.parameters["last_event_id"], boot)
                 connections += connection
                 connection.channel.writeStringUtf8("retry: 2000\n\n: connected\n\n")
+                if (boot != null) connection.hello(seq)
                 respond(connection.channel, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "text/event-stream"))
             }
             "/api/snapshot" -> ok(json.encodeToString(FeedSnapshot.serializer(), FeedSnapshot(

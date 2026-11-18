@@ -145,6 +145,7 @@ internal class FeedMapper(
             replies = replies(replies, unread, agents),
             unreadReplies = unread,
             reactions = reactions(reactions),
+            sending = post.sending,
         )
     }
 
@@ -204,6 +205,7 @@ internal class FeedMapper(
                 body = line.message.body,
                 reactions = reactions(line.reactions),
                 unread = line.message.id in unreadIds,
+                sending = line.sending,
             )
         }
     }

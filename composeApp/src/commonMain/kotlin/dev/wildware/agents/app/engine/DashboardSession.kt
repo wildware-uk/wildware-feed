@@ -3,6 +3,7 @@ package dev.wildware.agents.app.engine
 import dev.wildware.agents.CardKinds
 import dev.wildware.agents.CardRef
 import dev.wildware.agents.Dashboard
+import dev.wildware.agents.DraftPrefix
 import dev.wildware.agents.DashboardClient
 import dev.wildware.agents.Feed
 import dev.wildware.agents.OutboxQueue
@@ -62,6 +63,7 @@ class DashboardSession(
     val client = DashboardClient(saved.server, saved.token, platform.httpEngine())
     private val outbox = OutboxQueue(client, platform.outbox, scope)
     private val outboxChanged = platform.outboxChanged
+    private val foreground = platform.foreground
     /** The engine itself, for what lives outside the feed screen: the desktop tray and notifications. */
     val dashboard = Dashboard(client, scope, ReadMarks(platform.readMarks), outbox)
     private val actions = OwnerActions(outbox)
@@ -105,6 +107,16 @@ class DashboardSession(
         dashboard.start()
         // Another process queued, sent or dropped something: show it, and send what is new.
         scope.launch { outboxChanged.collect { outbox.reload() } }
+        scope.launch { foreground.collect { resume() } }
+    }
+
+    /**
+     * The app is back in front: the connection it held while away is likely dead, so open a fresh
+     * one (the server replays what was missed) and send anything waiting.
+     */
+    fun resume() {
+        dashboard.revive(reconnect = true, reread = false)
+        outbox.kick(ignoreBackoff = true)
     }
 
     /**
@@ -192,7 +204,8 @@ class DashboardSession(
 
     /** What card or line an id names, as the server's write calls want it. */
     private fun cardRef(id: String): CardRef? =
-        latest.card(id)?.card
+        // A line still in the outbox has no id on the dashboard yet: nothing can be done to it there.
+        if (id.startsWith(DraftPrefix)) null else latest.card(id)?.card
             ?: request(id)?.card
             ?: allLines().firstOrNull { it.message.id == id }?.let { CardRef(CardKinds.Message, id) }
 

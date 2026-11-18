@@ -368,6 +368,7 @@ internal class ThreadsReader(
 
     override fun handle(event: StreamEvent) {
         if (event.type == StreamEvent.Resync) return requestRead(replace = true)
+        if (event.type == "message.deleted") event.payload.string("messageId")?.let { adopted.remove(it) }
         // A project's feed leaves other projects' talk alone.
         val scopeId = projectSlug?.let { projectId() }
         val eventProject = event.payload.string("projectId")
@@ -384,6 +385,8 @@ internal class ThreadsReader(
 
     private companion object {
         val Anchors = listOf("updateId", "requestId", "replyTo", "taskId")
+        val Oldest = compareBy<MessageView>({ it.createdAt }, { it.seq })
+        const val MaxAdopted = 50
     }
 
     private sealed interface Target {
@@ -495,9 +498,32 @@ internal class ThreadsReader(
     }
 
     internal fun apply(next: MessagesSnapshot) {
-        snapshot = next
+        snapshot = keepAdopted(next)
         seq = next.seq
         loaded = true
+    }
+
+    /**
+     * What the owner just sent, as the dashboard answered the send: shown now, without waiting for
+     * the stream. Held until a read includes it (or it is deleted), so a read that set off before the
+     * send can't take it away again.
+     */
+    private val adopted = LinkedHashMap<String, MessageView>()
+
+    fun adopt(message: MessageView) {
+        adopted[message.id] = message
+        while (adopted.size > MaxAdopted) adopted.remove(adopted.keys.first())
+        if (snapshot.messages.none { it.id == message.id }) {
+            snapshot = snapshot.copy(messages = (snapshot.messages + message).sortedWith(Oldest))
+        }
+    }
+
+    private fun keepAdopted(next: MessagesSnapshot): MessagesSnapshot {
+        if (adopted.isEmpty()) return next
+        val read = next.messages.mapTo(HashSet()) { it.id }
+        adopted.keys.removeAll { it in read }
+        if (adopted.isEmpty()) return next
+        return next.copy(messages = (next.messages + adopted.values).sortedWith(Oldest))
     }
 
     /** Swaps one thread for its fresh copy, leaving every other thread as it was. */
@@ -511,14 +537,14 @@ internal class ThreadsReader(
         val fresh = part.messages.filter(::inThread)
         val replaced = snapshot.messages.filter(::inThread).mapTo(HashSet()) { it.id } + fresh.map { it.id }
         val current = snapshot
-        snapshot = current.copy(
-            messages = (current.messages.filter { it.id !in replaced } + fresh).sortedWith(compareBy({ it.createdAt }, { it.seq })),
+        snapshot = keepAdopted(current.copy(
+            messages = (current.messages.filter { it.id !in replaced } + fresh).sortedWith(Oldest),
             acks = current.acks.filter { it.messageId !in replaced } + part.acks.filter { it.messageId in replaced },
             media = current.media.filterKeys { it !in replaced } + part.media.filterKeys { it in replaced },
             embeds = current.embeds.filterKeys { it !in replaced } + part.embeds.filterKeys { it in replaced },
             deliveries = current.deliveries.filter { it.messageId !in replaced } + part.deliveries.filter { it.messageId in replaced },
             reactions = current.reactions.filter { it.messageId !in replaced } + part.reactions.filter { it.messageId in replaced },
-        )
+        ))
     }
 }
 

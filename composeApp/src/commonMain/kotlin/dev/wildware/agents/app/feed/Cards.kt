@@ -23,6 +23,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -572,13 +573,13 @@ fun PostCard(item: FeedItem.Post, modifier: Modifier = Modifier, density: Densit
     val indent = if (density == Density.Compact) 0.dp else BodyIndent
     val target = MenuTarget(item.id, if (own) "You" else item.author.name, item.body, own = own)
     val reactions = ui?.reactionsFor(item.id, item.reactions) ?: item.reactions
-    WithMenu(target, modifier) { gestures ->
+    WithMenu(target, modifier.alpha(if (item.sending) SendingAlpha else 1f)) { gestures ->
     CardFrame(gestures, density = density) {
         Column {
             CardHeader(
                 author = item.author,
                 role = if (own) "You" else (item.author as? Author.AgentAuthor)?.agent?.role,
-                time = item.time,
+                time = if (item.sending) SendingLabel else item.time,
                 level = null,
                 status = null,
                 project = item.project,

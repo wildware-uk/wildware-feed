@@ -64,6 +64,7 @@ fun iosPlatform(
         filePicker = photoPicker,
         voiceInput = voiceInput,
         outboxChanged = OutboxSignals.changes,
+        foreground = AppLifecycle.foregrounds,
         clearLocalData = {
             outbox.clear()
             remove(readMarks)
@@ -93,6 +94,20 @@ object OutboxSignals {
         val name = CFStringCreateWithCString(null, Name, kCFStringEncodingUTF8) ?: return
         CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(), name, null, null, true)
         CFRelease(name)
+    }
+}
+
+/**
+ * The app coming back to the front. Swift calls [foreground] when the scene turns active. While the
+ * app was in the background iOS froze it, and the live connection it held is almost certainly
+ * dead, though nothing on it says so until the heartbeat window runs out.
+ */
+object AppLifecycle {
+    private val flow = MutableSharedFlow<Unit>(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+    internal val foregrounds: Flow<Unit> = flow
+
+    fun foreground() {
+        flow.tryEmit(Unit)
     }
 }
 

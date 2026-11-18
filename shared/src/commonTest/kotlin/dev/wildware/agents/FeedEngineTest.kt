@@ -170,6 +170,45 @@ class FeedEngineTest {
     }
 
     @Test
+    fun `a reconnect hands back the server's boot id with the cursor`() = runTest {
+        val server = FakeDashboard(testScheduler).apply { boot = "b0071"; seq = 10 }
+        val dashboard = started(server)
+        server.seq = 11
+        server.connections.single().event("agent.presence", 11, payload("agentId" to "a1"))
+        runCurrent()
+        assertEquals(11, dashboard.stream.cursor)
+
+        server.connections.single().drop()
+        advanceTimeBy(2_001)
+        runCurrent()
+
+        // As received: a restarted server reads another boot here and answers resync, however small the seq.
+        assertEquals("b0071-11", server.connections[1].lastEventId)
+        assertEquals("b0071-11", server.connections[1].query)
+    }
+
+    @Test
+    fun `after a restart the new boot id is the one sent back`() = runTest {
+        val server = FakeDashboard(testScheduler).apply { boot = "aaaa"; seq = 500 }
+        val dashboard = started(server)
+
+        server.boot = "bbbb"
+        server.seq = 3
+        server.connections.single().drop()
+        advanceTimeBy(2_001)
+        runCurrent()
+        assertEquals("aaaa-500", server.connections[1].lastEventId)
+        server.connections[1].resync(3)
+        runCurrent()
+        assertEquals(3, dashboard.stream.cursor)
+
+        server.connections[1].drop()
+        advanceTimeBy(2_001)
+        runCurrent()
+        assertEquals("bbbb-3", server.connections[2].lastEventId)
+    }
+
+    @Test
     fun `a deleted update leaves at once without a read`() = runTest {
         val server = FakeDashboard(testScheduler).apply { updates = listOf(FakeDashboard.update("u1", 5), FakeDashboard.update("u2", 6)) }
         val dashboard = started(server)

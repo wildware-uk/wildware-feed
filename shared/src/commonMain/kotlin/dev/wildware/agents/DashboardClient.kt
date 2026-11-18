@@ -31,6 +31,8 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonPrimitive
 
 /** The dashboard refused a call. [status] is the HTTP status, [code] the dashboard's error code when it gave one. */
 class DashboardException(val status: Int, val code: String?, message: String) : Exception(message)
@@ -268,7 +270,7 @@ class DashboardClient(
     /** Replies in a thread. [thread] is the `reply` object a notification carried, used as-is. */
     @Throws(Exception::class)
     suspend fun reply(thread: Map<String, String>, body: String): String =
-        postMessage(thread + ("body" to body), mediaIds = emptyList())
+        postMessage(thread + ("body" to body), mediaIds = emptyList()).id
 
     /** Posts [text] to [projectSlug]'s feed and marks it as work, so an agent on that project picks it up. */
     @Throws(Exception::class)
@@ -286,7 +288,7 @@ class DashboardClient(
     suspend fun deliver(item: OutboxItem, attachments: List<Attachment>): DeliveryResult = deliverQueued(item, attachments)
 
     internal suspend fun postToProject(projectSlug: String, text: String): String =
-        postMessage(mapOf("project" to projectSlug, "body" to text), mediaIds = emptyList())
+        postMessage(mapOf("project" to projectSlug, "body" to text), mediaIds = emptyList()).id
 
     internal suspend fun markAsWork(messageId: String) {
         http.post("api/cards/message/$messageId/status") {
@@ -305,7 +307,11 @@ class DashboardClient(
      * `{"request": id}` to talk over a question an agent asked. Files alone get a caption.
      */
     @Throws(Exception::class)
-    suspend fun send(thread: Map<String, String>, text: String?, attachments: List<Attachment>): String {
+    suspend fun send(thread: Map<String, String>, text: String?, attachments: List<Attachment>): String =
+        sendMessage(thread, text, attachments).id
+
+    /** [send], answering with the message as the dashboard stored it too, when it could be read. */
+    internal suspend fun sendMessage(thread: Map<String, String>, text: String?, attachments: List<Attachment>): Posted {
         val body = text?.trim()?.takeIf { it.isNotEmpty() } ?: shareCaption(attachments)
         val mediaIds = attachments.map { upload(it) }
         return postMessage(thread + ("body" to body), mediaIds)
@@ -315,14 +321,27 @@ class DashboardClient(
 
     private suspend fun upload(attachment: Attachment): String = uploadMedia(attachment).id
 
-    private suspend fun postMessage(fields: Map<String, String>, mediaIds: List<String>): String =
-        http.post("api/messages") {
+    private suspend fun postMessage(fields: Map<String, String>, mediaIds: List<String>): Posted {
+        val body = http.post("api/messages") {
             authorise()
             jsonBody(JsonObject(buildMap {
                 fields.forEach { (key, value) -> put(key, JsonPrimitive(value)) }
                 if (mediaIds.isNotEmpty()) put("mediaIds", JsonArray(mediaIds.map(::JsonPrimitive)))
             }))
-        }.decoded<MessageCreated>().message.id
+        }.decoded<PostedBody>()
+        // Only the id has to be there. A message this version can't read in full is still sent:
+        // failing here would send it again.
+        val message = runCatching { json.decodeFromJsonElement(MessageView.serializer(), body.message) }.getOrNull()
+        val id = message?.id ?: body.message["id"]?.jsonPrimitive?.contentOrNull
+            ?: throw DashboardException(500, null, "The dashboard didn't say which message it made.")
+        return Posted(id, message)
+    }
+
+    /** A message the dashboard took: its id, and the whole row when it could be read. */
+    internal class Posted(val id: String, val message: MessageView?)
+
+    @Serializable
+    private class PostedBody(val message: JsonObject)
 
     private suspend fun putLiveActivity(body: JsonObject) {
         http.put("api/devices/current/live-activity") {
@@ -355,11 +374,6 @@ class DashboardClient(
     @Serializable
     internal data class ErrorBody(val error: String? = null, val message: String? = null)
 
-    @Serializable
-    private data class MessageCreated(val message: Id)
-
-    @Serializable
-    private data class Id(val id: String)
 
     private fun shareCaption(attachments: List<Attachment>): String = when (attachments.size) {
         0 -> throw DashboardException(400, "invalid_argument", "There is nothing to share.")

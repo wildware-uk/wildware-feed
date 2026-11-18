@@ -36,6 +36,8 @@ class AppPlatform(
     val voiceInput: VoiceInput? = null,
     /** Fires when another process (the iPhone's share sheet, Siri, alert buttons) changed the outbox. */
     val outboxChanged: Flow<Unit> = emptyFlow(),
+    /** Fires when the app comes back to the front after being away, so the live connection is renewed. */
+    val foreground: Flow<Unit> = emptyFlow(),
 ) {
     companion object {
         /** Everything in memory: for tests and previews. */

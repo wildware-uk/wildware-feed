@@ -1,5 +1,6 @@
 package dev.wildware.agents
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
@@ -69,6 +70,13 @@ class OutboxQueue @OptIn(ExperimentalTime::class) constructor(
 
     /** Everything not yet sent, given-up items included. [Outbox.waiting] and [Outbox.failed] split it. */
     val items: StateFlow<List<OutboxItem>> = mutableItems.asStateFlow()
+
+    /**
+     * Told about each item this queue sent, before it leaves [items]: the feed shows a reply from
+     * here rather than from the live stream, so a dead stream can't hide it, and it never blinks
+     * out between leaving the outbox and arriving in its thread.
+     */
+    var onSent: (suspend (OutboxItem, DeliveryResult) -> Unit)? = null
 
     private val kicks = Channel<Boolean>(Channel.CONFLATED)
     private var runner: Job? = null
@@ -170,6 +178,15 @@ class OutboxQueue @OptIn(ExperimentalTime::class) constructor(
                 client.deliver(item, attachments)
             } catch (missing: MissingFile) {
                 DeliveryResult(DeliveryOutcome.GiveUp, message = "${missing.filename} is no longer on this device.")
+            }
+            if (result.isSent) {
+                try {
+                    onSent?.invoke(item, result)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Throwable) {
+                    // Showing it early is a nicety; the stream still brings it.
+                }
             }
             update { Outbox.afterAttempt(it, item.id, result, clock()) }
         }

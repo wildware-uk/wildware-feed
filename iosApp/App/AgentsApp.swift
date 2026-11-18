@@ -28,7 +28,11 @@ struct AgentsApp: App {
         }
         .onChange(of: scenePhase) { _, phase in
             guard model.isLinked else { return }
-            if phase == .active { OutboxRunner.shared.kick(ignoreBackoff: true) }
+            if phase == .active {
+                OutboxRunner.shared.kick(ignoreBackoff: true)
+                // The live connection died while iOS had the app frozen: renew it now, not when it times out.
+                AppLifecycle.shared.foreground()
+            }
             if phase == .background { OutboxRunner.shared.scheduleBackground() }
             Task { await LiveActivityController.shared.refresh(startIfNeeded: phase == .background) }
             if phase == .active { Task { await SpotlightIndexer.refresh() } }

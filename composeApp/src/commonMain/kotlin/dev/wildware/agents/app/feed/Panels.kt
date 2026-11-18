@@ -25,6 +25,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -534,8 +535,9 @@ private fun SendButton(enabled: Boolean, onClick: () -> Unit) {
 @Composable
 fun ReplyView(reply: Reply, modifier: Modifier = Modifier) {
     val colors = AgentTheme.colors
-    val spoken = "${reply.author.name}, ${reply.time}" + if (reply.unread) ", new" else ""
-    Row(modifier.fillMaxWidth()) {
+    val time = if (reply.sending) SendingLabel else reply.time
+    val spoken = "${reply.author.name}, $time" + if (reply.unread) ", new" else ""
+    Row(modifier.fillMaxWidth().alpha(if (reply.sending) SendingAlpha else 1f)) {
         Avatar(reply.author, 28.dp, showPresence = false)
         Column(Modifier.padding(start = 10.dp).weight(1f)) {
             Row(
@@ -548,7 +550,7 @@ fun ReplyView(reply: Reply, modifier: Modifier = Modifier) {
                     color = colors.text,
                     style = AgentTheme.type.label.copy(fontWeight = FontWeight.SemiBold),
                 )
-                MetaText(reply.time, Modifier.padding(start = 8.dp).clearAndSetSemantics { })
+                MetaText(time, Modifier.padding(start = 8.dp).clearAndSetSemantics { })
             }
             Spacer(Modifier.height(2.dp))
             MarkdownBody(reply.body)
