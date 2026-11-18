@@ -1,4 +1,8 @@
-# Agents for iPhone
+# Agents
+
+The native app for the [Agent Dashboard](https://github.com/wildware-uk/agent-dashboard) on iPhone, iPad, Apple Watch, Mac, Windows and Linux. MIT licensed. Desktop installers are on the [Releases](https://github.com/wildware-uk/agent-dashboard-ios/releases) page; see [docs/INSTALL.md](docs/INSTALL.md).
+
+## iPhone
 
 A native iPhone and iPad app for the [Agent Dashboard](https://github.com/wildware-uk/agent-dashboard).
 The app is the native Compose app from `composeApp/` (the same screens as the desktop app): sign in
