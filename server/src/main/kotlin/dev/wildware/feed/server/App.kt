@@ -9,6 +9,7 @@ import dev.wildware.feed.server.domain.PushSubscriptions
 import dev.wildware.feed.server.domain.Requests
 import dev.wildware.feed.server.domain.Devices
 import dev.wildware.feed.server.domain.Reads
+import dev.wildware.feed.server.mcp.registerEmbedAppTools
 import dev.wildware.feed.server.mcp.registerFeedTools
 import dev.wildware.feed.server.mcp.registerRequestTools
 import dev.wildware.feed.server.mcp.registerSessionTools
@@ -77,6 +78,7 @@ class App(val config: Config, val db: Database, val clock: () -> Long = System::
 
     init {
         tools.registerFeedTools(this)
+        tools.registerEmbedAppTools(this)
         tools.registerRequestTools(this)
         tools.registerSessionTools(this)
     }

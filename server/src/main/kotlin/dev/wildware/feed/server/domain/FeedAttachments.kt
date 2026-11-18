@@ -6,7 +6,6 @@ import dev.wildware.feed.server.http.Wire
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
-import java.net.URI
 
 /**
  * What a post carries besides its words: uploaded media, embeds and app views, checked before the
@@ -99,24 +98,15 @@ object FeedAttachments {
         }
     }
 
-    /**
-     * `parseSourceUrl`: an absolute http(s) URL, as `new URL(raw).toString()` prints it. The JDK's
-     * parser stands in for WHATWG URL here; it agrees on ordinary links (scheme and host lowercased,
-     * an empty path becomes `/`).
-     */
+    /** `parseSourceUrl`: an absolute http(s) URL, as `new URL(raw).toString()` prints it. */
     private fun sourceUrl(raw: JsonElement?, field: String): String? {
         if (raw == null || raw is JsonNull || raw.jsString == "") return null
         val text = raw.jsString ?: throw invalid("$field must be a URL")
-        val uri = runCatching { URI(text.jsTrim()) }.getOrNull()
-        val scheme = uri?.scheme?.lowercase()
-        if (uri == null || uri.host == null || (scheme != "http" && scheme != "https")) {
+        val url = WebUrl.parse(text.jsTrim())
+        if (url?.host == null || (url.scheme != "http" && url.scheme != "https")) {
             throw invalid("$field must be an absolute http or https URL")
         }
-        val port = if (uri.port == -1 || (scheme == "http" && uri.port == 80) || (scheme == "https" && uri.port == 443)) "" else ":${uri.port}"
-        val path = uri.rawPath.takeUnless { it.isNullOrEmpty() } ?: "/"
-        val userInfo = uri.rawUserInfo?.let { "$it@" } ?: ""
-        return "$scheme://$userInfo${uri.host.lowercase()}$port$path" +
-            (uri.rawQuery?.let { "?$it" } ?: "") + (uri.rawFragment?.let { "#$it" } ?: "")
+        return url.href
     }
 
     fun attachEmbeds(db: Database, embeds: List<CheckedEmbed>, anchor: String, cardId: String, agentId: String?, author: String, at: Long) {
@@ -138,7 +128,7 @@ object FeedAttachments {
         }
     }
 
-    private fun appUri(raw: JsonElement?, field: String): String {
+    internal fun appUri(raw: JsonElement?, field: String): String {
         val text = raw.jsString ?: throw invalid("$field must be a ui:// URI")
         val uri = text.jsTrim().lowercase()
         if (!uri.startsWith("ui://")) throw invalid("$field must start with ui://, e.g. \"ui://review-board\"")
@@ -149,7 +139,7 @@ object FeedAttachments {
         return uri
     }
 
-    private fun appData(raw: JsonElement?, field: String): String {
+    internal fun appData(raw: JsonElement?, field: String): String {
         val value = if (raw == null || raw is JsonNull) JsonObject(emptyMap()) else raw
         if (value !is JsonObject) throw invalid("$field must be a JSON object")
         val text = Wire.encode(Js.normalize(value))
@@ -157,7 +147,7 @@ object FeedAttachments {
         return text
     }
 
-    private fun appTitle(raw: JsonElement?, field: String): String? {
+    internal fun appTitle(raw: JsonElement?, field: String): String? {
         if (raw == null || raw is JsonNull || raw.jsString == "") return null
         val text = raw.jsString ?: throw invalid("$field must be text")
         val title = text.jsTrim()

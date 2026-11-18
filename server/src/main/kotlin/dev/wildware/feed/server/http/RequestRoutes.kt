@@ -1,7 +1,9 @@
 package dev.wildware.feed.server.http
 
 import dev.wildware.feed.server.App
+import dev.wildware.feed.server.domain.Apps
 import dev.wildware.feed.server.domain.Js
+import dev.wildware.feed.server.domain.feed
 import dev.wildware.feed.server.domain.conflict
 import dev.wildware.feed.server.domain.invalid
 import dev.wildware.feed.server.domain.jsString
@@ -17,7 +19,7 @@ import kotlinx.serialization.json.put
 
 /**
  * Owner routes for the request area: answering and dismissing requests (spec/03 §2), clearing the
- * bell (§5), Web Push subscriptions (§4) and an app's saved state (§8).
+ * bell (§5), Web Push subscriptions (§4), an app's document and its saved state (§8).
  */
 fun Route.requestRoutes(app: App) {
     endpoint(
@@ -94,6 +96,25 @@ fun Route.requestRoutes(app: App) {
                 put("view_id", viewId)
                 put("state", saved ?: JsonNull)
             })
+        },
+    )
+
+    // One showing's document, for the sandboxed frame that renders it (spec/03 §8, TS `http/apps/serve.ts`).
+    endpoint(
+        "/apps/{view}",
+        HttpMethod.Get to {
+            val document = app.feed.apps.document(call.parameters["view"] ?: "")
+            if (document == null) {
+                call.respondRaw(404, """{"error":"not_found"}""", Wire.JSON, "Cache-Control" to "no-store")
+            } else {
+                call.respondRaw(
+                    200, document.first, "text/html;profile=mcp-app;charset=utf-8",
+                    "Content-Security-Policy" to Apps.policyFor(document.second),
+                    "X-Content-Type-Options" to "nosniff",
+                    "Referrer-Policy" to "no-referrer",
+                    "Cache-Control" to "no-store",
+                )
+            }
         },
     )
 }

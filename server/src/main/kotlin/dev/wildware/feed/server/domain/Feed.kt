@@ -6,7 +6,8 @@ import dev.wildware.feed.server.events.Bus
 import kotlinx.serialization.json.JsonObject
 
 /**
- * The feed's writes (spec/02, spec/05 §7): projects, updates, messages, cards, tags and fields.
+ * The feed's writes (spec/02, spec/05 §7): projects, updates, messages, cards, tags, fields, embed
+ * looks and apps.
  *
  * The TS server runs each write to the end before anything else touches the database. Here every
  * write runs inside [op], which holds the one connection for the whole write, and the events it
@@ -25,6 +26,8 @@ class Feed(val db: Database, val bus: Bus, val clock: () -> Long) {
     val messages = Messages(this)
     val tags = Tags(this)
     val fields = Fields(this)
+    val embedTypes = EmbedTypes(this)
+    val apps = Apps(this)
 
     /** Run one write alone; nested calls join the outer one. */
     fun <T> op(block: () -> T): T {
