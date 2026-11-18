@@ -151,13 +151,17 @@ fun Sidebar(
     ) {
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 14.dp)) {
             Spacer(Modifier.height(18.dp))
-            Row(Modifier.padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                AppMark(30.dp)
+            Row(Modifier.padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                AppMark(28.dp)
+                // One line at the sidebar's 240: the name never wraps under its own mark.
                 Text(
                     dev.wildware.agents.app.ProductName,
-                    Modifier.padding(start = 10.dp).weight(1f),
+                    Modifier.padding(start = 9.dp).weight(1f),
                     color = colors.text,
-                    style = AgentTheme.type.title.copy(fontSize = 17.sp, lineHeight = 22.sp),
+                    style = AgentTheme.type.title.copy(fontSize = 16.sp, lineHeight = 22.sp),
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Ellipsis,
                 )
                 IconAction(Icons.Bell, "Notifications")
             }
