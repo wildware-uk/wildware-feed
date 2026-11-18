@@ -48,6 +48,8 @@ class AppPlatform(
      * its own while it runs, which covers questions and replies only.
      */
     val pushAlerts: Boolean = false,
+    /** A server this app can run itself ("This computer"), or null where it can't (phones). */
+    val localServer: dev.wildware.agents.app.local.LocalServerHost? = null,
 ) {
     companion object {
         /** Everything in memory: for tests and previews. */

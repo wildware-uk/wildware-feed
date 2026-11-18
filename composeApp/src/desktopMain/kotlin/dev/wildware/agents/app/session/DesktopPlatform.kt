@@ -129,5 +129,15 @@ fun desktopPlatform(dir: File = desktopConfigDir()): AppPlatform {
         settings = FileTextStore(File(dir, "settings.txt")),
         feedCache = FileTextStore(feedCache),
         filePicker = AwtFilePicker { java.awt.Frame.getFrames().firstOrNull { it.isActive } },
+        localServer = localServer(dir),
     )
+}
+
+/** The server this app can run itself, in `<config dir>/server`, stopped cleanly when the app exits. */
+private fun localServer(dir: File): dev.wildware.agents.app.local.LocalServer {
+    val serverDir = File(dir, "server").apply { mkdirs() }
+    privateTo(serverDir, directory = true)
+    val host = dev.wildware.agents.app.local.LocalServer(serverDir, writePrivately = ::writePrivately)
+    Runtime.getRuntime().addShutdownHook(Thread { kotlinx.coroutines.runBlocking { host.stop() } })
+    return host
 }

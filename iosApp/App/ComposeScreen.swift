@@ -46,7 +46,9 @@ final class KeychainSessionStore: NSObject, SessionStore {
             server: credentials.server.absoluteString,
             token: credentials.token,
             deviceName: name,
-            deviceId: credentials.deviceId.isEmpty ? nil : credentials.deviceId
+            deviceId: credentials.deviceId.isEmpty ? nil : credentials.deviceId,
+            // Kotlin's default isn't visible from Swift; a phone never hosts the server itself.
+            local: false
         )
     }
 

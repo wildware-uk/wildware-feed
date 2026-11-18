@@ -90,6 +90,8 @@ kotlin {
                 implementation(compose.desktop.currentOs)
                 implementation(libs.coroutines.swing)
                 implementation(libs.ktor.client.okhttp)
+                // "This computer": the app can run the Wildware Feed server itself.
+                implementation(project(":server"))
             }
         }
         androidMain.dependencies {
@@ -129,7 +131,8 @@ compose.desktop {
             vendor = "Wildware"
             copyright = "© 2026 Wildware"
             // What `suggestRuntimeModules` found, plus the TLS curves OkHttp needs that it can't see.
-            modules("java.instrument", "java.management", "jdk.unsupported", "java.naming", "jdk.crypto.ec")
+            // java.sql and java.net.http are for the server the app can host ("This computer").
+            modules("java.instrument", "java.management", "jdk.unsupported", "java.naming", "jdk.crypto.ec", "java.sql", "java.net.http")
             macOS {
                 bundleID = "dev.wildware.agents.desktop"
                 dockName = "Wildware Feed"

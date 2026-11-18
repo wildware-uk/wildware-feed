@@ -11,6 +11,8 @@ data class SavedSession(
     val deviceName: String,
     /** The dashboard's id for this device. The iPhone hands it to the watch with the key. */
     val deviceId: String? = null,
+    /** Signed in to the server this app runs itself, which must be started before the session opens. */
+    val local: Boolean = false,
 )
 
 /**

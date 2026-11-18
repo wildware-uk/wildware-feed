@@ -60,7 +60,27 @@ class AppModel(private val platform: AppPlatform, private val scope: CoroutineSc
     }
 
     init {
-        platform.sessions.load()?.let(::open)
+        platform.sessions.load()?.let { saved ->
+            val host = platform.localServer
+            if (saved.local && host != null) scope.launch {
+                runCatching { host.ensureRunning() }
+                open(saved)
+            } else {
+                open(saved)
+            }
+        }
+    }
+
+    /** Whether this app can run a server itself ("This computer"). */
+    val canHostLocally: Boolean get() = platform.localServer != null
+
+    /** Starts the server on this computer and signs in to it, with no password. */
+    suspend fun signInHere(deviceName: String) {
+        val host = platform.localServer ?: error("this app can't run a server")
+        val signed = host.signInHere(deviceName)
+        val saved = SavedSession(signed.server, signed.token, signed.deviceName, signed.deviceId, local = true)
+        platform.sessions.save(saved)
+        open(saved)
     }
 
     /** Signs in and opens the feed. Throws [SignInException] with what went wrong. */
