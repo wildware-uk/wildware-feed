@@ -141,7 +141,7 @@ private struct StatusSmall: View {
                     .minimumScaleFactor(0.85)
                     .padding(.top, Theme.Space.s)
                 Spacer(minLength: Theme.Space.xs)
-                AskerRow(agent: top.agentName, project: nil, expiry: top.expiry, now: now, chipSize: 18)
+                AskerRow(agent: top.agentName, agentId: top.agentId, project: nil, expiry: top.expiry, now: now, chipSize: 18)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         } else {
@@ -188,7 +188,7 @@ private struct StatusMedium: View {
                     Text("\(snapshot.inProgress) working · \(snapshot.online.count) online")
                         .font(Theme.Font.meta).foregroundStyle(Theme.textMuted).lineLimit(1)
                 }
-                AskerRow(agent: top.agentName, project: top.projectName, expiry: top.expiry, now: now, chipSize: 18)
+                AskerRow(agent: top.agentName, agentId: top.agentId, project: top.projectName, expiry: top.expiry, now: now, chipSize: 18)
                     .padding(.top, Theme.Space.s)
                 QuestionAndAnswers(request: top, fullSizeButtons: false, spacing: Theme.Space.s)
                     .padding(.top, 6)
@@ -234,7 +234,7 @@ private struct StatusLarge: View {
                 ForEach(Array(snapshot.requests.prefix(3).enumerated()), id: \.element.id) { index, request in
                     if index > 0 { Rectangle().fill(Theme.waitingLine).frame(height: 1) }
                     VStack(alignment: .leading, spacing: 5) {
-                        AskerRow(agent: request.agentName, project: request.projectName, expiry: request.expiry, now: now, chipSize: 18)
+                        AskerRow(agent: request.agentName, agentId: request.agentId, project: request.projectName, expiry: request.expiry, now: now, chipSize: 18)
                         QuestionAndAnswers(request: request, fullSizeButtons: false, spacing: 5)
                     }
                     .padding(.vertical, Theme.Space.s)
@@ -408,13 +408,13 @@ extension StatusSnapshot {
                     id: "req-1", agentName: "Rover", projectSlug: "garden-game", projectName: "garden-game",
                     question: "Tests pass. Merge the fee-rounding branch into main?",
                     kind: RequestKind.companion.fromWire(value: "confirm")!, options: nil,
-                    expiresAt: soon, detail: nil, defaultAnswer: "true"
+                    expiresAt: soon, detail: nil, defaultAnswer: "true", agentId: "a-rover"
                 ),
                 PendingRequest(
                     id: "req-2", agentName: "Lumen", projectSlug: "harbor-app", projectName: "harbor-app",
                     question: "The build is green. What next?",
                     kind: RequestKind.companion.fromWire(value: "choice")!, options: ["Ship it", "Keep testing", "Not now"],
-                    expiresAt: later, detail: nil, defaultAnswer: nil
+                    expiresAt: later, detail: nil, defaultAnswer: nil, agentId: "a-lumen"
                 ),
             ],
             online: [

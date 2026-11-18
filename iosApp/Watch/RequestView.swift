@@ -13,7 +13,7 @@ struct RequestView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 5) {
-                    AgentChip(name: request.agentName, agentId: nil, size: 15)
+                    AgentChip(name: request.agentName, agentId: request.agentId, size: 15)
                     Text(request.byline).textCase(.uppercase).lineLimit(1)
                 }
                 .font(Theme.Font.meta)

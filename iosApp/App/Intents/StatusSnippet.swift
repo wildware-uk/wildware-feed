@@ -22,7 +22,7 @@ struct StatusSnippet: View {
             if let top {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 6) {
-                        AgentChip(name: top.agentName, agentId: nil, size: 18)
+                        AgentChip(name: top.agentName, agentId: top.agentId, size: 18)
                         Text(top.agentName).font(Theme.Font.label.weight(.semibold))
                         if let project = top.projectName {
                             Text(project).font(Theme.Font.meta).foregroundStyle(Theme.textMuted)

@@ -58,10 +58,14 @@ extension AgentsActivityAttributes.ContentState {
             topQuestion: top?.question,
             topRequestId: top?.id,
             topKind: top?.kind.wireName,
+            topAgentId: top?.agentId,
             topProject: top?.projectName,
             topExpiresAt: top?.expiry.map { Int($0.timeIntervalSince1970) },
             topOptions: top?.options,
-            topDefault: top?.defaultAnswer
+            topDefault: top?.defaultAnswer,
+            working: summary.working.isEmpty ? nil : summary.working.prefix(3).map {
+                Working(agentId: $0.agentId, agent: $0.agent, task: $0.task, since: Int($0.since))
+            }
         )
     }
 
@@ -84,7 +88,8 @@ extension AgentsActivityAttributes.ContentState {
             options: topOptions,
             expiresAt: topExpiry.map { ISO8601DateFormatter().string(from: $0) } ?? "",
             detail: nil,
-            defaultAnswer: topDefault
+            defaultAnswer: topDefault,
+            agentId: topAgentId
         )
     }
 

@@ -263,7 +263,7 @@ struct ProjectWidgetContent: View {
         var body: some View {
             VStack(alignment: .leading, spacing: 6) {
                 if !narrow {
-                    AskerRow(agent: request.agentName, project: nil, expiry: request.expiry, now: now, chipSize: 18)
+                    AskerRow(agent: request.agentName, agentId: request.agentId, project: nil, expiry: request.expiry, now: now, chipSize: 18)
                 }
                 Text(request.question)
                     .font(narrow ? Theme.Font.label.weight(.semibold) : Theme.Font.bodyStrong)
@@ -327,10 +327,10 @@ extension ProjectCard {
             question: "Tests pass. Merge the fee-rounding branch into main?",
             kind: RequestKind.companion.fromWire(value: "confirm")!,
             options: nil,
-            expiresAt: "2026-11-16T12:00:00Z",
+            expiresAt: ISO8601DateFormatter().string(from: Date.now.addingTimeInterval(41 * 60 + 43)),
             detail: nil,
             defaultAnswer: nil,
-            agentId: nil
+            agentId: "a-rover"
         )
         let activity = RecentActivity(projects: [project], updates: [update], messages: [])
         let summary = DashboardSummary(

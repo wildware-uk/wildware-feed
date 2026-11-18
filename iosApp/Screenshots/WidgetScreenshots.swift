@@ -305,7 +305,8 @@ enum Samples {
             question: payload.body, kind: RequestKind.companion.fromWire(value: "confirm")!, options: nil,
             expiresAt: ISO8601DateFormatter().string(from: .now.addingTimeInterval(41 * 60 + 52)),
             detail: "412 tests pass. The only change outside checkout is one helper:\n\n```\nfun roundFee(p: Money) = p.round(2)\n```",
-            defaultAnswer: "true"
+            defaultAnswer: "true",
+            agentId: "a-rover"
         )
         return AlertModel(payload: payload, details: details)
     }
@@ -327,7 +328,8 @@ enum Samples {
             question: payload.body, kind: RequestKind.companion.fromWire(value: "choice")!, options: options,
             expiresAt: ISO8601DateFormatter().string(from: .now.addingTimeInterval(42 * 60)),
             detail: "All three pass the contrast check. **Cards** tested best with the five people who tried it.",
-            defaultAnswer: "Cards"
+            defaultAnswer: "Cards",
+            agentId: "a-lumen"
         )
         var pictures: [String: UIImage] = [:]
         for (index, hue) in [0.58, 0.42, 0.06].enumerated() { pictures["option-\(index)"] = picture(hue: hue) }

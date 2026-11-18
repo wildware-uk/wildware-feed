@@ -67,7 +67,7 @@ struct RequestRow: View {
                 .foregroundStyle(Theme.text)
                 .lineLimit(3)
             HStack(spacing: 5) {
-                AgentChip(name: request.agentName, agentId: nil, size: 15)
+                AgentChip(name: request.agentName, agentId: request.agentId, size: 15)
                 Text(request.agentName).lineLimit(1)
                 Spacer(minLength: 0)
                 if let expiry = request.expiry, expiry > .now {
