@@ -23,6 +23,8 @@ import kotlin.time.Duration.Companion.seconds
  *
  * PARITY_READS=record|compare, PARITY_READS_FILE=<path>. Skipped when PARITY_READS is unset.
  */
+// First of all classes: the others mint agents, which would change `agentNames` after recording.
+@org.junit.jupiter.api.Order(1)
 class ReadParityTest : ParityTest() {
     @Serializable
     data class Recorded(val path: String, val status: Int, val contentType: String?, val cacheControl: String?, val body: String)
