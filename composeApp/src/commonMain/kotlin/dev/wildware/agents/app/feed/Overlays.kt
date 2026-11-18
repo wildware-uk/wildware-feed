@@ -112,6 +112,7 @@ private fun menuRows(target: MenuTarget, phone: Boolean = false): List<MenuRow> 
     if (phone) add(MenuRow("Select text", Icons.SelectText, false, FeedEvent.SelectText(target.id)))
     add(MenuRow("Copy link", Icons.Link, false, FeedEvent.CopyLink(target.id)))
     if (target.taggable) add(MenuRow("Tags…", Icons.Hash, false, FeedEvent.EditTags(target.id)))
+    if (target.work) add(MenuRow(if (target.status == null) "Mark as work…" else "Work state…", Icons.Check, false, FeedEvent.ChooseStatus(target.id, target.status)))
     if (target.own) add(MenuRow("Delete", Icons.Trash, true, FeedEvent.Delete(target.id)))
 }
 

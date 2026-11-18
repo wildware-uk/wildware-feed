@@ -2,6 +2,7 @@ package dev.wildware.agents.app.feed
 
 import dev.wildware.agents.app.ProductName
 import androidx.compose.runtime.key
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.border
@@ -97,6 +98,8 @@ private fun CardHeader(
     project: Project?,
     showAvatar: Boolean,
     compact: Boolean = false,
+    /** Opens the work-state choice when the status chip is tapped. */
+    onStatus: (() -> Unit)? = null,
 ) {
     val colors = AgentTheme.colors
     val type = AgentTheme.type
@@ -125,18 +128,25 @@ private fun CardHeader(
             Spacer(Modifier.width(10.dp))
             MetaText(time, Modifier.clearAndSetSemantics { })
         }
-        if (!compact) Chips(level, status)
+        if (!compact) Chips(level, status, onStatus = onStatus)
     }
 }
 
+/**
+ * The status chip and level tag. Tapping the chip changes the work state; screen readers do that
+ * from the card's actions ("Work state…"), so the chips themselves stay out of the spoken header.
+ */
 @Composable
-private fun Chips(level: Level?, status: WorkStatus?, modifier: Modifier = Modifier) {
+private fun Chips(level: Level?, status: WorkStatus?, modifier: Modifier = Modifier, onStatus: (() -> Unit)? = null) {
     Row(
         modifier.clearAndSetSemantics { },
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (status != null) StatusChip(status)
+        if (status != null) {
+            val shape = AgentTheme.shapes.pill
+            StatusChip(status, if (onStatus != null) Modifier.clip(shape).clickable(onClick = onStatus) else Modifier)
+        }
         if (level != null) LevelTag(level)
     }
 }
@@ -195,9 +205,10 @@ fun UpdateCard(
     val type = AgentTheme.type
     val ui = LocalFeedUi.current
     val indent = if (density == Density.Compact) 0.dp else BodyIndent
-    val target = MenuTarget(item.id, item.agent.name, item.title, own = false, taggable = true)
+    val target = MenuTarget(item.id, item.agent.name, item.title, own = false, taggable = true, work = true, status = item.status)
     val tags = ui?.tagsFor(item.id, item.tags) ?: item.tags
     val reactions = ui?.reactionsFor(item.id, item.reactions) ?: item.reactions
+    val chooseStatus = { ui?.emit(FeedEvent.ChooseStatus(item.id, item.status)); Unit }
     WithMenu(target, modifier) { gestures ->
     CardFrame(gestures, selected = selected, density = density) {
         Column {
@@ -210,9 +221,10 @@ fun UpdateCard(
                 project = item.project,
                 showAvatar = true,
                 compact = density == Density.Compact,
+                onStatus = chooseStatus,
             )
             Column(Modifier.padding(start = indent, top = 8.dp)) {
-                if (density == Density.Compact) Chips(item.level, item.status, Modifier.padding(bottom = 8.dp))
+                if (density == Density.Compact) Chips(item.level, item.status, Modifier.padding(bottom = 8.dp), onStatus = chooseStatus)
                 Text(
                     item.title,
                     Modifier.semantics { heading() },
@@ -574,9 +586,10 @@ fun PostCard(item: FeedItem.Post, modifier: Modifier = Modifier, density: Densit
     val ui = LocalFeedUi.current
     val own = item.author is Author.Owner
     val indent = if (density == Density.Compact) 0.dp else BodyIndent
-    val target = MenuTarget(item.id, if (own) "You" else item.author.name, item.body, own = own, taggable = true)
+    val target = MenuTarget(item.id, if (own) "You" else item.author.name, item.body, own = own, taggable = true, work = true, status = item.status)
     val tags = ui?.tagsFor(item.id, item.tags) ?: item.tags
     val reactions = ui?.reactionsFor(item.id, item.reactions) ?: item.reactions
+    val chooseStatus = { ui?.emit(FeedEvent.ChooseStatus(item.id, item.status)); Unit }
     WithMenu(target, modifier.alpha(if (item.sending) SendingAlpha else 1f)) { gestures ->
     CardFrame(gestures, density = density) {
         Column {
@@ -585,12 +598,14 @@ fun PostCard(item: FeedItem.Post, modifier: Modifier = Modifier, density: Densit
                 role = if (own) "You" else (item.author as? Author.AgentAuthor)?.agent?.role,
                 time = if (item.sending) SendingLabel else item.time,
                 level = null,
-                status = null,
+                status = item.status,
                 project = item.project,
                 showAvatar = true,
                 compact = density == Density.Compact,
+                onStatus = chooseStatus,
             )
             Column(Modifier.padding(start = indent, top = 8.dp)) {
+                if (density == Density.Compact && item.status != null) Chips(null, item.status, Modifier.padding(bottom = 8.dp), onStatus = chooseStatus)
                 if (own) PlainBody(item.body) else MarkdownBody(item.body)
                 TagChips(tags, Modifier.padding(top = 10.dp))
                 val inline = LocalInlineThreads.current && !inThread

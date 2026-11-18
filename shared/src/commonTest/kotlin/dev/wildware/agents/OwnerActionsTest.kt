@@ -118,6 +118,38 @@ class OwnerActionsTest {
     }
 
     @Test
+    fun `a work state is sent as the state, and not work as null`() = runTest {
+        val server = FakeDashboard(testScheduler)
+        val (queue, actions) = setUp(server)
+
+        actions.setStatus(CardRef(CardKinds.Update, "u1"), "in_progress")
+        actions.setStatus(CardRef(CardKinds.Message, "m1"), null)
+        runCurrent()
+
+        assertEquals(
+            listOf(
+                "POST /api/cards/update/u1/status" to """{"status":"in_progress"}""",
+                "POST /api/cards/message/m1/status" to """{"status":null}""",
+            ),
+            server.writes,
+        )
+        assertTrue(queue.items.value.isEmpty())
+    }
+
+    @Test
+    fun `a work state waits for signal and says what it is`() = runTest {
+        val server = FakeDashboard(testScheduler).apply {
+            onWrite = { _, _ -> respond("""{"error":"unavailable"}""", HttpStatusCode.ServiceUnavailable) }
+        }
+        val (queue, actions) = setUp(server)
+
+        actions.setStatus(CardRef(CardKinds.Update, "u1"), "done")
+        runCurrent()
+
+        assertEquals(listOf("Mark Done"), queue.items.value.map { it.label })
+    }
+
+    @Test
     fun `deleting or dismissing what is already gone counts as done`() = runTest {
         val server = FakeDashboard(testScheduler).apply {
             onWrite = { _, _ -> respond("""{"error":"not_found"}""", HttpStatusCode.NotFound) }

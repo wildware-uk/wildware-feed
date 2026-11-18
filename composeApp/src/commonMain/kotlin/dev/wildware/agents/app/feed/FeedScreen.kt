@@ -217,6 +217,7 @@ fun FeedScreen(
             }
             ui.tagging?.let { TagPicker(ui, it) }
             if (ui.bellOpen) NotificationPanel(ui, if (phone) safeArea else SafeArea()) { path -> scope.launch { ui.goTo(OpenCard.fromPath(path)) } }
+            ui.statusPick?.let { StatusPicker(ui, it, if (phone) safeArea else SafeArea()) }
         }
         FollowNavigation(ui, navigator)
         FollowSystemBack(ui, widthPx)

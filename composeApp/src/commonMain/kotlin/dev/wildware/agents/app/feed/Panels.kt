@@ -349,7 +349,8 @@ fun FeedHeader(ui: FeedUi, compact: Boolean, modifier: Modifier = Modifier) {
         }
         Spacer(Modifier.height(if (compact) 12.dp else 18.dp))
         Row(
-            Modifier.fillMaxWidth().then(if (compact) Modifier.horizontalScroll(rememberScrollState()) else Modifier),
+            // Ten chips: they scroll sideways rather than wrap, on every size.
+            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {

@@ -319,10 +319,14 @@ class DashboardClient(
     internal suspend fun postToProject(projectSlug: String, text: String): String =
         postMessage(mapOf("project" to projectSlug, "body" to text), mediaIds = emptyList()).id
 
-    internal suspend fun markAsWork(messageId: String) {
-        http.post("api/cards/message/$messageId/status") {
+    internal suspend fun markAsWork(messageId: String) = setCardStatus(CardRef(CardKinds.Message, messageId), "todo")
+
+    /** Sets a card's work state ("todo", "in_progress", "blocked", "done", "cancelled"), or null for "not work". */
+    @Throws(Exception::class)
+    suspend fun setCardStatus(card: CardRef, status: String?) {
+        http.post("api/cards/${card.kind.encodeURLPathPart()}/${card.id.encodeURLPathPart()}/status") {
             authorise()
-            jsonBody(buildJsonObject { put("status", "todo") })
+            jsonBody(buildJsonObject { put("status", status) })
         }.requireSuccess()
     }
 

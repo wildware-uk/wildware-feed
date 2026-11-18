@@ -52,6 +52,10 @@ sealed interface FeedEvent {
     data class OpenNotification(val id: String) : FeedEvent
     /** "Mark all read" under the bell. */
     data object ClearNotifications : FeedEvent
+    /** Open the work-state choice on a card (the screen shows it; nothing is sent yet). */
+    data class ChooseStatus(val targetId: String, val current: WorkStatus?) : FeedEvent
+    /** Set a card's work state, or null for "Not work". */
+    data class SetStatus(val targetId: String, val status: WorkStatus?) : FeedEvent
     data class DropUnsent(val outboxId: String) : FeedEvent
     data object MarkAllRead : FeedEvent
     data object ToggleTheme : FeedEvent
@@ -65,6 +69,11 @@ enum class FeedFilter(val label: String) {
     Updates("Updates"),
     Errors("Errors"),
     FromYou("From you"),
+    OpenWork("Open work"),
+    Todo("To do"),
+    InProgress("In progress"),
+    Blocked("Blocked"),
+    Done("Done"),
     ;
 
     fun matches(item: FeedItem): Boolean = when (this) {
@@ -73,12 +82,25 @@ enum class FeedFilter(val label: String) {
         Updates -> item is FeedItem.Update
         Errors -> item is FeedItem.Update && item.level == Level.Error
         FromYou -> item is FeedItem.Post && item.author is Author.Owner
+        OpenWork -> item.workStatus?.isOpen == true
+        Todo -> item.workStatus == WorkStatus.Todo
+        InProgress -> item.workStatus == WorkStatus.InProgress
+        Blocked -> item.workStatus == WorkStatus.Blocked
+        Done -> item.workStatus == WorkStatus.Done
     }
 }
 
 /** Words open for selecting on a phone: whose they are, and the words themselves. */
 @Immutable
 data class SelectingText(val id: String, val text: String)
+
+/** A card's work state, for the cards that can be work (updates and posts). */
+val FeedItem.workStatus: WorkStatus?
+    get() = when (this) {
+        is FeedItem.Update -> status
+        is FeedItem.Post -> status
+        else -> null
+    }
 
 /** The thing a context menu is open on. */
 @Immutable
@@ -91,7 +113,15 @@ data class MenuTarget(
     val at: Offset = Offset.Zero,
     /** A card that can wear tags: an update or a post, not a reply. */
     val taggable: Boolean = false,
+    /** It can be marked as work (an update or a post). */
+    val work: Boolean = false,
+    /** Its work state now, when it is work. */
+    val status: WorkStatus? = null,
 )
+
+/** The work-state choice, open on card [id], whose state is [current]. */
+@Immutable
+data class StatusPick(val id: String, val current: WorkStatus?)
 
 /** The emoji a double-tap adds. */
 const val QuickReaction = "👍"
@@ -119,6 +149,10 @@ data class ScreenPreview(
     val threadOpen: Boolean = false,
     /** The notification list under the bell, open. */
     val bellOpen: Boolean = false,
+    /** The work-state choice, open. */
+    val statusPick: StatusPick? = null,
+    /** The feed's filter chip, already chosen. */
+    val filter: FeedFilter = FeedFilter.All,
 )
 
 /**
@@ -141,7 +175,7 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
     val expandedThreads = mutableStateSetOf<String>()
     var replyingTo by mutableStateOf<Reply?>(null)
     var refreshing by mutableStateOf(false)
-    var filter by mutableStateOf(FeedFilter.All)
+    var filter by mutableStateOf(preview.filter)
     var showArchived by mutableStateOf(false)
     var commandOpen by mutableStateOf(preview.command != null)
 
@@ -167,6 +201,8 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
 
     /** The notification list under the bell. */
     var bellOpen by mutableStateOf(preview.bellOpen)
+    /** The work-state choice, when it is open. */
+    var statusPick by mutableStateOf(preview.statusPick)
     val composerFocus = FocusRequester()
 
     /** Words and files shared in from another app, waiting for the next project composer on screen. */
@@ -378,6 +414,8 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
             is FeedEvent.SendReply -> replyingTo = null
             is FeedEvent.SelectText -> selecting = textOf(event.targetId)?.let { SelectingText(event.targetId, it) }
             is FeedEvent.Tag -> noteTag(event)
+            is FeedEvent.ChooseStatus -> statusPick = StatusPick(event.targetId, event.current)
+            is FeedEvent.SetStatus -> statusPick = null
             is FeedEvent.SelectProject -> threadId = null
             else -> Unit
         }

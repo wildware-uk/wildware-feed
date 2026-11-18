@@ -183,6 +183,7 @@ internal class FeedMapper(
             reactions = reactions(reactions),
             sending = post.sending,
             questions = post.questions.map { it.toQuestion(agents, project, threads) },
+            status = workStatus(status),
         )
     }
 

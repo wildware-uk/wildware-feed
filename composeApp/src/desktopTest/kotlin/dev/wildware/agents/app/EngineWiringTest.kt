@@ -229,6 +229,37 @@ class EngineWiringTest {
         waitFor("Nothing yet", substring = true)
     }
 
+    private val statusPicker = SemanticsMatcher.expectValue(SemanticsProperties.PaneTitle, "Work state")
+
+    @Test
+    fun markingAnUpdateAsWorkSendsItsState() = runDesktopComposeUiTest(width = 1440, height = 900) {
+        app()
+        waitFor("Fixed the unread counts")
+        runCustomAction("Mark as work…", on = hasAnyDescendant(hasText("Fixed the unread counts")))
+        waitForNode(hasText("In progress") and hasAnyAncestor(statusPicker)).performClick()
+        assertEquals("""{"status":"in_progress"}""", waitForWrite("POST", "/api/cards/update/u1/status"))
+    }
+
+    @Test
+    fun aPostShowsItsStateAndCanStopBeingWork() = runDesktopComposeUiTest(width = 1440, height = 900) {
+        server.messages = server.messages.map { if (it.id == "m-post") it.copy(status = "blocked") else it }
+        app()
+        waitForNode(hasContentDescription("status Blocked", substring = true))
+        runCustomAction("Work state…", on = hasAnyDescendant(hasText("Why is the Mac build slow?")))
+        waitForNode(hasText("Not work") and hasAnyAncestor(statusPicker)).performClick()
+        assertEquals("""{"status":null}""", waitForWrite("POST", "/api/cards/message/m-post/status"))
+    }
+
+    @Test
+    fun theBlockedFilterShowsOnlyBlockedWork() = runDesktopComposeUiTest(width = 1440, height = 900) {
+        server.messages = server.messages.map { if (it.id == "m-post") it.copy(status = "blocked") else it }
+        app()
+        waitFor("Fixed the unread counts")
+        waitForNode(hasText("Blocked", substring = true) and hasClickAction()).performClick()
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasText("Fixed the unread counts")).fetchSemanticsNodes().isEmpty() }
+        waitFor("Why is the Mac build slow?")
+    }
+
     @Test
     fun theAgentsListSaysWhichModelWhereAndWhen() = runDesktopComposeUiTest(width = 1440, height = 900) {
         app()

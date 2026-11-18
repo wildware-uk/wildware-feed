@@ -13,8 +13,17 @@ import kotlin.native.ObjCName
 
 enum class Level(val label: String) { Info("Info"), Success("Success"), Warning("Warning"), Error("Error") }
 
-enum class WorkStatus(val label: String) {
-    Todo("To do"), InProgress("In progress"), Blocked("Blocked"), Done("Done"), Cancelled("Cancelled"),
+/** A card's work state. [wire] is the dashboard's name for it. */
+enum class WorkStatus(val label: String, val wire: String) {
+    Todo("To do", "todo"),
+    InProgress("In progress", "in_progress"),
+    Blocked("Blocked", "blocked"),
+    Done("Done", "done"),
+    Cancelled("Cancelled", "cancelled"),
+    ;
+
+    /** Still going: what "Open work" keeps. */
+    val isOpen: Boolean get() = this == Todo || this == InProgress || this == Blocked
 }
 
 enum class Presence(val label: String) { Online("Online"), Idle("Idle"), Offline("Offline") }
@@ -276,6 +285,8 @@ sealed interface FeedItem {
         /** Questions an agent asked under the post itself, shown at the top of its thread. */
         val questions: List<Question> = emptyList(),
         val tags: List<CardTag> = emptyList(),
+        /** Its work state, when someone marked it as work. */
+        val status: WorkStatus? = null,
     ) : Threaded {
         override val title: String get() = body.lineSequence().first().take(120)
         override val starter: Author get() = author

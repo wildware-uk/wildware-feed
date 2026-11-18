@@ -17,6 +17,9 @@ import dev.wildware.agents.app.feed.Bell
 import dev.wildware.agents.app.feed.BellItem
 import dev.wildware.agents.app.feed.FakeFeed
 import dev.wildware.agents.app.feed.Presence
+import dev.wildware.agents.app.feed.FeedFilter
+import dev.wildware.agents.app.feed.StatusPick
+import dev.wildware.agents.app.feed.WorkStatus
 import dev.wildware.agents.app.feed.FeedItem
 import dev.wildware.agents.app.feed.Gallery
 import dev.wildware.agents.app.feed.MenuTarget
@@ -248,6 +251,18 @@ class ScreenshotTest {
                 shoot("${size.label}-${if (dark) "dark" else "light"}-bell", size, dark) {
                     AgentsPreview(dark = dark, state = state, safeArea = size.safeArea, preview = ScreenPreview(bellOpen = true))
                 }
+            }
+        }
+    }
+
+    /** Work: the state choice open on a card, and the feed filtered to work in progress. */
+    @Test
+    fun workStatus() {
+        for (size in Size.entries) {
+            for (dark in listOf(false, true)) {
+                val mode = "${size.label}-${if (dark) "dark" else "light"}"
+                shoot("$mode-work-picker", size, dark, startAt = "u2", preview = ScreenPreview(statusPick = StatusPick("u2", WorkStatus.InProgress)))
+                shoot("$mode-work-filter", size, dark, preview = ScreenPreview(filter = FeedFilter.InProgress))
             }
         }
     }

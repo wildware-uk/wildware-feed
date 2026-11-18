@@ -4,6 +4,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonElement
 
 /** What a queued item does once it reaches the dashboard. */
@@ -35,6 +37,8 @@ enum class OutboxKind {
      * is the tag's id, or a new word when [OutboxItem.create].
      */
     Tag,
+    /** Sets [OutboxItem.card]'s work state to [OutboxItem.value] (JSON: a state, or null for "not work"). */
+    Status,
 }
 
 /** A photo or file waiting to go up with its message. [name] is the file in the outbox's folder. */
@@ -92,7 +96,7 @@ data class OutboxItem(
         get() = when (kind) {
             OutboxKind.Answer -> "request=${answer?.requestId}"
             OutboxKind.RequestAnswer, OutboxKind.Dismiss -> "request=${card?.id}"
-            OutboxKind.React, OutboxKind.Delete, OutboxKind.Tag -> "card=${card?.kind}/${card?.id}"
+            OutboxKind.React, OutboxKind.Delete, OutboxKind.Tag, OutboxKind.Status -> "card=${card?.kind}/${card?.id}"
             else -> thread.entries.sortedBy { it.key }.joinToString("&") { "${it.key}=${it.value}" }
         }
 
@@ -174,6 +178,13 @@ object Outbox {
     /** [tag] is a tag id, or a new word to make on the way when [create]. */
     fun tag(id: String, nowMillis: Long, card: CardRef, tag: String, on: Boolean, create: Boolean) =
         OutboxItem(id, nowMillis, OutboxKind.Tag, if (on) "Tag" else "Untag", card = card, on = on, value = tag, create = create.takeIf { it })
+    /** Moves a card's work along, or takes it off the work list with a null [status]. */
+    fun status(id: String, nowMillis: Long, card: CardRef, status: String?) = OutboxItem(
+        id, nowMillis, OutboxKind.Status,
+        label = status?.let { "Mark ${WorkStates.label(it)}" } ?: "Mark as not work",
+        card = card,
+        value = (status?.let(::JsonPrimitive) ?: JsonNull).toString(),
+    )
 
     /**
      * Whether a failure is worth trying again. Not reaching the dashboard, a timeout, rate limiting
@@ -314,6 +325,12 @@ internal suspend fun DashboardClient.deliverQueued(item: OutboxItem, attachments
                 val emoji = item.emoji ?: return DeliveryResult(DeliveryOutcome.GiveUp, message = "It has no emoji.")
                 react(card, emoji, item.on ?: true)
             }
+            OutboxKind.Status -> {
+                val card = item.card ?: return DeliveryResult(DeliveryOutcome.GiveUp, message = "It has no card.")
+                val status = item.value?.let { runCatching { Json.parseToJsonElement(it) }.getOrNull() }
+                    ?: return DeliveryResult(DeliveryOutcome.GiveUp, message = "It has no state.")
+                setCardStatus(card, (status as? JsonPrimitive)?.takeIf { it.isString }?.content)
+            }
             OutboxKind.Delete -> {
                 val card = item.card ?: return DeliveryResult(DeliveryOutcome.GiveUp, message = "It has no card.")
                 alreadyDone {
@@ -346,5 +363,20 @@ private suspend fun alreadyDone(block: suspend () -> Unit) {
         block()
     } catch (gone: DashboardException) {
         if (gone.status != 404 && gone.status != 409) throw gone
+    }
+}
+
+/** A card's work states, as the dashboard names them, in the order work moves through them. */
+object WorkStates {
+    val all: List<String> = listOf("todo", "in_progress", "blocked", "done", "cancelled")
+
+    /** What the owner reads: "To do", "In progress"… */
+    fun label(state: String): String = when (state) {
+        "todo" -> "To do"
+        "in_progress" -> "In progress"
+        "blocked" -> "Blocked"
+        "done" -> "Done"
+        "cancelled" -> "Cancelled"
+        else -> state
     }
 }
