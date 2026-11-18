@@ -7,7 +7,7 @@ on:
 jobs:
   screenshots:
     runs-on: macos-26
-    timeout-minutes: 40
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -32,17 +32,6 @@ jobs:
           xcrun simctl bootstatus "$id"
           xcrun simctl ui "$id" appearance dark
           xcrun simctl status_bar "$id" override --time 9:41 --batteryState charged --batteryLevel 100 --cellularBars 4 --wifiBars 3
-      - name: Boot an iPad simulator
-        timeout-minutes: 6
-        run: |
-          id=$(xcrun simctl list devices available -j \
-            | jq -r '[.devices[][] | select(.name | test("^iPad Pro"))] | last | .udid')
-          echo "Using $id"
-          echo "IPAD=$id" >> "$GITHUB_ENV"
-          xcrun simctl boot "$id"
-          xcrun simctl bootstatus "$id"
-          xcrun simctl ui "$id" appearance dark
-          xcrun simctl status_bar "$id" override --time 9:41 --batteryState charged --batteryLevel 100 --wifiBars 3
       # The first test build also builds the Compose framework, which takes a few minutes.
       - name: Draw the screenshots
         timeout-minutes: 25
@@ -56,8 +45,24 @@ jobs:
             CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM= \
             | tee test.log | grep -E "error:|Test Case .*(passed|failed)|TEST (SUCCEEDED|FAILED)|\*\* " || true
           grep -q "TEST SUCCEEDED" test.log
-      - name: Draw the iPad's feed
+      # After the iPhone's pictures, and allowed to fail: a stuck iPad simulator must not cost them.
+      - name: Boot an iPad simulator
         timeout-minutes: 12
+        continue-on-error: true
+        id: ipad
+        run: |
+          id=$(xcrun simctl list devices available -j \
+            | jq -r '[.devices[][] | select(.name | test("^iPad Pro"))] | last | .udid')
+          echo "Using $id"
+          echo "IPAD=$id" >> "$GITHUB_ENV"
+          xcrun simctl boot "$id"
+          xcrun simctl bootstatus "$id"
+          xcrun simctl ui "$id" appearance dark
+          xcrun simctl status_bar "$id" override --time 9:41 --batteryState charged --batteryLevel 100 --wifiBars 3
+      - name: Draw the iPad's feed
+        if: steps.ipad.outcome == 'success'
+        timeout-minutes: 12
+        continue-on-error: true
         run: |
           set -o pipefail
           TEST_RUNNER_SCREENSHOT_DIR="$PWD/screenshots" xcodebuild test \
