@@ -4,6 +4,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
 
 /** What a queued item does once it reaches the dashboard. */
 @Serializable
@@ -16,6 +17,18 @@ enum class OutboxKind {
 
     /** An answer to a question an agent asked, tapped on an alert. */
     Answer,
+
+    /** An answer given in the app itself: [OutboxItem.value] is the answer as JSON, sent as it is. */
+    RequestAnswer,
+
+    /** Lets the agent go without an answer. [OutboxItem.card] is the request. */
+    Dismiss,
+
+    /** Puts [OutboxItem.emoji] on [OutboxItem.card], or takes it off when [OutboxItem.on] is false. */
+    React,
+
+    /** Deletes [OutboxItem.card]: a message or an update. */
+    Delete,
 }
 
 /** A photo or file waiting to go up with its message. [name] is the file in the outbox's folder. */
@@ -56,12 +69,31 @@ data class OutboxItem(
     val lastError: String? = null,
     /** The dashboard refused it for good. It stays listed until the owner deletes it or tries again. */
     val gaveUp: Boolean = false,
+    /** A reply's "answering": the line in the same thread it answers. Not part of where it goes. */
+    val answers: String? = null,
+    /** The card a reaction, delete, dismissal or in-app answer is about. */
+    val card: CardRef? = null,
+    val emoji: String? = null,
+    /** For a reaction: on or off. Never a toggle, so sending twice can't undo it. */
+    val on: Boolean? = null,
+    /** An in-app answer, as JSON text. */
+    val value: String? = null,
 ) {
     /** Items in one thread go in the order they were written. */
     val threadKey: String
         get() = when (kind) {
             OutboxKind.Answer -> "request=${answer?.requestId}"
+            OutboxKind.RequestAnswer, OutboxKind.Dismiss -> "request=${card?.id}"
+            OutboxKind.React, OutboxKind.Delete -> "card=${card?.kind}/${card?.id}"
             else -> thread.entries.sortedBy { it.key }.joinToString("&") { "${it.key}=${it.value}" }
+        }
+
+    /** The question this answers or dismisses, if it does. */
+    val requestId: String?
+        get() = when (kind) {
+            OutboxKind.Answer -> answer?.requestId
+            OutboxKind.RequestAnswer, OutboxKind.Dismiss -> card?.id
+            else -> null
         }
 }
 
@@ -113,6 +145,22 @@ object Outbox {
     fun answer(id: String, nowMillis: Long, agentName: String, answer: OutboxAnswer) =
         OutboxItem(id, nowMillis, OutboxKind.Answer, "Answer to $agentName", answer = answer)
 
+    /** A reply that answers one line of the thread ([answers] is that line's id). */
+    fun reply(id: String, nowMillis: Long, label: String, thread: Map<String, String>, text: String?, answers: String?, files: List<OutboxFile>) =
+        message(id, nowMillis, label, thread, text, files).copy(answers = answers)
+
+    fun requestAnswer(id: String, nowMillis: Long, agentName: String, requestId: String, value: JsonElement) =
+        OutboxItem(id, nowMillis, OutboxKind.RequestAnswer, "Answer to $agentName", card = CardRef(CardKinds.Request, requestId), value = value.toString())
+
+    fun dismiss(id: String, nowMillis: Long, agentName: String, requestId: String) =
+        OutboxItem(id, nowMillis, OutboxKind.Dismiss, "Dismiss ${agentName}'s question", card = CardRef(CardKinds.Request, requestId))
+
+    fun react(id: String, nowMillis: Long, card: CardRef, emoji: String, on: Boolean) =
+        OutboxItem(id, nowMillis, OutboxKind.React, if (on) "React $emoji" else "Take back $emoji", card = card, emoji = emoji, on = on)
+
+    fun delete(id: String, nowMillis: Long, card: CardRef) =
+        OutboxItem(id, nowMillis, OutboxKind.Delete, "Delete", card = card)
+
     /**
      * Whether a failure is worth trying again. Not reaching the dashboard, a timeout, rate limiting
      * and server errors pass. A lost login (401) can come back when the phone links again, so it waits too.
@@ -145,12 +193,13 @@ object Outbox {
      */
     fun next(items: List<OutboxItem>, nowMillis: Long, ignoreBackoff: Boolean, skip: List<String>): OutboxItem? {
         val live = waiting(items)
-        return live.firstOrNull { item ->
+        // Compared by place in the list, not by time: two written in the same millisecond still keep their order.
+        return live.withIndex().firstOrNull { (index, item) ->
             item.id !in skip &&
                 item.claimedUntilMillis <= nowMillis &&
                 (ignoreBackoff || item.nextAttemptAtMillis <= nowMillis) &&
-                live.none { it.threadKey == item.threadKey && it.createdAtMillis < item.createdAtMillis }
-        }
+                live.subList(0, index).none { it.threadKey == item.threadKey }
+        }?.value
     }
 
     fun claim(items: List<OutboxItem>, id: String, nowMillis: Long): List<OutboxItem> =
@@ -222,7 +271,7 @@ internal suspend fun DashboardClient.deliverQueued(item: OutboxItem, attachments
     var ticketMessageId = item.ticketMessageId
     return try {
         when (item.kind) {
-            OutboxKind.Message -> send(item.thread, item.text, attachments)
+            OutboxKind.Message -> send(item.thread + listOfNotNull(item.answers?.let { "answers" to it }), item.text, attachments)
             OutboxKind.Ticket -> {
                 val slug = item.thread["project"] ?: return DeliveryResult(DeliveryOutcome.GiveUp, message = "It has no project.")
                 ticketMessageId = ticketMessageId ?: postToProject(slug, item.text.orEmpty())
@@ -235,6 +284,31 @@ internal suspend fun DashboardClient.deliverQueued(item: OutboxItem, attachments
                     return DeliveryResult(DeliveryOutcome.GiveUp, message = "That button no longer matches the question.")
                 }
             }
+            OutboxKind.RequestAnswer -> {
+                val requestId = item.card?.id ?: return DeliveryResult(DeliveryOutcome.GiveUp, message = "It has no question.")
+                val value = item.value?.let { runCatching { Json.parseToJsonElement(it) }.getOrNull() }
+                    ?: return DeliveryResult(DeliveryOutcome.GiveUp, message = "It has no answer.")
+                answer(requestId, value)
+            }
+            OutboxKind.Dismiss -> {
+                val requestId = item.card?.id ?: return DeliveryResult(DeliveryOutcome.GiveUp, message = "It has no question.")
+                alreadyDone { dismissRequest(requestId) }
+            }
+            OutboxKind.React -> {
+                val card = item.card ?: return DeliveryResult(DeliveryOutcome.GiveUp, message = "It has no card.")
+                val emoji = item.emoji ?: return DeliveryResult(DeliveryOutcome.GiveUp, message = "It has no emoji.")
+                react(card, emoji, item.on ?: true)
+            }
+            OutboxKind.Delete -> {
+                val card = item.card ?: return DeliveryResult(DeliveryOutcome.GiveUp, message = "It has no card.")
+                alreadyDone {
+                    when (card.kind) {
+                        CardKinds.Message -> deleteMessage(card.id)
+                        CardKinds.Update -> deleteUpdate(card.id)
+                        else -> throw DashboardException(400, "invalid_argument", "Only messages and updates can be deleted.")
+                    }
+                }
+            }
         }
         DeliveryResult(DeliveryOutcome.Sent, 200, ticketMessageId = ticketMessageId)
     } catch (cancelled: CancellationException) {
@@ -243,5 +317,14 @@ internal suspend fun DashboardClient.deliverQueued(item: OutboxItem, attachments
         DeliveryResult(Outbox.outcomeFor(refused.status), refused.status, refused.message, ticketMessageId)
     } catch (unreachable: Throwable) {
         DeliveryResult(DeliveryOutcome.Retry, null, unreachable.message ?: "No connection.", ticketMessageId)
+    }
+}
+
+/** A delete or dismissal of something already gone has done its job: the server's "not found" or "already settled" counts as sent. */
+private suspend fun alreadyDone(block: suspend () -> Unit) {
+    try {
+        block()
+    } catch (gone: DashboardException) {
+        if (gone.status != 404 && gone.status != 409) throw gone
     }
 }

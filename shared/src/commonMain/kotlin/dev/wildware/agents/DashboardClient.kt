@@ -4,7 +4,9 @@ import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.engine.HttpClientEngine
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.defaultRequest
+import io.ktor.client.request.delete
 import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.client.request.get
 import io.ktor.client.request.header
@@ -17,6 +19,7 @@ import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.contentType
+import io.ktor.http.encodeURLPathPart
 import io.ktor.http.isSuccess
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.Serializable
@@ -53,13 +56,116 @@ class DashboardClient(
     private val deviceToken: String?,
     engine: HttpClientEngine,
 ) {
-    private val json = Json { ignoreUnknownKeys = true; explicitNulls = false }
+    /** The dashboard's address, ending in a slash. Media paths go after it. */
+    val serverUrl: String = server.trimEnd('/') + "/"
 
-    private val http = HttpClient(engine) {
+    internal val json = Json { ignoreUnknownKeys = true; explicitNulls = false }
+
+    internal val http = HttpClient(engine) {
         expectSuccess = false
         install(ContentNegotiation) { json(json) }
-        defaultRequest { url(server.trimEnd('/') + "/") }
+        // No limits by default, so ordinary calls behave as before. The live stream sets its own.
+        install(HttpTimeout)
+        defaultRequest { url(serverUrl) }
     }
+
+    /** The header a media request needs: images and files are behind the owner's key too. */
+    val authorizationHeader: String? get() = deviceToken?.let { "Bearer $it" }
+
+    // --- Reading the feed -------------------------------------------------------------------
+
+    /** Projects, the newest page of updates, tags and agent names. [projectSlug] narrows it to one project. */
+    @Throws(Exception::class)
+    suspend fun snapshot(projectSlug: String? = null, limit: Int = 50): FeedSnapshot =
+        http.get("api/snapshot") {
+            authorise()
+            parameter("limit", limit)
+            if (projectSlug != null) parameter("project", projectSlug)
+        }.decoded()
+
+    /** One page further into the past: pass the [UpdatesPage.nextCursor] the last page gave. */
+    @Throws(Exception::class)
+    suspend fun olderUpdates(cursor: String, projectSlug: String? = null, limit: Int = 50): FeedSnapshot =
+        http.get("api/snapshot/updates") {
+            authorise()
+            parameter("limit", limit)
+            parameter("cursor", cursor)
+            if (projectSlug != null) parameter("project", projectSlug)
+        }.decoded()
+
+    /**
+     * Every thread in scope: replies, posts, and who has read and reacted to them. [updateId] or
+     * [requestId] reads one thread alone; [projectSlug] one project's; none of them, every project's.
+     */
+    @Throws(Exception::class)
+    suspend fun messages(projectSlug: String? = null, updateId: String? = null, requestId: String? = null): MessagesSnapshot =
+        http.get("api/messages") {
+            authorise()
+            if (projectSlug != null) parameter("project", projectSlug)
+            if (updateId != null) parameter("update", updateId)
+            if (requestId != null) parameter("request", requestId)
+        }.decoded()
+
+    /** Every question waiting on the owner, oldest first. */
+    @Throws(Exception::class)
+    suspend fun waitingRequests(): RequestsSnapshot = http.get("api/snapshot/requests") { authorise() }.decoded()
+
+    /** Who is online, by recent heartbeat. */
+    @Throws(Exception::class)
+    suspend fun liveAgents(): AgentsSnapshot = http.get("api/snapshot/agents") { authorise() }.decoded()
+
+    // --- The owner's actions, sent straight away. The outbox calls these. ----------------------
+
+    /** Posts or replies as the owner. The live stream brings it back into the feed. */
+    @Throws(Exception::class)
+    suspend fun postMessage(message: NewMessage): MessageView =
+        http.post("api/messages") {
+            authorise()
+            contentType(ContentType.Application.Json)
+            setBody(json.encodeToJsonElement(NewMessage.serializer(), message))
+        }.decoded<MessageCreatedBody>().message
+
+    /** Takes back a post, a reply, or an agent's line. Deleting a post takes its replies with it. */
+    @Throws(Exception::class)
+    suspend fun deleteMessage(messageId: String) {
+        http.delete("api/messages/${messageId.encodeURLPathPart()}") { authorise() }.requireSuccess()
+    }
+
+    /** Deletes an update card. */
+    @Throws(Exception::class)
+    suspend fun deleteUpdate(updateId: String) {
+        http.delete("api/updates/${updateId.encodeURLPathPart()}") { authorise() }.requireSuccess()
+    }
+
+    /** Lets an agent go without an answer: it hears "cancelled". */
+    @Throws(Exception::class)
+    suspend fun dismissRequest(requestId: String) {
+        http.delete("api/requests/${requestId.encodeURLPathPart()}") { authorise() }.requireSuccess()
+    }
+
+    /**
+     * Puts an emoji on any card, or takes it off. [on] null toggles it, as a tap does.
+     * Returns the card's reactions as they now stand.
+     */
+    @Throws(Exception::class)
+    suspend fun react(card: CardRef, emoji: String, on: Boolean? = null): List<ReactionView> =
+        http.post("api/cards/${card.kind.encodeURLPathPart()}/${card.id.encodeURLPathPart()}/reactions") {
+            authorise()
+            jsonBody(buildJsonObject {
+                put("emoji", emoji)
+                if (on != null) put("on", on)
+            })
+        }.decoded<ReactionsBody>().reactions
+
+    /** Uploads one file and returns it unattached: send its id with [postMessage] to attach it. */
+    @Throws(Exception::class)
+    suspend fun uploadMedia(attachment: Attachment): MediaView =
+        http.post("api/media") {
+            authorise()
+            parameter("filename", attachment.filename)
+            contentType(ContentType.parse(attachment.mimeType))
+            setBody(attachment.bytes)
+        }.decoded<MediaCreatedBody>().media
 
     @Throws(Exception::class)
     suspend fun summary(): DashboardSummary = http.get("api/summary") { authorise() }.decoded()
@@ -198,13 +304,7 @@ class DashboardClient(
 
     fun close() = http.close()
 
-    private suspend fun upload(attachment: Attachment): String =
-        http.post("api/media") {
-            authorise()
-            parameter("filename", attachment.filename)
-            contentType(ContentType.parse(attachment.mimeType))
-            setBody(attachment.bytes)
-        }.decoded<MediaCreated>().media.id
+    private suspend fun upload(attachment: Attachment): String = uploadMedia(attachment).id
 
     private suspend fun postMessage(fields: Map<String, String>, mediaIds: List<String>): String =
         http.post("api/messages") {
@@ -222,7 +322,7 @@ class DashboardClient(
         }.requireSuccess()
     }
 
-    private fun HttpRequestBuilder.authorise() {
+    internal fun HttpRequestBuilder.authorise() {
         val token = deviceToken ?: throw DashboardException(401, "unauthenticated", "This phone is not linked to the dashboard yet.")
         header(HttpHeaders.Authorization, "Bearer $token")
     }
@@ -232,22 +332,19 @@ class DashboardClient(
         setBody(body)
     }
 
-    private suspend inline fun <reified T> HttpResponse.decoded(): T {
+    internal suspend inline fun <reified T> HttpResponse.decoded(): T {
         requireSuccess()
         return body()
     }
 
-    private suspend fun HttpResponse.requireSuccess() {
+    internal suspend fun HttpResponse.requireSuccess() {
         if (status.isSuccess()) return
         val error = runCatching { json.decodeFromString<ErrorBody>(bodyAsText()) }.getOrNull()
         throw DashboardException(status.value, error?.error, error?.message ?: "The dashboard answered ${status.value}.")
     }
 
     @Serializable
-    private data class ErrorBody(val error: String? = null, val message: String? = null)
-
-    @Serializable
-    private data class MediaCreated(val media: Id)
+    internal data class ErrorBody(val error: String? = null, val message: String? = null)
 
     @Serializable
     private data class MessageCreated(val message: Id)

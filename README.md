@@ -73,6 +73,13 @@ watch keeps them in its own keychain and uses the same key as the phone, so revo
 signs the watch out too. Signing out on the phone signs the watch out. Until the key arrives, the
 watch says "Open Agents on your iPhone".
 
+**The feed engine.** `shared/` also holds what the cross-platform app runs on: `SignIn` (password to
+device key), `Dashboard` (one live connection to `/api/stream`, and `StateFlow`s for each feed, the
+questions waiting, who is online and the sidebar), and `OwnerActions` (posts, replies, answers,
+reactions, deletes), which queue through `OutboxQueue` so nothing is lost without signal. It is a
+port of the website's own stores (`src/web/stream.ts`, `timeline.svelte.ts` and friends), so it
+resumes, re-reads and orders the feed the same way.
+
 ## Building
 
 You need a Mac with Xcode, JDK 21 and [XcodeGen](https://github.com/yonaskolb/XcodeGen).

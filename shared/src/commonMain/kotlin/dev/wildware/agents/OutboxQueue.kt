@@ -1,0 +1,207 @@
+package dev.wildware.agents
+
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.serialization.json.JsonElement
+import kotlin.time.Clock
+import kotlin.time.ExperimentalTime
+import kotlin.uuid.ExperimentalUuidApi
+import kotlin.uuid.Uuid
+
+/** Where the outbox keeps its list and the files waiting to go up. The app supplies a lasting one. */
+interface OutboxStorage {
+    fun load(): String
+    fun save(text: String)
+    fun writeFile(name: String, bytes: ByteArray)
+    fun readFile(name: String): ByteArray?
+    fun deleteFile(name: String)
+}
+
+/** Keeps the outbox in memory: lost when the app closes. For tests and previews. */
+class MemoryOutboxStorage : OutboxStorage {
+    var text: String = ""
+    val files = mutableMapOf<String, ByteArray>()
+    override fun load() = text
+    override fun save(text: String) {
+        this.text = text
+    }
+    override fun writeFile(name: String, bytes: ByteArray) {
+        files[name] = bytes
+    }
+    override fun readFile(name: String) = files[name]
+    override fun deleteFile(name: String) {
+        files.remove(name)
+    }
+}
+
+/**
+ * Sends what the owner did, in order, surviving no signal and restarts. The rules (what goes next,
+ * when to try again, when to give up) are [Outbox]'s, the same ones the iPhone app follows; this
+ * runs them. Nothing is shown in the feed until the server has it: the live stream brings it back,
+ * so the feed never disagrees with the server. [items] is the "waiting to send" list.
+ */
+class OutboxQueue @OptIn(ExperimentalTime::class) constructor(
+    private val client: DashboardClient,
+    private val storage: OutboxStorage,
+    scope: CoroutineScope,
+    private val clock: () -> Long = { Clock.System.now().toEpochMilliseconds() },
+) {
+    private val confined: CoroutineScope = confinedScope(scope)
+
+    private val mutableItems = MutableStateFlow(Outbox.decode(runCatching { storage.load() }.getOrDefault("")))
+
+    /** Everything not yet sent, given-up items included. [Outbox.waiting] and [Outbox.failed] split it. */
+    val items: StateFlow<List<OutboxItem>> = mutableItems.asStateFlow()
+
+    private val kicks = Channel<Boolean>(Channel.CONFLATED)
+    private var runner: Job? = null
+
+    /** Starts sending, and keeps at it until [stop]. Things added before this wait. */
+    fun start() {
+        if (runner?.isActive == true) return
+        runner = confined.launch {
+            var ignoreBackoff = true
+            while (true) {
+                drain(ignoreBackoff)
+                // Only the first item in each thread can go next, so only those set the wake-up.
+                val heads = Outbox.waiting(mutableItems.value).distinctBy { it.threadKey }
+                val wake = Outbox.nextWakeMillis(heads)
+                val wait = wake?.let { maxOf(MinWaitMillis, it - clock()) } ?: Long.MAX_VALUE
+                ignoreBackoff = withTimeoutOrNull(wait) { kicks.receive() } ?: false
+            }
+        }
+    }
+
+    fun stop() {
+        runner?.cancel()
+        runner = null
+    }
+
+    /** Try now. [ignoreBackoff] when the odds changed: the network came back, or the owner opened the app. */
+    fun kick(ignoreBackoff: Boolean = false) {
+        kicks.trySend(ignoreBackoff)
+    }
+
+    /** Adds an item, with its files' bytes, and sends it as soon as it can. */
+    fun add(item: OutboxItem, files: Map<String, ByteArray> = emptyMap()) {
+        confined.launch {
+            files.forEach { (name, bytes) -> runCatching { storage.writeFile(name, bytes) } }
+            update { it + item }
+            kick()
+        }
+    }
+
+    fun retryNow(id: String) {
+        confined.launch {
+            update { Outbox.retryNow(it, id) }
+            kick(ignoreBackoff = true)
+        }
+    }
+
+    /** Takes an item out without sending it, and its files with it. */
+    fun remove(id: String) {
+        confined.launch { update { Outbox.remove(it, id) } }
+    }
+
+    private fun update(change: (List<OutboxItem>) -> List<OutboxItem>) {
+        val before = mutableItems.value
+        val after = change(before)
+        mutableItems.value = after
+        runCatching { storage.save(Outbox.encode(after)) }
+        Outbox.orphanedFiles(before, after).forEach { runCatching { storage.deleteFile(it) } }
+    }
+
+    private suspend fun drain(ignoreBackoff: Boolean) {
+        val tried = mutableListOf<String>()
+        while (true) {
+            val item = Outbox.next(mutableItems.value, clock(), ignoreBackoff, tried) ?: return
+            tried += item.id
+            update { Outbox.claim(it, item.id, clock()) }
+            val result = try {
+                val attachments = item.files.map { file ->
+                    val bytes = storage.readFile(file.name) ?: throw MissingFile(file.filename)
+                    Attachment(file.filename, file.mimeType, bytes)
+                }
+                client.deliver(item, attachments)
+            } catch (missing: MissingFile) {
+                DeliveryResult(DeliveryOutcome.GiveUp, message = "${missing.filename} is no longer on this device.")
+            }
+            update { Outbox.afterAttempt(it, item.id, result, clock()) }
+        }
+    }
+
+    private class MissingFile(val filename: String) : Exception()
+
+    private companion object {
+        /** Never spin: even an item that looks due waits this long before the next pass. */
+        const val MinWaitMillis = 1_000L
+    }
+}
+
+/**
+ * What the owner can do from the feed. Each call queues the change and returns its outbox id at
+ * once; it goes up when there is signal. Files are copied into the outbox, so the caller may let go.
+ */
+@OptIn(ExperimentalTime::class, ExperimentalUuidApi::class)
+class OwnerActions(
+    private val outbox: OutboxQueue,
+    private val clock: () -> Long = { Clock.System.now().toEpochMilliseconds() },
+    private val newId: () -> String = { Uuid.random().toString() },
+) {
+    /** Writes a new post into a project's feed. */
+    fun post(project: ProjectRef, text: String?, files: List<Attachment> = emptyList()): String =
+        queue(files) { id, stored -> Outbox.message(id, clock(), "To ${project.name}", mapOf("project" to project.slug), text, stored) }
+
+    /** Posts and marks it as work, so an agent on the project picks it up. */
+    fun ticket(project: ProjectRef, text: String): String = queue(emptyList()) { id, _ -> Outbox.ticket(id, clock(), project, text) }
+
+    /**
+     * Replies on a card: an update's thread, under a post, or in the talk about a question.
+     * [answers] is the line in that thread this answers, shown as "answering <name>".
+     */
+    fun reply(card: CardRef, text: String?, answers: String? = null, files: List<Attachment> = emptyList(), label: String = "Reply"): String {
+        val thread = when (card.kind) {
+            CardKinds.Update -> mapOf("update" to card.id)
+            CardKinds.Message -> mapOf("replyTo" to card.id)
+            CardKinds.Request -> mapOf("request" to card.id)
+            CardKinds.Task -> mapOf("task" to card.id)
+            else -> throw IllegalArgumentException("Can't reply on a ${card.kind}.")
+        }
+        return queue(files) { id, stored -> Outbox.reply(id, clock(), label, thread, text, answers, stored) }
+    }
+
+    /**
+     * Answers a question with [value] exactly as the server takes it: a string, a boolean, a list of
+     * strings, or `{action, text}` for a form. The server checks it against the question.
+     */
+    fun answer(request: RequestView, agentName: String, value: JsonElement): String =
+        queue(emptyList()) { id, _ -> Outbox.requestAnswer(id, clock(), agentName, request.id, value) }
+
+    /** Lets the agent go without an answer: it hears "cancelled". */
+    fun dismiss(request: RequestView, agentName: String): String =
+        queue(emptyList()) { id, _ -> Outbox.dismiss(id, clock(), agentName, request.id) }
+
+    /** Puts an emoji on a card, or takes it off: pass whether the owner's reaction is there now as [on]'s opposite. */
+    fun react(card: CardRef, emoji: String, on: Boolean): String = queue(emptyList()) { id, _ -> Outbox.react(id, clock(), card, emoji, on) }
+
+    /** Taps an emoji: on if the owner hasn't used it on this card, off if they have. */
+    fun toggleReaction(card: CardRef, emoji: String, current: List<ReactionView>): String =
+        react(card, emoji, on = current.none { it.isOwner && it.emoji == emoji })
+
+    /** Deletes a message (a post takes its replies with it) or an update. */
+    fun delete(card: CardRef): String = queue(emptyList()) { id, _ -> Outbox.delete(id, clock(), card) }
+
+    private fun queue(files: List<Attachment>, build: (String, List<OutboxFile>) -> OutboxItem): String {
+        val id = newId()
+        val stored = files.map { OutboxFile("$id-${newId()}", it.filename, it.mimeType) to it.bytes }
+        val item = build(id, stored.map { it.first })
+        outbox.add(item, stored.associate { (file, bytes) -> file.name to bytes })
+        return id
+    }
+}
