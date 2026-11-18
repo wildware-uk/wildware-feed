@@ -25,26 +25,9 @@ fun Route.agentRoutes(app: App) {
     endpoint(
         "/api/agent/stream",
         HttpMethod.Get to {
-            call.agentFor(app, app.agentStreamLimiter, mcpStyle = false) ?: return@to
-            // Phase 1 opens the stream and keeps it alive; its frames arrive with the bus in phase 2.
-            call.respond(object : io.ktor.http.content.OutgoingContent.WriteChannelContent() {
-                override val contentType: io.ktor.http.ContentType? get() = null
-                override val headers: io.ktor.http.Headers get() = io.ktor.http.Headers.build {
-                    append("Content-Type", "text/event-stream; charset=utf-8")
-                    append("Cache-Control", "no-cache, no-store, no-transform")
-                    append("Connection", "keep-alive")
-                    append("X-Accel-Buffering", "no")
-                }
-                override suspend fun writeTo(channel: io.ktor.utils.io.ByteWriteChannel) {
-                    channel.writeStringUtf8("retry: 2000\n\n: connected\n\n")
-                    channel.flush()
-                    while (true) {
-                        kotlinx.coroutines.delay(15_000)
-                        channel.writeStringUtf8(": heartbeat ${Wire.isoOf(app.clock())}\n\n")
-                        channel.flush()
-                    }
-                }
-            })
+            val agent = call.agentFor(app, app.agentStreamLimiter, mcpStyle = false) ?: return@to
+            val token = app.agents.parseBearer(call.request.headers["Authorization"]).first!!
+            call.agentStream(app, agent, token)
         },
     )
 }
@@ -101,7 +84,7 @@ private fun transportError(code: Int, message: String) =
     """{"jsonrpc":"2.0","error":{"code":$code,"message":${Wire.encode(JsonPrimitive(message))}},"id":null}"""
 
 private suspend fun ApplicationCall.mcp(app: App) {
-    agentFor(app, app.mcpLimiter, mcpStyle = true) ?: return
+    val agent = agentFor(app, app.mcpLimiter, mcpStyle = true) ?: return
 
     val accept = request.headers["Accept"].orEmpty()
     if (!accept.contains("application/json") || !accept.contains("text/event-stream")) {
@@ -132,11 +115,11 @@ private suspend fun ApplicationCall.mcp(app: App) {
 
     val requests = messages.map { it as JsonObject }.filter { "id" in it && "method" in it }
     if (requests.isEmpty()) return respondRaw(202, "", null)
-    val answers = requests.map { answer(it) }
+    val answers = requests.map { answer(app, agent, it) }
     respondRaw(200, if (parsed is JsonArray) Wire.encode(JsonArray(answers)) else Wire.encode(answers.single()), Wire.JSON)
 }
 
-private fun answer(request: JsonObject): JsonElement {
+private suspend fun answer(app: App, agent: Agents.Agent, request: JsonObject): JsonElement {
     val id = request["id"] ?: JsonNull
     fun result(value: JsonElement) = buildJsonObject {
         put("result", value)
@@ -161,13 +144,7 @@ private fun answer(request: JsonObject): JsonElement {
         }
         "ping" -> result(JsonObject(emptyMap()))
         "tools/list" -> result(buildJsonObject { put("tools", tools) })
-        "tools/call" -> result(buildJsonObject {
-            put("content", JsonArray(listOf(buildJsonObject {
-                put("type", JsonPrimitive("text"))
-                put("text", JsonPrimitive("MCP error -32603: tools arrive in phase 3 of the Kotlin server"))
-            })))
-            put("isError", JsonPrimitive(true))
-        })
+        "tools/call" -> result(app.tools.call(app, agent, params).json)
         else -> error(-32601, "Method not found")
     }
 }
