@@ -64,6 +64,9 @@ jobs:
           java-version: 21
       - uses: gradle/actions/setup-gradle@v4
       - run: ./gradlew :shared:assembleSharedDebugXCFramework
+      - name: Shared tests on the iPhone simulator
+        timeout-minutes: 10
+        run: ./gradlew :shared:iosSimulatorArm64Test
       - run: brew install xcodegen
         timeout-minutes: 5
       - name: Generate the Xcode project
