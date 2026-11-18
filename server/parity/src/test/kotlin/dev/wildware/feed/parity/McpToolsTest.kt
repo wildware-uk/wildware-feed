@@ -4,6 +4,7 @@ import io.ktor.client.statement.bodyAsText
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.serialization.json.JsonObject
+import org.junit.jupiter.api.Tag
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -96,6 +97,7 @@ class McpToolsTest : ParityTest() {
     }
 
     @Test
+    @Tag("media")
     fun `create_upload and attach_media`() = parity {
         val reserved = alpha.ok("create_upload", obj("filename" to "shot.png", "mime" to "image/png", "bytes" to 1234))
         assertTrue(Regex("^${Regex.escape(Parity.baseUrl)}/api/upload/[0-9A-Z]{26}\\.[A-Za-z0-9_-]{43}$").matches(reserved["upload_url"].s), reserved["upload_url"].s)

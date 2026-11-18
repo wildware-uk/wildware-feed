@@ -7,6 +7,7 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
 import kotlin.test.Test
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -246,6 +247,72 @@ class FeedApiTest : ParityTest() {
         )
         owner.post("/api/cards/update/01ZZZZZZZZZZZZZZZZZZZZZZZZ/pin", obj("pinned" to true))
             .expectError(404, "not_found", "no such update: 01ZZZZZZZZZZZZZZZZZZZZZZZZ")
+    }
+
+    @Test
+    fun `the app's card actions - pin and unpin every kind, every work state, not work, and their events`() = parity {
+        val project = Fixtures.project()
+        val pid = project.id
+        val update = Fixtures.update(project)["id"].s
+        val message = post("project" to project.slug, "body" to "a ticket").obj()["message"]["id"].s
+        val request = alpha.ok("request_input", obj("kind" to "confirm", "question" to "pin me?", "project" to project.slug, "timeout_s" to 60))["request_id"].s
+        withStream("/api/stream", owner.auth) { stream ->
+            fun pinned(kind: String, id: String, value: Boolean) =
+                """{"card":{"kind":"$kind","id":"$id"},"pinned":$value}"""
+            suspend fun pin(kind: String, id: String, value: Boolean) = owner.post("/api/cards/$kind/$id/pin", obj("pinned" to value)).bodyAsText()
+
+            for ((kind, id) in listOf("update" to update, "message" to message, "request" to request)) {
+                assertEquals(pinned(kind, id, true), pin(kind, id, true))
+                assertEquals(pinned(kind, id, true), pin(kind, id, true), "pinning twice answers the same")
+                assertEquals(pinned(kind, id, false), pin(kind, id, false))
+            }
+            stream.awaitEvent("request.updated") { it.obj["payload"]["requestId"].str == request }
+            stream.drain(500.milliseconds)
+            fun mine(frame: SseFrame) = frame.data?.let { d -> listOf(update, message, request).any { it in d } } == true
+            val pinEvents = stream.seen.filter { it.event in setOf("update.updated", "message.updated", "request.updated") && mine(it) }
+                .map { it.event + " " + it.obj["payload"].toString() }
+            assertEquals(
+                listOf(
+                    """update.updated {"updateId":"$update","projectId":"$pid","pinned":true}""",
+                    """update.updated {"updateId":"$update","projectId":"$pid","pinned":false}""",
+                    """message.updated {"messageId":"$message","projectId":"$pid","author":""}""",
+                    """message.updated {"messageId":"$message","projectId":"$pid","author":""}""",
+                    """request.updated {"requestId":"$request","agentId":"","projectId":"$pid"}""",
+                    """request.updated {"requestId":"$request","agentId":"","projectId":"$pid"}""",
+                ),
+                pinEvents,
+                "one event per change, none for a repeat",
+            )
+
+            val before = stream.seen.size
+            for ((kind, id) in listOf("update" to update, "message" to message)) {
+                for (status in listOf("todo", "in_progress", "blocked", "done", "cancelled")) {
+                    assertEquals(
+                        """{"card":{"kind":"$kind","id":"$id"},"status":"$status"}""",
+                        owner.post("/api/cards/$kind/$id/status", obj("status" to status)).bodyAsText(),
+                    )
+                }
+                assertEquals(
+                    """{"card":{"kind":"$kind","id":"$id"},"status":null}""",
+                    owner.post("/api/cards/$kind/$id/status", obj("status" to null)).bodyAsText(),
+                    "Not work",
+                )
+                assertEquals(
+                    """{"card":{"kind":"$kind","id":"$id"},"status":null}""",
+                    owner.post("/api/cards/$kind/$id/status", obj("status" to null)).bodyAsText(),
+                    "already not work",
+                )
+                owner.post("/api/cards/$kind/$id/status", obj("status" to "doing")).expectError(400, "invalid_argument", "status must be one of the five work states, or null")
+            }
+            stream.drain(1000.milliseconds)
+            val statusEvents = stream.seen.drop(before).filter { (it.event == "update.updated" || it.event == "message.updated") && mine(it) }
+            assertEquals(12, statusEvents.size, "six changes per card, none for the repeat or the refusal")
+        }
+
+        val snapshot = owner.get("/api/snapshot?project=${project.slug}").obj()
+        val card = snapshot["updates"]["items"].arr.single { it["id"].s == update }
+        assertEquals(null, card["status"].str)
+        assertEquals(false, card["pinned"].bool)
     }
 
     @Test
