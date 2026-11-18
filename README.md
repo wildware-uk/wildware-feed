@@ -7,29 +7,15 @@ iPhone app adds what only a native app can do:
 
 - **Nothing lost offline.** Everything you send (what you write in the app, lock screen voice notes, Siri
   tickets and messages, the share sheet, replies and answers from alerts) goes through an outbox kept
-  on the phone. With no signal it waits and sends itself when the network comes back or when you open
-  the app; what came from alerts, Siri and the share sheet also goes in the background. The app's
-  "Waiting to send" list shows what you wrote in the app; if the dashboard refuses something from
-  elsewhere for good, an alert tells you.
-- **iPad.** The wide layout: projects in a sidebar, the feed, and the open thread beside it.
-- **Answer from the lock screen.** Question alerts carry their own buttons (Yes/No, each option, or a
-  reply field). Answering needs Face ID or your passcode.
-- **Better alerts.** Apple push, with questions marked time-sensitive so they get through Focus.
-  Replies to agents straight from message alerts.
-- **Formatted alerts.** Press and hold an alert to read the agent's message as written: headings, bold, lists, quotes, code and tappable links.
-- **Widgets.** Home screen and lock screen: who's online, what's in progress, what's waiting. The
-  medium widget answers simple questions with a tap.
-- **Project widget.** Pick one project: its latest update and the questions it's waiting on, in small,
-  medium and large, on the lock screen, and big and readable in StandBy (phone on its side, charging).
-- **Focus filters.** Choose which projects can still alert you during a Focus. The rest stay quiet
-  until the Focus ends.
-- **Spotlight.** Search finds your projects and their recent updates. Tap one to open it.
-- **Live Activity.** A lock screen and Dynamic Island bar that the server keeps current, with
-  Yes/No buttons for yes-or-no questions. The server can start it when a question arrives.
+  on the phone: one queue for all of them. With no signal it waits and sends itself when the network
+  comes back, when you open the app, or in the background. The app's "Waiting to send" list shows all
+  of it, wherever it came from; if the dashboard refuses something for good, you're told, and can try
+  again or delete it there.
 - **Share sheet.** Share a screenshot, photo, link or text from any app into a project's feed.
-- **Voice notes.** A lock screen, Control Center and Action button control records without unlocking,
-  writes down what you said (Apple's on-device speech model) and posts it, with a Stop button on the
-  lock screen. Holding a mic in the app's own composer is not back yet.
+- **Voice notes.** Hold the composer's mic to talk; slide left to cancel. The phone writes down what
+  you said (Apple's on-device speech model) and puts the words in the box for you to check and send.
+  A lock screen, Control Center and Action button control records without unlocking and posts
+  straight away, with a Stop button on the lock screen.
 - **Apple Watch.** See what agents are waiting on and answer from your wrist: Yes/No, one button per
   option, or dictate a text answer. Dictate a message to a project, or reply in a question's thread.
   A watch face complication shows how many questions are waiting and opens the list.

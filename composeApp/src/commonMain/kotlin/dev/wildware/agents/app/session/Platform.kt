@@ -5,7 +5,10 @@ import dev.wildware.agents.MemoryTextStore
 import dev.wildware.agents.OutboxStorage
 import dev.wildware.agents.TextStore
 import io.ktor.client.engine.HttpClientEngine
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
 import dev.wildware.agents.app.feed.FilePicker
+import dev.wildware.agents.app.feed.VoiceInput
 
 /**
  * What the app needs from the device it runs on. Desktop and iPhone each build one; tests build
@@ -29,6 +32,10 @@ class AppPlatform(
     val settings: TextStore = MemoryTextStore(),
     /** Picks files to attach, or null where there is no picker yet. */
     val filePicker: FilePicker? = null,
+    /** Records voice notes for the composer's mic, or null where there is no mic. */
+    val voiceInput: VoiceInput? = null,
+    /** Fires when another process (the iPhone's share sheet, Siri, alert buttons) changed the outbox. */
+    val outboxChanged: Flow<Unit> = emptyFlow(),
 ) {
     companion object {
         /** Everything in memory: for tests and previews. */

@@ -12,6 +12,7 @@ import androidx.compose.ui.unit.dp
 object Icons {
     val Search = icon("search", circle(11f, 11f, 7f), "M21 21 16.5 16.5")
     val Send = icon("send", "M12 19V5", "M5 12 12 5 19 12")
+    val Mic = icon("mic", "M12 2A3 3 0 0 0 9 5V12A3 3 0 0 0 15 12V5A3 3 0 0 0 12 2Z", "M19 10V12A7 7 0 0 1 5 12V10", "M12 19V22")
     val Plus = icon("plus", "M12 5V19", "M5 12H19")
     val ChevronDown = icon("chevron-down", "M6 9 12 15 18 9")
     val ChevronRight = icon("chevron-right", "M9 6 15 12 9 18")

@@ -55,6 +55,7 @@ class DashboardSession(
     private val scope = CoroutineScope(parent.coroutineContext + SupervisorJob(parent.coroutineContext[Job]))
     val client = DashboardClient(saved.server, saved.token, platform.httpEngine())
     private val outbox = OutboxQueue(client, platform.outbox, scope)
+    private val outboxChanged = platform.outboxChanged
     /** The engine itself, for what lives outside the feed screen: the desktop tray and notifications. */
     val dashboard = Dashboard(client, scope, ReadMarks(platform.readMarks), outbox)
     private val actions = OwnerActions(outbox)
@@ -96,6 +97,8 @@ class DashboardSession(
     fun start() {
         outbox.start()
         dashboard.start()
+        // Another process queued, sent or dropped something: show it, and send what is new.
+        scope.launch { outboxChanged.collect { outbox.reload() } }
     }
 
     fun stop() {

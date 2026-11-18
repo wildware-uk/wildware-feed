@@ -11,7 +11,9 @@ struct ComposeScreen: UIViewControllerRepresentable {
         let folder = AppData.folder.path(percentEncoded: false)
         let controller = MainViewControllerKt.MainViewController(
             sessions: KeychainSessionStore(), dataDir: folder, navigator: navigator, sample: Sample.isOn,
-            photoPicker: PhotoPicker()
+            outboxDir: OutboxQueue.folder.path(percentEncoded: false),
+            photoPicker: PhotoPicker(),
+            voiceInput: VoiceNoteInput()
         )
         controller.view.backgroundColor = .obsidian
         return controller
@@ -20,7 +22,7 @@ struct ComposeScreen: UIViewControllerRepresentable {
     func updateUIViewController(_ controller: UIViewController, context: Context) {}
 }
 
-/// Where the Compose app keeps its read marks and its own outbox, in the app group container.
+/// Where the Compose app keeps its read marks, in the app group container. Its outbox is `OutboxQueue.folder`.
 enum AppData {
     static var folder: URL {
         let base = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: CredentialStore.appGroup)

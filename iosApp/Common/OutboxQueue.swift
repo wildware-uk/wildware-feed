@@ -111,11 +111,15 @@ enum OutboxQueue {
     @discardableResult
     static func update(_ change: @escaping ([OutboxItem]) -> [OutboxItem]) -> [OutboxItem] {
         var result: [OutboxItem] = []
+        var wrote = false
         let write = { (url: URL) in
             let before = load(url)
             let after = change(before)
-            if let data = Outbox.shared.encode(items: after).data(using: .utf8) {
+            // Nothing changed: write nothing, so no process wakes for it.
+            let old = try? Data(contentsOf: url)
+            if let data = Outbox.shared.encode(items: after).data(using: .utf8), data != old {
                 try? data.write(to: url, options: .atomic)
+                wrote = true
             }
             for name in Outbox.shared.orphanedFiles(before: before, after: after) {
                 try? FileManager.default.removeItem(at: folder.appending(path: name))
@@ -125,7 +129,7 @@ enum OutboxQueue {
         var failure: NSError?
         NSFileCoordinator(filePresenter: nil).coordinate(writingItemAt: queueFile, options: .forMerging, error: &failure, byAccessor: write)
         if failure != nil { write(queueFile) }
-        announce()
+        if wrote { announce() }
         return result
     }
 

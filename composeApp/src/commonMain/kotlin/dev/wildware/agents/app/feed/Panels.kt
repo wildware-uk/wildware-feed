@@ -1,5 +1,6 @@
 package dev.wildware.agents.app.feed
 
+import dev.wildware.agents.Composer as Dictation
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -437,6 +438,11 @@ fun Composer(
     var hovering by remember { mutableStateOf(false) }
     var refused by remember { mutableStateOf<String?>(null) }
     val picker = LocalFilePicker.current
+    // Hold-to-talk puts the words into the box, after anything already typed, to check before sending.
+    val recorder = rememberVoiceRecorder(LocalVoiceInput.current) { words ->
+        val joined = Dictation.appendDictation(text.text.toString(), words)
+        text.edit { replace(0, length, joined) }
+    }
     val add: (List<PendingFile>) -> Unit = { incoming ->
         val (fits, big) = incoming.partition { !tooBig(it) }
         files += fits
@@ -463,13 +469,14 @@ fun Composer(
     ) {
         AttachmentStrip(files, onRemove = { files.remove(it) }, Modifier.padding(start = 8.dp, top = 8.dp, bottom = 4.dp))
         refused?.let { MetaText(it, Modifier.padding(start = 8.dp, top = 4.dp), color = colors.error) }
+        recorder?.note?.let { MetaText(it, Modifier.padding(start = 8.dp, top = 4.dp), color = colors.textMuted) }
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (picker != null) {
                 IconAction(Icons.Paperclip, "Attach files") { picker.pick { picked -> add(picked) } }
             } else {
                 Spacer(Modifier.width(8.dp))
             }
-            TextInput(
+            if (recorder?.active == true) RecordingStrip(recorder, Modifier.weight(1f)) else TextInput(
                 text,
                 label = label,
                 placeholder = placeholder,
@@ -487,7 +494,12 @@ fun Composer(
                 IconAction(Icons.At, "Mention an agent") { text.edit { append("@") } }
                 MetaText("⌘↵", Modifier.padding(horizontal = 6.dp))
             }
-            SendButton(enabled = text.text.isNotBlank() || files.isNotEmpty(), onClick = send)
+            // An empty box offers the mic; once there is something to send, the send button.
+            if (recorder != null && (recorder.active || (text.text.isBlank() && files.isEmpty()))) {
+                MicButton(recorder)
+            } else {
+                SendButton(enabled = text.text.isNotBlank() || files.isNotEmpty(), onClick = send)
+            }
         }
     }
 }

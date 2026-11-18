@@ -1,9 +1,22 @@
 package dev.wildware.agents.app.session
 
+import dev.wildware.agents.Outbox
 import dev.wildware.agents.OutboxStorage
 import dev.wildware.agents.TextStore
 import dev.wildware.agents.app.feed.FilePicker
 import dev.wildware.agents.app.feed.PendingFile
+import dev.wildware.agents.app.feed.VoiceInput
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import platform.CoreFoundation.CFNotificationCenterGetDarwinNotifyCenter
+import platform.CoreFoundation.CFNotificationCenterPostNotification
+import platform.CoreFoundation.CFRelease
+import platform.CoreFoundation.CFStringCreateWithCString
+import platform.CoreFoundation.kCFStringEncodingUTF8
+import platform.Foundation.NSFileCoordinator
+import platform.Foundation.NSFileCoordinatorWritingForMerging
+import platform.Foundation.NSURL
 import io.ktor.client.engine.darwin.Darwin
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -24,14 +37,23 @@ import platform.posix.memcpy
 
 /**
  * The iPhone's platform. [sessions] comes from Swift, which keeps the key in the Keychain shared
- * with the widgets, extensions and watch. Read marks and the outbox live in [dataDir], a folder
- * in the app group container, so they survive the app closing. [photoPicker] attaches pictures.
+ * with the widgets, extensions and watch. Read marks live in [dataDir], a folder in the app group
+ * container. The outbox is [outboxDir], the one the share sheet, Siri and alert buttons queue
+ * into too, so everything waiting shows in the app and the background sender sends it all.
+ * [photoPicker] attaches pictures; [voiceInput] records the composer's voice notes.
  */
-fun iosPlatform(sessions: SessionStore, dataDir: String, photoPicker: FilePicker? = null): AppPlatform {
+fun iosPlatform(
+    sessions: SessionStore,
+    dataDir: String,
+    outboxDir: String,
+    photoPicker: FilePicker? = null,
+    voiceInput: VoiceInput? = null,
+): AppPlatform {
     val caches = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, true).firstOrNull() as? String
     makeDir(dataDir)
     val readMarks = "$dataDir/read-marks.json"
-    val outbox = IosOutboxStorage("$dataDir/AppOutbox")
+    val outbox = IosOutboxStorage(outboxDir)
+    outbox.adoptOldAppOutbox("$dataDir/AppOutbox")
     return AppPlatform(
         sessions = sessions,
         readMarks = IosTextStore(readMarks),
@@ -40,11 +62,38 @@ fun iosPlatform(sessions: SessionStore, dataDir: String, photoPicker: FilePicker
         deviceName = UIDevice.currentDevice.name,
         imageCacheDir = caches?.let { "$it/agents-images" },
         filePicker = photoPicker,
+        voiceInput = voiceInput,
+        outboxChanged = OutboxSignals.changes,
         clearLocalData = {
             outbox.clear()
             remove(readMarks)
         },
     )
+}
+
+/**
+ * The outbox's "it changed" signal between the app and its extensions. Swift hears the Darwin
+ * notification each process posts after writing and calls [changed]; the app's queue then reads
+ * the file again.
+ */
+object OutboxSignals {
+    /** The Darwin notification name. Swift's `OutboxQueue.changedNotification` is the same. */
+    const val Name = "dev.wildware.agents.outbox.changed"
+
+    private val flow = MutableSharedFlow<Unit>(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+    internal val changes: Flow<Unit> = flow
+
+    fun changed() {
+        flow.tryEmit(Unit)
+    }
+
+    /** Tells the other processes (and Swift in this one) that the file changed. */
+    @OptIn(ExperimentalForeignApi::class)
+    internal fun announce() {
+        val name = CFStringCreateWithCString(null, Name, kCFStringEncodingUTF8) ?: return
+        CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(), name, null, null, true)
+        CFRelease(name)
+    }
 }
 
 /** One text file, written whole and atomically. */
@@ -58,30 +107,85 @@ class IosTextStore(private val path: String) : TextStore {
 }
 
 /**
- * The app's own outbox: one list and a folder of attachments. It is separate from the queue the
- * share sheet, Siri and alert actions use (`Outbox/` in the same container), because this queue
- * is held in memory while the app runs and would overwrite their additions.
+ * The outbox in the app group: `queue.json` and each waiting attachment beside it, exactly as the
+ * Swift `OutboxQueue` keeps them. Other processes write it too, so every read-change-write holds
+ * the file through a file coordinator (Swift coordinates on the same file), and each write tells
+ * the others.
  */
 class IosOutboxStorage(private val dir: String) : OutboxStorage {
-    private val list = "$dir/outbox.json"
-    private val files = "$dir/files"
+    private val list = "$dir/queue.json"
 
     init {
-        makeDir(files)
+        makeDir(dir)
     }
 
-    override fun load(): String = IosTextStore(list).read().orEmpty()
-    override fun save(text: String) = writeText(list, text)
+    override fun load(): String = coordinated(writing = false) { IosTextStore(list).read().orEmpty() }
+
+    override fun save(text: String) = update { text }
+
+    override fun update(change: (String) -> String) {
+        var wrote = false
+        coordinated(writing = true) {
+            val before = IosTextStore(list).read().orEmpty()
+            val after = change(before)
+            if (after != before) {
+                writeText(list, after)
+                wrote = true
+            }
+        }
+        if (wrote) OutboxSignals.announce()
+    }
+
     override fun writeFile(name: String, bytes: ByteArray) {
-        bytes.toNSData().writeToFile("$files/$name", atomically = true)
+        bytes.toNSData().writeToFile("$dir/$name", atomically = true)
     }
-    override fun readFile(name: String): ByteArray? = NSData.dataWithContentsOfFile("$files/$name")?.toByteArray()
-    override fun deleteFile(name: String) = remove("$files/$name")
+    override fun readFile(name: String): ByteArray? = NSData.dataWithContentsOfFile("$dir/$name")?.toByteArray()
+    override fun deleteFile(name: String) = remove("$dir/$name")
 
+    /** Signing out: nothing queued for that account should send. */
     fun clear() {
-        remove(list)
-        remove(files)
-        makeDir(files)
+        remove(dir)
+        makeDir(dir)
+        OutboxSignals.announce()
+    }
+
+    /**
+     * The first iPhone build of the Compose app kept its own queue in [oldDir]. Moves anything
+     * still waiting there into this one, once.
+     */
+    @OptIn(ExperimentalForeignApi::class)
+    fun adoptOldAppOutbox(oldDir: String) {
+        val oldList = "$oldDir/outbox.json"
+        val waiting = IosTextStore(oldList).read()?.let(Outbox::decode).orEmpty()
+        if (waiting.isNotEmpty()) {
+            waiting.flatMap { it.files }.forEach { file ->
+                NSFileManager.defaultManager.moveItemAtPath("$oldDir/files/${file.name}", toPath = "$dir/${file.name}", error = null)
+            }
+            update { text ->
+                val current = Outbox.decode(text)
+                val known = current.map { it.id }.toSet()
+                Outbox.encode(current + waiting.filter { it.id !in known })
+            }
+        }
+        remove(oldDir)
+    }
+
+    @OptIn(ExperimentalForeignApi::class)
+    private fun <T> coordinated(writing: Boolean, block: () -> T): T {
+        val url = NSURL.fileURLWithPath(list)
+        var result: Result<T>? = null
+        val coordinator = NSFileCoordinator(filePresenter = null)
+        if (writing) {
+            coordinator.coordinateWritingItemAtURL(url, options = NSFileCoordinatorWritingForMerging, error = null) { _ ->
+                result = runCatching(block)
+            }
+        } else {
+            coordinator.coordinateReadingItemAtURL(url, options = 0u, error = null) { _ ->
+                result = runCatching(block)
+            }
+        }
+        // Coordination failed: do it anyway, as the Swift side does, rather than drop the change.
+        return (result ?: runCatching(block)).getOrThrow()
     }
 }
 

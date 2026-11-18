@@ -10,6 +10,7 @@ import Foundation
 
 /// Keeps the outbox moving while the app lives: sends on launch, on coming forward, when the network
 /// comes back, when another process queues something, when the next retry falls due, and in the background.
+/// The Compose app sends from the same file while it is open; claims keep the two from sending one item twice.
 @MainActor
 final class OutboxRunner: ObservableObject {
     static let shared = OutboxRunner()
@@ -85,6 +86,8 @@ final class OutboxRunner: ObservableObject {
 
     private func queueChanged() {
         reload()
+        // The Compose app's own queue reads the same file; tell it to look again.
+        OutboxSignals.shared.changed()
         // Our own writes announce too; a new item from elsewhere still needs a pass.
         if flushing == nil, Outbox.shared.next(items: items, nowMillis: OutboxQueue.nowMillis, ignoreBackoff: false, skip: []) != nil {
             kick()

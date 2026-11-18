@@ -21,6 +21,7 @@ import dev.wildware.agents.app.feed.FeedScreen
 import dev.wildware.agents.app.feed.FeedState
 import dev.wildware.agents.app.feed.LocalMediaAuth
 import dev.wildware.agents.app.feed.LocalFilePicker
+import dev.wildware.agents.app.feed.LocalVoiceInput
 import dev.wildware.agents.app.feed.FilePicker
 import dev.wildware.agents.app.feed.MediaAuth
 import dev.wildware.agents.app.feed.SafeArea
@@ -89,6 +90,7 @@ fun AgentsApp(
                 CompositionLocalProvider(
                     LocalMediaAuth provides MediaAuth(session.client.serverUrl, session.client.authorizationHeader),
                     LocalFilePicker provides platform.filePicker,
+                    LocalVoiceInput provides platform.voiceInput,
                 ) {
                     FeedScreen(state, safeArea, navigator = navigator) { event ->
                         when (event) {

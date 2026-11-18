@@ -21,6 +21,17 @@ interface OutboxStorage {
     fun writeFile(name: String, bytes: ByteArray)
     fun readFile(name: String): ByteArray?
     fun deleteFile(name: String)
+
+    /**
+     * Reads the list, changes it and writes it back as one step. Where other processes share the
+     * outbox (the iPhone's share sheet, Siri and alert buttons), this holds the file so none of their
+     * writes is lost. Writing nothing when nothing changed keeps those processes from waking for it.
+     */
+    fun update(change: (String) -> String) {
+        val before = load()
+        val after = change(before)
+        if (after != before) save(after)
+    }
 }
 
 /** Keeps the outbox in memory: lost when the app closes. For tests and previews. */
@@ -109,20 +120,48 @@ class OutboxQueue @OptIn(ExperimentalTime::class) constructor(
         confined.launch { update { Outbox.remove(it, id) } }
     }
 
+    /** Reads the list again because another process changed it, and sends anything new. */
+    fun reload() {
+        confined.launch {
+            runCatching { storage.load() }.onSuccess { mutableItems.value = Outbox.decode(it) }
+            kick()
+        }
+    }
+
+    /**
+     * Changes the list as stored, not as last seen: another process may have added to it since.
+     * If the storage fails, the change still holds in memory, so the screen stays right.
+     */
     private fun update(change: (List<OutboxItem>) -> List<OutboxItem>) {
-        val before = mutableItems.value
-        val after = change(before)
+        var before = mutableItems.value
+        var after = before
+        val stored = runCatching {
+            storage.update { text ->
+                before = Outbox.decode(text)
+                after = change(before)
+                if (after == before) text else Outbox.encode(after)
+            }
+        }
+        if (stored.isFailure) {
+            before = mutableItems.value
+            after = change(before)
+        }
         mutableItems.value = after
-        runCatching { storage.save(Outbox.encode(after)) }
         Outbox.orphanedFiles(before, after).forEach { runCatching { storage.deleteFile(it) } }
     }
 
     private suspend fun drain(ignoreBackoff: Boolean) {
         val tried = mutableListOf<String>()
         while (true) {
-            val item = Outbox.next(mutableItems.value, clock(), ignoreBackoff, tried) ?: return
+            // Picked and claimed in one held write, so no other process sends the same item meanwhile.
+            var picked: OutboxItem? = null
+            update { items ->
+                val next = Outbox.next(items, clock(), ignoreBackoff, tried)
+                picked = next
+                if (next == null) items else Outbox.claim(items, next.id, clock())
+            }
+            val item = picked ?: return
             tried += item.id
-            update { Outbox.claim(it, item.id, clock()) }
             val result = try {
                 val attachments = item.files.map { file ->
                     val bytes = storage.readFile(file.name) ?: throw MissingFile(file.filename)
