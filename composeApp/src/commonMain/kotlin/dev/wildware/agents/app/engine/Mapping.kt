@@ -27,6 +27,7 @@ import dev.wildware.agents.app.feed.LinkStatus
 import dev.wildware.agents.app.feed.OutboxSummary
 import dev.wildware.agents.app.feed.Presence
 import dev.wildware.agents.app.feed.Project
+import dev.wildware.agents.app.feed.FormField
 import dev.wildware.agents.app.feed.QuestionKind
 import dev.wildware.agents.app.feed.Reaction
 import dev.wildware.agents.app.feed.Reply
@@ -158,8 +159,10 @@ internal class FeedMapper(
             RequestKind.Choice -> QuestionKind.Choice to options.map { choice(it) }
             RequestKind.MultiChoice -> QuestionKind.MultiChoice to options.map { choice(it) }
             RequestKind.Text -> QuestionKind.Text to emptyList()
-            RequestKind.Form, null -> QuestionKind.Unsupported to emptyList()
+            RequestKind.Form -> QuestionKind.Form to emptyList()
+            null -> QuestionKind.Unsupported to emptyList()
         }
+        val config = request.config
         return FeedItem.Question(
             id = id,
             time = "",
@@ -174,6 +177,19 @@ internal class FeedMapper(
             sending = sending,
             // Only the question's own pictures: those on options show in the option grid instead.
             attachments = request.cardMedia.images().map { image(it) },
+            form = if (kind == QuestionKind.Form) {
+                FormField(
+                    label = config?.label?.takeIf { it.isNotBlank() },
+                    placeholder = config?.placeholder.orEmpty(),
+                    initial = config?.defaultValue.orEmpty(),
+                    multiline = config?.multiline == true,
+                    min = config?.min ?: 0,
+                    max = config?.max,
+                    actions = options,
+                )
+            } else {
+                null
+            },
         )
     }
 

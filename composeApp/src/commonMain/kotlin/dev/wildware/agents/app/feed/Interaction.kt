@@ -20,6 +20,8 @@ sealed interface FeedEvent {
     data class Answer(val questionId: String, val choices: List<String>) : FeedEvent
     /** An answer in words, for a question that asks for text. */
     data class AnswerText(val questionId: String, val text: String) : FeedEvent
+    /** A form's answer: the agent's [action] the owner chose, with the field's [text]. */
+    data class AnswerForm(val questionId: String, val action: String, val text: String) : FeedEvent
     data class DismissQuestion(val questionId: String) : FeedEvent
     data class React(val targetId: String, val emoji: String) : FeedEvent
     /** Start replying to a line in a thread: the reply box says who it answers. */
@@ -206,7 +208,7 @@ class FeedUi(preview: ScreenPreview, initial: FeedState, var onEvent: (FeedEvent
                 val (active, archived) = projects.partition { !it.archived }
                 projectOrder = active.map { it.id }.toMutableList().apply { add(event.to, removeAt(event.from)) } + archived.map { it.id }
             }
-            is FeedEvent.Answer, is FeedEvent.AnswerText, is FeedEvent.DismissQuestion -> picks.remove(questionIdOf(event))
+            is FeedEvent.Answer, is FeedEvent.AnswerText, is FeedEvent.AnswerForm, is FeedEvent.DismissQuestion -> picks.remove(questionIdOf(event))
             // "Reply" on a card opens its thread; on a line in a thread it answers that line.
             is FeedEvent.Reply -> if (state.item(event.targetId) is Threaded) {
                 openThread(event.targetId, phone = isPhone)
@@ -224,6 +226,7 @@ class FeedUi(preview: ScreenPreview, initial: FeedState, var onEvent: (FeedEvent
     private fun questionIdOf(event: FeedEvent): String? = when (event) {
         is FeedEvent.Answer -> event.questionId
         is FeedEvent.AnswerText -> event.questionId
+        is FeedEvent.AnswerForm -> event.questionId
         is FeedEvent.DismissQuestion -> event.questionId
         else -> null
     }

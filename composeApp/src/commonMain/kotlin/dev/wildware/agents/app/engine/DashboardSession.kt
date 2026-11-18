@@ -38,6 +38,8 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.put
+import kotlinx.serialization.json.buildJsonObject
 import kotlin.time.Clock
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
@@ -131,6 +133,12 @@ class DashboardSession(
             }
             is FeedEvent.AnswerText -> request(event.questionId)?.let { card ->
                 actions.answer(card.request, card.agentName, JsonPrimitive(event.text))
+            }
+            is FeedEvent.AnswerForm -> request(event.questionId)?.let { card ->
+                actions.answer(card.request, card.agentName, buildJsonObject {
+                    put("action", event.action)
+                    put("text", event.text.trim())
+                })
             }
             is FeedEvent.DismissQuestion -> request(event.questionId)?.let { actions.dismiss(it.request, it.agentName) }
             is FeedEvent.React -> cardRef(event.targetId)?.let { actions.toggleReaction(it, event.emoji, reactionsOn(event.targetId)) }

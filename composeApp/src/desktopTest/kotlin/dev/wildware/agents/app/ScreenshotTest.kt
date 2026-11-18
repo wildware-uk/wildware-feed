@@ -1,5 +1,7 @@
 package dev.wildware.agents.app
 
+import dev.wildware.agents.app.feed.FormField
+import dev.wildware.agents.app.feed.QuestionKind
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.platform.LocalDensity
@@ -110,6 +112,32 @@ class ScreenshotTest {
         for (size in Size.entries) {
             for (dark in listOf(false, true)) {
                 shoot("${size.label}-${if (dark) "dark" else "light"}-pictures", size, dark, startAt = "q2", preview = preview)
+            }
+        }
+    }
+
+    /** A form question: the agent's draft in a named field, and the agent's own actions. */
+    @Test
+    fun formQuestion() {
+        val form = FormField(
+            label = "Commit message",
+            initial = "Fix unread counts across sessions\n\nEach connection now keeps its own read marks.",
+            multiline = true,
+            min = 10,
+            max = 500,
+            actions = listOf("Commit", "Commit and push", "Discard"),
+        )
+        fun FeedItem.asForm() = if (this is FeedItem.Question && id == "q1") {
+            copy(prompt = "Commit with this message?", body = "Edit it if you like.", choices = emptyList(), allowsText = false, kind = QuestionKind.Form, form = form)
+        } else {
+            this
+        }
+        val state = FakeFeed.state.let { it.copy(sections = it.sections.map { section -> section.copy(items = section.items.map { item -> item.asForm() }) }) }
+        for (size in Size.entries) {
+            for (dark in listOf(false, true)) {
+                shoot("${size.label}-${if (dark) "dark" else "light"}-form", size, dark) {
+                    AgentsPreview(dark = dark, state = state, safeArea = size.safeArea, startAt = "q1")
+                }
             }
         }
     }

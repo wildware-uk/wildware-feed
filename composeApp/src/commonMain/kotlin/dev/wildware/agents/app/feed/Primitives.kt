@@ -278,7 +278,7 @@ fun AppButton(
             .border(1.dp, border, shape)
             .then(
                 if (enabled) Modifier.pressable(text, shape, labelIsShown = true, onClick = onClick)
-                else Modifier.touchTarget().semantics { disabled() }.alpha(0.45f),
+                else Modifier.touchTarget().semantics(mergeDescendants = true) { disabled() }.alpha(0.45f),
             )
             .padding(horizontal = 14.dp),
         verticalAlignment = Alignment.CenterVertically,

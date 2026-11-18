@@ -9,7 +9,11 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.performTextReplacement
+import dev.wildware.agents.RequestConfig
+import dev.wildware.agents.RequestView
 import androidx.compose.ui.test.doubleClick
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasText
@@ -148,6 +152,37 @@ class EngineWiringTest {
         waitForNode(hasText("Ship it"), unmerged = true).performClick()
         val body = waitForWrite("POST", "/api/requests/r1/answer")
         assertTrue("Ship it" in body, body)
+    }
+
+    private fun formRequest() = RequestView(
+        id = "r9", seq = 9, agentId = "a1", projectId = "p1", kind = "form",
+        question = "Send this commit message?", options = listOf("Commit", "Discard"),
+        config = RequestConfig(label = "Commit message", defaultValue = "Fix the counts", min = 3),
+        expiresAt = System.currentTimeMillis() + 3_600_000,
+    )
+
+    @Test
+    fun aFormSendsTheChosenActionWithTheEditedText() = runDesktopComposeUiTest(width = 1440, height = 900) {
+        server.requests = listOf(formRequest())
+        app()
+        waitFor("Send this commit message?")
+        // The field is named, and starts with the agent's draft.
+        waitForNode(hasContentDescription("Commit message") and hasText("Fix the counts"))
+        onNodeWithContentDescription("Commit message").performTextReplacement("  Fix the unread counts  ")
+        waitForNode(hasText("Commit") and hasClickAction()).performClick()
+        val body = waitForWrite("POST", "/api/requests/r9/answer")
+        assertTrue("\"action\":\"Commit\"" in body && "\"text\":\"Fix the unread counts\"" in body, body)
+    }
+
+    @Test
+    fun aFormWontSendTextTheAgentSaidIsTooShort() = runDesktopComposeUiTest(width = 1440, height = 900) {
+        server.requests = listOf(formRequest())
+        app()
+        waitForNode(hasContentDescription("Commit message") and hasText("Fix the counts"))
+        onNodeWithContentDescription("Commit message").performTextReplacement("ok")
+        waitFor("At least 3 characters (2 so far).")
+        waitForNode(hasText("Commit") and SemanticsMatcher.keyIsDefined(SemanticsProperties.Disabled))
+        assertEquals(null, server.wrote("POST", "/api/requests/r9/answer"))
     }
 
     @Test

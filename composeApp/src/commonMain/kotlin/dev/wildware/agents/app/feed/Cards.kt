@@ -1,5 +1,7 @@
 package dev.wildware.agents.app.feed
 
+import dev.wildware.agents.app.ProductName
+import androidx.compose.runtime.key
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -366,7 +368,7 @@ fun QuestionCard(item: FeedItem.Question, modifier: Modifier = Modifier, density
                     QuestionKind.Buttons -> PickMode.Instant
                     QuestionKind.Choice -> PickMode.One
                     QuestionKind.MultiChoice -> PickMode.Many
-                    QuestionKind.Text, QuestionKind.Unsupported -> PickMode.Instant
+                    QuestionKind.Text, QuestionKind.Form, QuestionKind.Unsupported -> PickMode.Instant
                 },
                 onPick = { i -> pick(item.choices[i]) },
                 onLookCloser = { i ->
@@ -399,8 +401,13 @@ fun QuestionCard(item: FeedItem.Question, modifier: Modifier = Modifier, density
                 ) { pick(choice) }
             }
         }
+        item.form?.let { form ->
+            key(item.id) {
+                FormAnswer(form, enabled = !item.sending) { action, text -> ui?.emit(FeedEvent.AnswerForm(item.id, action, text)) }
+            }
+        }
         if (item.kind == QuestionKind.Unsupported) {
-            MetaText("Answer this one on the website: the app can't show its form yet.", color = colors.textMuted)
+            MetaText("This version of $ProductName can't answer this kind of question. Update the app to answer it.", color = colors.textMuted)
         }
         if (item.allowsText) {
             Spacer(Modifier.height(10.dp))
@@ -454,6 +461,52 @@ private fun AnswerField(enabled: Boolean, onSend: (String) -> Unit) {
     ) {
         TextInput(text, label = "Your answer", placeholder = "Or write an answer…", modifier = Modifier.weight(1f), enabled = enabled, onSubmit = send)
         IconAction(Icons.Send, "Send answer", tint = if (text.text.isBlank()) colors.textFaint else colors.accent, onClick = send)
+    }
+}
+
+/**
+ * A form question's answer: the field, named when the agent named it and holding the agent's
+ * draft, then the agent's own actions. Each action sends the field with it, so the owner decides
+ * what to do and what to do it to in one go.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun FormAnswer(form: FormField, enabled: Boolean, onAnswer: (action: String, text: String) -> Unit) {
+    val colors = AgentTheme.colors
+    val shape = AgentTheme.shapes.medium
+    val bg = colors.surface.copy(alpha = if (colors.isDark) 0.6f else 0.85f)
+    val text = rememberTextFieldState(form.initial)
+    val problem = form.problem(text.text.toString())
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        form.label?.let { MetaText(it, color = colors.textMuted) }
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .clip(shape)
+                .background(bg)
+                .border(1.dp, if (problem != null) colors.waiting.copy(alpha = 0.6f) else colors.border, shape)
+                .padding(horizontal = 14.dp, vertical = 2.dp),
+        ) {
+            TextInput(
+                text,
+                label = form.label ?: "Your answer",
+                placeholder = form.placeholder,
+                modifier = Modifier.fillMaxWidth(),
+                multiline = form.multiline,
+                enabled = enabled,
+            )
+        }
+        if (problem != null) MetaText(problem, color = colors.textMuted)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            form.actions.forEachIndexed { i, action ->
+                AppButton(
+                    action,
+                    if (i == 0) ButtonTone.Waiting else ButtonTone.Secondary,
+                    icon = if (i == 0) Icons.Check else null,
+                    enabled = enabled && problem == null,
+                ) { onAnswer(action, text.text.toString()) }
+            }
+        }
     }
 }
 

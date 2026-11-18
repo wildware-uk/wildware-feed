@@ -18,6 +18,7 @@ import dev.wildware.agents.app.engine.FeedMapper
 import dev.wildware.agents.app.feed.FeedItem
 import dev.wildware.agents.app.feed.Level
 import dev.wildware.agents.app.feed.LinkStatus
+import dev.wildware.agents.app.feed.FormField
 import dev.wildware.agents.app.feed.QuestionKind
 import kotlinx.datetime.TimeZone
 import kotlin.test.Test
@@ -101,6 +102,36 @@ class MappingTest {
         assertEquals(listOf("Yes", "No"), q.choices.map { it.label })
         assertEquals("42 min", q.expiresIn)
         assertTrue(q.sending)
+    }
+
+    @Test
+    fun aFormKeepsItsFieldAndItsOwnActions() {
+        val request = RequestCard(
+            RequestView(
+                id = "r3", agentId = "a1", kind = "form", question = "Send this commit message?", options = listOf("Commit", "Discard"),
+                config = RequestConfig(label = "Commit message", placeholder = "What changed", defaultValue = "Fix the counts", multiline = true, min = 3, max = 72),
+                expiresAt = noon + 42 * 60_000,
+            ),
+            agentName = "forge", projectName = null, discussion = emptyList(), unread = 0, sending = false, tags = emptyList(), fields = emptyList(),
+        )
+        val q = mapper.map(feed(emptyList(), listOf(request)), listOf(mega), emptyList(), emptyList(), null)
+            .sections.single().items.single() as FeedItem.Question
+        assertEquals(QuestionKind.Form, q.kind)
+        assertEquals(FormField(label = "Commit message", placeholder = "What changed", initial = "Fix the counts", multiline = true, min = 3, max = 72, actions = listOf("Commit", "Discard")), q.form)
+        assertTrue(q.choices.isEmpty(), "the actions are the form's own buttons, not answer choices")
+        assertEquals(false, q.allowsText)
+    }
+
+    @Test
+    fun aFormWithNoConfigAllowsAnEmptyField() {
+        val request = RequestCard(
+            RequestView(id = "r4", agentId = "a1", kind = "form", question = "Go?", options = listOf("Go")),
+            agentName = "forge", projectName = null, discussion = emptyList(), unread = 0, sending = false, tags = emptyList(), fields = emptyList(),
+        )
+        val q = mapper.map(feed(emptyList(), listOf(request)), listOf(mega), emptyList(), emptyList(), null)
+            .sections.single().items.single() as FeedItem.Question
+        assertEquals(FormField(actions = listOf("Go")), q.form)
+        assertEquals(null, q.form!!.problem(""))
     }
 
     @Test

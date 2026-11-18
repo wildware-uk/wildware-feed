@@ -116,8 +116,48 @@ enum class QuestionKind {
     /** Answer in words. */
     Text,
 
-    /** A kind this app can't answer yet (a form): it says to answer on the website. */
+    /** Edit the agent's draft in [FeedItem.Question.form], then pick one of its own actions. */
+    Form,
+
+    /** A kind newer than this app: it says to update the app. */
     Unsupported,
+}
+
+/**
+ * The field on a form question: the agent's draft (or an empty box) for the owner to change, and
+ * the agent's own actions, each of which sends the field with it as one answer.
+ */
+@Immutable
+data class FormField(
+    /** What the field is, e.g. "Commit message". Null when the agent didn't say. */
+    val label: String? = null,
+    val placeholder: String = "",
+    /** The agent's draft, already in the box. */
+    val initial: String = "",
+    val multiline: Boolean = false,
+    val min: Int = 0,
+    val max: Int? = null,
+    val actions: List<String> = emptyList(),
+) {
+    /**
+     * Why [text] can't be sent yet, or null when it can. Counted trimmed, as the server counts it;
+     * the server still checks every answer itself.
+     */
+    fun problem(text: String): String? {
+        val length = text.trim().length
+        val most = max ?: ServerMost
+        return when {
+            length < min && min == 1 -> "Write something first."
+            length < min -> "At least $min characters ($length so far)."
+            length > most -> (length - most).let { over -> "$over character${if (over == 1) "" else "s"} too long (at most $most)." }
+            else -> null
+        }
+    }
+
+    private companion object {
+        /** The longest text answer the dashboard takes when the agent set no maximum. */
+        const val ServerMost = 10_000
+    }
 }
 
 /** A card that can have a thread under it. */
@@ -168,6 +208,8 @@ sealed interface FeedItem {
         val sending: Boolean = false,
         /** Pictures on the question itself, not on its options. */
         val attachments: List<Attachment> = emptyList(),
+        /** A form question's field and actions; null for every other kind. */
+        val form: FormField? = null,
     ) : FeedItem {
         val hasPictures: Boolean get() = choices.any { it.image != null }
     }
