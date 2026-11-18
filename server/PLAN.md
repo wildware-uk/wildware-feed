@@ -91,6 +91,13 @@ both servers, every difference listed.
   reusing its HTTP and SSE helpers) and `shadow-run.sh`. Neither contains paths or data. Gradle
   goes through the slot script.
 
+**Result (first run, TS b65832d vs Kotlin, on a copy of the live data):** 48,877 answers compared,
+all identical after normalising server-stamped times and run-made ids. Covered: every owner read route
+over every project, card, page, thread and request; 7,780 originals byte for byte with their headers;
+thumbnails and posters by status and type; the MCP read tools; a lockstep write script; the owner
+stream's event sequence. The only difference left out is the known one (no `share` key). Not yet in
+the write script: an upload, and agent-side media fetch.
+
 ## Phase 6 detail: packaging and the cut-over runbook
 
 - **Distribution:** the `application` plugin's `installDist`/`distTar` (`bin/feed-server` plus
