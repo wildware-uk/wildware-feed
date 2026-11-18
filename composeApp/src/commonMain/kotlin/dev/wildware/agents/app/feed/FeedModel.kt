@@ -144,6 +144,8 @@ data class Reply(
     val sending: Boolean = false,
     /** Questions an agent asked under this reply. They are answered right here, as well as at the top. */
     val questions: List<FeedItem.Question> = emptyList(),
+    /** The owner's line, sent a while ago, and no agent has it: nobody is listening. */
+    val undelivered: Boolean = false,
 )
 
 @Immutable
@@ -308,6 +310,8 @@ sealed interface FeedItem {
         val status: WorkStatus? = null,
         /** Pinned above the rest of the feed. */
         val pinned: Boolean = false,
+        /** The owner wrote it, sent it a while ago, and no agent has it: nobody is listening. */
+        val undelivered: Boolean = false,
     ) : Threaded {
         override val title: String get() = body.lineSequence().first().take(120)
         override val starter: Author get() = author

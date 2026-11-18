@@ -88,6 +88,7 @@ object Icons {
         "M4 12H7", "M13 12H20", circle(10f, 12f, 2.5f),
         "M4 18H13", "M19 18H20", circle(16f, 18f, 2.5f),
     )
+    val Warning = icon("warning", "M10.3 3.9 1.8 18A2 2 0 0 0 3.5 21H20.5A2 2 0 0 0 22.2 18L13.7 3.9A2 2 0 0 0 10.3 3.9Z", "M12 9V13", "M12 17H12.01")
 }
 
 private fun icon(name: String, vararg paths: String): ImageVector =

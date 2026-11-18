@@ -1,7 +1,10 @@
 package dev.wildware.agents.app
 
+import dev.wildware.agents.AckView
 import dev.wildware.agents.CardKinds
 import dev.wildware.agents.LiveAgentView
+import dev.wildware.agents.DeliveryView
+import dev.wildware.agents.PostCard
 import dev.wildware.agents.CardRef
 import dev.wildware.agents.MessageView
 import dev.wildware.agents.MediaView
@@ -158,6 +161,41 @@ class MappingTest {
         assertEquals(listOf("Dusk", "Dawn"), q.choices.map { it.image?.altText })
         assertEquals(listOf("https://dash.test/media/md3/original"), q.attachments.map { it.url })
         assertTrue(q.hasPictures)
+    }
+
+    private fun line(id: String, author: String, at: Long, acks: List<AckView> = emptyList(), deliveries: List<DeliveryView> = emptyList(), status: String? = null, sending: Boolean = false) =
+        ThreadLine(
+            message = MessageView(id = id, author = author, body = "Line $id", createdAt = at, projectId = "p1", status = status),
+            authorName = if (author == "human") "You" else "forge", answersName = null, media = emptyList(), embeds = emptyList(),
+            reactions = emptyList(), acks = acks, deliveries = deliveries, questions = emptyList(), sending = sending,
+        )
+
+    private fun postOf(head: ThreadLine, replies: List<ThreadLine> = emptyList()): FeedItem.Post {
+        val card = PostCard(head, projectName = null, activityAt = head.message.createdAt, replies = replies, unread = 0, tags = emptyList(), fields = emptyList(), apps = emptyList())
+        val engine = EngineFeed(null, null, StreamStatus.Live, true, false, false, emptyList(), emptyList(), listOf(card), 0, false, emptyList())
+        return mapper.map(engine, listOf(mega), emptyList(), emptyList(), null).sections.single().items.single() as FeedItem.Post
+    }
+
+    @Test
+    fun anOwnersPostNobodyHasAfterFifteenSecondsIsNotDelivered() {
+        assertTrue(postOf(line("m1", "human", noon - 20_000)).undelivered)
+        assertEquals(false, postOf(line("m1", "human", noon - 5_000)).undelivered, "still in flight")
+        val delivered = DeliveryView("d1", messageId = "m1", agentId = "a1")
+        assertEquals(false, postOf(line("m1", "human", noon - 20_000, deliveries = listOf(delivered))).undelivered)
+        val read = AckView("k1", agentId = "a1", card = CardRef(CardKinds.Message, "m1"), messageId = "m1", state = "read")
+        assertEquals(false, postOf(line("m1", "human", noon - 20_000, acks = listOf(read))).undelivered)
+        assertEquals(false, postOf(line("m1", "human", noon - 20_000, status = "todo")).undelivered, "work says where it has got to")
+        assertEquals(false, postOf(line("m1", "agent:a1", noon - 20_000)).undelivered, "an agent's post is not waiting for an agent")
+        assertEquals(false, postOf(line("m1", "human", noon - 20_000, sending = true)).undelivered, "still in the outbox")
+    }
+
+    @Test
+    fun anOwnersReplyNobodyHasIsNotDelivered() {
+        val post = postOf(
+            line("m1", "agent:a1", noon - 60_000),
+            replies = listOf(line("m2", "human", noon - 30_000), line("m3", "agent:a1", noon - 25_000), line("m4", "human", noon - 2_000)),
+        )
+        assertEquals(listOf(true, false, false), post.replies.map { it.undelivered })
     }
 
     @Test

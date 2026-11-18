@@ -344,6 +344,13 @@ class EngineWiringTest {
     }
 
     @Test
+    fun aPostNoAgentHasSaysSo() = runDesktopComposeUiTest(width = 1440, height = 900) {
+        app()
+        waitFor("Why is the Mac build slow?")
+        waitFor("Not delivered to any agent")
+    }
+
+    @Test
     fun aReplySaysWhichLineItAnswers() = runDesktopComposeUiTest(width = 1440, height = 900) {
         // Replies land after their card here on purpose: that order once made this test flaky.
         server.messagesDelayMs = 400

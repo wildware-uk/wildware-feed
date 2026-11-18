@@ -594,6 +594,24 @@ private fun FormAnswer(form: FormField, enabled: Boolean, onAnswer: (action: Str
     }
 }
 
+/**
+ * The owner's line reached no agent. Red and a warning sign rather than a quiet grey, because it is
+ * the one acknowledgement the owner has to act on: nobody is listening.
+ */
+@Composable
+internal fun NotDelivered(modifier: Modifier = Modifier) {
+    val colors = AgentTheme.colors
+    Row(modifier.semantics(mergeDescendants = true) { }, verticalAlignment = Alignment.CenterVertically) {
+        Icon(Icons.Warning, null, tint = colors.error, modifier = Modifier.size(14.dp))
+        Text(
+            "Not delivered to any agent",
+            Modifier.padding(start = 6.dp),
+            color = colors.error,
+            style = AgentTheme.type.meta.copy(fontWeight = FontWeight.SemiBold),
+        )
+    }
+}
+
 /** Something written straight into the feed, by the owner or an agent. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -640,6 +658,10 @@ fun PostCard(item: FeedItem.Post, modifier: Modifier = Modifier, density: Densit
                 if (item.acks.read.isNotEmpty() || item.acks.thinking.isNotEmpty()) {
                     Spacer(Modifier.height(10.dp))
                     AckLine(item.acks)
+                }
+                if (item.undelivered) {
+                    Spacer(Modifier.height(10.dp))
+                    NotDelivered()
                 }
                 if (inline) InlineThread(item)
             }

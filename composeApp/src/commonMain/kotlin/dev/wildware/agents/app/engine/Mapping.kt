@@ -58,6 +58,9 @@ internal val OwnerAuthor = Author.Owner("You")
  * the same screen, so it is tested without a server or a screen.
  */
 @OptIn(ExperimentalTime::class)
+/** How long the owner's line may sit with no agent before it says so: longer than any live round trip. */
+internal const val UndeliveredAfterMillis = 15_000L
+
 internal class FeedMapper(
     private val serverUrl: String,
     private val now: () -> Long,
@@ -196,6 +199,8 @@ internal class FeedMapper(
             questions = post.questions.map { it.toQuestion(agents, project, threads) },
             status = workStatus(status),
             pinned = pinned,
+            // Work says where it has got to, which answers "has anybody got this" better.
+            undelivered = post.message.status == null && undelivered(post),
         )
     }
 
@@ -271,9 +276,19 @@ internal class FeedMapper(
                 unread = line.message.id in unreadIds,
                 sending = line.sending,
                 questions = line.questions.map { it.toQuestion(agents, project, threads) },
+                undelivered = undelivered(line),
             )
         }
     }
+
+    /**
+     * The owner's line reached no agent: nothing read, acknowledged or was handed it, and long
+     * enough has passed ([UndeliveredAfterMillis]) that it isn't still on its way. Lines in the
+     * outbox aren't sent yet, so they aren't asked.
+     */
+    private fun undelivered(line: ThreadLine): Boolean =
+        line.message.isOwner && !line.sending && line.acks.isEmpty() && line.deliveries.isEmpty() &&
+            now() - line.message.createdAt >= UndeliveredAfterMillis
 
     private fun author(line: ThreadLine, agents: AgentDirectory): Author =
         line.message.agentId?.let { Author.AgentAuthor(agents.agent(it, line.authorName)) } ?: OwnerAuthor

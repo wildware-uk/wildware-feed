@@ -572,6 +572,7 @@ fun ReplyView(reply: Reply, modifier: Modifier = Modifier) {
             }
             Spacer(Modifier.height(2.dp))
             MarkdownBody(reply.body)
+            if (reply.undelivered) NotDelivered(Modifier.padding(top = 6.dp))
             // A question asked under this reply is answered right here, as on the website.
             reply.questions.forEach { q ->
                 QuestionCard(q, Modifier.padding(top = 8.dp), density = Density.Compact, inThread = true)

@@ -15,6 +15,8 @@ import androidx.compose.runtime.Composable
 import dev.wildware.agents.app.feed.AgentDetails
 import dev.wildware.agents.app.feed.Bell
 import dev.wildware.agents.app.feed.BellItem
+import dev.wildware.agents.app.feed.Acks
+import dev.wildware.agents.app.feed.Author
 import dev.wildware.agents.app.feed.FakeFeed
 import dev.wildware.agents.app.feed.Presence
 import dev.wildware.agents.app.feed.FeedFilter
@@ -301,6 +303,28 @@ class ScreenshotTest {
             for (dark in listOf(false, true)) {
                 shoot("${size.label}-${if (dark) "dark" else "light"}-bell", size, dark) {
                     AgentsPreview(dark = dark, state = state, safeArea = size.safeArea, preview = ScreenPreview(bellOpen = true))
+                }
+            }
+        }
+    }
+
+    /** The owner's post that no agent has, and a reply of theirs in the open thread that no agent has. */
+    @Test
+    fun notDelivered() {
+        val base = FakeFeed.state
+        val post = base.sections.flatMap { it.items }.filterIsInstance<FeedItem.Post>().first()
+        val lonely = post.copy(acks = Acks(), undelivered = true)
+        val thread = base.openThread as FeedItem.Update
+        val mine = thread.replies.indexOfFirst { it.author is Author.Owner }
+        val openThread = thread.copy(replies = thread.replies.mapIndexed { i, r -> if (i == mine) r.copy(undelivered = true) else r })
+        val state = base.copy(
+            sections = base.sections.map { s -> s.copy(items = s.items.map { if (it.id == post.id) lonely else if (it.id == thread.id) openThread else it }) },
+            openThread = openThread,
+        )
+        for (size in Size.entries) {
+            for (dark in listOf(false, true)) {
+                shoot("${size.label}-${if (dark) "dark" else "light"}-not-delivered", size, dark) {
+                    AgentsPreview(dark = dark, state = state, safeArea = size.safeArea, startAt = post.id)
                 }
             }
         }
