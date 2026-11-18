@@ -90,8 +90,9 @@ class RecompositionTest {
         assertEquals(1, cardsDrawn, "only the card with the new reply: $calls")
         assertEquals(1, calls["DesktopColumns"], "one pass, in the frame the state arrived")
         // That card's replies show under it, so they redraw with it; the rest is the header and
-        // sidebar counting cards again. Measured at about 330.
-        assertTrue(calls.values.sum() < 420, "one reply redrew ${calls.values.sum()} composables")
+        // sidebar counting cards again. Measured at 412, then 420 once the header gained the
+        // work-state filter row and status chip (#18): new things on screen, not extra redraws.
+        assertTrue(calls.values.sum() < 440, "one reply redrew ${calls.values.sum()} composables")
     }
 
     @Test
