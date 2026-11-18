@@ -467,7 +467,9 @@ fun ProjectsDrawer(ui: FeedUi, progress: EdgeProgress, widthPx: Float, safeArea:
                 )
                 IconAction(Icons.Close, "Close projects", onClick = close)
             }
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(12.dp))
+            DrawerWaitingRow(ui, close)
+            Spacer(Modifier.height(12.dp))
             Row(Modifier.padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                 SectionLabel("Projects", Modifier.weight(1f))
                 MetaText("Hold to reorder")
@@ -504,6 +506,36 @@ fun ProjectsDrawer(ui: FeedUi, progress: EdgeProgress, widthPx: Float, safeArea:
     }
 }
 
+/** "Waiting on you" in the drawer: every question from every project, with how many. */
+@Composable
+private fun DrawerWaitingRow(ui: FeedUi, close: () -> Unit) {
+    val colors = AgentTheme.colors
+    val shape = AgentTheme.shapes.medium
+    val count = ui.state.waitingTotal
+    val selected = ui.showingWaiting
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(if (selected) colors.text.copy(alpha = if (colors.isDark) 0.08f else 0.06f) else Color.Transparent)
+            .pressable("Waiting on you, ${if (count == 0) "nothing" else questions(count)}", shape, role = Role.Tab) {
+                ui.showWaiting()
+                close()
+            }
+            .padding(horizontal = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Clock, null, tint = colors.waiting, modifier = Modifier.size(18.dp))
+        Text(
+            "Waiting on you",
+            Modifier.padding(start = 10.dp).weight(1f),
+            color = if (selected) colors.text else colors.textMuted,
+            style = AgentTheme.type.label,
+        )
+        WaitingBadge(count)
+    }
+}
+
 @Composable
 private fun DrawerProjectRow(p: Project, selected: Boolean, dragging: Boolean, onClick: () -> Unit) {
     val colors = AgentTheme.colors
@@ -521,7 +553,12 @@ private fun DrawerProjectRow(p: Project, selected: Boolean, dragging: Boolean, o
                 },
             )
             .then(if (dragging) Modifier.border(1.dp, colors.borderStrong, shape) else Modifier)
-            .pressable("${p.name}, ${p.unread} unread", shape, role = Role.Tab, onClick = onClick)
+            .pressable(
+                "${p.name}, ${p.unread} unread" + if (p.waiting > 0) ", ${questions(p.waiting)} waiting on you" else "",
+                shape,
+                role = Role.Tab,
+                onClick = onClick,
+            )
             .padding(horizontal = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -532,6 +569,7 @@ private fun DrawerProjectRow(p: Project, selected: Boolean, dragging: Boolean, o
             color = if (selected) colors.text else colors.textMuted,
             style = AgentTheme.type.label,
         )
+        WaitingBadge(p.waiting, Modifier.padding(end = 6.dp))
         UnreadBadge(p.unread, emphasised = selected)
         Icon(Icons.Grip, null, tint = colors.textFaint, modifier = Modifier.padding(start = 10.dp).size(18.dp))
     }
@@ -636,6 +674,7 @@ fun PhoneThreadScreen(ui: FeedUi, item: Threaded, widthPx: Float, safeArea: Safe
             ) {
                 Spacer(Modifier.height(8.dp))
                 FeedItemView(item, selected = false, density = Density.Compact, inThread = true)
+                HeadQuestions(item)
                 Spacer(Modifier.height(14.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     SectionLabel(if (item.replies.size == 1) "1 reply" else "${item.replies.size} replies")

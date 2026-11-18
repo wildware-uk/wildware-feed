@@ -340,10 +340,38 @@ private fun PhoneTopBar(state: FeedState, onProjects: () -> Unit, onTapBar: () -
             UnreadBadge(state.totalUnread - state.current.unread, emphasised = true)
         }
         Spacer(Modifier.weight(1f))
+        PhoneWaitingButton()
         IconAction(Icons.Search, "Search", onClick = onSearch)
         IconAction(Icons.Bell, "Notifications")
         Box(Modifier.pressable("Your account", CircleShape) {}, contentAlignment = Alignment.Center) {
             Avatar(state.owner, 30.dp)
+        }
+    }
+}
+
+/** The amber "questions waiting" count on the phone's top bar. Opens every waiting question. */
+@Composable
+private fun PhoneWaitingButton() {
+    val ui = LocalFeedUi.current ?: return
+    val count = ui.state.waitingTotal
+    if (count == 0) return
+    val colors = AgentTheme.colors
+    val shape = AgentTheme.shapes.pill
+    Box(
+        Modifier.clip(shape).pressable("${questions(count)} waiting on you", shape) { ui.showWaiting() },
+        contentAlignment = Alignment.Center,
+    ) {
+        Row(
+            Modifier.clip(shape).background(colors.waiting).padding(horizontal = 9.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(Icons.Clock, null, tint = colors.onWaiting, modifier = Modifier.size(14.dp))
+            Text(
+                "$count",
+                Modifier.padding(start = 4.dp),
+                color = colors.onWaiting,
+                style = AgentTheme.type.meta.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold),
+            )
         }
     }
 }

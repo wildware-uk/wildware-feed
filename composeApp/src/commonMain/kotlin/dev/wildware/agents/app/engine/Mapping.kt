@@ -59,6 +59,11 @@ internal class FeedMapper(
         online: List<LiveAgentView>,
         outbox: List<OutboxItem>,
         selectedSlug: String?,
+        /**
+         * Every question waiting on the owner, wherever it was asked, longest waiting first. The
+         * engine's feed leaves out questions asked inside a thread; they belong in Waiting on you too.
+         */
+        everyQuestion: List<RequestCard>? = null,
     ): FeedState {
         val onlineIds = online.mapTo(HashSet()) { it.agentId }
         val names = agentNames(feed) + online.associate { it.agentId to it.name }
@@ -72,14 +77,20 @@ internal class FeedMapper(
         }
         fun project(id: String?) = id?.let { byId[it] } ?: current
 
+        val threads = ThreadIndex(feed)
+        val inScope = when {
+            everyQuestion == null -> feed.waiting
+            selectedSlug == null -> everyQuestion
+            else -> everyQuestion.filter { it.request.projectId == current.id }
+        }
         val sections = buildList {
-            val waiting = feed.waiting.map { it.toQuestion(agents, ::project) }
+            val waiting = inScope.map { it.toQuestion(agents, ::project, threads) }
             if (waiting.isNotEmpty()) add(FeedSection("Waiting on you", waiting))
-            val pinned = feed.pinned.mapNotNull { it.toItem(agents, ::project) }
+            val pinned = feed.pinned.mapNotNull { it.toItem(agents, ::project, threads) }
             if (pinned.isNotEmpty()) add(FeedSection("Pinned", pinned))
             feed.cards
                 .groupBy { dayOf(it.activityAt) }
-                .forEach { (day, cards) -> add(FeedSection(dayLabel(day), cards.mapNotNull { it.toItem(agents, ::project) })) }
+                .forEach { (day, cards) -> add(FeedSection(dayLabel(day), cards.mapNotNull { it.toItem(agents, ::project, threads) })) }
         }
         val waiting = Outbox.waiting(outbox)
         val failed = Outbox.failed(outbox)
@@ -117,7 +128,22 @@ internal class FeedMapper(
     private fun ProjectSummary.toView() =
         Project(project.id, project.name, unread = unread, waiting = waiting, hue = hue(project.id), slug = project.slug, archived = project.isArchived)
 
-    private fun FeedCard.toItem(agents: AgentDirectory, project: (String?) -> Project): FeedItem? = when (this) {
+    /** Where each thread line is, so a question asked under one can say what it answers and jump there. */
+    private class ThreadIndex(feed: EngineFeed) {
+        private val lines = HashMap<String, Pair<String, ThreadLine>>()
+
+        init {
+            feed.allCards.forEach { card ->
+                val own = (card as? PostCard)?.post?.let(::listOf).orEmpty()
+                (own + card.replies).forEach { lines[it.message.id] = card.id to it }
+            }
+        }
+
+        /** The card a message is in, and the line itself. */
+        fun find(messageId: String): Pair<String, ThreadLine>? = lines[messageId]
+    }
+
+    private fun FeedCard.toItem(agents: AgentDirectory, project: (String?) -> Project, threads: ThreadIndex): FeedItem? = when (this) {
         is UpdateCard -> {
             val (title, body) = titleAndBody(update.title, update.body)
             FeedItem.Update(
@@ -131,7 +157,7 @@ internal class FeedMapper(
                 status = workStatus(update.status),
                 attachments = update.media.images().map { image(it) },
                 reactions = reactions(reactions),
-                replies = replies(replies, unread, agents),
+                replies = replies(replies, unread, agents, project, threads),
                 unreadReplies = unread,
                 tags = tags.map { it.name },
             )
@@ -143,14 +169,15 @@ internal class FeedMapper(
             project = project(projectId),
             body = post.message.body,
             acks = acks(this, agents),
-            replies = replies(replies, unread, agents),
+            replies = replies(replies, unread, agents, project, threads),
             unreadReplies = unread,
             reactions = reactions(reactions),
             sending = post.sending,
+            questions = post.questions.map { it.toQuestion(agents, project, threads) },
         )
     }
 
-    private fun RequestCard.toQuestion(agents: AgentDirectory, project: (String?) -> Project): FeedItem.Question {
+    private fun RequestCard.toQuestion(agents: AgentDirectory, project: (String?) -> Project, threads: ThreadIndex): FeedItem.Question {
         val options = request.options.orEmpty()
         // A picture question carries one picture per option; the engine says which is which.
         fun choice(option: String, primary: Boolean = false) =
@@ -175,6 +202,7 @@ internal class FeedMapper(
             choices = choices,
             allowsText = kind == QuestionKind.Text,
             expiresIn = expiresIn(request.expiresAt),
+            expiresAt = request.expiresAt.takeIf { it > 0 },
             kind = kind,
             sending = sending,
             // Only the question's own pictures: those on options show in the option grid instead.
@@ -192,10 +220,21 @@ internal class FeedMapper(
             } else {
                 null
             },
+            inReplyTo = request.messageId?.let { id ->
+                threads.find(id)?.second?.let { "${it.authorName}: ${PlainText.clip(PlainText.fromMarkdown(it.message.body), 80)}" }
+                    ?: "Asked in a thread"
+            },
+            threadId = request.messageId?.let { threads.find(it)?.first } ?: request.updateId,
         )
     }
 
-    private fun replies(lines: List<ThreadLine>, unread: Int, agents: AgentDirectory): List<Reply> {
+    private fun replies(
+        lines: List<ThreadLine>,
+        unread: Int,
+        agents: AgentDirectory,
+        project: (String?) -> Project,
+        threads: ThreadIndex,
+    ): List<Reply> {
         // The engine counts unread comments per card; they are the newest ones not written by the owner.
         val unreadIds = lines.filter { !it.message.isOwner }.takeLast(unread).mapTo(HashSet()) { it.message.id }
         return lines.map { line ->
@@ -207,6 +246,7 @@ internal class FeedMapper(
                 reactions = reactions(line.reactions),
                 unread = line.message.id in unreadIds,
                 sending = line.sending,
+                questions = line.questions.map { it.toQuestion(agents, project, threads) },
             )
         }
     }

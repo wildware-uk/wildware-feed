@@ -170,7 +170,7 @@ fun Sidebar(
             Spacer(Modifier.height(14.dp))
             NavRow(
                 "All projects",
-                selected = state.current.slug == null,
+                selected = state.current.slug == null && !ui.showingWaiting,
                 leading = { Icon(Icons.Inbox, null, tint = colors.textMuted, modifier = Modifier.size(18.dp)) },
                 trailing = { UnreadBadge(state.totalUnread) },
                 spoken = "All projects, ${state.totalUnread} unread",
@@ -178,24 +178,13 @@ fun Sidebar(
             )
             NavRow(
                 "Waiting on you",
-                selected = ui.filter == FeedFilter.Waiting,
-                onClick = { ui.filter = if (ui.filter == FeedFilter.Waiting) FeedFilter.All else FeedFilter.Waiting },
+                selected = ui.showingWaiting,
+                // The count is every project's, so the row opens every project's questions.
+                onClick = { if (ui.showingWaiting) ui.filter = FeedFilter.All else ui.showWaiting() },
                 leading = { Icon(Icons.Clock, null, tint = colors.waiting, modifier = Modifier.size(18.dp)) },
-                trailing = {
-                    val waiting = state.projects.sumOf { it.waiting }
-                    // Nothing waiting is the normal state: no badge, rather than a loud "0".
-                    if (waiting > 0) Box(
-                        Modifier.clip(AgentTheme.shapes.pill).background(colors.waiting).padding(horizontal = 7.dp, vertical = 1.dp)
-                            .clearAndSetSemantics { },
-                    ) {
-                        Text("$waiting", color = colors.onWaiting, style = AgentTheme.type.meta.copy(fontWeight = FontWeight.Bold, fontSize = 11.5.sp))
-                    }
-                },
-                spoken = when (val n = state.projects.sumOf { it.waiting }) {
-                    0 -> "Waiting on you, nothing"
-                    1 -> "Waiting on you, 1 question"
-                    else -> "Waiting on you, $n questions"
-                },
+                // Nothing waiting is the normal state: no badge, rather than a loud "0".
+                trailing = { WaitingBadge(state.waitingTotal) },
+                spoken = "Waiting on you, " + if (state.waitingTotal == 0) "nothing" else questions(state.waitingTotal),
             )
             Spacer(Modifier.height(22.dp))
             SectionLabel("Projects", Modifier.padding(horizontal = 10.dp))
@@ -206,8 +195,11 @@ fun Sidebar(
                     p.name,
                     selected = selected,
                     leading = { ProjectGlyph(p) },
-                    trailing = { UnreadBadge(p.unread, emphasised = selected) },
-                    spoken = "${p.name}, ${p.unread} unread" + if (p.waiting > 0) ", ${p.waiting} waiting on you" else "",
+                    trailing = {
+                        WaitingBadge(p.waiting, Modifier.padding(end = 6.dp))
+                        UnreadBadge(p.unread, emphasised = selected)
+                    },
+                    spoken = "${p.name}, ${p.unread} unread" + if (p.waiting > 0) ", ${questions(p.waiting)} waiting on you" else "",
                     onClick = { ui.emit(FeedEvent.SelectProject(p.slug)) },
                 )
             }
@@ -568,6 +560,10 @@ fun ReplyView(reply: Reply, modifier: Modifier = Modifier) {
             }
             Spacer(Modifier.height(2.dp))
             MarkdownBody(reply.body)
+            // A question asked under this reply is answered right here, as on the website.
+            reply.questions.forEach { q ->
+                QuestionCard(q, Modifier.padding(top = 8.dp), density = Density.Compact, inThread = true)
+            }
             if (reply.reactions.isNotEmpty()) {
                 Spacer(Modifier.height(6.dp))
                 ReactionRow(reply.reactions, reply.id, showAdd = false)

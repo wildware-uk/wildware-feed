@@ -79,6 +79,28 @@ class ScreenshotTest {
         }
     }
 
+    /** Waiting on you: a thread question at the top, the drawer's counts, the question under its reply, desktop's view. */
+    @Test
+    fun waitingOnYou() {
+        val state = FakeFeed.allProjects
+        val fix = state.sections.flatMap { it.items }.first { it.id == "u1" } as dev.wildware.agents.app.feed.Threaded
+        fun at(content: @Composable () -> Unit): @Composable () -> Unit = {
+            CompositionLocalProvider(dev.wildware.agents.app.feed.LocalNow provides { FakeFeed.Now }) { content() }
+        }
+        shoot("phone-dark-waiting", Size.Phone, dark = true, content = at {
+            AgentsPreview(dark = true, state = state, safeArea = Size.Phone.safeArea)
+        })
+        shoot("phone-light-waiting-drawer", Size.Phone, dark = false, content = at {
+            AgentsPreview(dark = false, state = state, safeArea = Size.Phone.safeArea, preview = ScreenPreview(drawerOpen = true))
+        })
+        shoot("phone-dark-waiting-thread", Size.Phone, dark = true, content = at {
+            AgentsPreview(dark = true, state = state.copy(openThread = fix), safeArea = Size.Phone.safeArea, preview = ScreenPreview(threadOpen = true, replySwipe = "r1"))
+        })
+        shoot("desktop-dark-waiting", Size.Desktop, dark = true, content = at {
+            AgentsPreview(dark = true, state = state, safeArea = Size.Desktop.safeArea)
+        })
+    }
+
     /** The sign-in screen, before anything is typed. Nothing reaches a network. */
     @Test
     fun signIn() {

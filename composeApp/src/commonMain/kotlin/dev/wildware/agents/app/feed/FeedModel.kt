@@ -97,6 +97,8 @@ data class Reply(
     val unread: Boolean = false,
     /** Written here and still on its way to the dashboard. */
     val sending: Boolean = false,
+    /** Questions an agent asked under this reply. They are answered right here, as well as at the top. */
+    val questions: List<FeedItem.Question> = emptyList(),
 )
 
 @Immutable
@@ -218,6 +220,12 @@ sealed interface FeedItem {
         val attachments: List<Attachment> = emptyList(),
         /** A form question's field and actions; null for every other kind. */
         val form: FormField? = null,
+        /** When it times out, in epoch milliseconds, for a live countdown. Null shows [expiresIn] as it is. */
+        val expiresAt: Long? = null,
+        /** For a question asked inside a thread: what it answers, such as "forge: The watch reads…". */
+        val inReplyTo: String? = null,
+        /** The card whose thread it was asked in, to jump there. */
+        val threadId: String? = null,
     ) : FeedItem {
         val hasPictures: Boolean get() = choices.any { it.image != null }
     }
@@ -236,6 +244,8 @@ sealed interface FeedItem {
         val reactions: List<Reaction> = emptyList(),
         /** Written here and still on its way to the dashboard. */
         val sending: Boolean = false,
+        /** Questions an agent asked under the post itself, shown at the top of its thread. */
+        val questions: List<Question> = emptyList(),
     ) : Threaded {
         override val title: String get() = body.lineSequence().first().take(120)
         override val starter: Author get() = author

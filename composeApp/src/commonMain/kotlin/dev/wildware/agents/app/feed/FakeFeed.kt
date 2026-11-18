@@ -175,15 +175,48 @@ object FakeFeed {
         totalUnread = 19,
     )
 
+    /** The clock [allProjects] is drawn at, so its countdowns read the same every time. */
+    const val Now = 1_795_003_200_000L
+
+    /** A question forge asked inside the badge-fix thread, under its own reply. */
+    private val threadQuestion = FeedItem.Question(
+        id = "q3",
+        time = "9:55",
+        agent = forge,
+        project = dashboard,
+        prompt = "Ship the badge fix to the watch app today too?",
+        body = "",
+        choices = listOf(Choice("Yes, today", primary = true), Choice("Wait for Monday")),
+        allowsText = false,
+        expiresIn = "4 min",
+        expiresAt = Now + 4 * 60_000 + 12_000,
+        inReplyTo = "forge: Yes. The watch reads the same counter, so it is right again too.",
+        threadId = "u1",
+    )
+
     /** "All projects": the same cards, spread over several projects, as the owner sees them all at once. */
     val allProjects = FeedState(
         owner = owner,
-        projects = state.projects,
+        projects = state.projects.map {
+            when (it.id) {
+                dashboard.id -> it.copy(waiting = 2)
+                website.id -> it.copy(waiting = 1)
+                else -> it.copy(waiting = 0)
+            }
+        },
         agents = state.agents,
-        current = Project("all", "All projects", unread = 19, waiting = 2, hue = 0),
+        current = Project("all", "All projects", unread = 19, waiting = 3, hue = 0),
         sections = listOf(
-            FeedSection("Waiting on you", listOf(question, pictureQuestion.copy(project = website))),
-            FeedSection("Today", listOf(fix, illustration.copy(project = website), ask, disk.copy(project = infra))),
+            FeedSection("Waiting on you", listOf(threadQuestion, question.copy(expiresAt = Now + 42 * 60_000), pictureQuestion.copy(project = website))),
+            FeedSection(
+                "Today",
+                listOf(
+                    fix.copy(replies = fixReplies.map { if (it.id == "r2") it.copy(questions = listOf(threadQuestion)) else it }),
+                    illustration.copy(project = website),
+                    ask,
+                    disk.copy(project = infra),
+                ),
+            ),
             FeedSection("Yesterday", listOf(push.copy(project = ios))),
         ),
         openThread = null,

@@ -67,6 +67,7 @@ fun InlineThread(item: Threaded, modifier: Modifier = Modifier) {
             Box(Modifier.fillMaxWidth().height(1.dp).background(colors.border))
             Spacer(Modifier.height(6.dp))
         }
+        HeadQuestions(item)
         if (from > 0) {
             TextAction("Show ${from} earlier ${if (from == 1) "reply" else "replies"}") { ui?.expandedThreads?.add(item.id) }
         }

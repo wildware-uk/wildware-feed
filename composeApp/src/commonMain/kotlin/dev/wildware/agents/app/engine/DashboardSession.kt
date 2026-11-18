@@ -88,8 +88,15 @@ class DashboardSession(
     private val latest: EngineFeed get() = feed.state.value
 
     val state: StateFlow<FeedState> = combine(
-        combine(feeds.flatMapLatest { it.state }, dashboard.projects, dashboard.online, outbox.items, selected) { feed, projects, online, items, slug ->
-            mapper.map(feed, projects, online, items, slug)
+        combine(
+            combine(feeds.flatMapLatest { it.state }, dashboard.waiting, ::Pair),
+            dashboard.projects,
+            dashboard.online,
+            outbox.items,
+            selected,
+        ) { (feed, questions), projects, online, items, slug ->
+            // Every waiting question, thread ones included: the engine's feed leaves those out of its top.
+            mapper.map(feed, projects, online, items, slug, everyQuestion = questions)
         },
         dashboard.everything.state,
         dashboard.projects,

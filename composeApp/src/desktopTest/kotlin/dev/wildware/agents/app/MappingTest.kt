@@ -159,4 +159,52 @@ class MappingTest {
         assertEquals(LinkStatus.Reconnecting, state.link)
         assertEquals("Mega", state.current.name)
     }
+
+    private fun question(id: String, projectId: String? = "p1", messageId: String? = null, seq: Long = 1) = RequestCard(
+        RequestView(id = id, seq = seq, agentId = "a1", projectId = projectId, messageId = messageId, kind = "buttons",
+            question = "Question $id?", options = listOf("Yes", "No"), expiresAt = noon + 4 * 60_000),
+        agentName = "forge", projectName = "Mega", discussion = emptyList(), unread = 0, sending = false, tags = emptyList(), fields = emptyList(),
+    )
+
+    private fun waitingOf(state: dev.wildware.agents.app.feed.FeedState) =
+        state.sections.firstOrNull { it.label == "Waiting on you" }?.items.orEmpty().map { it as FeedItem.Question }
+
+    @Test
+    fun aQuestionAskedInAThreadIsWaitingOnYouWithWhatItAnswers() {
+        val asked = question("q1", messageId = "m2")
+        val replies = listOf(line("m1", "human", noon - 3_000), line("m2", "agent:a1", noon - 2_000).copy(questions = listOf(asked)))
+        // The engine keeps a thread question out of the feed's own list; every question still reaches the app.
+        val state = mapper.map(feed(listOf(update("u1", noon - 5_000, "Fix", "", replies))), listOf(mega), emptyList(), emptyList(), null, everyQuestion = listOf(asked))
+        val q = waitingOf(state).single()
+        assertEquals("q1", q.id)
+        assertEquals("u1", q.threadId)
+        assertEquals("scout: Line m2", q.inReplyTo)
+        assertEquals(noon + 4 * 60_000, q.expiresAt)
+    }
+
+    @Test
+    fun aThreadQuestionAlsoShowsUnderTheReplyItWasAskedUnder() {
+        val asked = question("q1", messageId = "m2")
+        val replies = listOf(line("m2", "agent:a1", noon - 2_000).copy(questions = listOf(asked)))
+        val state = mapper.map(feed(listOf(update("u1", noon - 5_000, "Fix", "", replies))), listOf(mega), emptyList(), emptyList(), null, everyQuestion = listOf(asked))
+        val card = state.sections.flatMap { it.items }.filterIsInstance<FeedItem.Update>().single()
+        assertEquals(listOf("q1"), card.replies.single().questions.map { it.id })
+    }
+
+    @Test
+    fun waitingOnYouKeepsTheServersOrderOldestFirst() {
+        val all = listOf(question("old", seq = 1), question("mid", messageId = "mx", seq = 2), question("new", seq = 3))
+        val state = mapper.map(feed(emptyList(), listOf(all[0], all[2])), listOf(mega), emptyList(), emptyList(), null, everyQuestion = all)
+        assertEquals(listOf("old", "mid", "new"), waitingOf(state).map { it.id })
+        // Asked in a thread that isn't loaded: still listed, said so, with nowhere to jump yet.
+        assertEquals("Asked in a thread", waitingOf(state)[1].inReplyTo)
+    }
+
+    @Test
+    fun insideAProjectOnlyThatProjectsQuestionsWait() {
+        val other = ProjectSummary(ProjectView(id = "p2", slug = "other", name = "Other"), waiting = 1, unread = 0)
+        val all = listOf(question("here", projectId = "p1"), question("there", projectId = "p2", messageId = "m9"))
+        val state = mapper.map(feed(emptyList()), listOf(mega, other), emptyList(), emptyList(), "mega", everyQuestion = all)
+        assertEquals(listOf("here"), waitingOf(state).map { it.id })
+    }
 }
