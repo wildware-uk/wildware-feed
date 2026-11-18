@@ -146,6 +146,30 @@ class DashboardClientTest {
     }
 
     @Test
+    fun `the asking agent and the work in progress are read when the dashboard sends them`() = runTest {
+        val summary = client {
+            json(
+                SUMMARY
+                    .replace(""""agentName":"Garden Game",""", """"agentId":"a1","agentName":"Garden Game",""")
+                    .replace(""""extraFieldFromANewerServer":true""", """"working":[{"agentId":"a1","agent":"Rover","task":"Fixing fee rounding","since":1763460000},{"agentId":null,"agent":"An agent","task":"Tidy the docs","since":1763450000}],"extraFieldFromANewerServer":true"""),
+            )
+        }.summary()
+
+        assertEquals("a1", summary.requests.single().agentId)
+        assertEquals(
+            listOf(Working("a1", "Rover", "Fixing fee rounding", 1_763_460_000), Working(null, "An agent", "Tidy the docs", 1_763_450_000)),
+            summary.working,
+        )
+    }
+
+    @Test
+    fun `older dashboards send no asking agent or work in progress`() = runTest {
+        val summary = client { json(SUMMARY) }.summary()
+        assertEquals(null, summary.requests.single().agentId)
+        assertEquals(emptyList(), summary.working)
+    }
+
+    @Test
     fun `a refusal carries the dashboard's code and message`() = runTest {
         val error = assertFailsWith<DashboardException> {
             client { json("""{"error":"conflict","message":"already answered"}""", HttpStatusCode.Conflict) }

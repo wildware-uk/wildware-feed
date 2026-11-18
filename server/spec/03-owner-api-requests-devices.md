@@ -456,11 +456,12 @@ Notification JSON (key order: row `db/notifications.ts:34-48`, then view `notifi
 ```json
 {"at":"2026-11-18T13:52:00.000Z",
  "onlineAgents":[{"agentId":"01JD…","name":"claude","host":"box","cwd":"/srv/x"}],
- "requests":[{"id":"01JD…","agentName":"claude","projectSlug":"web","projectName":"Web",
+ "requests":[{"id":"01JD…","agentId":"01JC…","agentName":"claude","projectSlug":"web","projectName":"Web",
    "question":"Ship it?","detail":null,"default":"true","kind":"confirm","options":null,
    "expiresAt":"2026-11-18T14:52:00.000Z"}],
  "work":{"todo":3,"inProgress":1,"blocked":0},
- "projects":[{"slug":"web","name":"Web"}]}
+ "projects":[{"slug":"web","name":"Web"}],
+ "working":[{"agentId":"01JC…","agent":"claude","task":"Fix the fee rounding","since":1763460000}]}
 ```
 - `onlineAgents`: one per agent with an open session whose last heartbeat ≥ now−90 s
   (`domain/sessions.ts:71,237`), newest heartbeat first; host/cwd from session meta, non-empty strings

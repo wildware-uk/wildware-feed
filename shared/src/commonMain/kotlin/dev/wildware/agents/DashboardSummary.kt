@@ -11,6 +11,17 @@ data class DashboardSummary(
     val requests: List<PendingRequest>,
     val work: WorkCounts,
     val projects: List<ProjectRef>,
+    /** Up to three cards in progress, most recently started first. Older servers leave it out. */
+    val working: List<Working> = emptyList(),
+)
+
+/** A card being worked on: who, doing what, and since when ([since] is seconds since 1970). */
+@Serializable
+data class Working(
+    val agentId: String?,
+    val agent: String,
+    val task: String,
+    val since: Long,
 )
 
 @Serializable
@@ -39,6 +50,8 @@ data class PendingRequest(
      * "false" for a yes-or-no question. `default` is a keyword in Swift, hence the name.
      */
     @SerialName("default") val defaultAnswer: String? = null,
+    /** The asking agent's id, for its colour. Older servers leave it out. */
+    val agentId: String? = null,
 ) {
     /** The suggested answer as its button says it ("Yes", an option, typed text), or null when there is none. */
     val defaultLabel: String?

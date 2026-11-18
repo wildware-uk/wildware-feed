@@ -418,16 +418,32 @@ Source: `src/domain/live-activity.ts`; Swift contract
 
 ### 7.1 Content state (contract)
 
-`liveActivityState(ownerSummary(ctx))` (`src/domain/summary.ts:81-102`), key order:
+`liveActivityState(ownerSummary(ctx))` (`src/domain/summary.ts`), key order. The first seven keys
+never change; every later key is always present, `null` when there is nothing:
 
 ```json
-{"online":0,"waiting":0,"inProgress":0,"topAgent":null,"topQuestion":null,"topRequestId":null,"topKind":null}
+{"online":3,"waiting":2,"inProgress":4,
+ "topAgent":"Rover","topQuestion":"…","topRequestId":"r1","topKind":"confirm",
+ "topAgentId":"a1","topProject":"Garden Game","topExpiresAt":1763470000,
+ "topOptions":null,"topDefault":"true",
+ "working":[{"agentId":"a1","agent":"Rover","task":"Fixing fee rounding at checkout","since":1763460000}]}
 ```
 
 - `online` = live agents count; `waiting` = pending requests count; `inProgress` = cards with
   `status = 'in_progress'` in active projects; `top*` from the oldest pending request
   (`agentName`, `question`, `id`, `kind`), else `null`.
-- Swift `ContentState { online: Int, waiting: Int, inProgress: Int, topAgent: String?, topQuestion: String?, topRequestId: String?, topKind: String? }`.
+- `topAgentId` = that request's `agentId`. `topProject` = its project **name**, `cut(…, 40)`, null with
+  no project. `topExpiresAt` = `floor(expiresAtMs / 1000)` (seconds).
+- `topOptions` = its `options` unchanged and in order, only when kind is `buttons` or `choice`, there
+  are 1–4, and every one is ≤ 40 UTF-16 units; else null. Never cut (the phone answers with the text).
+- `topDefault` = `/api/summary`'s `default`, null when unset or longer than 40.
+- `working` = summary `working` (§8), or `null` when empty.
+- `cut(text, max)`: unchanged when `length ≤ max`, else `text.slice(0, max - 1).trimEnd() + "…"`
+  (one fewer when that would split a surrogate pair), so at most `max` UTF-16 units.
+- No ticking values: times are fixed instants, so the JSON-equal skip in §7.4 still holds.
+- The phone's own `sentAnswer` key is never sent.
+- Swift `ContentState` in `iosApp/Common/AgentsActivityAttributes.swift` decodes every key after the
+  seventh as optional, so older servers keep working.
   Attributes type name `AgentsActivityAttributes` with no fields → `"attributes": {}`.
 
 ### 7.2 Headers (`:72-78`)
@@ -485,9 +501,10 @@ Feeds `GET /api/summary` and the Live Activity.
 {
   "at": "<ISO with ms>",
   "onlineAgents": [{"agentId":"…","name":"…","host":null,"cwd":null}],
-  "requests": [{"id":"…","agentName":"…","projectSlug":null,"projectName":null,"question":"…","detail":null,"default":null,"kind":"confirm","options":null,"expiresAt":"<ISO>"}],
+  "requests": [{"id":"…","agentId":"…","agentName":"…","projectSlug":null,"projectName":null,"question":"…","detail":null,"default":null,"kind":"confirm","options":null,"expiresAt":"<ISO>"}],
   "work": {"todo":0,"inProgress":0,"blocked":0},
-  "projects": [{"slug":"…","name":"…"}]
+  "projects": [{"slug":"…","name":"…"}],
+  "working": [{"agentId":"…","agent":"…","task":"…","since":1763460000}]
 }
 ```
 
@@ -498,6 +515,14 @@ Feeds `GET /api/summary` and the Live Activity.
 - `work`: `countWorkByStatus` over `updates` + `messages` with non-null `status`, not deleted,
   in **active** projects only (`src/db/cards.ts:240-265`). Requests are not counted.
 - `projects`: active only, pinned first, then `name.localeCompare`.
+- `working`: up to 3 cards with `status = 'in_progress'` in active projects, `listWork` order
+  (`COALESCE(status_at, created_at) DESC, id DESC`); `[]` when none. Each, all keys present:
+  - `agentId`: an update's `agent_id`; a message's `agent:<id>` author; for an owner-written
+    message, the author of its newest `agent:` reply (`reply_to = id`); else null.
+  - `agent`: that agent's name, `"An agent"` when unknown, `cut(…, 40)`.
+  - `task`: an update's `title`, else the first line of `body` (a message: first line of `body`),
+    via `markdownToPlainText`, whitespace collapsed, `cut(…, 60)`.
+  - `since`: `floor(COALESCE(status_at, created_at) / 1000)`.
 
 ---
 

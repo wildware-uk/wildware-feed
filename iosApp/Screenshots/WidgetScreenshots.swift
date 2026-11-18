@@ -29,7 +29,8 @@ final class WidgetScreenshots: XCTestCase {
         options: nil,
         expiresAt: "2026-11-16T12:00:00Z",
         detail: nil,
-        defaultAnswer: nil
+        defaultAnswer: nil,
+        agentId: nil
     )
     private let choice = PendingRequest(
         id: "req-2",
@@ -41,7 +42,8 @@ final class WidgetScreenshots: XCTestCase {
         options: ["Ship it", "Hold", "Roll back"],
         expiresAt: "2026-11-16T12:00:00Z",
         detail: nil,
-        defaultAnswer: nil
+        defaultAnswer: nil,
+        agentId: nil
     )
 
     func testHomeScreenWidgets() throws {

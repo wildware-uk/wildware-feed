@@ -272,7 +272,8 @@ extension ProjectCard {
             options: nil,
             expiresAt: "2026-11-16T12:00:00Z",
             detail: nil,
-            defaultAnswer: nil
+            defaultAnswer: nil,
+            agentId: nil
         )
         let activity = RecentActivity(projects: [project], updates: [update], messages: [])
         let summary = DashboardSummary(
@@ -280,7 +281,8 @@ extension ProjectCard {
             onlineAgents: [],
             requests: [request],
             work: WorkCounts(todo: 0, inProgress: 1, blocked: 0),
-            projects: [project]
+            projects: [project],
+            working: []
         )
         return ProjectCard.companion.build(projectSlug: project.slug, summary: summary, activity: activity, size: size)!
     }
