@@ -94,7 +94,11 @@ object MarkdownCache {
         for (text in texts) if (text !in parsed.load()) parse(text)
     }
 
+    /** Told of every parse, for tests that check none happens on the UI thread. */
+    internal var onParse: ((String) -> Unit)? = null
+
     private fun parse(markdown: String): State {
+        onParse?.invoke(markdown)
         val state = parseMarkdown(markdown)
         while (true) {
             val held = parsed.load()

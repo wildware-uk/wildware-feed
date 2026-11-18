@@ -34,8 +34,6 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
@@ -104,7 +102,9 @@ class DashboardSession(
     ) { shown, everything, projects, notifications ->
         // Search looks across every project's loaded cards, whichever feed is on screen.
         val all = if (shown.current.slug == null) shown else mapper.map(everything, projects, emptyList(), emptyList(), null)
-        shown.copy(searchIndex = searchEntriesOf(all.sections), bell = mapper.bell(notifications))
+        // Parse what the feed will draw before handing it over, here off the UI thread, so a card
+        // that scrolls into view (or arrives) finds its markdown ready instead of parsing mid-frame.
+        shown.copy(searchIndex = searchEntriesOf(all.sections), bell = mapper.bell(notifications)).also { MarkdownCache.warm(markdownIn(it).asIterable()) }
     }.stateIn(scope, SharingStarted.Eagerly, mapper.map(feed.state.value, emptyList(), emptyList(), emptyList(), null))
 
     /** True once the dashboard has stopped taking this device's key. */
@@ -127,16 +127,6 @@ class DashboardSession(
         // Another process queued, sent or dropped something: show it, and send what is new.
         scope.launch { outboxChanged.collect { outbox.reload() } }
         scope.launch { foreground.collect { resume() } }
-        // Parse what the feed will draw here, off the UI thread, so a card scrolling into view finds
-        // its markdown ready instead of parsing it mid-frame.
-        scope.launch {
-            state.collectLatest { shown ->
-                for (text in markdownIn(shown)) {
-                    ensureActive()
-                    MarkdownCache.warm(listOf(text))
-                }
-            }
-        }
     }
 
     private fun markdownIn(state: FeedState): Sequence<String> = state.sections.asSequence().flatMap { it.items.asSequence() }.flatMap { item ->

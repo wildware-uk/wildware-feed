@@ -8,6 +8,12 @@ import androidx.compose.runtime.CompositionTracer
 import androidx.compose.runtime.InternalComposeTracingApi
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
+import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.test.hasText
+import dev.wildware.agents.app.feed.MarkdownCache
+import dev.wildware.agents.app.session.AppPlatform
+import dev.wildware.agents.app.session.MemorySessionStore
+import dev.wildware.agents.app.session.SavedSession
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.indication
@@ -225,6 +231,29 @@ class PhoneFeelTest {
         val after = onNodeWithTag("button").captureToImage().toPixelMap()
         assertTrue(before[22, 22] != pressed[22, 22], "the press showed")
         assertEquals(before[22, 22], after[22, 22], "the press let go")
+    }
+
+    /** Parsing markdown mid-frame drops frames on a phone. The engine parses ahead, off the UI thread. */
+    @Test
+    fun theUiThreadNeverParsesMarkdown() = runComposeUiTest {
+        val server = FakeServer()
+        val parsedOn = java.util.concurrent.ConcurrentLinkedQueue<Thread>()
+        var uiThread: Thread? = null
+        MarkdownCache.onParse = { parsedOn += Thread.currentThread() }
+        try {
+            val platform = AppPlatform.inMemory(engine = { server.engine() }, sessions = MemorySessionStore(SavedSession("https://dash.test", "key-1", "Test device")))
+            setContent {
+                SideEffect { uiThread = Thread.currentThread() }
+                Box(Modifier.size(390.dp, 844.dp)) { AgentsApp(platform, dark = true, accessibility = AccessibilityPrefs()) }
+            }
+            waitUntil(timeoutMillis = 10_000) { onAllNodes(hasText("Fixed the unread counts", substring = true)).fetchSemanticsNodes().isNotEmpty() }
+            waitForIdle()
+            assertTrue(parsedOn.isNotEmpty(), "the engine parsed the feed's markdown")
+            assertTrue(parsedOn.none { it == uiThread }, "${parsedOn.count { it == uiThread }} parses ran on the UI thread")
+        } finally {
+            MarkdownCache.onParse = null
+            server.close()
+        }
     }
 
     @Test
