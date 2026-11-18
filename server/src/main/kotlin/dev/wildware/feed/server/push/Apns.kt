@@ -99,7 +99,7 @@ class HttpApnsTransport(settings: Config.Apns, private val clock: () -> Long = S
 /** A device as the pushers need it. */
 data class PushDevice(
     val id: String, val apnsToken: String?, val environment: String?, val liveActivityToken: String?,
-    val pushToStartToken: String?, val alertProjectIds: List<String>?,
+    val pushToStartToken: String?, val alertProjectIds: List<String>?, val alertPrefs: JsonObject? = null,
 )
 
 /**
@@ -121,14 +121,16 @@ class Apns(private val app: App, private val settings: Config.Apns, private val 
         val request: Triple<String, String, List<String>?>? = null,
         val reply: Pair<String, String>? = null,
         val extra: List<Pair<String, JsonElement>> = emptyList(),
+        val about: dev.wildware.feed.server.domain.AlertPrefs.About = dev.wildware.feed.server.domain.AlertPrefs.About(category.lowercase()),
     )
 
     fun devices(): List<PushDevice> = app.db.query(
-        "SELECT id, apns_token, apns_environment, live_activity_token, push_to_start_token, alert_project_ids FROM owner_devices ORDER BY seq",
+        "SELECT id, apns_token, apns_environment, live_activity_token, push_to_start_token, alert_project_ids, alert_prefs FROM owner_devices ORDER BY seq",
     ) { rs ->
         PushDevice(
             rs.getString(1), rs.getString(2), rs.getString(3), rs.getString(4), rs.getString(5),
             rs.getString(6)?.let { text -> runCatching { (Wire.json.parseToJsonElement(text) as JsonArray).map { it.jsonPrimitive.content } }.getOrNull() },
+            rs.getString(7)?.let { text -> runCatching { Wire.json.parseToJsonElement(text) as JsonObject }.getOrNull() },
         )
     }
 
@@ -149,12 +151,18 @@ class Apns(private val app: App, private val settings: Config.Apns, private val 
             "update.created" -> {
                 val updateId = id("updateId") ?: return null
                 val built = messages.update(updateId) ?: return null
-                Alert(built.message, "UPDATE", thread(built.projectId), built.projectId, built.body, reply = "update" to updateId)
+                Alert(
+                    built.message, "UPDATE", thread(built.projectId), built.projectId, built.body, reply = "update" to updateId,
+                    about = dev.wildware.feed.server.domain.AlertPrefs.About("update", built.level, built.priority),
+                )
             }
             "message.created" -> {
                 val messageId = id("messageId") ?: return null
                 val built = messages.reply(messageId) ?: return null
-                Alert(built.message, "MESSAGE", thread(built.projectId), built.projectId, built.body, reply = "answers" to messageId)
+                Alert(
+                    built.message, "MESSAGE", thread(built.projectId), built.projectId, built.body, reply = "answers" to messageId,
+                    about = dev.wildware.feed.server.domain.AlertPrefs.About(if (built.answered) "message" else "comment"),
+                )
             }
             else -> null
         }
@@ -165,7 +173,11 @@ class Apns(private val app: App, private val settings: Config.Apns, private val 
         val stop = app.bus.subscribe { event ->
             val alert = runCatching { alertFor(event) }.onFailure { System.err.println("apple push failed: $it") }.getOrNull() ?: return@subscribe
             val now = app.clock()
-            val wanted = devices().filter { it.apnsToken != null && (alert.projectId == null || it.alertProjectIds == null || alert.projectId in it.alertProjectIds) }
+            // Each phone's own projects, and its own kinds, levels and priorities (migration 047).
+            val wanted = devices().filter {
+                it.apnsToken != null && (alert.projectId == null || it.alertProjectIds == null || alert.projectId in it.alertProjectIds) &&
+                    dev.wildware.feed.server.domain.AlertPrefs.notifies(it.alertPrefs, alert.about)
+            }
             if (wanted.isEmpty()) return@subscribe
             val headers = alertHeaders(settings.bundleId, alert.message.tag, now)
             val payload = Wire.encode(alertPayload(alert))

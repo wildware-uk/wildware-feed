@@ -153,4 +153,21 @@ class PushTest {
             Wire.encode(state),
         )
     }
+
+    @Test
+    fun `a phone gets only the kinds, levels and priorities it chose`() {
+        val about = dev.wildware.feed.server.domain.AlertPrefs
+        val updateHigh = dev.wildware.feed.server.domain.AlertPrefs.About("update", "info", "high")
+        val updateLow = dev.wildware.feed.server.domain.AlertPrefs.About("update", "warn", "low")
+        assertTrue(about.notifies(null, updateLow))
+        val prefs = about.check(kotlinx.serialization.json.buildJsonObject {
+            put("types", kotlinx.serialization.json.JsonArray(listOf(JsonPrimitive("update"), JsonPrimitive("request"))))
+            put("priorities", kotlinx.serialization.json.JsonArray(listOf(JsonPrimitive("high"))))
+        })!!
+        assertTrue(about.notifies(prefs, updateHigh))
+        assertTrue(!about.notifies(prefs, updateLow))
+        assertTrue(about.notifies(prefs, dev.wildware.feed.server.domain.AlertPrefs.About("request")))
+        assertTrue(!about.notifies(prefs, dev.wildware.feed.server.domain.AlertPrefs.About("comment")))
+        assertTrue(about.notifies(prefs, dev.wildware.feed.server.domain.AlertPrefs.About("update", "info", null)), "an update with no priority passes the priority filter")
+    }
 }

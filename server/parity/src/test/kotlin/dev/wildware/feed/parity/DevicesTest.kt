@@ -28,7 +28,7 @@ class DevicesTest : ParityTest() {
         val device = Device(body["device"]["id"].s, body["token"].s)
 
         val view = device.view()
-        assertEquals(listOf("id", "name", "createdAt", "lastSeenAt", "hasApns", "hasLiveActivity", "alertProjects"), view.keys.toList())
+        assertEquals(listOf("id", "name", "createdAt", "lastSeenAt", "hasApns", "hasLiveActivity", "alertProjects", "alertPrefs"), view.keys.toList())
         assertEquals("Tablet", view["name"].s)
         assertEquals(false, view["hasApns"].bool)
         assertEquals(false, view["hasLiveActivity"].bool)
@@ -100,6 +100,37 @@ class DevicesTest : ParityTest() {
         assertEquals(arr(), device.view()["alertProjects"])
         device.send(HttpMethod.Put, "/api/devices/current/alert-projects", obj("projects" to null))
         assertTrue(device.view()["alertProjects"].isNull)
+    }
+
+    @Test
+    fun `the phone chooses which kinds, levels and priorities of alert it gets`() = parity {
+        val device = Device.signIn()
+        val path = "/api/devices/current/alert-prefs"
+        assertEquals("""{"prefs":null}""", device.get(path).bodyAsText(), "every alert until it chooses")
+        assertTrue(device.view()["alertPrefs"].isNull)
+        device.send(HttpMethod.Put, path, obj()).expectError(400, "invalid_argument", "send prefs: { types, levels, priorities }, or null")
+        device.send(HttpMethod.Put, path, obj("prefs" to "all")).expectError(400, "invalid_argument", "preferences must be an object, or null for the default")
+        device.send(HttpMethod.Put, path, obj("prefs" to arr())).expectError(400, "invalid_argument", "preferences must be an object, or null for the default")
+        device.send(HttpMethod.Put, path, obj("prefs" to obj("types" to "update"))).expectError(400, "invalid_argument", "types must be a list")
+        device.send(HttpMethod.Put, path, obj("prefs" to obj("types" to null))).expectError(400, "invalid_argument", "types must be a list")
+        device.send(HttpMethod.Put, path, obj("prefs" to obj("levels" to arr("loud"))))
+            .expectError(400, "invalid_argument", "levels must be any of: info, success, warn, error")
+        device.send(HttpMethod.Put, path, obj("prefs" to obj("priorities" to arr(1))))
+            .expectError(400, "invalid_argument", "priorities must be any of: low, medium, high")
+
+        val chosen = obj("priorities" to arr("high", "high"), "types" to arr("update", "request"), "x" to 1)
+        assertEquals(
+            """{"ok":true,"prefs":{"types":["update","request"],"priorities":["high"]}}""",
+            device.send(HttpMethod.Put, path, obj("prefs" to chosen)).bodyAsText(),
+        )
+        assertEquals("""{"prefs":{"types":["update","request"],"priorities":["high"]}}""", device.get(path).bodyAsText())
+        assertEquals(obj("types" to arr("update", "request"), "priorities" to arr("high")), device.view()["alertPrefs"])
+        assertEquals("""{"ok":true,"prefs":null}""", device.send(HttpMethod.Put, path, obj("prefs" to obj())).bodyAsText(), "nothing chosen is the default")
+        assertEquals("""{"ok":true,"prefs":null}""", device.send(HttpMethod.Put, path, obj("prefs" to null)).bodyAsText())
+        assertEquals("""{"prefs":null}""", device.get(path).bodyAsText())
+
+        owner.get(path).let { if (owner.key == null) it.expectError(400, "invalid_argument", "this needs a device key: send Authorization: Bearer <device token>") }
+        assertEquals(405, owner.send(HttpMethod.Post, path, obj("prefs" to null)).status.value)
     }
 
     @Test

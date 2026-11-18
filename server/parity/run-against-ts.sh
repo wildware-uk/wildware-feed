@@ -16,7 +16,7 @@ set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 repo_root="$(cd "$here/../.." && pwd)"
 port="${PARITY_PORT:-18110}"
-ref="${TS_SERVER_REF:-9b67e219d1f24ffbaaa33add1077385fceb7c380}"
+ref="${TS_SERVER_REF:-b65832d7a254318c6dd19c9eb3231392a80e2c3a}"
 remote="${TS_SERVER_REPO:-https://github.com/wildware-uk/agent-dashboard.git}"
 password="parity-$(openssl rand -hex 12)"
 

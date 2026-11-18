@@ -32,7 +32,7 @@ gets `401 {"error":"unauthenticated"}` everywhere. Parity tests for the website 
 Each phase ends with its parity tests passing against the Kotlin server in CI, beside the TS run.
 
 1. **Boot, auth and reads.** Config and its boot checks; open the database and run migrations
-   001–046 with checksums; device sign-in, device keys and the sign-in limiter; agent-token checks on `/mcp` (401s and 429s only); the CLI's `hash-password`,
+   001–047 with checksums; device sign-in, device keys and the sign-in limiter; agent-token checks on `/mcp` (401s and 429s only); the CLI's `hash-password`,
    `mint-token`, `list-tokens`, `revoke-token`; the read-only owner API (`/api/summary`,
    `/api/snapshot*`, `GET /api/messages`, project tags, devices, notifications, push status).
    Reads are checked differentially: the TS server builds a rich database, every read is recorded,

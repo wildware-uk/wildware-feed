@@ -37,12 +37,12 @@ class PushMessages(private val app: App) {
         )
     }
 
-    class Update(val message: PushMessage, val projectId: String?, val body: String)
+    class Update(val message: PushMessage, val projectId: String?, val body: String, val level: String?, val priority: String?)
 
     fun update(updateId: String): Update? {
-        data class Row(val agentId: String?, val projectId: String?, val title: String?, val body: String, val deletedAt: Long?)
-        val row = db.one("SELECT agent_id, project_id, title, body, deleted_at FROM updates WHERE id = ?", updateId) {
-            Row(it.getString(1), it.getString(2), it.getString(3), it.getString(4), it.getLong(5).let { v -> if (it.wasNull()) null else v })
+        data class Row(val agentId: String?, val projectId: String?, val title: String?, val body: String, val deletedAt: Long?, val level: String?, val priority: String?)
+        val row = db.one("SELECT agent_id, project_id, title, body, deleted_at, level, priority FROM updates WHERE id = ?", updateId) {
+            Row(it.getString(1), it.getString(2), it.getString(3), it.getString(4), it.getLong(5).let { v -> if (it.wasNull()) null else v }, it.getString(6), it.getString(7))
         } ?: return null
         if (row.deletedAt != null) return null
         return Update(
@@ -52,11 +52,11 @@ class PushMessages(private val app: App) {
                 url = projectUrl(row.projectId, updateId),
                 tag = "update-$updateId",
             ),
-            row.projectId, row.body,
+            row.projectId, row.body, row.level, row.priority,
         )
     }
 
-    class Reply(val message: PushMessage, val projectId: String?, val body: String)
+    class Reply(val message: PushMessage, val projectId: String?, val body: String, val answered: Boolean)
 
     /** An agent's message; null for the owner's own words. */
     fun reply(messageId: String): Reply? {
@@ -74,7 +74,7 @@ class PushMessages(private val app: App) {
                 url = projectUrl(row.projectId, messageId),
                 tag = "message-$messageId",
             ),
-            row.projectId, row.body,
+            row.projectId, row.body, answered,
         )
     }
 

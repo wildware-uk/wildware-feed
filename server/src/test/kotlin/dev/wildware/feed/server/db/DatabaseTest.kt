@@ -12,7 +12,7 @@ import kotlin.test.assertTrue
 class DatabaseTest {
     @Test
     fun `the migrations are the TS server's, byte for byte`() {
-        assertEquals((1..46).toList(), Migrations.all.map { it.version })
+        assertEquals((1..47).toList(), Migrations.all.map { it.version })
         for (m in Migrations.all) assertEquals(m.checksum, Migrations.checksum(m.sql), "migration ${m.version}")
         assertEquals(listOf(16, 25, 26, 31, 34, 38), Migrations.all.filter { it.rebuildsTables }.map { it.version })
     }
@@ -39,10 +39,10 @@ class DatabaseTest {
         val dir = Files.createTempDirectory("feed-db").toFile()
         try {
             Database.open(dir.path).use { db ->
-                assertEquals(46, db.one("SELECT count(*) FROM schema_migrations") { it.getInt(1) })
+                assertEquals(47, db.one("SELECT count(*) FROM schema_migrations") { it.getInt(1) })
             }
             Database.open(dir.path).use { db ->
-                assertEquals(46, db.one("SELECT count(*) FROM schema_migrations") { it.getInt(1) })
+                assertEquals(47, db.one("SELECT count(*) FROM schema_migrations") { it.getInt(1) })
                 assertEquals("wal", db.one("PRAGMA journal_mode") { it.getString(1) })
                 db.update("UPDATE schema_migrations SET checksum = 'x' WHERE version = 3")
             }

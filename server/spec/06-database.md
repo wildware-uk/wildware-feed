@@ -104,6 +104,9 @@ JSON-in-TEXT columns and their shapes:
   (`src/db/migrate.ts:129-145`).
 - Running on an up-to-date DB is a no-op (`src/db/migrate.ts:1-7`).
 
+Migration 047 (`device-alert-prefs`, `ALTER TABLE owner_devices ADD COLUMN alert_prefs TEXT;`) came after
+046 the same way: TS b65832d and the Kotlin server ship byte-identical SQL.
+
 **Adding migration 046 so both servers stay compatible.** Each server refuses a DB that has a version it does
 not know, and refuses a known version whose SQL text changed. So:
 1. Write `src/db/migrations/046-<name>.ts` in the TS repo **and** the byte-identical SQL in the Kotlin

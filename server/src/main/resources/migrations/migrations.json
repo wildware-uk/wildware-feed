@@ -320,5 +320,12 @@
   "file": "046-media-indexes-come-back.sql",
   "rebuildsTables": false,
   "checksum": "357b4342fe37b91bddc580b48db9def109c73f62454ab94afcca05632ecbb683"
+ },
+ {
+  "version": 47,
+  "name": "device-alert-prefs",
+  "file": "047-device-alert-prefs.sql",
+  "rebuildsTables": false,
+  "checksum": "e135df3c06ce57b245afb42184c8c23cfec4510f73453f9686ae659195ef49d9"
  }
 ]

@@ -585,7 +585,7 @@
   "type": "table",
   "name": "embeds",
   "table": "embeds",
-  "sql": "CREATE TABLE embeds (\n\tseq INTEGER PRIMARY KEY AUTOINCREMENT,\n\tid TEXT NOT NULL UNIQUE,\n\ttype_id TEXT NOT NULL REFERENCES embed_types (id),\n\t-- Exactly one of these two, enforced in the domain as media's are.\n\tupdate_id TEXT REFERENCES updates (id),\n\tmessage_id TEXT REFERENCES messages (id),\n\tagent_id TEXT REFERENCES agents (id),\n\t-- \"human\" or \"agent:<id>\", the vocabulary messages already use (design \u00a73).\n\tauthor TEXT NOT NULL,\n\t-- The values this one shows, as a flat JSON object of strings.\n\tdata TEXT NOT NULL,\n\t-- Where it was copied from, if the agent said. Shown as the card's link.\n\tsource_url TEXT,\n\tcreated_at INTEGER NOT NULL\n, request_id TEXT REFERENCES approvals (id), task_id TEXT REFERENCES tasks (id)) STRICT"
+  "sql": "CREATE TABLE embeds (\n\tseq INTEGER PRIMARY KEY AUTOINCREMENT,\n\tid TEXT NOT NULL UNIQUE,\n\ttype_id TEXT NOT NULL REFERENCES embed_types (id),\n\t-- Exactly one of these two, enforced in the domain as media's are.\n\tupdate_id TEXT REFERENCES updates (id),\n\tmessage_id TEXT REFERENCES messages (id),\n\tagent_id TEXT REFERENCES agents (id),\n\t-- \"human\" or \"agent:<id>\", the vocabulary messages already use (design §3).\n\tauthor TEXT NOT NULL,\n\t-- The values this one shows, as a flat JSON object of strings.\n\tdata TEXT NOT NULL,\n\t-- Where it was copied from, if the agent said. Shown as the card's link.\n\tsource_url TEXT,\n\tcreated_at INTEGER NOT NULL\n, request_id TEXT REFERENCES approvals (id), task_id TEXT REFERENCES tasks (id)) STRICT"
  },
  {
   "type": "table",
@@ -621,7 +621,7 @@
   "type": "table",
   "name": "owner_devices",
   "table": "owner_devices",
-  "sql": "CREATE TABLE owner_devices (\n\tseq INTEGER PRIMARY KEY AUTOINCREMENT,\n\tid TEXT NOT NULL,\n\tname TEXT NOT NULL,\n\ttoken_hash TEXT NOT NULL,\n\tapns_token TEXT,\n\tapns_environment TEXT CHECK (apns_environment IN ('sandbox', 'production')),\n\tlive_activity_token TEXT,\n\tpush_to_start_token TEXT,\n\tcreated_at INTEGER NOT NULL,\n\tlast_seen_at INTEGER,\n\tfailures INTEGER NOT NULL DEFAULT 0\n, alert_project_ids TEXT) STRICT"
+  "sql": "CREATE TABLE owner_devices (\n\tseq INTEGER PRIMARY KEY AUTOINCREMENT,\n\tid TEXT NOT NULL,\n\tname TEXT NOT NULL,\n\ttoken_hash TEXT NOT NULL,\n\tapns_token TEXT,\n\tapns_environment TEXT CHECK (apns_environment IN ('sandbox', 'production')),\n\tlive_activity_token TEXT,\n\tpush_to_start_token TEXT,\n\tcreated_at INTEGER NOT NULL,\n\tlast_seen_at INTEGER,\n\tfailures INTEGER NOT NULL DEFAULT 0\n, alert_project_ids TEXT, alert_prefs TEXT) STRICT"
  },
  {
   "type": "table",
@@ -663,7 +663,7 @@
   "type": "table",
   "name": "tags",
   "table": "tags",
-  "sql": "CREATE TABLE tags (\n\tseq INTEGER PRIMARY KEY AUTOINCREMENT,\n\tid TEXT NOT NULL UNIQUE,\n\tproject_id TEXT NOT NULL REFERENCES projects (id),\n\t-- The word as it is written on the card.\n\tname TEXT NOT NULL,\n\t-- The same word, normalised: what \"already defined\" is judged on, so \"Bug\",\n\t-- \"bug\" and \" bug \" are one tag rather than three that look identical.\n\tslug TEXT NOT NULL,\n\t-- One of the palette's names ('rose', 'amber', \u2026), or NULL for the default.\n\t-- A name rather than a colour value: the dashboard has two themes, and a\n\t-- stored hex would be legible in exactly one of them.\n\tcolour TEXT,\n\t-- Who defined it: an agent, or NULL for the owner. The same rule media keeps.\n\tagent_id TEXT REFERENCES agents (id),\n\tcreated_at INTEGER NOT NULL\n) STRICT"
+  "sql": "CREATE TABLE tags (\n\tseq INTEGER PRIMARY KEY AUTOINCREMENT,\n\tid TEXT NOT NULL UNIQUE,\n\tproject_id TEXT NOT NULL REFERENCES projects (id),\n\t-- The word as it is written on the card.\n\tname TEXT NOT NULL,\n\t-- The same word, normalised: what \"already defined\" is judged on, so \"Bug\",\n\t-- \"bug\" and \" bug \" are one tag rather than three that look identical.\n\tslug TEXT NOT NULL,\n\t-- One of the palette's names ('rose', 'amber', …), or NULL for the default.\n\t-- A name rather than a colour value: the dashboard has two themes, and a\n\t-- stored hex would be legible in exactly one of them.\n\tcolour TEXT,\n\t-- Who defined it: an agent, or NULL for the owner. The same rule media keeps.\n\tagent_id TEXT REFERENCES agents (id),\n\tcreated_at INTEGER NOT NULL\n) STRICT"
  },
  {
   "type": "table",

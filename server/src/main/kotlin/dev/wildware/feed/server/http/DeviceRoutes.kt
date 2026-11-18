@@ -97,6 +97,20 @@ fun Route.deviceRoutes(app: App) {
             call.respondOwner(200, buildJsonObject { put("ok", JsonPrimitive(true)) })
         },
     )
+    endpoint(
+        "/api/devices/current/alert-prefs",
+        HttpMethod.Get to {
+            val device = call.currentDevice(app)
+            call.respondOwner(200, buildJsonObject { put("prefs", app.devices.find(device)?.alertPrefs ?: JsonNull) })
+        },
+        HttpMethod.Put to {
+            val device = call.currentDevice(app)
+            val body = call.jsonObjectBody()
+            if ("prefs" !in body) throw invalid("send prefs: { types, levels, priorities }, or null")
+            val prefs = app.devices.setAlertPrefs(device, body["prefs"])
+            call.respondOwner(200, buildJsonObject { put("ok", JsonPrimitive(true)); put("prefs", prefs ?: JsonNull) })
+        },
+    )
 }
 
 /** The device behind the bearer, or the TS server's 400 for a cookie caller. */
@@ -115,4 +129,5 @@ fun deviceView(d: Devices.Device, slugsById: Map<String, String>): JsonElement =
     put("hasApns", JsonPrimitive(d.apnsToken != null))
     put("hasLiveActivity", JsonPrimitive(d.liveActivityToken != null))
     put("alertProjects", d.alertProjectIds?.let { ids -> JsonArray(ids.mapNotNull { slugsById[it] }.map(::JsonPrimitive)) } ?: JsonNull)
+    put("alertPrefs", d.alertPrefs ?: JsonNull)
 }

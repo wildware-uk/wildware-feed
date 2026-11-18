@@ -19,6 +19,7 @@ class Devices(private val db: Database, private val tokenSecret: String, private
         val apnsToken: String?,
         val liveActivityToken: String?,
         val alertProjectIds: List<String>?,
+        val alertPrefs: kotlinx.serialization.json.JsonObject? = null,
     )
 
     fun mint(name: String): Pair<Device, String> {
@@ -125,7 +126,17 @@ class Devices(private val db: Database, private val tokenSecret: String, private
         alertProjectIds = rs.getString("alert_project_ids")?.let { text ->
             (Json.parseToJsonElement(text) as? JsonArray)?.map { it.jsonPrimitive.content }
         },
+        alertPrefs = rs.getString("alert_prefs")?.let { Json.parseToJsonElement(it) as? kotlinx.serialization.json.JsonObject },
     )
+
+    /** `PUT /api/devices/current/alert-prefs`: checked prefs, or null for every alert. */
+    fun setAlertPrefs(deviceId: String, prefs: kotlinx.serialization.json.JsonElement?): kotlinx.serialization.json.JsonObject? {
+        val checked = AlertPrefs.check(prefs)
+        if (db.update("UPDATE owner_devices SET alert_prefs = ? WHERE id = ?", checked?.let { dev.wildware.feed.server.http.Wire.encode(it) }, deviceId) != 1) {
+            throw notFound("no such device: $deviceId")
+        }
+        return checked
+    }
 
     sealed interface Optional {
         data object Absent : Optional

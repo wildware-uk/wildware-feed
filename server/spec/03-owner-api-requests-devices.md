@@ -354,18 +354,20 @@ base64url, no padding (43 chars); stores HMAC hex under `TOKEN_SECRET`.
 - `[]` is valid and means "only alerts about no project" (`deviceWantsAlert`, `domain/devices.ts:184`).
 - 200 `{"ok":true}`.
 
-### `GET`/`PUT /api/devices/current/alert-prefs` (`devices.ts`, migration 047)
+### `GET`/`PUT /api/devices/current/alert-prefs` (TS b65832d, migration 047)
 
-Which kinds of alert the calling phone gets: the same three filters a Web Push subscription has.
-
-- Device bearer only (a cookie → 400 `this needs a device key: …`).
-- `GET` → 200 `{"prefs": {…} | null}` for the calling device.
-- `PUT` body must contain key `prefs` → else 400 `send prefs: { types, levels, priorities }, or null`.
-- `prefs` is checked by `assertPushPrefs` (`domain/push.ts`): `null`/`{}` → stored NULL (every alert);
-  not an object → 400 `preferences must be an object, or null for the default`; each of `types`
-  (`request`, `update`, `message`, `comment`), `levels`, `priorities` must be a list of known words
-  → else 400 `<field> must be a list` / `<field> must be any of: …`; deduped.
-- Stored as JSON in `owner_devices.alert_prefs`. 200 `{"ok":true,"prefs":<stored or null>}`.
+- Device bearer only. Stored in `owner_devices.alert_prefs` (JSON text, NULL = every alert).
+- `PUT`: strict JSON body; it must contain key `prefs` → else 400 `send prefs: { types, levels, priorities }, or null`.
+  `prefs` is checked as Web Push preferences were (`assertPushPrefs`): `null` → NULL; not an object (or an
+  array) → `preferences must be an object, or null for the default`; each of `types` (`request, update, message,
+  comment`), `levels` (`info, success, warn, error`), `priorities` (`low, medium, high`) when present (even
+  `null`) must be a list of those words → `<field> must be a list` / `<field> must be any of: a, b, …`;
+  deduped, in the order `types, levels, priorities`; other keys dropped; nothing left → NULL.
+  200 `{"ok":true,"prefs":<checked or null>}`.
+- `GET`: 200 `{"prefs":<stored or null>}`.
+- `GET /api/devices` entries gain `alertPrefs` (last key).
+- APNs alerts go only to phones whose prefs `notifies(prefs, about)`: the type must be in `types`
+  (default all four); for an update, also its level in `levels` and priority in `priorities` when both are set.
 
 ---
 
