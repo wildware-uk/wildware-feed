@@ -62,6 +62,7 @@ struct WaitingProvider: TimelineProvider {
 
 struct WaitingView: View {
     @Environment(\.widgetFamily) private var family
+    @Environment(\.widgetRenderingMode) private var renderingMode
     let entry: WaitingEntry
 
     private var count: String { entry.waiting.map { "\($0)" } ?? "–" }
@@ -75,7 +76,9 @@ struct WaitingView: View {
         }
     }
 
-    private var tint: Color { (entry.waiting ?? 0) > 0 ? .orange : .secondary }
+    private var isWaiting: Bool { (entry.waiting ?? 0) > 0 }
+    /// Amber when someone waits, on faces drawn in full colour; the face's own tint otherwise.
+    private var tint: Color { isWaiting ? Theme.waiting : Theme.textMuted }
 
     var body: some View {
         switch family {
@@ -83,29 +86,43 @@ struct WaitingView: View {
             ZStack {
                 AccessoryWidgetBackground()
                 VStack(spacing: 0) {
-                    Image(systemName: "hand.raised.fill")
-                        .font(.caption2)
-                        .foregroundStyle(tint)
-                    Text(count)
-                        .font(.title3.bold())
+                    RobotMark(color: renderingMode == .fullColor ? Theme.robot : .primary)
+                        .frame(height: isWaiting ? 13 : 22)
+                    if isWaiting || entry.waiting == nil {
+                        Text(count)
+                            .font(Theme.Font.fixedMono(17))
+                            .foregroundStyle(tint)
+                            .widgetAccentable()
+                    }
                 }
             }
+            .accessibilityLabel(sentence)
         case .accessoryCorner:
-            Text(count)
-                .font(.title3.bold())
-                .foregroundStyle(tint)
-                .widgetLabel(sentence)
+            RobotMark(color: renderingMode == .fullColor ? Theme.robot : .primary)
+                .padding(4)
+                .widgetLabel {
+                    Text(isWaiting ? "\(count) waiting" : sentence)
+                        .foregroundStyle(tint)
+                }
+                .accessibilityLabel(sentence)
         case .accessoryInline:
-            Label(sentence, systemImage: "hand.raised.fill")
+            Label(sentence, systemImage: isWaiting ? "hand.raised.fill" : "checkmark.circle")
         default:
-            VStack(alignment: .leading, spacing: 2) {
-                Label("Wildware Feed", systemImage: "hand.raised.fill")
-                    .font(.headline)
-                    .foregroundStyle(tint)
-                Text(sentence)
-                    .font(.body)
+            HStack(spacing: 8) {
+                RobotMark(color: renderingMode == .fullColor ? Theme.robot : .primary)
+                    .frame(height: 26)
+                VStack(alignment: .leading, spacing: 0) {
+                    Text("Wildware Feed")
+                        .font(Theme.Font.sans(13, .semibold, relativeTo: .headline))
+                        .foregroundStyle(.secondary)
+                    Text(sentence)
+                        .font(Theme.Font.sans(15, .semibold, relativeTo: .body))
+                        .foregroundStyle(tint)
+                        .widgetAccentable()
+                }
+                Spacer(minLength: 0)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityElement(children: .combine)
         }
     }
 }

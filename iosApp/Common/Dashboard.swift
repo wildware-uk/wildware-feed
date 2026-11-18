@@ -29,6 +29,20 @@ extension DashboardSummary {
     var topRequest: PendingRequest? { requests.first }
 }
 
+extension PendingRequest {
+    /// When the question times out, or nil when the server's time doesn't read.
+    var expiry: Date? {
+        Self.isoFractional.date(from: expiresAt) ?? Self.iso.date(from: expiresAt)
+    }
+
+    private static let iso = ISO8601DateFormatter()
+    private static let isoFractional: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+}
+
 extension RecentUpdate {
     var date: Date { Date(timeIntervalSince1970: Double(createdAt) / 1000) }
 }

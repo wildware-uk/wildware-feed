@@ -70,12 +70,12 @@ struct ProjectWidget: Widget {
     var body: some WidgetConfiguration {
         AppIntentConfiguration(kind: "AgentsProject", intent: ProjectWidgetIntent.self, provider: ProjectProvider()) { entry in
             ProjectWidgetView(entry: entry)
-                .containerBackground(for: .widget) { Color.dashboardBackground }
+                .cardBackground(waiting: false)
         }
         .configurationDisplayName("Project")
         .description("One project's latest news, and what it's waiting on you for.")
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge, .accessoryCircular, .accessoryRectangular, .accessoryInline])
-        // StandBy and the lock screen drop the dark card and draw the words straight on the background.
+        // StandBy and the lock screen drop the card and draw the words straight on the background.
         .containerBackgroundRemovable(true)
     }
 }
@@ -100,21 +100,17 @@ struct ProjectWidgetContent: View {
     var body: some View {
         switch entry.state {
         case .notLinked:
-            message("Open Wildware Feed to sign in")
+            NoticeView(symbol: "person.crop.circle.badge.questionmark", text: "Open Wildware Feed to sign in", family: family)
         case .unreachable:
-            Label("Dashboard unreachable", systemImage: "wifi.exclamationmark").font(.caption)
+            NoticeView(symbol: "wifi.exclamationmark", text: "Can't reach your dashboard", family: family)
         case .unchosen:
-            message("Hold the widget and choose Edit to pick a project")
+            NoticeView(symbol: "square.and.pencil", text: "Hold the widget and choose Edit to pick a project", family: family)
         case let .gone(name):
-            message("\(name) is no longer on the dashboard")
+            NoticeView(symbol: "questionmark.folder", text: "\(name) is no longer on the dashboard", family: family)
         case let .ready(card):
             content(card)
                 .widgetURL(DeepLink.open(path: link(card)))
         }
-    }
-
-    private func message(_ text: String) -> some View {
-        Text(text).font(.caption).foregroundStyle(.secondary)
     }
 
     private func link(_ card: ProjectCard) -> String {
@@ -128,21 +124,26 @@ struct ProjectWidgetContent: View {
     private func content(_ card: ProjectCard) -> some View {
         switch family {
         case .accessoryInline:
-            Text("\(card.project.name): \(card.statusLine)")
+            Label("\(card.project.name): \(card.statusLine)", systemImage: card.waiting > 0 ? "hand.raised.fill" : "text.bubble")
         case .accessoryCircular:
             ZStack {
                 AccessoryWidgetBackground()
-                VStack(spacing: 0) {
-                    Image(systemName: card.waiting > 0 ? "hand.raised.fill" : "text.bubble")
+                VStack(spacing: 1) {
+                    RobotMark(color: .primary).frame(height: 13)
                     Text(card.waiting > 0 ? "\(card.waiting)" : String(card.project.name.prefix(3)))
-                        .font(.caption.bold())
+                        .font(Theme.Font.fixedMono(card.waiting > 0 ? 18 : 13))
+                }
+            }
+            .widgetAccentable()
+            .accessibilityLabel("\(card.project.name): \(card.statusLine)")
+        case .accessoryRectangular:
+            VStack(alignment: .leading, spacing: 1) {
+                HStack(spacing: 4) {
+                    RobotMark(color: .primary).frame(height: 12)
+                    Text(card.project.name).font(Theme.Font.sans(13, .semibold, relativeTo: .headline)).lineLimit(1)
                 }
                 .widgetAccentable()
-            }
-        case .accessoryRectangular:
-            VStack(alignment: .leading) {
-                Text(card.project.name).font(.headline).lineLimit(1).widgetAccentable()
-                Text(card.statusLine).font(.caption).lineLimit(2)
+                Text(card.statusLine).font(Theme.Font.sans(14, .medium, relativeTo: .body)).lineLimit(2)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         case .systemSmall:
@@ -153,49 +154,54 @@ struct ProjectWidgetContent: View {
     }
 
     private func small(_ card: ProjectCard) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 0) {
             Header(card: card, big: !showsBackground)
             Text(card.headline)
-                .font(showsBackground ? .subheadline.bold() : .title3.bold())
-                .lineLimit(showsBackground ? 4 : 3)
+                .font(showsBackground ? Theme.Font.title : Theme.Font.sans(22, .semibold, relativeTo: .title2))
+                .foregroundStyle(Theme.text)
+                .lineLimit(3)
                 .minimumScaleFactor(0.8)
+                .padding(.top, Theme.Space.s)
+            if showsBackground, !card.excerpt.isEmpty {
+                Text(card.excerpt).font(Theme.Font.label.weight(.regular)).foregroundStyle(Theme.textMuted).lineLimit(2).padding(.top, 3)
+            }
             Spacer(minLength: 0)
             if let latest = card.latest { Byline(update: latest, big: !showsBackground) }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .foregroundStyle(.white)
     }
 
     private func roomy(_ card: ProjectCard) -> some View {
-        let large = family == .systemLarge
-        // A medium widget with a question gives the question the room; the news shrinks to its headline.
+        let large = family == .systemLarge || family == .systemExtraLarge
         let asking = !card.questions.isEmpty
-        return VStack(alignment: .leading, spacing: large ? 8 : 4) {
+        return VStack(alignment: .leading, spacing: 0) {
             Header(card: card, big: !showsBackground)
-            Text(card.headline).font(large ? .title3.bold() : .headline).lineLimit(large || !asking ? 2 : 1)
             if large || !asking {
-                if !card.excerpt.isEmpty {
-                    Text(card.excerpt).font(.caption).foregroundStyle(.white.opacity(0.75)).lineLimit(large ? (asking ? 3 : 6) : 2)
-                }
-                if let latest = card.latest { Byline(update: latest, big: false) }
+                News(card: card, large: large, asking: asking).padding(.top, Theme.Space.s)
             }
             if asking {
-                if large { Divider().overlay(.white.opacity(0.3)) }
-                ForEach(card.questions, id: \.id) { request in
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("\(request.agentName) asks").font(.caption2.bold()).foregroundStyle(.orange)
-                        Text(request.question).font(.caption).lineLimit(2)
-                        AnswerButtons(request: request)
+                if large {
+                    VStack(spacing: Theme.Space.s) {
+                        ForEach(Array(card.questions.prefix(2)), id: \.id) { QuestionWell(request: $0, now: entry.date) }
                     }
+                    .padding(.top, Theme.Space.m)
+                } else {
+                    // A medium widget gives the question the room; the news shrinks to its headline beside it.
+                    HStack(alignment: .top, spacing: Theme.Space.m) {
+                        News(card: card, large: false, asking: true)
+                        if let request = card.questions.first {
+                            QuestionWell(request: request, now: entry.date, narrow: true).frame(width: 128)
+                        }
+                    }
+                    .padding(.top, Theme.Space.s)
                 }
             } else if large {
                 Spacer()
-                Text("Nothing waiting on you").font(.caption).foregroundStyle(.secondary)
+                Text("Nothing waiting on you").font(Theme.Font.meta).foregroundStyle(Theme.textFaint)
             }
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .foregroundStyle(.white)
     }
 
     private struct Header: View {
@@ -205,17 +211,67 @@ struct ProjectWidgetContent: View {
         var body: some View {
             HStack(spacing: 6) {
                 Text(card.project.name)
-                    .font(big ? .headline : .caption.bold())
-                    .foregroundStyle(.white.opacity(0.7))
+                    .overline()
+                    .font(big ? Theme.Font.mono(14, .medium, relativeTo: .headline) : Theme.Font.overline)
+                    .foregroundStyle(Theme.textMuted)
                     .lineLimit(1)
                 Spacer(minLength: 0)
                 if card.waiting > 0 {
-                    Label("\(card.waiting)", systemImage: "hand.raised.fill")
-                        .font(big ? .headline : .caption.bold())
-                        .foregroundStyle(.orange)
-                        .labelStyle(.titleAndIcon)
+                    DotLabel(text: "\(card.waiting) waiting", color: Theme.waiting).widgetAccentable()
+                } else if !big {
+                    AppMarkTile(size: 16)
                 }
             }
+        }
+    }
+
+    /// The latest update: headline, a few lines, who and when.
+    private struct News: View {
+        let card: ProjectCard
+        let large: Bool
+        let asking: Bool
+
+        var body: some View {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(card.headline)
+                    .font(large ? Theme.Font.sans(18, .semibold, relativeTo: .title3) : Theme.Font.title)
+                    .foregroundStyle(Theme.text)
+                    .lineLimit(2)
+                if !card.excerpt.isEmpty {
+                    Text(card.excerpt)
+                        .font(Theme.Font.label.weight(.regular))
+                        .foregroundStyle(Theme.textMuted)
+                        .lineLimit(large ? (asking ? 3 : 7) : 2)
+                }
+                Spacer(minLength: 0)
+                if let latest = card.latest { Byline(update: latest, big: false) }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    /// A question, set in an amber well like the app's waiting card.
+    private struct QuestionWell: View {
+        let request: PendingRequest
+        let now: Date
+        var narrow = false
+
+        var body: some View {
+            VStack(alignment: .leading, spacing: 6) {
+                if !narrow {
+                    AskerRow(agent: request.agentName, project: nil, expiry: request.expiry, now: now, chipSize: 18)
+                }
+                Text(request.question)
+                    .font(narrow ? Theme.Font.label.weight(.semibold) : Theme.Font.bodyStrong)
+                    .foregroundStyle(Theme.text)
+                    .lineLimit(narrow ? 3 : 2)
+                Spacer(minLength: 0)
+                AnswerRow(request: request, compact: true, stretch: narrow, maxButtons: narrow ? 2 : 3)
+            }
+            .padding(Theme.Space.s + 2)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Theme.waitingSoft, in: RoundedRectangle(cornerRadius: Theme.Radius.large, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: Theme.Radius.large, style: .continuous).strokeBorder(Theme.waitingLine, lineWidth: 1))
         }
     }
 
@@ -224,17 +280,14 @@ struct ProjectWidgetContent: View {
         let big: Bool
 
         var body: some View {
-            HStack(spacing: 4) {
-                Text(update.agentName).bold().lineLimit(1)
-                Text("·")
+            HStack(spacing: 6) {
+                AgentChip(name: update.agentName, agentId: nil, size: big ? 22 : 18)
                 // A clock time, not "6 min ago": the widget redraws every few minutes, and a ticking timer reads badly.
-                Text(update.date, format: Calendar.current.isDateInToday(update.date)
-                    ? Date.FormatStyle.dateTime.hour().minute()
-                    : Date.FormatStyle.dateTime.month(.abbreviated).day())
+                Text("\(update.agentName) · \(Text(update.date, format: Calendar.current.isDateInToday(update.date) ? Date.FormatStyle.dateTime.hour().minute() : Date.FormatStyle.dateTime.month(.abbreviated).day()))")
+                    .lineLimit(1)
             }
-            .lineLimit(1)
-            .font(big ? .subheadline : .caption2)
-            .foregroundStyle(.white.opacity(0.6))
+            .font(big ? Theme.Font.mono(14, relativeTo: .subheadline) : Theme.Font.meta)
+            .foregroundStyle(Theme.textMuted)
         }
     }
 }
@@ -253,18 +306,18 @@ extension CardSize {
 extension ProjectCard {
     /// What the widget gallery shows before a project is picked, and the screenshots draw.
     static func sample(size: CardSize) -> ProjectCard {
-        let project = ProjectRef(slug: "garden-game", name: "Garden Game")
+        let project = ProjectRef(slug: "garden-game", name: "garden-game")
         let update = RecentUpdate(
             id: "u-sample",
             project: project,
-            agentName: "Builder",
+            agentName: "Rover",
             title: "Fee rounding fixed",
             text: "Fee rounding fixed\nThe checkout now rounds fees to the penny. All 412 tests pass. A pull request is open for review.",
             createdAt: Int64(Date.now.addingTimeInterval(-6 * 60).timeIntervalSince1970 * 1000)
         )
         let request = PendingRequest(
             id: "req-sample",
-            agentName: "Builder",
+            agentName: "Rover",
             projectSlug: project.slug,
             projectName: project.name,
             question: "Tests pass. Merge the fee-rounding branch into main?",

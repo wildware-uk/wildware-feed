@@ -38,38 +38,88 @@ private struct ShareView: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                if case let .failed(message) = status {
-                    Text(message).foregroundStyle(.red)
-                }
-                if status == .queued {
-                    Text("No connection. It's saved, and Wildware Feed will send it when you're back online.")
-                        .foregroundStyle(.orange)
-                }
-                Picker("Project", selection: $selected) {
-                    ForEach(projects, id: \.slug) { Text($0.name).tag(Optional($0.slug)) }
-                }
-                Section("Note") {
-                    TextField("What should the agent do with this?", text: $note, axis: .vertical)
-                        .lineLimit(3...8)
-                }
-                if !attachments.isEmpty {
-                    Section("Attached") {
-                        ForEach(attachments, id: \.filename) { Text($0.filename) }
+            ScrollView {
+                VStack(alignment: .leading, spacing: Theme.Space.l) {
+                    if case let .failed(message) = status {
+                        Banner(text: message, symbol: "exclamationmark.triangle.fill", color: Theme.error)
+                    }
+                    if status == .queued {
+                        Banner(
+                            text: "No connection. It's saved, and Wildware Feed will send it when you're back online.",
+                            symbol: "clock.arrow.circlepath",
+                            color: Theme.waiting
+                        )
+                    }
+
+                    VStack(alignment: .leading, spacing: Theme.Space.s) {
+                        Text("Send to").overline().foregroundStyle(Theme.textMuted)
+                        if status == .loading && projects.isEmpty {
+                            ProgressView().tint(Theme.textMuted)
+                        }
+                        FlowLayout(spacing: Theme.Space.s) {
+                            ForEach(projects, id: \.slug) { project in
+                                ProjectChip(name: project.name, selected: selected == project.slug) {
+                                    selected = project.slug
+                                }
+                            }
+                        }
+                    }
+
+                    VStack(alignment: .leading, spacing: Theme.Space.s) {
+                        Text("Note").overline().foregroundStyle(Theme.textMuted)
+                        TextField("What should the agent do with this?", text: $note, axis: .vertical)
+                            .lineLimit(4...10)
+                            .font(Theme.Font.body)
+                            .foregroundStyle(Theme.text)
+                            .tint(Theme.accent)
+                            .padding(Theme.Space.m)
+                            .background(Theme.sunken, in: RoundedRectangle(cornerRadius: Theme.Radius.large, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: Theme.Radius.large, style: .continuous).strokeBorder(Theme.border))
+                    }
+
+                    if !attachments.isEmpty {
+                        VStack(alignment: .leading, spacing: Theme.Space.s) {
+                            Text(attachments.count == 1 ? "1 photo" : "\(attachments.count) photos").overline().foregroundStyle(Theme.textMuted)
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: Theme.Space.s) {
+                                    ForEach(attachments, id: \.filename) { photo in
+                                        Thumbnail(data: photo.data)
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
+                .padding(Theme.Space.l + 2)
             }
-            .navigationTitle("Share to Wildware Feed")
+            .background(Theme.surface)
+            .toolbarBackground(Theme.surface, for: .navigationBar)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel", action: cancel) }
+                ToolbarItem(placement: .principal) {
+                    HStack(spacing: 7) {
+                        AppMarkTile(size: 20)
+                        Text("Wildware Feed").font(Theme.Font.sans(17, .semibold, relativeTo: .headline)).foregroundStyle(Theme.text)
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityAddTraits(.isHeader)
+                }
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel", action: cancel).foregroundStyle(Theme.textMuted)
+                }
                 ToolbarItem(placement: .confirmationAction) {
                     Button(status == .sending ? "Sending…" : "Post", action: post)
-                        .disabled(selected == nil || status == .sending || status == .loading || status == .queued)
+                        .font(Theme.Font.sans(17, .semibold, relativeTo: .body))
+                        .foregroundStyle(canPost ? Theme.accent : Theme.textFaint)
+                        .disabled(!canPost)
                 }
             }
         }
         .task { await load() }
+    }
+
+    private var canPost: Bool {
+        selected != nil && status != .sending && status != .loading && status != .queued
     }
 
     private func load() async {
@@ -113,6 +163,113 @@ private struct ShareView: View {
                 finish()
             }
         }
+    }
+}
+
+private struct ProjectChip: View {
+    let name: String
+    let selected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                if selected { Image(systemName: "checkmark").font(.system(size: 12, weight: .bold)) }
+                Text(name).lineLimit(1)
+            }
+            .font(Theme.Font.bodyStrong)
+            .padding(.horizontal, Theme.Space.m)
+            .frame(minHeight: 36)
+            .foregroundStyle(selected ? Theme.onAccent : Theme.text)
+            .background {
+                if selected {
+                    Capsule().fill(Theme.accent)
+                } else {
+                    Capsule().strokeBorder(Theme.borderStrong)
+                }
+            }
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(selected ? [.isSelected] : [])
+    }
+}
+
+private struct Banner: View {
+    let text: String
+    let symbol: String
+    let color: Color
+
+    var body: some View {
+        Label {
+            Text(text).font(Theme.Font.label.weight(.regular)).foregroundStyle(Theme.text)
+        } icon: {
+            Image(systemName: symbol).foregroundStyle(color)
+        }
+        .padding(Theme.Space.m)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(color.opacity(0.12), in: RoundedRectangle(cornerRadius: Theme.Radius.large, style: .continuous))
+    }
+}
+
+private struct Thumbnail: View {
+    let data: Data
+
+    var body: some View {
+        Group {
+            if let image = UIImage(data: data) {
+                Image(uiImage: image).resizable().scaledToFill()
+            } else {
+                Theme.sunken
+            }
+        }
+        .frame(width: 72, height: 72)
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.medium, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Theme.Radius.medium, style: .continuous).strokeBorder(Theme.border))
+        .accessibilityLabel("Attached photo")
+    }
+}
+
+/// Lays chips out in rows, wrapping when a row is full.
+private struct FlowLayout: Layout {
+    var spacing: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let rows = rows(width: proposal.width ?? .infinity, subviews: subviews)
+        let height = rows.map(\.height).reduce(0, +) + spacing * CGFloat(max(rows.count - 1, 0))
+        let width = rows.map(\.width).max() ?? 0
+        return CGSize(width: proposal.width ?? width, height: height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var y = bounds.minY
+        for row in rows(width: bounds.width, subviews: subviews) {
+            var x = bounds.minX
+            for index in row.indices {
+                let size = subviews[index].sizeThatFits(.unspecified)
+                subviews[index].place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
+                x += size.width + spacing
+            }
+            y += row.height + spacing
+        }
+    }
+
+    private struct Row { var indices: [Int] = []; var width: CGFloat = 0; var height: CGFloat = 0 }
+
+    private func rows(width: CGFloat, subviews: Subviews) -> [Row] {
+        var rows: [Row] = [Row()]
+        for index in subviews.indices {
+            let size = subviews[index].sizeThatFits(.unspecified)
+            let extra = rows[rows.count - 1].indices.isEmpty ? size.width : size.width + spacing
+            if rows[rows.count - 1].width + extra > width, !rows[rows.count - 1].indices.isEmpty {
+                rows.append(Row())
+            }
+            let isFirst = rows[rows.count - 1].indices.isEmpty
+            rows[rows.count - 1].indices.append(index)
+            rows[rows.count - 1].width += isFirst ? size.width : size.width + spacing
+            rows[rows.count - 1].height = max(rows[rows.count - 1].height, size.height)
+        }
+        return rows.filter { !$0.indices.isEmpty }
     }
 }
 

@@ -29,6 +29,7 @@ struct WatchRootView: View {
     var body: some View {
         if model.isLinked {
             NavigationStack { InboxView() }
+                .tint(Theme.accent)
                 .id(stack)
                 .onOpenURL { _ in stack = UUID() }
         } else {
@@ -41,15 +42,14 @@ struct WatchRootView: View {
 struct NotLinkedView: View {
     var body: some View {
         VStack(spacing: 8) {
-            Image(systemName: "iphone")
-                .font(.title)
-                .foregroundStyle(.orange)
+            AppMarkTile(size: 44)
             Text("Open Wildware Feed on your iPhone")
-                .font(.headline)
+                .font(Theme.Font.title)
+                .foregroundStyle(Theme.text)
                 .multilineTextAlignment(.center)
             Text("Sign in there and your watch picks it up.")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
+                .font(Theme.Font.label)
+                .foregroundStyle(Theme.textMuted)
                 .multilineTextAlignment(.center)
         }
         .padding()

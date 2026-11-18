@@ -34,23 +34,30 @@ struct LatestNewsSnippet: View {
     let update: RecentUpdate?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: Theme.Space.s) {
             if let update {
-                HStack(alignment: .firstTextBaseline) {
-                    Text(update.agentName).font(.subheadline.bold()).foregroundStyle(.orange)
-                    Spacer()
-                    Text(update.date, format: .relative(presentation: .named)).font(.caption).foregroundStyle(.secondary)
+                HStack(spacing: Theme.Space.s) {
+                    AgentChip(name: update.agentName, agentId: nil, size: 20)
+                    Text(update.agentName).font(Theme.Font.label.weight(.semibold)).foregroundStyle(Theme.text)
+                    Text(projectName).font(Theme.Font.meta).foregroundStyle(Theme.textMuted).lineLimit(1)
+                    Spacer(minLength: 0)
+                    Text(update.date, format: .relative(presentation: .named))
+                        .font(Theme.Font.meta)
+                        .foregroundStyle(Theme.textMuted)
                 }
-                Text(update.headline).font(.headline)
+                Text(update.headline).font(Theme.Font.sans(17, .semibold, relativeTo: .headline)).foregroundStyle(Theme.text)
                 let more = PlainText.shared.sentences(text: update.text, count: 3, skip: update.sentencesInHeadline, maxLength: 320)
                 if !more.isEmpty {
-                    Text(more).font(.subheadline).foregroundStyle(.secondary).lineLimit(5)
+                    Text(more).font(Theme.Font.body).foregroundStyle(Theme.textMuted).lineLimit(5)
                 }
             } else {
-                Text("Nothing from \(projectName) yet.").font(.headline)
+                HStack(spacing: Theme.Space.s) {
+                    AppMarkTile(size: 20)
+                    Text("Nothing from \(projectName) yet.").font(Theme.Font.title).foregroundStyle(Theme.text)
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding()
+        .padding(Theme.Space.l)
     }
 }

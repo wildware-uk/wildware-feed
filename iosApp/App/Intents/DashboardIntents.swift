@@ -60,11 +60,19 @@ struct AgentStatusIntent: AppIntent {
     static let title: LocalizedStringResource = "What Are My Agents Doing"
     static let description = IntentDescription("Reads out who is online, what is in progress, and what is waiting on you.")
 
-    func perform() async throws -> some IntentResult & ProvidesDialog {
+    func perform() async throws -> some IntentResult & ProvidesDialog & ShowsSnippetView {
         guard let client = Dashboard.client() else { throw DashboardError.notLinked }
         defer { client.close() }
         let summary = try await client.summary()
-        return .result(dialog: "\(Speech.shared.status(summary: summary))")
+        return .result(
+            dialog: "\(Speech.shared.status(summary: summary))",
+            view: StatusSnippet(
+                waiting: summary.requests.count,
+                working: Int(summary.work.inProgress),
+                online: summary.onlineAgents.count,
+                top: summary.topRequest
+            )
+        )
     }
 }
 

@@ -17,12 +17,13 @@ struct SayView: View {
         List {
             if let request {
                 Text(request.question)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .font(Theme.Font.label.weight(.regular))
+                    .foregroundStyle(Theme.textMuted)
                     .lineLimit(3)
             } else if projects.isEmpty {
                 Text("No projects yet.")
-                    .foregroundStyle(.secondary)
+                    .font(Theme.Font.body)
+                    .foregroundStyle(Theme.textMuted)
             } else {
                 Picker("Project", selection: $projectSlug) {
                     ForEach(projects, id: \.slug) { project in
@@ -33,7 +34,8 @@ struct SayView: View {
 
             TextFieldLink(prompt: Text("Say it")) {
                 Label("Speak", systemImage: "mic.fill")
-                    .foregroundStyle(.orange)
+                    .font(Theme.Font.bodyStrong)
+                    .foregroundStyle(Theme.accent)
             } onSubmit: { text in
                 send(text)
             }
@@ -42,8 +44,8 @@ struct SayView: View {
             if sending { ProgressView() }
             if let failure {
                 Text(failure)
-                    .font(.footnote)
-                    .foregroundStyle(.red)
+                    .font(Theme.Font.label)
+                    .foregroundStyle(Theme.error)
             }
         }
         .navigationTitle(request == nil ? "Say something" : "Reply")

@@ -31,6 +31,8 @@ targetTemplates:
         embed: false
     sources:
       - Common
+      - path: Fonts
+        buildPhase: resources
       - path: Privacy/PrivacyInfo.xcprivacy
         buildPhase: resources
 
@@ -42,7 +44,10 @@ targetTemplates:
     sources:
       - Common/Credentials.swift
       - Common/Dashboard.swift
+      - Common/Theme.swift
       - WatchCommon
+      - path: Fonts
+        buildPhase: resources
       - path: Privacy/PrivacyInfo.xcprivacy
         buildPhase: resources
 
@@ -54,6 +59,8 @@ targets:
       - path: App
       - path: Voice
       - path: Common
+      - path: Fonts
+        buildPhase: resources
       - path: Privacy/PrivacyInfo.xcprivacy
         buildPhase: resources
     preBuildScripts:
@@ -66,6 +73,8 @@ targets:
       path: App/Info.plist
       properties:
         CFBundleDisplayName: "Wildware Feed"
+        # Geist, so the system surfaces read like the app (iosApp/Common/Theme.swift).
+        UIAppFonts: [Geist-Regular.ttf, Geist-Medium.ttf, Geist-SemiBold.ttf, Geist-Bold.ttf, GeistMono-Regular.ttf, GeistMono-Medium.ttf]
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         AppIdentifierPrefix: $(AppIdentifierPrefix)
@@ -127,6 +136,8 @@ targets:
       path: Watch/Info.plist
       properties:
         CFBundleDisplayName: "Wildware Feed"
+        # Geist, so the system surfaces read like the app (iosApp/Common/Theme.swift).
+        UIAppFonts: [Geist-Regular.ttf, Geist-Medium.ttf, Geist-SemiBold.ttf, Geist-Bold.ttf, GeistMono-Regular.ttf, GeistMono-Medium.ttf]
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         AppIdentifierPrefix: $(AppIdentifierPrefix)
@@ -157,6 +168,8 @@ targets:
       path: WatchWidgets/Info.plist
       properties:
         CFBundleDisplayName: "Wildware Feed"
+        # Geist, so the system surfaces read like the app (iosApp/Common/Theme.swift).
+        UIAppFonts: [Geist-Regular.ttf, Geist-Medium.ttf, Geist-SemiBold.ttf, Geist-Bold.ttf, GeistMono-Regular.ttf, GeistMono-Medium.ttf]
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         AppIdentifierPrefix: $(AppIdentifierPrefix)
@@ -183,6 +196,8 @@ targets:
       path: Widgets/Info.plist
       properties:
         CFBundleDisplayName: "Wildware Feed"
+        # Geist, so the system surfaces read like the app (iosApp/Common/Theme.swift).
+        UIAppFonts: [Geist-Regular.ttf, Geist-Medium.ttf, Geist-SemiBold.ttf, Geist-Bold.ttf, GeistMono-Regular.ttf, GeistMono-Medium.ttf]
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         AppIdentifierPrefix: $(AppIdentifierPrefix)
@@ -208,6 +223,8 @@ targets:
       path: Share/Info.plist
       properties:
         CFBundleDisplayName: "Wildware Feed"
+        # Geist, so the system surfaces read like the app (iosApp/Common/Theme.swift).
+        UIAppFonts: [Geist-Regular.ttf, Geist-Medium.ttf, Geist-SemiBold.ttf, Geist-Bold.ttf, GeistMono-Regular.ttf, GeistMono-Medium.ttf]
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         AppIdentifierPrefix: $(AppIdentifierPrefix)
@@ -239,6 +256,8 @@ targets:
       path: NotificationService/Info.plist
       properties:
         CFBundleDisplayName: "Wildware Feed"
+        # Geist, so the system surfaces read like the app (iosApp/Common/Theme.swift).
+        UIAppFonts: [Geist-Regular.ttf, Geist-Medium.ttf, Geist-SemiBold.ttf, Geist-Bold.ttf, GeistMono-Regular.ttf, GeistMono-Medium.ttf]
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         AppIdentifierPrefix: $(AppIdentifierPrefix)
@@ -268,6 +287,8 @@ targets:
       path: NotificationContent/Info.plist
       properties:
         CFBundleDisplayName: "Wildware Feed"
+        # Geist, so the system surfaces read like the app (iosApp/Common/Theme.swift).
+        UIAppFonts: [Geist-Regular.ttf, Geist-Medium.ttf, Geist-SemiBold.ttf, Geist-Bold.ttf, GeistMono-Regular.ttf, GeistMono-Medium.ttf]
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         NSExtension:

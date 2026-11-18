@@ -2,6 +2,9 @@ import AppIntents
 
 /// The phrases Siri listens for. Apple requires the app's name in each one.
 struct AgentsShortcuts: AppShortcutsProvider {
+    /// The Shortcuts app tiles take the app icon's blue.
+    static let shortcutTileColor: ShortcutTileColor = .blue
+
     static var appShortcuts: [AppShortcut] {
         AppShortcut(
             intent: CreateTicketIntent(),
