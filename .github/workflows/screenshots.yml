@@ -16,7 +16,7 @@ jobs:
           java-version: 21
       - uses: gradle/actions/setup-gradle@v4
       - run: iosApp/build-shared.sh
-        timeout-minutes: 10
+        timeout-minutes: 20
       - run: brew install xcodegen
         timeout-minutes: 5
       - run: xcodegen generate --spec iosApp/project.yml
