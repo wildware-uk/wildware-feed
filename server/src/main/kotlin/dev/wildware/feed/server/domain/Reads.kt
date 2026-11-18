@@ -406,6 +406,7 @@ class Reads(private val db: Database, private val clock: () -> Long = System::cu
             val options = request["options"] as? JsonArray
             buildJsonObject {
                 put("id", request["id"]!!)
+                put("agentId", request["agentId"]!!)
                 put("agentName", agentName)
                 put("projectSlug", project?.first)
                 put("projectName", project?.second)
@@ -438,6 +439,45 @@ class Reads(private val db: Database, private val clock: () -> Long = System::cu
                 put("blocked", counts["blocked"] ?: 0)
             })
             put("projects", JsonArray(sorted.map { p -> buildJsonObject { put("slug", p[1] as String); put("name", p[2] as String) } }))
+            put("working", JsonArray(workingCards(active.map { it[0] as String })))
+        }
+    }
+
+    /**
+     * Up to three cards in progress in active projects, most recently started first: who, doing
+     * what, since when (TS `workingCards`, `src/domain/summary.ts`). `since` is fixed, so the Live
+     * Activity's state only changes when something real does.
+     */
+    private fun workingCards(projectIds: List<String>): List<JsonObject> {
+        if (projectIds.isEmpty()) return emptyList()
+        val scope = marks(projectIds)
+        class Row(val kind: String, val id: String, val statusAt: Long?, val createdAt: Long, val title: String?, val body: String, val author: String?)
+        val rows = db.query(
+            "SELECT 'update' AS kind, id, project_id, status, status_at, created_at, title, body, 'agent:' || agent_id AS author, " +
+                "COALESCE(status_at, created_at) AS moved_at FROM updates WHERE status IN (?) AND deleted_at IS NULL AND project_id IN ($scope) " +
+                "UNION ALL SELECT 'message' AS kind, id, project_id, status, status_at, created_at, NULL AS title, body, author, " +
+                "COALESCE(status_at, created_at) AS moved_at FROM messages WHERE status IN (?) AND deleted_at IS NULL AND project_id IN ($scope) " +
+                "ORDER BY moved_at DESC, id DESC LIMIT ?",
+            "in_progress", *projectIds.toTypedArray(), "in_progress", *projectIds.toTypedArray(), WORKING_MAX,
+        ) { rs ->
+            Row(rs.getString("kind"), rs.getString("id"), rs.longOrNull("status_at"), rs.getLong("created_at"), rs.getString("title"), rs.getString("body"), rs.getString("author"))
+        }
+        fun agentOf(author: String?) = author?.takeIf { it.startsWith("agent:") }?.removePrefix("agent:")
+        return rows.map { row ->
+            var agentId = agentOf(row.author)
+            if (agentId == null && row.kind == "message") {
+                agentId = db.query(
+                    "SELECT author FROM messages WHERE reply_to = ? AND deleted_at IS NULL ORDER BY seq ASC", row.id,
+                ) { it.getString(1) }.asReversed().firstNotNullOfOrNull(::agentOf)
+            }
+            val name = agentId?.let { id -> db.one("SELECT name FROM agents WHERE id = ?", id) { it.getString(1) } } ?: "An agent"
+            val title = if (row.kind == "update" && row.title != null && row.title.jsTrim().isNotEmpty()) firstLine(row.title) else ""
+            buildJsonObject {
+                put("agentId", agentId)
+                put("agent", cut(name, NAME_MAX))
+                put("task", cut(title.ifEmpty { firstLine(row.body) }, TASK_MAX))
+                put("since", Math.floorDiv(row.statusAt ?: row.createdAt, 1000L))
+            }
         }
     }
 
@@ -476,6 +516,30 @@ class Reads(private val db: Database, private val clock: () -> Long = System::cu
     fun unseenNotifications(): Long = db.one("SELECT count(*) AS n FROM notifications WHERE seen_at IS NULL") { it.getLong(1) } ?: 0
 
     companion object {
+        const val WORKING_MAX = 3
+        const val NAME_MAX = 40
+        const val TASK_MAX = 60
+        private val JS_SPACE = Regex("[\\s\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]+")
+
+        /** [text] in at most [max] UTF-16 units: whole, or cut, trimmed and ended with an ellipsis; never splits a pair. */
+        fun cut(text: String, max: Int): String {
+            if (text.length <= max) return text
+            var end = max - 1
+            if (end >= 1 && text[end - 1].isHighSurrogate()) end -= 1
+            return text.substring(0, end).jsTrimEnd() + "\u2026"
+        }
+
+        /** The first line of some markdown, as plain text with its whitespace collapsed. */
+        fun firstLine(markdown: String): String =
+            dev.wildware.feed.server.push.PlainText.of(markdown).split('\n')[0].replace(JS_SPACE, " ").jsTrim()
+
+        /** JS `trimEnd`: drop trailing JS whitespace and line terminators. */
+        private fun String.jsTrimEnd(): String {
+            var e = length
+            while (e > 0 && JS_SPACE.matches(this[e - 1].toString())) e--
+            return substring(0, e)
+        }
+
         val ID = Regex("^[0-9A-HJKMNP-TV-Z]{26}$")
         const val UPDATES_MAX = 200
         const val MESSAGES_MAX = 200

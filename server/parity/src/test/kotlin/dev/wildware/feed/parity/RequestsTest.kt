@@ -244,10 +244,10 @@ class RequestsTest : ParityTest() {
             val summary = device.get("/api/summary")
             assertEquals(200, summary.status.value)
             val body = summary.obj()
-            assertEquals(listOf("at", "onlineAgents", "requests", "work", "projects"), body.keys.toList())
+            assertEquals(listOf("at", "onlineAgents", "requests", "work", "projects", "working"), body.keys.toList())
             val request = body["requests"].arr.single { it["id"].s == id }.o
             assertEquals(
-                listOf("id", "agentName", "projectSlug", "projectName", "question", "detail", "default", "kind", "options", "expiresAt"),
+                listOf("id", "agentId", "agentName", "projectSlug", "projectName", "question", "detail", "default", "kind", "options", "expiresAt"),
                 request.keys.toList(),
             )
             assertEquals("true", request["default"].s)
@@ -255,7 +255,19 @@ class RequestsTest : ParityTest() {
             assertTrue(request["options"].isNull)
             assertTrue(Regex("^\\d{4}-\\d\\d-\\d\\dT\\d\\d:\\d\\d:\\d\\d\\.\\d{3}Z$").matches(request["expiresAt"].s))
             assertEquals(alpha.name, request["agentName"].s)
+            val alphaId = Fixtures.update(project)["agent_id"].s
+            assertEquals(alphaId, request["agentId"].s)
             assertEquals(setOf("todo", "inProgress", "blocked"), body["work"].o.keys)
+
+            // What is in progress: newest first, three at most, each with who, what and since when.
+            val card = Fixtures.update(project, extra = obj("title" to "Fixing fee rounding at checkout"))["id"].s
+            owner.post("/api/cards/update/$card/status", obj("status" to "in_progress"))
+            val working = device.get("/api/summary").obj()["working"].arr
+            assertTrue(working.size in 1..3)
+            val top = working.first().o
+            assertEquals(listOf("agentId", "agent", "task", "since"), top.keys.toList())
+            assertEquals(obj("agentId" to alphaId, "agent" to alpha.name, "task" to "Fixing fee rounding at checkout"), obj(*top.entries.filter { it.key != "since" }.map { it.key to it.value }.toTypedArray()))
+            assertTrue(top["since"].long in (System.currentTimeMillis() / 1000 - 600)..(System.currentTimeMillis() / 1000 + 600))
         }
     }
 

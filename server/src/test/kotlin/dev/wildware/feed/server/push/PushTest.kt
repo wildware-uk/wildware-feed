@@ -120,4 +120,37 @@ class PushTest {
         assertEquals(PushMessage("Ada posted an update", "Done with it", "https://dashboard.example.com/projects/web?focus=U1", "update-U1"), alert.message)
         assertEquals("web", alert.threadId)
     }
+
+    @Test
+    fun `cut counts the ellipsis and never splits a pair`() {
+        val cut = dev.wildware.feed.server.domain.Reads.Companion::cut
+        assertEquals("short", cut("short", 40))
+        assertEquals("abcd\u2026", cut("abcdefgh", 5))
+        assertEquals("ab\u2026", cut("ab  cdef", 5), "trailing spaces go before the ellipsis")
+        assertEquals("abc\u2026", cut("abc\uD83D\uDE00defg", 5), "a pair at the cut is dropped whole")
+        assertEquals("Fix the thing", dev.wildware.feed.server.domain.Reads.firstLine("**Fix   the thing**\nmore detail"))
+    }
+
+    @Test
+    fun `the Live Activity state carries the top request and what is in progress`() {
+        app.db.update("INSERT INTO agents (id, name, token_hash, created_at) VALUES ('A1', 'Rover', 'x', 1)")
+        app.db.update("INSERT INTO projects (id, slug, name, created_at, updated_at) VALUES ('P1', 'garden', 'Garden Game', 1, 1)")
+        app.db.update(
+            "INSERT INTO approvals (id, agent_id, project_id, question, options, state, expires_at, kind, config) VALUES " +
+                "('R1', 'A1', 'P1', 'Which?', '[\"red\",\"green\"]', 'pending', 1700000999999, 'choice', '{\"default\":\"red\"}')",
+        )
+        app.db.update(
+            "INSERT INTO updates (id, project_id, agent_id, title, body, level, status, status_at, created_at) VALUES " +
+                "('U1', 'P1', 'A1', NULL, '**Fixing fee rounding** at checkout\nmore', 'info', 'in_progress', 1700000500000, 1)",
+        )
+        val state = LiveActivity(app, Apns(app, apnsConfig) { ApnsResponse(200, null) }, "dev.example.feed").state()
+        assertEquals(
+            listOf("online", "waiting", "inProgress", "topAgent", "topQuestion", "topRequestId", "topKind", "topAgentId", "topProject", "topExpiresAt", "topOptions", "topDefault", "working"),
+            state.keys.toList(),
+        )
+        assertEquals(
+            """{"online":0,"waiting":1,"inProgress":1,"topAgent":"Rover","topQuestion":"Which?","topRequestId":"R1","topKind":"choice","topAgentId":"A1","topProject":"Garden Game","topExpiresAt":1700000999,"topOptions":["red","green"],"topDefault":"red","working":[{"agentId":"A1","agent":"Rover","task":"Fixing fee rounding at checkout","since":1700000500}]}""",
+            Wire.encode(state),
+        )
+    }
 }

@@ -429,6 +429,17 @@ never change; every later key is always present, `null` when there is nothing:
  "working":[{"agentId":"a1","agent":"Rover","task":"Fixing fee rounding at checkout","since":1763460000}]}
 ```
 
+Since TS 9b67e21 (`src/domain/summary.ts` `liveActivityState`), six keys follow the first seven, always present:
+- `topAgentId`: the top request's `agentId`.
+- `topProject`: its project name, `cut` to 40; null when it has no project (or an empty name).
+- `topExpiresAt`: `floor(expiresAtMs / 1000)`.
+- `topOptions`: its options unchanged, only for `buttons`/`choice` with 1–4 options each ≤ 40 UTF-16 units; else null. Never cut.
+- `topDefault`: the summary's `default` when its JS `.length` ≤ 40 (a string or a list), else null.
+- `working`: the summary's `working`, or null when empty.
+
+`cut(text, max)`: whole when `length ≤ max`; else the first `max - 1` units (one fewer if that would
+end on a high surrogate), `trimEnd()`, then `…` — so the result is at most `max` units.
+
 - `online` = live agents count; `waiting` = pending requests count; `inProgress` = cards with
   `status = 'in_progress'` in active projects; `top*` from the oldest pending request
   (`agentName`, `question`, `id`, `kind`), else `null`.
@@ -515,6 +526,7 @@ Feeds `GET /api/summary` and the Live Activity.
 - `work`: `countWorkByStatus` over `updates` + `messages` with non-null `status`, not deleted,
   in **active** projects only (`src/db/cards.ts:240-265`). Requests are not counted.
 - `projects`: active only, pinned first, then `name.localeCompare`.
+- Each `requests[]` entry has `agentId` right after `id` (since TS 9b67e21).
 - `working`: up to 3 cards with `status = 'in_progress'` in active projects, `listWork` order
   (`COALESCE(status_at, created_at) DESC, id DESC`); `[]` when none. Each, all keys present:
   - `agentId`: an update's `agent_id`; a message's `agent:<id>` author; for an owner-written

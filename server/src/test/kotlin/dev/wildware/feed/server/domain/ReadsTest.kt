@@ -172,7 +172,7 @@ class ReadsTest {
             summary["projects"]!!.jsonArray.map { it.jsonObject["slug"]!!.jsonPrimitive.content },
         )
         assertEquals(
-            """{"id":"R1","agentName":"claude","projectSlug":null,"projectName":null,"question":"Q?","detail":null,""" +
+            """{"id":"R1","agentId":"A1","agentName":"claude","projectSlug":null,"projectName":null,"question":"Q?","detail":null,""" +
                 """"default":null,"kind":"choice","options":null,"expiresAt":"2025-11-18T13:53:20.001Z"}""",
             Wire.encode(summary["requests"]!!.jsonArray.single()),
         )

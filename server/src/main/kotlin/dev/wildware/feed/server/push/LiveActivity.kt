@@ -1,6 +1,7 @@
 package dev.wildware.feed.server.push
 
 import dev.wildware.feed.server.App
+import dev.wildware.feed.server.domain.Reads
 import dev.wildware.feed.server.http.Wire
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
@@ -42,6 +43,18 @@ class LiveActivity(private val app: App, private val apns: Apns, private val bun
             put("topQuestion", topField("question"))
             put("topRequestId", topField("id"))
             put("topKind", topField("kind"))
+            put("topAgentId", topField("agentId"))
+            val projectName = top?.get("projectName")?.takeIf { it is JsonPrimitive && it.isString }?.jsonPrimitive?.content
+            put("topProject", if (!projectName.isNullOrEmpty()) JsonPrimitive(Reads.cut(projectName, Reads.NAME_MAX)) else JsonNull)
+            put("topExpiresAt", top?.let { JsonPrimitive(Math.floorDiv(java.time.Instant.parse(it["expiresAt"]!!.jsonPrimitive.content).toEpochMilli(), 1000L)) } ?: JsonNull)
+            put("topOptions", top?.let { lockScreenOptions(it) } ?: JsonNull)
+            val default = top?.get("default")
+            // `default.length <= 40` in JS: a string or a list short enough passes, anything else is null.
+            val fits = (default is JsonPrimitive && default.isString && default.content.length <= OPTION_MAX) ||
+                (default is kotlinx.serialization.json.JsonArray && default.size <= OPTION_MAX)
+            put("topDefault", if (fits) default!! else JsonNull)
+            val working = summary["working"]!!.jsonArray
+            put("working", if (working.isNotEmpty()) working else JsonNull)
             extra.forEach { (k, v) -> put(k, v) }
         }
     }
@@ -115,6 +128,15 @@ class LiveActivity(private val app: App, private val apns: Apns, private val bun
         }
     }
 
+    /** The top request's options as lock-screen buttons, only when all 1-4 of them fit uncut. */
+    private fun lockScreenOptions(top: JsonObject): JsonElement {
+        val kind = top["kind"]?.jsonPrimitive?.content
+        if (kind != "buttons" && kind != "choice") return JsonNull
+        val options = top["options"] as? kotlinx.serialization.json.JsonArray ?: return JsonNull
+        if (options.size !in 1..OPTIONS_MAX) return JsonNull
+        return if (options.all { it.jsonPrimitive.content.length <= OPTION_MAX }) options else JsonNull
+    }
+
     fun headers(priority: Int) = listOf(
         "apns-push-type" to "liveactivity",
         "apns-topic" to "$bundleId.push-type.liveactivity",
@@ -123,6 +145,8 @@ class LiveActivity(private val app: App, private val apns: Apns, private val bun
 
     companion object {
         const val ATTRIBUTES_TYPE = "AgentsActivityAttributes"
+        const val OPTION_MAX = 40
+        const val OPTIONS_MAX = 4
         const val COALESCE_MS = 2_000L
         const val REFRESH_MS = 60_000L
         const val PUSH_TO_START_COOLDOWN_MS = 5 * 60 * 1000L

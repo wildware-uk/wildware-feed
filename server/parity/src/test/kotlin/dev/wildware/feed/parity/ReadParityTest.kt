@@ -150,6 +150,11 @@ class ReadParityTest : ParityTest() {
         owner.post("/api/messages", obj("body" to "no project at all"))
         a.ok("acknowledge", obj("state" to "thinking", "message_id" to m2))
         owner.post("/api/cards/message/$post/status", obj("status" to "todo"))
+        // In progress, for the summary's `working` list: an owner post an agent answered (the worker
+        // is that agent), and one nobody answered ("An agent"), with a long first line to cut.
+        owner.post("/api/cards/message/$post/status", obj("status" to "in_progress"))
+        val lonely = owner.post("/api/messages", obj("project" to main.slug, "body" to "**${"a long task ".repeat(8)}**\nsecond line")).obj()["message"]["id"].s
+        owner.post("/api/cards/message/$lonely/status", obj("status" to "in_progress"))
         owner.post("/api/messages/$m1/reactions", obj("emoji" to "✅"))
 
         // Requests: pending of every kind (held calls are let go, the requests stay), and settled ones.
