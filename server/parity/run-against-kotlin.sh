@@ -13,6 +13,9 @@
 #                                                Kotlin on Postgres: between the steps, `feed-server migrate`
 #                                                copies the TS server's file into a new database there. The
 #                                                file-level DatabaseTest is skipped then (it reads SQLite).
+#   KOTLIN_S3_ENDPOINT, KOTLIN_S3_ACCESS_KEY_ID,  with KOTLIN_DATABASE_URL: media in a new bucket on that
+#   KOTLIN_S3_SECRET_ACCESS_KEY                  S3-compatible server (a local MinIO, never a real one);
+#                                                migrate copies the TS server's media folder into it.
 set -euo pipefail
 
 here="$(cd "$(dirname "$0")" && pwd)"
@@ -127,8 +130,21 @@ if [ -n "${KOTLIN_DATABASE_URL:-}" ]; then
     if command -v psql >/dev/null; then psql_run() { psql "$pg_admin" -v ON_ERROR_STOP=1 -q -c "$1"; }; fi
     psql_run "CREATE DATABASE $pg_name"
     echo "export DATABASE_URL='${KOTLIN_DATABASE_URL%/*}/$pg_name'" >> "$work/env.sh"
+    if [ -n "${KOTLIN_S3_ENDPOINT:-}" ]; then
+        bucket="$(echo "$pg_name" | tr '_' '-')"
+        curl -fsS --aws-sigv4 "aws:amz:auto:s3" --user "$KOTLIN_S3_ACCESS_KEY_ID:$KOTLIN_S3_SECRET_ACCESS_KEY" \
+            -X PUT "${KOTLIN_S3_ENDPOINT%/}/$bucket" -o /dev/null
+        {
+            echo "export MEDIA_STORE=s3"
+            echo "export S3_ENDPOINT='$KOTLIN_S3_ENDPOINT'"
+            echo "export S3_BUCKET='$bucket'"
+            echo "export S3_ACCESS_KEY_ID='$KOTLIN_S3_ACCESS_KEY_ID'"
+            echo "export S3_SECRET_ACCESS_KEY='$KOTLIN_S3_SECRET_ACCESS_KEY'"
+        } >> "$work/env.sh"
+        echo "== media goes to bucket $bucket"
+    fi
     echo "== copying the TS server's database into Postgres ($pg_name)"
-    ( . "$work/env.sh"; timeout 600 "$kotlin_bin" migrate --from "$work/data" ) | tail -2
+    ( . "$work/env.sh"; timeout 600 "$kotlin_bin" migrate --from "$work/data" ) | grep -E '^(Copied|Identical|Media)' 
 fi
 echo "== starting the Kotlin server on the same data"
 ( . "$work/env.sh"; exec timeout 3600 "$kotlin_bin" ) > "$work/kt.log" 2>&1 &
