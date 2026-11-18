@@ -19,6 +19,33 @@ import kotlin.math.floor
  * `JSON.parse`, so a stored JSON column must come back out exactly as JavaScript would print it.
  */
 object Js {
+    /**
+     * JSON.stringify's well-formed output: a lone surrogate (half of a cut emoji, say) is written as
+     * a `\udXXX` escape. Encoding it raw would turn it into `?` on the way to UTF-8.
+     */
+    fun escapeLoneSurrogates(json: String): String =
+        mapLoneSurrogates(json) { "\\u" + it.code.toString(16).padStart(4, '0') }
+
+    /** What better-sqlite3 stores for a lone surrogate: U+FFFD, as V8 writes such text as UTF-8. */
+    fun replaceLoneSurrogates(text: String): String = mapLoneSurrogates(text) { "\uFFFD" }
+
+    /** [text] with each surrogate that is not half of a pair replaced by [lone] of it. */
+    private inline fun mapLoneSurrogates(text: String, lone: (Char) -> String): String {
+        if (text.none { it.isSurrogate() }) return text
+        val out = StringBuilder(text.length + 8)
+        var i = 0
+        while (i < text.length) {
+            val c = text[i]
+            when {
+                c.isHighSurrogate() && i + 1 < text.length && text[i + 1].isLowSurrogate() -> { out.append(c).append(text[i + 1]); i++ }
+                c.isSurrogate() -> out.append(lone(c))
+                else -> out.append(c)
+            }
+            i++
+        }
+        return out.toString()
+    }
+
     private val parser = Json
 
     /** JavaScript's `Number(text)`: NaN when it is not a number. */

@@ -3,6 +3,7 @@ package dev.wildware.feed.server.mcp
 import dev.wildware.feed.server.App
 import dev.wildware.feed.server.domain.Agents
 import dev.wildware.feed.server.domain.DomainError
+import dev.wildware.feed.server.domain.Js
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -26,7 +27,7 @@ class ToolResult private constructor(val json: JsonObject) {
 
         /** `<summary>\n<JSON.stringify(data, null, 2)>`, with [data] as structuredContent. */
         fun ok(summary: String, data: JsonObject, extra: List<JsonElement> = emptyList()) = ToolResult(buildJsonObject {
-            put("content", JsonArray(listOf(text("$summary\n${pretty.encodeToString(JsonElement.serializer(), data)}")) + extra))
+            put("content", JsonArray(listOf(text("$summary\n${Js.escapeLoneSurrogates(pretty.encodeToString(JsonElement.serializer(), data))}")) + extra))
             put("structuredContent", data)
         })
 
@@ -53,6 +54,9 @@ typealias ToolHandler = suspend (ToolCall) -> ToolResult
  * arguments are checked against them before a handler runs, with the SDK's wording.
  */
 class ToolRegistry {
+    @OptIn(ExperimentalSerializationApi::class)
+    private val pretty = Json { prettyPrint = true; prettyPrintIndent = "  " }
+
     private val handlers = LinkedHashMap<String, ToolHandler>()
 
     val schemas: Map<String, JsonObject> by lazy {
@@ -63,6 +67,31 @@ class ToolRegistry {
     fun register(name: String, handler: ToolHandler) {
         require(name in schemas) { "no advertised schema for tool $name" }
         handlers[name] = handler
+    }
+
+    /**
+     * The SDK checks a `tools/call` request's own params before it looks for the tool: params an
+     * object, `name` a string, `arguments` (when sent) a record. Failing that, the whole call is a
+     * JSON-RPC error -32603 whose message is zod's issue list, pretty-printed. Null when they are fine.
+     */
+    fun paramsError(params: JsonElement?): String? {
+        fun issue(expected: String, path: List<String>, got: JsonElement?) = buildJsonObject {
+            put("expected", JsonPrimitive(expected))
+            put("code", JsonPrimitive("invalid_type"))
+            put("path", JsonArray(path.map(::JsonPrimitive)))
+            put("message", JsonPrimitive("Invalid input: expected $expected, received ${Schema.received(got)}"))
+        }
+        val issues = mutableListOf<JsonObject>()
+        if (params !is JsonObject) {
+            issues += issue("object", listOf("params"), params)
+        } else {
+            val name = params["name"]
+            if (name !is JsonPrimitive || !name.isString) issues += issue("string", listOf("params", "name"), name)
+            if ("arguments" in params && params["arguments"] !is JsonObject) {
+                issues += issue("record", listOf("params", "arguments"), params["arguments"])
+            }
+        }
+        return if (issues.isEmpty()) null else pretty.encodeToString(JsonElement.serializer(), JsonArray(issues))
     }
 
     /** `tools/call`, as the SDK would answer it. */

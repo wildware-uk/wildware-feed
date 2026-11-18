@@ -1,6 +1,7 @@
 package dev.wildware.feed.server.http
 
 import dev.wildware.feed.server.domain.DomainError
+import dev.wildware.feed.server.domain.Js
 import dev.wildware.feed.server.domain.invalid
 import io.ktor.http.ContentType
 import io.ktor.http.Headers
@@ -33,7 +34,7 @@ object Wire {
     /** JavaScript's `new Date(ms).toISOString()`: always three millisecond digits. */
     fun isoOf(ms: Long): String = iso.format(Instant.ofEpochMilli(ms))
 
-    fun encode(element: JsonElement): String = json.encodeToString(JsonElement.serializer(), element)
+    fun encode(element: JsonElement): String = Js.escapeLoneSurrogates(json.encodeToString(JsonElement.serializer(), element))
 
     /**
      * `JSON.parse`: kotlinx happily reads a bare word like `nope` as a value, which JavaScript

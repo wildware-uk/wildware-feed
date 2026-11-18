@@ -49,4 +49,17 @@ class JsTest {
     fun `encodeURIComponent leaves what JavaScript leaves`() {
         assertEquals("01AB%20%C3%BC%2F%3F*()!~'%22%C3%A9%F0%9F%98%80", Js.encodeURIComponent("01AB ü/?*()!~'\"é😀"))
     }
+
+    @Test
+    fun `lone surrogates - escaped in JSON as JSON-stringify does, stored as U+FFFD as better-sqlite3 does`() {
+        assertEquals("\"x\\ud83d…\"", Wire.encode(JsonPrimitive("x\ud83d…")))
+        assertEquals("\"\\udc00a😀\"", Wire.encode(JsonPrimitive("\udc00a😀")))
+        assertEquals("\"😀\"", Wire.encode(JsonPrimitive("😀")))
+        assertEquals("a\ufffd😀\ufffd", Js.replaceLoneSurrogates("a\ud83d😀\udc00"))
+        dev.wildware.feed.server.db.Database.memory().use { db ->
+            db.update("CREATE TABLE t (v TEXT)")
+            db.update("INSERT INTO t (v) VALUES (?)", "a\ud83d")
+            assertEquals("a\ufffd", db.one("SELECT v FROM t") { it.getString(1) })
+        }
+    }
 }

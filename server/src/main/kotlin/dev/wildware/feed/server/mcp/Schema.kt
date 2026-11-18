@@ -24,7 +24,7 @@ object Schema {
         return (cleaned as? JsonObject).takeIf { issues.isEmpty() } to issues
     }
 
-    private fun received(v: JsonElement?): String = when {
+    internal fun received(v: JsonElement?): String = when {
         v == null -> "undefined"
         v is JsonNull -> "null"
         v is JsonArray -> "array"
@@ -34,11 +34,24 @@ object Schema {
         else -> "number"
     }
 
-    private fun issue(issues: MutableList<String>, path: List<String>, message: String) {
-        issues += if (path.isEmpty()) message else "$message at ${path.joinToString(".")}"
+    private fun issue(issues: MutableList<String>, path: List<Any>, message: String) {
+        issues += if (path.isEmpty()) message else "$message at ${dotPath(path)}"
     }
 
-    private fun visit(schema: JsonObject, v: JsonElement?, path: List<String>, issues: MutableList<String>): JsonElement? {
+    /** The SDK's `getDotPath`: `a.b`, with array indexes as `a[0]` (record keys stay `.key`, even numeric ones). */
+    internal fun dotPath(path: List<Any>): String = buildString {
+        path.forEachIndexed { i, seg ->
+            when {
+                i == 0 -> append(seg.toString())
+                seg is Int -> append("[").append(seg).append("]")
+                else -> append(".").append(seg.toString())
+            }
+        }
+    }
+
+    private const val MAX_SAFE = 9007199254740991.0
+
+    private fun visit(schema: JsonObject, v: JsonElement?, path: List<Any>, issues: MutableList<String>): JsonElement? {
         schema["anyOf"]?.let { options ->
             val alternatives = options.jsonArray.map { it as JsonObject }
             for (alt in alternatives) {
@@ -52,19 +65,21 @@ object Schema {
         val type = (schema["type"] as? JsonPrimitive)?.content
         val enum = schema["enum"]?.jsonArray?.map { it.jsonPrimitive.content }
         if (type == null) return v // `{}`: anything
+        // zod's enum says the same whatever it got, undefined and null included.
+        val badOption = enum?.let { "Invalid option: expected one of ${it.joinToString("|") { o -> "\"$o\"" }}" }
         if (v == null) {
-            issue(issues, path, "Invalid input: expected ${expected(type)}, received undefined")
+            issue(issues, path, badOption ?: "Invalid input: expected ${expected(schema, type)}, received undefined")
             return null
         }
         when (type) {
             "null" -> if (v !is JsonNull) issue(issues, path, "Invalid input: expected null, received ${received(v)}")
             "string" -> {
                 if (v !is JsonPrimitive || !v.isString) {
-                    issue(issues, path, if (enum != null) "Invalid option: expected one of ${enum.joinToString("|") { "\"$it\"" }}" else "Invalid input: expected string, received ${received(v)}")
+                    issue(issues, path, badOption ?: "Invalid input: expected string, received ${received(v)}")
                     return null
                 }
-                if (enum != null && v.content !in enum) {
-                    issue(issues, path, "Invalid option: expected one of ${enum.joinToString("|") { "\"$it\"" }}")
+                if (badOption != null && v.content !in enum) {
+                    issue(issues, path, badOption)
                 }
                 val length = v.content.length
                 schema["maxLength"]?.jsonPrimitive?.intOrNull?.let { if (length > it) issue(issues, path, "Too big: expected string to have <=$it characters") }
@@ -77,10 +92,20 @@ object Schema {
                     issue(issues, path, "Invalid input: expected number, received ${received(v)}")
                     return null
                 }
-                if (type == "integer" && n != Math.floor(n)) issue(issues, path, "Invalid input: expected int, received number")
-                schema["exclusiveMinimum"]?.jsonPrimitive?.doubleOrNull?.let { if (n <= it) issue(issues, path, "Too small: expected number to be >${fmt(it)}") }
-                schema["minimum"]?.jsonPrimitive?.doubleOrNull?.let { if (n < it) issue(issues, path, "Too small: expected number to be >=${fmt(it)}") }
-                schema["maximum"]?.jsonPrimitive?.doubleOrNull?.let { if (n > it) issue(issues, path, "Too big: expected number to be <=${fmt(it)}") }
+                if (type == "integer") {
+                    // zod's int(): a fraction stops there; an unsafe integer is reported, then the other checks run.
+                    if (n != Math.floor(n) || n.isInfinite()) {
+                        issue(issues, path, "Invalid input: expected int, received number")
+                        return null
+                    }
+                    if (n > MAX_SAFE) issue(issues, path, "Too big: expected int to be <=${fmt(MAX_SAFE)}")
+                    if (n < -MAX_SAFE) issue(issues, path, "Too small: expected int to be >=-${fmt(MAX_SAFE)}")
+                }
+                // The safe-integer bounds the JSON Schema carries are int()'s own, reported above.
+                fun bound(key: String) = schema[key]?.jsonPrimitive?.doubleOrNull?.takeIf { type != "integer" || Math.abs(it) != MAX_SAFE }
+                bound("exclusiveMinimum")?.let { if (n <= it) issue(issues, path, "Too small: expected number to be >${fmt(it)}") }
+                bound("minimum")?.let { if (n < it) issue(issues, path, "Too small: expected number to be >=${fmt(it)}") }
+                bound("maximum")?.let { if (n > it) issue(issues, path, "Too big: expected number to be <=${fmt(it)}") }
             }
             "array" -> {
                 if (v !is JsonArray) {
@@ -88,14 +113,14 @@ object Schema {
                     return null
                 }
                 val items = schema["items"] as? JsonObject
-                val out = v.mapIndexed { i, item -> if (items != null) visit(items, item, path + i.toString(), issues) ?: item else item }
+                val out = v.mapIndexed { i, item -> if (items != null) visit(items, item, path + i, issues) ?: item else item }
                 schema["maxItems"]?.jsonPrimitive?.intOrNull?.let { if (v.size > it) issue(issues, path, "Too big: expected array to have <=$it items") }
                 schema["minItems"]?.jsonPrimitive?.intOrNull?.let { if (v.size < it) issue(issues, path, "Too small: expected array to have >=$it items") }
                 return JsonArray(out)
             }
             "object" -> {
                 if (v !is JsonObject) {
-                    issue(issues, path, "Invalid input: expected object, received ${received(v)}")
+                    issue(issues, path, "Invalid input: expected ${expected(schema, type)}, received ${received(v)}")
                     return null
                 }
                 val properties = schema["properties"] as? JsonObject
@@ -120,8 +145,10 @@ object Schema {
         return v
     }
 
-    private fun expected(type: String) = when (type) {
-        "integer" -> "number"
+    private fun expected(schema: JsonObject, type: String) = when {
+        type == "integer" -> "number"
+        // z.record has no properties, only additionalProperties.
+        type == "object" && schema["properties"] == null && schema["additionalProperties"] != null -> "record"
         else -> type
     }
 

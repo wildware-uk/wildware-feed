@@ -90,7 +90,7 @@ fun PreparedStatement.bind(args: Array<out Any?>) {
             is Boolean -> setInt(i + 1, if (value) 1 else 0)
             is Int -> setInt(i + 1, value)
             is Long -> setLong(i + 1, value)
-            is String -> setString(i + 1, value)
+            is String -> setString(i + 1, dev.wildware.feed.server.domain.Js.replaceLoneSurrogates(value))
             is Double -> setDouble(i + 1, value)
             else -> error("cannot bind ${value::class}")
         }

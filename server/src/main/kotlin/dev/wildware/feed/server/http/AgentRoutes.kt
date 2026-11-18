@@ -144,7 +144,8 @@ private suspend fun answer(app: App, agent: Agents.Agent, request: JsonObject): 
         }
         "ping" -> result(JsonObject(emptyMap()))
         "tools/list" -> result(buildJsonObject { put("tools", tools) })
-        "tools/call" -> result(app.tools.call(app, agent, params).json)
+        "tools/call" -> app.tools.paramsError(request["params"])?.let { error(-32603, it) }
+            ?: result(app.tools.call(app, agent, params).json)
         else -> error(-32601, "Method not found")
     }
 }
