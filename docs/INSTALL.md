@@ -48,6 +48,14 @@ close its window instead of staying in the tray.
 - Closing the window keeps Agents running in the tray (the menu bar on a Mac), counting the
   questions waiting for you and showing notifications. Its menu turns this off, turns on
   **Start at login**, or turns on **Do not disturb**.
+- **Updates.** Agents looks for a new version when it starts and every 6 hours, from this
+  repo's GitHub releases. When there is one, **UPDATE AVAILABLE** shows at the top right of the
+  window (and **Update to …** in the tray menu). Click it, read what's new, then **Install and restart**.
+  Nothing installs without that click. **Check for updates…** in the tray menu or the ⌘K / Ctrl+K
+  bar checks now; **Check for updates automatically** in the tray menu turns the timed checks off.
+  - Mac: Agents must be somewhere your account can change (Applications is fine). If not, it
+    opens the download for you to drag in.
+  - Linux .deb / .rpm: your system asks for your password to install it.
 - To remove it: drag it to the Bin (Mac), use **Apps › Installed apps** (Windows), or
   `sudo apt remove agents` / `sudo dnf remove agents` (Linux).
 

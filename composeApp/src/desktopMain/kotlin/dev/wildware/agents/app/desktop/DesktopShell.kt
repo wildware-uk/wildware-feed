@@ -4,6 +4,7 @@ import dev.wildware.agents.StreamStatus
 import dev.wildware.agents.app.engine.AppModel
 import dev.wildware.agents.app.engine.AppScreen
 import dev.wildware.agents.app.engine.DashboardSession
+import dev.wildware.agents.app.update.UpdateController
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
@@ -34,6 +35,8 @@ class DesktopShell(
     private val windowFocused: () -> Boolean,
     private val quit: () -> Unit,
     notifierFor: (DesktopTray) -> Notifier,
+    /** The updater, when there is one; created once the settings say whether it checks by itself. */
+    updatesFor: (StateFlow<DesktopSettings>) -> UpdateController? = { null },
 ) : TrayActions {
     private val mutableSettings = MutableStateFlow(settingsStore.load().let { it.copy(startAtLogin = startAtLogin.available && startAtLogin.isEnabled()) })
     val settings: StateFlow<DesktopSettings> = mutableSettings.asStateFlow()
@@ -41,12 +44,20 @@ class DesktopShell(
     val tray = DesktopTray(this, mutableSettings.value, startAtLogin.available)
     private val notifier = notifierFor(tray)
     private var watching: Job? = null
+    private var watchingUpdates: Job? = null
+    private var checkingUpdates: Job? = null
+
+    val updates: UpdateController? = updatesFor(settings)
 
     /** Whether closing the window should leave the app running: only with a tray to come back from. */
     val keepRunningOnClose: Boolean get() = tray.supported && mutableSettings.value.keepRunningInTray
 
     fun start() {
         tray.install()
+        updates?.let { updates ->
+            checkingUpdates = updates.start()
+            watchingUpdates = scope.launch { updates.available.collect { tray.showUpdate(it?.version) } }
+        }
         watching = scope.launch {
             model.screen.collectLatest { screen ->
                 val session = (screen as? AppScreen.Signed)?.session
@@ -73,6 +84,8 @@ class DesktopShell(
 
     fun stop() {
         watching?.cancel()
+        watchingUpdates?.cancel()
+        checkingUpdates?.cancel()
         tray.remove()
     }
 
@@ -103,6 +116,20 @@ class DesktopShell(
     }
 
     override fun setDoNotDisturb(on: Boolean) = update { it.copy(doNotDisturb = on) }
+
+    override fun checkForUpdates() {
+        val updates = updates ?: return
+        openWindow(null)
+        updates.checkByHand()
+    }
+
+    override fun openUpdate() {
+        val updates = updates ?: return
+        openWindow(null)
+        updates.showOffer()
+    }
+
+    override fun setCheckForUpdates(on: Boolean) = update { it.copy(checkForUpdates = on) }
 
     private fun update(change: (DesktopSettings) -> DesktopSettings) {
         val next = change(mutableSettings.value)

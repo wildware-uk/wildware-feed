@@ -14,6 +14,8 @@ data class DesktopSettings(
     val startAtLogin: Boolean = false,
     /** No desktop notifications at all while on. The tray count still updates. */
     val doNotDisturb: Boolean = false,
+    /** Looks for a newer version at start and every few hours. It never installs without a click. */
+    val checkForUpdates: Boolean = true,
 )
 
 /** Reads and writes [DesktopSettings] as `desktop.json` in the app's folder. A broken file reads as the defaults. */

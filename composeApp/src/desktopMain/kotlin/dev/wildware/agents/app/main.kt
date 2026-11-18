@@ -1,6 +1,7 @@
 package dev.wildware.agents.app
 
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -24,6 +25,28 @@ import dev.wildware.agents.app.desktop.NotifySendNotifier
 import dev.wildware.agents.app.desktop.StartAtLogin
 import dev.wildware.agents.app.desktop.TrayNotifier
 import dev.wildware.agents.app.engine.AppModel
+import dev.wildware.agents.app.engine.AppScreen
+import dev.wildware.agents.app.desktop.DesktopSettings
+import dev.wildware.agents.app.feed.AppCommand
+import dev.wildware.agents.app.update.AppVersion
+import dev.wildware.agents.app.update.Installation
+import dev.wildware.agents.app.update.Release
+import dev.wildware.agents.app.update.ReleaseSource
+import dev.wildware.agents.app.update.SemVer
+import dev.wildware.agents.app.update.GitHubReleaseSource
+import dev.wildware.agents.app.update.SystemInstaller
+import dev.wildware.agents.app.update.UpdateChecker
+import dev.wildware.agents.app.update.UpdateController
+import dev.wildware.agents.app.update.UpdateLayer
+import dev.wildware.agents.app.update.Updater
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
+import kotlin.system.exitProcess
 import dev.wildware.agents.app.feed.AppNavigator
 import dev.wildware.agents.app.session.desktopConfigDir
 import dev.wildware.agents.app.session.desktopPlatform
@@ -80,6 +103,9 @@ fun main(args: Array<String>) {
     var visible by mutableStateOf(true)
     var window: ComposeWindow? = null
     var quitting: (() -> Unit)? = null
+    var exitWhenClosed = false
+    // Public GitHub releases: no sign-in needed, so checking starts with the app.
+    val releases = MutableStateFlow<ReleaseSource?>(GitHubReleaseSource(platform.httpEngine()))
 
     fun openWindow(card: OpenAt?) {
         if (card != null) navigator.open(card.projectSlug, card.cardId)
@@ -104,6 +130,21 @@ fun main(args: Array<String>) {
         notifierFor = { tray ->
             val viaTray = TrayNotifier(tray)
             if (DesktopOs.current() == DesktopOs.Linux) NotifySendNotifier(NotifySendNotifier.iconFile(dir), viaTray) else viaTray
+        },
+        updatesFor = { settings ->
+            updateController(
+                settings = settings,
+                releases = releases,
+                workDir = File(dir, "updates"),
+                scope = scope,
+                beforeQuit = { (model.screen.value as? AppScreen.Signed)?.session?.flushOutbox() },
+                quit = {
+                    // The stream closes properly, rather than being cut off when the process ends.
+                    (model.screen.value as? AppScreen.Signed)?.session?.stop()
+                    exitWhenClosed = true
+                    EventQueue.invokeLater { quitting?.invoke() }
+                },
+            )
         },
     )
     shell.start()
@@ -148,7 +189,51 @@ fun main(args: Array<String>) {
         ) {
             window = this.window
             this.window.minimumSize = java.awt.Dimension(380, 560)
-            AgentsApp(platform, model, navigator = navigator)
+            val updates = shell.updates
+            val available = updates?.available?.collectAsState()?.value
+            AgentsApp(
+                platform,
+                model,
+                navigator = navigator,
+                commands = updates?.let { updateCommands(it, available) }.orEmpty(),
+                overlay = { updates?.let { UpdateLayer(it, showFolder = ::showFolder) } },
+            )
         }
+    }
+    // The update helper waits for this process to end; make sure nothing keeps it alive.
+    if (exitWhenClosed) exitProcess(0)
+}
+
+/** The update checker and installer, or null when this build's version can't be read. */
+private fun updateController(
+    settings: StateFlow<DesktopSettings>,
+    releases: StateFlow<ReleaseSource?>,
+    workDir: File,
+    scope: CoroutineScope,
+    beforeQuit: suspend () -> Unit,
+    quit: () -> Unit,
+): UpdateController? {
+    val current = SemVer.parse(AppVersion) ?: return null
+    val automatic = settings.map { it.checkForUpdates }.stateIn(scope, SharingStarted.Eagerly, settings.value.checkForUpdates)
+    val updater = Updater(Installation.current(), SystemInstaller(), workDir, beforeQuit, quit)
+    // Clear out the last update's download once the app has settled after it.
+    scope.launch(Dispatchers.IO) {
+        delay(60_000)
+        if (!updater.busy) runCatching { workDir.deleteRecursively() }
+    }
+    return UpdateController(AppVersion, UpdateChecker(current, releases, automatic), updater, releases, scope)
+}
+
+/** "Check for updates", and "Update to …" while there is one, for the command bar. */
+private fun updateCommands(updates: UpdateController, available: Release?): List<AppCommand> = listOfNotNull(
+    available?.let { AppCommand("Update to ${it.version}", "Install it and restart", listOf("update", "upgrade", "install")) { updates.showOffer() } },
+    AppCommand("Check for updates", "You have ${updates.current}", listOf("update", "upgrade", "version")) { updates.checkByHand() },
+)
+
+/** Opens [path] in Finder, Explorer or the file manager. */
+private fun showFolder(path: String) {
+    val folder = File(path)
+    runCatching { Desktop.getDesktop().open(folder) }.onFailure {
+        if (DesktopOs.current() == DesktopOs.Linux) runCatching { ProcessBuilder("xdg-open", folder.absolutePath).start() }
     }
 }

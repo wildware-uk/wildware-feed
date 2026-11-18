@@ -7,6 +7,29 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
 }
 
+/** The version, from `agents.version` in gradle.properties. */
+val agentsVersion = providers.gradleProperty("agents.version").get()
+
+/** Writes the version into the desktop app's code, so the updater knows what it is running. */
+val generateAppVersion by tasks.registering {
+    val out = layout.buildDirectory.dir("generated/appVersion/kotlin")
+    val version = agentsVersion
+    inputs.property("version", version)
+    outputs.dir(out)
+    doLast {
+        val file = out.get().file("dev/wildware/agents/app/update/AppVersion.kt").asFile
+        file.parentFile.mkdirs()
+        file.writeText(
+            """
+            |package dev.wildware.agents.app.update
+            |
+            |/** The version this build was made as: `agents.version` in gradle.properties. Generated; do not edit. */
+            |const val AppVersion: String = "$version"
+            |""".trimMargin(),
+        )
+    }
+}
+
 kotlin {
     jvmToolchain(21)
 
@@ -48,6 +71,7 @@ kotlin {
         val desktopMain by getting {
             // The window icon is the installers' own picture, so the two never drift apart.
             resources.srcDir("packaging/icons")
+            kotlin.srcDir(generateAppVersion)
             dependencies {
                 implementation(compose.desktop.currentOs)
                 implementation(libs.coroutines.swing)
@@ -65,6 +89,7 @@ kotlin {
                 implementation(compose.desktop.currentOs)
                 implementation(libs.compose.ui.test)
                 implementation(libs.ktor.client.mock)
+                implementation(libs.coroutines.test)
             }
         }
     }
@@ -74,9 +99,6 @@ compose.resources {
     publicResClass = false
     packageOfResClass = "dev.wildware.agents.app.resources"
 }
-
-/** The version, from `agents.version` in gradle.properties. */
-val agentsVersion = providers.gradleProperty("agents.version").get()
 
 compose.desktop {
     application {

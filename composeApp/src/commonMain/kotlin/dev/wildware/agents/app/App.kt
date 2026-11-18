@@ -1,6 +1,12 @@
 package dev.wildware.agents.app
 
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.Modifier
+import dev.wildware.agents.app.feed.AppCommand
+import dev.wildware.agents.app.feed.LocalAppCommands
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -69,6 +75,10 @@ fun AgentsApp(
     safeArea: SafeArea = SafeArea(),
     /** Where notifications, widgets and search ask the feed to go. */
     navigator: AppNavigator? = null,
+    /** Extra actions for the command bar (the desktop's update check). */
+    commands: List<AppCommand> = emptyList(),
+    /** Drawn over every screen, in the app's theme (the desktop's update button and dialog). */
+    overlay: @Composable BoxScope.() -> Unit = {},
 ) {
     setSingletonImageLoaderFactory { context -> agentsImageLoader(context, platform.httpEngine, platform.imageCacheDir) }
 
@@ -77,30 +87,34 @@ fun AgentsApp(
     val isDark = dark ?: resolveDark(choice, system)
 
     AgentTheme(isDark, accessibility) {
-        when (val screen = model.screen.collectAsState().value) {
-            is AppScreen.SigningIn -> SignInScreen(
-                deviceName = model.deviceName,
-                notice = screen.notice,
-                safeArea = safeArea,
-                signIn = model::signIn,
-            )
-            is AppScreen.Signed -> {
-                val session = screen.session
-                val state by session.state.collectAsState()
-                CompositionLocalProvider(
-                    LocalMediaAuth provides MediaAuth(session.client.serverUrl, session.client.authorizationHeader),
-                    LocalFilePicker provides platform.filePicker,
-                    LocalVoiceInput provides platform.voiceInput,
-                ) {
-                    FeedScreen(state, safeArea, navigator = navigator) { event ->
-                        when (event) {
-                            is FeedEvent.SignOut -> model.signOut()
-                            is FeedEvent.ToggleTheme -> model.toggleTheme(showingDark = isDark)
-                            else -> session.handle(event)
+        Box(Modifier.fillMaxSize()) {
+            when (val screen = model.screen.collectAsState().value) {
+                is AppScreen.SigningIn -> SignInScreen(
+                    deviceName = model.deviceName,
+                    notice = screen.notice,
+                    safeArea = safeArea,
+                    signIn = model::signIn,
+                )
+                is AppScreen.Signed -> {
+                    val session = screen.session
+                    val state by session.state.collectAsState()
+                    CompositionLocalProvider(
+                        LocalMediaAuth provides MediaAuth(session.client.serverUrl, session.client.authorizationHeader),
+                        LocalFilePicker provides platform.filePicker,
+                        LocalVoiceInput provides platform.voiceInput,
+                        LocalAppCommands provides commands,
+                    ) {
+                        FeedScreen(state, safeArea, navigator = navigator) { event ->
+                            when (event) {
+                                is FeedEvent.SignOut -> model.signOut()
+                                is FeedEvent.ToggleTheme -> model.toggleTheme(showingDark = isDark)
+                                else -> session.handle(event)
+                            }
                         }
                     }
                 }
             }
+            overlay()
         }
     }
 }
@@ -114,11 +128,16 @@ fun AgentsPreview(
     safeArea: SafeArea = SafeArea(),
     startAt: String? = null,
     preview: ScreenPreview = ScreenPreview(),
+    /** Drawn over the feed, as [AgentsApp]'s overlay is. */
+    overlay: @Composable BoxScope.() -> Unit = {},
 ) {
     AgentTheme(dark, accessibility) {
         // A picker that picks nothing, so previews show the paperclip as the app does.
         CompositionLocalProvider(LocalFilePicker provides FilePicker { it(emptyList()) }) {
-            FeedScreen(state, safeArea, startAt, preview)
+            Box(Modifier.fillMaxSize()) {
+                FeedScreen(state, safeArea, startAt, preview)
+                overlay()
+            }
         }
     }
 }

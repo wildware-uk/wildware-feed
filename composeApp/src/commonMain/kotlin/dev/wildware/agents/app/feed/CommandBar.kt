@@ -26,6 +26,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -48,6 +49,15 @@ import dev.wildware.agents.app.design.AgentTheme
 import dev.wildware.agents.app.design.Icons
 import dev.wildware.agents.app.design.TextInput
 import dev.wildware.agents.app.design.pressable
+
+/**
+ * An action the app around the feed adds to the command bar (the desktop's "Check for updates").
+ * [keywords] also match what is typed.
+ */
+data class AppCommand(val title: String, val detail: String = "", val keywords: List<String> = emptyList(), val run: () -> Unit)
+
+/** Extra actions for the command bar, from whoever hosts the feed. */
+val LocalAppCommands = staticCompositionLocalOf { emptyList<AppCommand>() }
 
 /** One line in the command bar: something to do, somewhere to go, or something found. */
 private class Command(
@@ -73,8 +83,9 @@ fun CommandBar(ui: FeedUi, safeArea: SafeArea) {
     val close = { ui.commandOpen = false }
     LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
 
-    val commands by remember {
-        derivedStateOf { commandsFor(ui, query.text.toString().trim(), close) }
+    val extra = LocalAppCommands.current
+    val commands by remember(extra) {
+        derivedStateOf { commandsFor(ui, query.text.toString().trim(), extra, close) }
     }
     LaunchedEffect(query.text) { highlighted = 0 }
     val list = rememberLazyListState()
@@ -163,7 +174,7 @@ private fun CommandRow(command: Command, highlighted: Boolean) {
 }
 
 /** What the bar offers for [query]: actions and projects whose names match, then search results. */
-private fun commandsFor(ui: FeedUi, query: String, close: () -> Unit): List<Command> {
+private fun commandsFor(ui: FeedUi, query: String, extra: List<AppCommand>, close: () -> Unit): List<Command> {
     fun done(action: () -> Unit): () -> Unit = {
         close()
         action()
@@ -178,6 +189,7 @@ private fun commandsFor(ui: FeedUi, query: String, close: () -> Unit): List<Comm
         }
         if (wanted("Refresh", "reload")) add(Command("Actions", "Refresh", "Read everything again", Icons.Refresh, done { ui.emit(FeedEvent.Refresh) }))
         if (wanted("Switch theme", "dark", "light")) add(Command("Actions", "Switch light or dark", "", Icons.Moon, done { ui.emit(FeedEvent.ToggleTheme) }))
+        extra.filter { wanted(it.title, *it.keywords.toTypedArray()) }.forEach { add(Command("Actions", it.title, it.detail, Icons.Download, done(it.run))) }
         if (wanted("Sign out")) add(Command("Actions", "Sign out", "Forget this device's key", Icons.SignOut, done { ui.emit(FeedEvent.SignOut) }))
     }
     val projects = buildList {

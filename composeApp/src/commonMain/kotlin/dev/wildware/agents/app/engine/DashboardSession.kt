@@ -32,11 +32,15 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonPrimitive
 import kotlin.time.Clock
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
 import kotlin.time.ExperimentalTime
 import dev.wildware.agents.FeedState as EngineFeed
 
@@ -99,6 +103,17 @@ class DashboardSession(
         dashboard.start()
         // Another process queued, sent or dropped something: show it, and send what is new.
         scope.launch { outboxChanged.collect { outbox.reload() } }
+    }
+
+    /**
+     * Tries to send everything waiting, for up to [timeout]: before the app quits to update. What
+     * doesn't go stays on disk and goes when the app is back.
+     */
+    suspend fun flushOutbox(timeout: Duration = 5.seconds) {
+        outbox.kick(ignoreBackoff = true)
+        withTimeoutOrNull(timeout) {
+            outbox.items.first { items -> items.all { it.gaveUp || it.attempts > 0 } }
+        }
     }
 
     fun stop() {

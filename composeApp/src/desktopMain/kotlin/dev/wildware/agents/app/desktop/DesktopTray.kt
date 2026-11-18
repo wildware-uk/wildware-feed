@@ -19,6 +19,14 @@ interface TrayActions {
     /** Returns whether it is now on. */
     fun setStartAtLogin(on: Boolean): Boolean
     fun setDoNotDisturb(on: Boolean)
+
+    /** "Check for updates…": checks now and shows what it found. */
+    fun checkForUpdates()
+
+    /** "Update to 1.0.2…": shows the window with the update's notes and button. */
+    fun openUpdate()
+
+    fun setCheckForUpdates(on: Boolean)
 }
 
 /**
@@ -43,11 +51,22 @@ class DesktopTray(private val actions: TrayActions, settings: DesktopSettings, p
     private val keepRunning = CheckboxMenuItem("Keep running when the window closes", settings.keepRunningInTray)
     private val startAtLogin = CheckboxMenuItem("Start at login", settings.startAtLogin)
     private val doNotDisturb = CheckboxMenuItem("Do not disturb", settings.doNotDisturb)
+    private val checkAutomatically = CheckboxMenuItem("Check for updates automatically", settings.checkForUpdates)
+
+    /** "Update to 1.0.2…", at the top of the menu while a newer version is out. */
+    private val updateItem = MenuItem("Update…").apply { addActionListener { actions.openUpdate() } }
+    private var menu: PopupMenu? = null
+    private var updateVersion: String? = null
 
     fun install() {
         if (!supported) return
         EventQueue.invokeLater {
             val menu = PopupMenu().apply {
+                updateVersion?.let { version ->
+                    updateItem.label = "Update to $version…"
+                    add(updateItem)
+                    addSeparator()
+                }
                 add(MenuItem("Open Agents").apply { addActionListener { actions.open(null) } })
                 add(MenuItem("Mark all read").apply { addActionListener { actions.markAllRead() } })
                 addSeparator()
@@ -61,9 +80,12 @@ class DesktopTray(private val actions: TrayActions, settings: DesktopSettings, p
                     }
                 })
                 add(doNotDisturb.apply { addItemListener { actions.setDoNotDisturb(it.stateChange == ItemEvent.SELECTED) } })
+                add(checkAutomatically.apply { addItemListener { actions.setCheckForUpdates(it.stateChange == ItemEvent.SELECTED) } })
+                add(MenuItem("Check for updates…").apply { addActionListener { actions.checkForUpdates() } })
                 addSeparator()
                 add(MenuItem("Quit Agents").apply { addActionListener { actions.quit() } })
             }
+            this.menu = menu
             val tray = SystemTray.getSystemTray()
             val size = tray.trayIconSize.let { maxOf(it.width, it.height, 16) }
             icon = TrayIcon(TrayIconImage.draw(size * 2, look.badge, style), look.tooltip, menu).apply {
@@ -87,6 +109,26 @@ class DesktopTray(private val actions: TrayActions, settings: DesktopSettings, p
             val size = SystemTray.getSystemTray().trayIconSize.let { maxOf(it.width, it.height, 16) }
             icon.image = TrayIconImage.draw(size * 2, look.badge, style)
             icon.toolTip = look.tooltip
+        }
+    }
+
+    /** Adds "Update to [version]…" to the top of the menu, or takes it away when [version] is null. */
+    fun showUpdate(version: String?) {
+        EventQueue.invokeLater {
+            if (version == updateVersion) return@invokeLater
+            val had = updateVersion != null
+            updateVersion = version
+            val menu = menu ?: return@invokeLater
+            if (had) {
+                // The item and the separator after it.
+                menu.remove(1)
+                menu.remove(0)
+            }
+            if (version != null) {
+                updateItem.label = "Update to $version…"
+                menu.insert(updateItem, 0)
+                menu.insertSeparator(1)
+            }
         }
     }
 
