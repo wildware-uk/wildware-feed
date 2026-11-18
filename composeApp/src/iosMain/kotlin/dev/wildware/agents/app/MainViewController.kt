@@ -1,5 +1,6 @@
 package dev.wildware.agents.app
 
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.uikit.OnFocusBehavior
 import androidx.compose.ui.window.ComposeUIViewController
 import dev.wildware.agents.app.feed.AppNavigator
@@ -18,6 +19,7 @@ import platform.UIKit.UIViewController
  * pictures (none means no paperclip); [voiceInput] records the mic's voice notes. [sample]
  * shows made-up data for screenshots, and never signs in.
  */
+@OptIn(ExperimentalComposeUiApi::class)
 fun MainViewController(
     sessions: SessionStore,
     dataDir: String,
@@ -32,6 +34,9 @@ fun MainViewController(
         configure = {
             // The screens move their own text boxes above the keyboard, through the safe area below.
             onFocusBehavior = OnFocusBehavior.DoNothing
+            // Encodes each frame's Metal commands off the main thread, so the main thread has the
+            // whole 8 ms of a 120 Hz frame for touches, layout and drawing.
+            parallelRendering = true
         },
     ) {
         // One safe area for the app's life. The keyboard moves its bottom every frame while it
