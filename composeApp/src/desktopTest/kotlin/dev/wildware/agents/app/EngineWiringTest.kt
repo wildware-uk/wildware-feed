@@ -86,8 +86,11 @@ class EngineWiringTest {
         }
     }
 
+    /** Where a post from "All projects" goes, kept on the device. */
+    private val postTarget = dev.wildware.agents.MemoryTextStore()
+
     private fun ComposeUiTest.app(sessions: MemorySessionStore = MemorySessionStore(signedIn)) {
-        val platform = AppPlatform.inMemory(engine = { server.engine() }, sessions = sessions, filePicker = { it(listOf(picked)) }, media = media)
+        val platform = AppPlatform.inMemory(engine = { server.engine() }, sessions = sessions, filePicker = { it(listOf(picked)) }, media = media, postTarget = postTarget)
         setContent {
             Box(Modifier.size(1440.dp, 900.dp)) {
                 AgentsApp(platform, dark = true, accessibility = AccessibilityPrefs())
@@ -460,6 +463,29 @@ class EngineWiringTest {
         onNodeWithContentDescription("Send").performClick()
         val body = waitForWrite("POST", "/api/messages")
         assertTrue("\"project\":\"other\"" in body && "Hello from everything" in body, body)
+    }
+
+    @Test
+    fun allProjectsPostsToTheProjectLastOpened() = runDesktopComposeUiTest(width = 1440, height = 900) {
+        app()
+        waitFor("Mega")
+        waitForNode(hasContentDescription("Mega,", substring = true)).performClick()
+        waitForLabel("Message")
+        waitForNode(hasContentDescription("All projects", substring = true)).performClick()
+        waitForNode(hasContentDescription("Posting to Mega. Choose a project"))
+    }
+
+    @Test
+    fun theLastProjectPostedToIsRememberedOnTheDevice() = runDesktopComposeUiTest(width = 1440, height = 900) {
+        postTarget.write("other")
+        app()
+        waitFor("Fixed the unread counts")
+        waitForNode(hasContentDescription("Posting to Other. Choose a project")).performClick()
+        waitForNode(hasContentDescription("Post to Mega")).performClick()
+        onNodeWithContentDescription("Message").performTextInput("Over here")
+        onNodeWithContentDescription("Send").performClick()
+        assertTrue("\"project\":\"mega\"" in waitForWrite("POST", "/api/messages"))
+        waitUntil(timeoutMillis = 5_000) { postTarget.read() == "mega" }
     }
 
     @Test

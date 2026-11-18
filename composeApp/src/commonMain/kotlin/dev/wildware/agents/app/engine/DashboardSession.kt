@@ -69,7 +69,7 @@ import dev.wildware.agents.FeedState as EngineFeed
 @OptIn(ExperimentalTime::class, ExperimentalCoroutinesApi::class)
 class DashboardSession(
     val saved: SavedSession,
-    platform: AppPlatform,
+    private val platform: AppPlatform,
     parent: CoroutineScope,
     clock: () -> Long = { Clock.System.now().toEpochMilliseconds() },
 ) {
@@ -117,6 +117,9 @@ class DashboardSession(
         Mentionables.of(names, online, lastActive)
     }.distinctUntilChanged()
 
+    /** The project last posted to from "All projects", or last opened: where the next one from there goes. */
+    private val lastProject = MutableStateFlow(runCatching { platform.postTarget.read()?.trim() }.getOrNull()?.ifEmpty { null })
+
     val state: StateFlow<FeedState> = combine(
         combine(
             combine(feeds.flatMapLatest { it.state }, dashboard.waiting, ::Pair),
@@ -131,13 +134,14 @@ class DashboardSession(
         dashboard.everything.state,
         dashboard.projects,
         dashboard.notifications,
-        combine(mutableAlerts, mutableRetention, mentionables, ::Triple),
-    ) { shown, everything, projects, notifications, (alerts, retention, mentionable) ->
+        combine(combine(mutableAlerts, mutableRetention, mentionables, ::Triple), lastProject, ::Pair),
+    ) { shown, everything, projects, notifications, (settings, postTarget) ->
+        val (alerts, retention, mentionable) = settings
         // Search looks across every project's loaded cards, whichever feed is on screen.
         val all = if (shown.current.slug == null) shown else mapper.map(everything, projects, emptyList(), emptyList(), null)
         // Parse what the feed will draw before handing it over, here off the UI thread, so a card
         // that scrolls into view (or arrives) finds its markdown ready instead of parsing mid-frame.
-        shown.copy(searchIndex = searchEntriesOf(all.sections), bell = mapper.bell(notifications), alerts = alerts, retention = retention, mentionable = mentionable).also { MarkdownCache.warm(markdownIn(it).asIterable()) }
+        shown.copy(searchIndex = searchEntriesOf(all.sections), bell = mapper.bell(notifications), alerts = alerts, retention = retention, mentionable = mentionable, postTarget = postTarget).also { MarkdownCache.warm(markdownIn(it).asIterable()) }
     }.stateIn(scope, SharingStarted.Eagerly, mapper.map(feed.state.value, emptyList(), emptyList(), emptyList(), null))
 
     /** True once the dashboard has stopped taking this device's key. */
@@ -317,6 +321,7 @@ class DashboardSession(
                 actions.reply(it, event.text.ifBlank { null }, answers = event.answers, files = event.files.map(::upload))
             }
             is FeedEvent.Post -> (event.project?.let(::projectRef) ?: postTarget())?.let {
+                remember(it.slug)
                 actions.post(it, event.text.ifBlank { null }, event.files.map(::upload))
             }
             is FeedEvent.Delete -> cardRef(event.targetId)?.let { actions.delete(it) }
@@ -389,7 +394,15 @@ class DashboardSession(
         feed.hold(away)
     }
 
+    /** Kept on the device, so "All projects" posts where the owner last worked, even after a restart. */
+    private fun remember(slug: String) {
+        if (lastProject.value == slug) return
+        lastProject.value = slug
+        runCatching { platform.postTarget.write(slug) }
+    }
+
     private fun select(slug: String?) {
+        if (slug != null) remember(slug)
         if (slug == feed.projectSlug) return
         val old = feed
         feed = dashboard.feed(slug)

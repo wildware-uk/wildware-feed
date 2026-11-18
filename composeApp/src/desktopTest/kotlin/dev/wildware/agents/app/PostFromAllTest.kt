@@ -44,6 +44,18 @@ class PostFromAllTest {
     }
 
     @Test
+    fun itPostsToTheProjectTheAppRemembers() = runComposeUiTest {
+        setContent {
+            AgentTheme(dark = true) {
+                Box(Modifier.size(1440.dp, 900.dp)) { FeedScreen(FakeFeed.allProjects.copy(postTarget = "infra"), onEvent = { events += it }) }
+            }
+        }
+        onNode(hasContentDescription("Posting to infra. Choose a project")).assertExists()
+        write("Disk alarm again")
+        assertEquals(listOf<FeedEvent>(FeedEvent.Post("Disk alarm again", project = "infra")), events.filterIsInstance<FeedEvent.Post>())
+    }
+
+    @Test
     fun pickingAProjectPostsThere() = runComposeUiTest {
         feed(1440)
         onNode(hasContentDescription("Posting to", substring = true)).performClick()

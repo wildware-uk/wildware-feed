@@ -821,17 +821,25 @@ fun PostToPicker(ui: FeedUi, target: Project, modifier: Modifier = Modifier) {
     val shape = AgentTheme.shapes.pill
     var open by remember { mutableStateOf(false) }
     Box(modifier) {
+        // A raised pill, so where the post goes is plain before it is sent.
         Row(
             Modifier
                 .clip(shape)
+                .background(colors.surfaceRaised)
+                .border(1.dp, colors.borderStrong, shape)
                 .pressable("Posting to ${target.name}. Choose a project", shape) { open = true }
-                .padding(horizontal = 6.dp, vertical = 2.dp),
+                .padding(start = 12.dp, end = 8.dp, top = 6.dp, bottom = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            MetaText("To", color = colors.textMuted)
-            Box(Modifier.padding(start = 6.dp).size(8.dp).clip(CircleShape).background(colors.agent(target.hue)))
-            Text(target.name, Modifier.padding(start = 5.dp), color = colors.text, style = AgentTheme.type.label)
-            Icon(Icons.ChevronDown, null, tint = colors.textMuted, modifier = Modifier.padding(start = 2.dp).size(16.dp))
+            Text("To", color = colors.textMuted, style = AgentTheme.type.label)
+            Box(Modifier.padding(start = 8.dp).size(9.dp).clip(CircleShape).background(colors.agent(target.hue)))
+            Text(
+                target.name,
+                Modifier.padding(start = 6.dp),
+                color = colors.text,
+                style = AgentTheme.type.label.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold),
+            )
+            Icon(Icons.ChevronDown, null, tint = colors.textMuted, modifier = Modifier.padding(start = 4.dp).size(18.dp))
         }
         DropdownMenu(
             expanded = open,

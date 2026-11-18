@@ -43,6 +43,8 @@ class AppPlatform(
     val feedCache: TextStore = MemoryTextStore(),
     /** The cards folded away on this device (`CardFolds`). Removed by [clearLocalData]. */
     val cardFolds: TextStore = MemoryTextStore(),
+    /** Where a post written on "All projects" goes: the project last posted to there, or last opened. */
+    val postTarget: TextStore = MemoryTextStore(),
     /** Hands media to the system. Null uses the platform's own; tests pass a fake. */
     val media: MediaHandler? = null,
     /**
@@ -61,7 +63,8 @@ class AppPlatform(
             deviceName: String = "Test device",
             filePicker: FilePicker? = null,
             media: MediaHandler? = null,
-        ) = AppPlatform(sessions, MemoryTextStore(), MemoryOutboxStorage(), engine, deviceName, imageCacheDir = null, filePicker = filePicker, media = media)
+            postTarget: TextStore = MemoryTextStore(),
+        ) = AppPlatform(sessions, MemoryTextStore(), MemoryOutboxStorage(), engine, deviceName, imageCacheDir = null, filePicker = filePicker, media = media, postTarget = postTarget)
     }
 }
 

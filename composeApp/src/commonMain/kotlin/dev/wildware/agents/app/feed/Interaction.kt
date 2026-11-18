@@ -334,7 +334,9 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
     val postProject: Project?
         get() {
             val active = projects.filter { !it.archived && it.slug != null }
-            return active.firstOrNull { it.slug == postTo } ?: active.firstOrNull()
+            return active.firstOrNull { it.slug == postTo }
+                ?: active.firstOrNull { it.slug == state.postTarget }
+                ?: active.firstOrNull()
         }
 
     fun focusComposer() {

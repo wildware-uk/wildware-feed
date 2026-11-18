@@ -490,6 +490,8 @@ data class FeedState(
     val retention: RetentionSettings = RetentionSettings(),
     /** Pictures posted into the open project, newest first, to pick its logo from. */
     val logoChoices: List<LogoChoice> = emptyList(),
+    /** On "All projects", the project a new post goes to unless another is picked: last posted to, or last opened. */
+    val postTarget: String? = null,
 ) {
     fun item(id: String): FeedItem? = sections.firstNotNullOfOrNull { s -> s.items.firstOrNull { it.id == id } }
 }

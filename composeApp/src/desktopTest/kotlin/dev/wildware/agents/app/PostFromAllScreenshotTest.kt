@@ -32,11 +32,15 @@ class PostFromAllScreenshotTest {
     private fun ComposeUiTest.shoot(name: String, scale: Float, dark: Boolean, safeArea: SafeArea) {
         setContent {
             CompositionLocalProvider(LocalDensity provides Density(scale)) {
-                AgentTheme(dark = dark) { Box(Modifier.fillMaxSize()) { FeedScreen(FakeFeed.allProjects, safeArea) } }
+                AgentTheme(dark = dark) { Box(Modifier.fillMaxSize()) { FeedScreen(FakeFeed.allProjects.copy(postTarget = "website"), safeArea) } }
             }
         }
-        // Master has no picker; the same test draws its "before".
-        runCatching { onNode(hasContentDescription("Posting to", substring = true)).performClick() }
+        save("$name-closed")
+        onNode(hasContentDescription("Posting to", substring = true)).performClick()
+        save(name)
+    }
+
+    private fun ComposeUiTest.save(name: String) {
         waitForIdle()
         val file = File(outDir, "$name.png")
         ImageIO.write(onAllNodes(isRoot()).onFirst().captureToImage().toAwtImage(), "png", file)

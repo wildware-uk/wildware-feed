@@ -115,6 +115,7 @@ fun desktopPlatform(dir: File = desktopConfigDir()): AppPlatform {
     val readMarks = File(dir, "read-marks.json")
     val feedCache = File(dir, "feed-cache.json")
     val cardFolds = File(dir, "folded-cards.json")
+    val postTarget = File(dir, "post-target.txt")
     return AppPlatform(
         sessions = FileSessionStore(File(dir, "session.json")),
         readMarks = FileTextStore(readMarks),
@@ -127,10 +128,12 @@ fun desktopPlatform(dir: File = desktopConfigDir()): AppPlatform {
             readMarks.delete()
             feedCache.delete()
             cardFolds.delete()
+            postTarget.delete()
         },
         settings = FileTextStore(File(dir, "settings.txt")),
         feedCache = FileTextStore(feedCache),
         cardFolds = FileTextStore(cardFolds),
+        postTarget = FileTextStore(postTarget),
         filePicker = AwtFilePicker { java.awt.Frame.getFrames().firstOrNull { it.isActive } },
         localServer = localServer(dir),
     )
