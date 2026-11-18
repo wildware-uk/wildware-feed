@@ -265,3 +265,85 @@ struct StatusDot: View {
         Circle().fill(color).frame(width: size, height: size).accessibilityHidden(true)
     }
 }
+
+// MARK: - Buttons and layout
+
+/// The app's answer button: amber and filled for the suggested answer, outlined for the rest.
+struct CardButtonStyle: ButtonStyle {
+    var prominent: Bool
+    var compact = false
+    var stretch = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .cardButtonChrome(prominent: prominent, compact: compact, stretch: stretch)
+            .opacity(configuration.isPressed ? 0.7 : 1)
+    }
+}
+
+extension View {
+    /// The answer button's look, for a `Link` as well as a `Button`.
+    func cardButtonChrome(prominent: Bool, compact: Bool = false, stretch: Bool = false) -> some View {
+        font(compact ? Theme.Font.label : Theme.Font.bodyStrong)
+            .lineLimit(1)
+            .padding(.horizontal, compact ? 10 : 14)
+            .frame(maxWidth: stretch ? .infinity : nil)
+            .frame(height: compact ? 28 : 34)
+            .foregroundStyle(prominent ? Theme.onWaiting : Theme.text)
+            .background {
+                let shape = RoundedRectangle(cornerRadius: compact ? 6 : Theme.Radius.medium, style: .continuous)
+                if prominent {
+                    shape.fill(Theme.waiting)
+                } else {
+                    shape.strokeBorder(Theme.borderStrong, lineWidth: 1)
+                }
+            }
+            .contentShape(Rectangle())
+    }
+}
+
+/// Lays chips out in rows, wrapping when a row is full.
+struct FlowLayout: Layout {
+    var spacing: CGFloat
+
+    init(spacing: CGFloat) { self.spacing = spacing }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let rows = rows(width: proposal.width ?? .infinity, subviews: subviews)
+        let height = rows.map(\.height).reduce(0, +) + spacing * CGFloat(max(rows.count - 1, 0))
+        let width = rows.map(\.width).max() ?? 0
+        return CGSize(width: proposal.width ?? width, height: height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var y = bounds.minY
+        for row in rows(width: bounds.width, subviews: subviews) {
+            var x = bounds.minX
+            for index in row.indices {
+                let size = subviews[index].sizeThatFits(.unspecified)
+                subviews[index].place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
+                x += size.width + spacing
+            }
+            y += row.height + spacing
+        }
+    }
+
+    private struct Row { var indices: [Int] = []; var width: CGFloat = 0; var height: CGFloat = 0 }
+
+    private func rows(width: CGFloat, subviews: Subviews) -> [Row] {
+        var rows: [Row] = [Row()]
+        for index in subviews.indices {
+            let size = subviews[index].sizeThatFits(.unspecified)
+            let extra = rows[rows.count - 1].indices.isEmpty ? size.width : size.width + spacing
+            if rows[rows.count - 1].width + extra > width, !rows[rows.count - 1].indices.isEmpty {
+                rows.append(Row())
+            }
+            let isFirst = rows[rows.count - 1].indices.isEmpty
+            rows[rows.count - 1].indices.append(index)
+            rows[rows.count - 1].width += isFirst ? size.width : size.width + spacing
+            rows[rows.count - 1].height = max(rows[rows.count - 1].height, size.height)
+        }
+        return rows.filter { !$0.indices.isEmpty }
+    }
+}
+

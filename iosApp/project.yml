@@ -92,6 +92,8 @@ targets:
         # The outbox sends what waited for signal while the app is closed.
         BGTaskSchedulerPermittedIdentifiers: [dev.wildware.agents.outbox.refresh, dev.wildware.agents.outbox.processing]
         NSFaceIDUsageDescription: Confirm it is you before approving what an agent asks.
+        # Alerts from agents arrive as messages from them (NotificationService.swift).
+        NSUserActivityTypes: [INSendMessageIntent]
         NSMicrophoneUsageDescription: Records the voice notes you send to your agents.
         NSSpeechRecognitionUsageDescription: Writes down what you say in a voice note, so your agents can read it.
         NSAppTransportSecurity:
@@ -105,6 +107,9 @@ targets:
         # Stays "development": archives are signed for development, and the App Store export
         # re-signs with the distribution profile, which turns it into "production".
         aps-environment: development
+        # Agents' faces on banners need the Communication Notifications capability ticked on the
+        # App ID first; then add: com.apple.developer.usernotifications.communication: true
+        # Until then banners show the robot, and nothing else changes.
         com.apple.developer.usernotifications.time-sensitive: true
         com.apple.security.application-groups: [group.dev.wildware.agents]
         keychain-access-groups: [$(AppIdentifierPrefix)dev.wildware.agents.shared]
@@ -292,6 +297,8 @@ targets:
         UIAppFonts: [Geist-Regular.ttf, Geist-Medium.ttf, Geist-SemiBold.ttf, Geist-Bold.ttf, GeistMono-Regular.ttf, GeistMono-Medium.ttf]
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        AppIdentifierPrefix: $(AppIdentifierPrefix)
+        NSFaceIDUsageDescription: Confirm it is you before answering an agent from an alert.
         NSExtension:
           NSExtensionPointIdentifier: com.apple.usernotifications.content-extension
           NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).NotificationViewController
@@ -305,6 +312,8 @@ targets:
       path: NotificationContent/NotificationContent.entitlements
       properties:
         com.apple.security.application-groups: [group.dev.wildware.agents]
+        # The long-press card reads the question live and answers it, with the phone's own key.
+        keychain-access-groups: [$(AppIdentifierPrefix)dev.wildware.agents.shared]
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.wildware.agents.notificationcontent

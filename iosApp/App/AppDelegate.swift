@@ -54,6 +54,11 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         }
         guard action != UNNotificationDismissActionIdentifier, Dashboard.isLinked else { return }
 
+        if action == Notifications.reactAction {
+            await react(to: AlertPayload(response.notification.request.content))
+            return
+        }
+
         // Both go through the outbox, so an answer or reply tapped with no signal still arrives later.
         let typed = (response as? UNTextInputNotificationResponse)?.userText
         let queued: String
@@ -90,6 +95,17 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
             AppModel.shared.open(path: path)
         } else {
             _ = await UIApplication.shared.open(link)
+        }
+    }
+
+    /// A thumbs up from the alert's menu. Sent straight away: a reaction isn't worth queueing for later.
+    private func react(to payload: AlertPayload) async {
+        guard let card = payload.card, let client = Dashboard.client() else { return }
+        defer { client.close() }
+        do {
+            _ = try await client.react(card: card, emoji: Notifications.reactEmoji, on: KotlinBoolean(bool: true))
+        } catch {
+            await tell("Your \(Notifications.reactEmoji) didn't send: \(error.localizedDescription)")
         }
     }
 

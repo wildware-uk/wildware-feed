@@ -69,40 +69,6 @@ struct AskerRow: View {
     }
 }
 
-/// The app's answer button: amber and filled for the suggested answer, outlined for the rest.
-struct CardButtonStyle: ButtonStyle {
-    var prominent: Bool
-    var compact = false
-    var stretch = false
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .cardButtonChrome(prominent: prominent, compact: compact, stretch: stretch)
-            .opacity(configuration.isPressed ? 0.7 : 1)
-    }
-}
-
-extension View {
-    /// The answer button's look, for a `Link` as well as a `Button`.
-    func cardButtonChrome(prominent: Bool, compact: Bool = false, stretch: Bool = false) -> some View {
-        font(compact ? Theme.Font.label : Theme.Font.bodyStrong)
-            .lineLimit(1)
-            .padding(.horizontal, compact ? 10 : 14)
-            .frame(maxWidth: stretch ? .infinity : nil)
-            .frame(height: compact ? 28 : 34)
-            .foregroundStyle(prominent ? Theme.onWaiting : Theme.text)
-            .background {
-                let shape = RoundedRectangle(cornerRadius: compact ? 6 : Theme.Radius.medium, style: .continuous)
-                if prominent {
-                    shape.fill(Theme.waiting)
-                } else {
-                    shape.strokeBorder(Theme.borderStrong, lineWidth: 1)
-                }
-            }
-            .contentShape(Rectangle())
-    }
-}
-
 /// One tap answers. Questions that need typing, many options or several picks get one "Answer" link
 /// to the question in the app instead.
 struct AnswerRow: View {

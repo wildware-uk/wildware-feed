@@ -3,6 +3,7 @@ import ComposeApp
 #else
 import Shared
 #endif
+import Intents
 import UserNotifications
 
 /// Notification buttons. Message and update alerts share fixed categories; a request's category
@@ -12,20 +13,23 @@ enum Notifications {
     static let updateCategory = "UPDATE"
     static let requestCategory = "REQUEST"
     static let replyAction = "reply"
+    /// Puts a thumbs up on the reply or update, as a tap on the card's reactions does.
+    static let reactAction = "react-thumbsup"
+    static let reactEmoji = "👍"
 
     static func registerCategories() {
         let requests = RequestActions.shared.categoryIds.map { id in
             UNNotificationCategory(
                 identifier: id,
                 actions: RequestActions.shared.categoryActions(categoryId: id).map(notificationAction),
-                intentIdentifiers: [],
+                intentIdentifiers: [INSendMessageIntentIdentifier],
                 options: []
             )
         }
         let base: Set<UNNotificationCategory> = [
             replyCategory(id: messageCategory),
             replyCategory(id: updateCategory),
-            UNNotificationCategory(identifier: requestCategory, actions: [], intentIdentifiers: []),
+            UNNotificationCategory(identifier: requestCategory, actions: [], intentIdentifiers: [INSendMessageIntentIdentifier]),
         ]
         UNUserNotificationCenter.current().setNotificationCategories(base.union(requests))
     }
@@ -42,13 +46,23 @@ enum Notifications {
         if action.isTextInput {
             return UNTextInputNotificationAction(
                 identifier: action.id,
-                title: action.title,
+                title: "\(action.title)…",
                 options: options,
+                icon: UNNotificationActionIcon(systemImageName: "arrowshape.turn.up.left"),
                 textInputButtonTitle: "Send",
                 textInputPlaceholder: "Your answer"
             )
         }
-        return UNNotificationAction(identifier: action.id, title: action.title, options: options)
+        return UNNotificationAction(identifier: action.id, title: action.title, options: options, icon: icon(for: action))
+    }
+
+    /// Yes gets a tick and No a cross; options read on their own.
+    private static func icon(for action: NotificationAction) -> UNNotificationActionIcon? {
+        switch action.id {
+        case RequestActions.shared.Yes: UNNotificationActionIcon(systemImageName: "checkmark")
+        case RequestActions.shared.No: UNNotificationActionIcon(systemImageName: "xmark")
+        default: nil
+        }
     }
 
     private static func replyCategory(id: String) -> UNNotificationCategory {
@@ -57,13 +71,16 @@ enum Notifications {
             actions: [
                 UNTextInputNotificationAction(
                     identifier: replyAction,
-                    title: "Reply",
+                    title: "Reply…",
                     options: [.authenticationRequired],
+                    icon: UNNotificationActionIcon(systemImageName: "arrowshape.turn.up.left"),
                     textInputButtonTitle: "Send",
                     textInputPlaceholder: "Reply to the agent"
                 ),
+                UNNotificationAction(identifier: reactAction, title: "\(reactEmoji)  Thumbs up", options: []),
             ],
-            intentIdentifiers: [],
+            // Lets a reply from an agent arrive as a message from that agent, with its face on the banner.
+            intentIdentifiers: [INSendMessageIntentIdentifier],
             options: []
         )
     }

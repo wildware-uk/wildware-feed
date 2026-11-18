@@ -77,30 +77,24 @@ final class WidgetScreenshots: XCTestCase {
 
     // MARK: Alerts, Live Activities, Siri
 
-    func testStyledAlert() throws {
-        let markdown = """
-        ## Styled alert test
-        Long-press this alert. You should see **bold**, _italics_, `inline code` and a [tappable link](https://dashboard.example.com).
+    func testAlerts() throws {
+        for scheme in Scheme.allCases {
+            try saveAlert("alert-question-\(scheme)", Samples.confirm(), scheme: scheme)
+            try saveAlert("alert-pictures-\(scheme)", Samples.pictures(), scheme: scheme)
+            try saveAlert("alert-reply-\(scheme)", Samples.reply(), scheme: scheme)
+            try saveAlert("alert-update-\(scheme)", Samples.update(), scheme: scheme)
+        }
+        let sent = Samples.confirm()
+        sent.answer = .sent("Yes")
+        try saveAlert("alert-question-sent", sent, scheme: .dark)
+    }
 
-        - a bullet point
-        - another, with **bold** inside
-
-        1. a numbered step
-        2. and a second
-
-        > a quoted line
-
-        ```
-        npm test   # a code block
-        ```
-        """
-        let view = AlertView(title: "Pixel replied to you", markdown: markdown, plainText: "", openLink: { _ in }, openApp: {})
-        let fitted = UIHostingController(rootView: view).sizeThatFits(in: CGSize(width: 370, height: CGFloat.greatestFiniteMagnitude))
-        XCTAssertGreaterThan(fitted.height, 200, "the expanded alert would have no height")
-        let alert = view
-            .background(Theme.surface)
-            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-        try save("alert-styled", alert, scheme: .dark, width: 370)
+    private func saveAlert(_ name: String, _ model: AlertModel, scheme: Scheme) throws {
+        let card = AlertCard(model: model)
+        let fitted = UIHostingController(rootView: card).sizeThatFits(in: CGSize(width: 361, height: CGFloat.greatestFiniteMagnitude))
+        XCTAssertGreaterThan(fitted.height, 100, "\(name) would have no height")
+        let platter = card.clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        try save(name, platter, scheme: scheme, width: 361)
     }
 
     func testLiveActivity() throws {
@@ -180,6 +174,97 @@ final class WidgetScreenshots: XCTestCase {
         renderer.scale = 3
         let png = try XCTUnwrap(renderer.uiImage?.pngData(), "\(name) drew nothing")
         try png.write(to: ScreenshotFolder.url.appendingPathComponent("\(name).png"))
+    }
+}
+
+/// Made-up alerts for the long-press screenshots.
+@MainActor
+enum Samples {
+    static func confirm() -> AlertModel {
+        let payload = AlertPayload(
+            kind: .request, title: "Rover is waiting on you", body: "Tests pass. Merge the fee-rounding branch into main?",
+            markdown: "Tests pass. Merge the fee-rounding branch into main?", projectSlug: "garden-game",
+            requestId: "req-1", requestKind: "confirm"
+        )
+        var details = AlertDetails()
+        details.agentName = "Rover"
+        details.agentId = "a-rover"
+        details.projectName = "garden-game"
+        details.waiting = 2
+        details.request = PendingRequest(
+            id: "req-1", agentName: "Rover", projectSlug: "garden-game", projectName: "garden-game",
+            question: payload.body, kind: RequestKind.companion.fromWire(value: "confirm")!, options: nil,
+            expiresAt: ISO8601DateFormatter().string(from: .now.addingTimeInterval(41 * 60 + 52)),
+            detail: "412 tests pass. The only change outside checkout is one helper:\n\n```\nfun roundFee(p: Money) = p.round(2)\n```",
+            defaultAnswer: "true"
+        )
+        return AlertModel(payload: payload, details: details)
+    }
+
+    static func pictures() -> AlertModel {
+        let options = ["Grid", "Cards", "List"]
+        let payload = AlertPayload(
+            kind: .request, title: "Lumen is waiting on you", body: "Which home screen should ship?",
+            markdown: "Which home screen should ship?", projectSlug: "harbor-app",
+            requestId: "req-2", requestKind: "choice", options: options
+        )
+        var details = AlertDetails()
+        details.agentName = "Lumen"
+        details.agentId = "a-lumen"
+        details.projectName = "harbor-app"
+        details.waiting = 2
+        details.request = PendingRequest(
+            id: "req-2", agentName: "Lumen", projectSlug: "harbor-app", projectName: "harbor-app",
+            question: payload.body, kind: RequestKind.companion.fromWire(value: "choice")!, options: options,
+            expiresAt: ISO8601DateFormatter().string(from: .now.addingTimeInterval(42 * 60)),
+            detail: "All three pass the contrast check. **Cards** tested best with the five people who tried it.",
+            defaultAnswer: "Cards"
+        )
+        var pictures: [String: UIImage] = [:]
+        for (index, hue) in [0.58, 0.42, 0.06].enumerated() { pictures["option-\(index)"] = picture(hue: hue) }
+        return AlertModel(payload: payload, details: details, pictures: pictures)
+    }
+
+    static func reply() -> AlertModel {
+        let payload = AlertPayload(
+            kind: .message, title: "Pixel replied to you",
+            body: "Done. I shifted the greens towards yellow and gave the pots a terracotta rim.",
+            markdown: "Done. I shifted the greens towards yellow and gave the pots a **terracotta** rim. Before and after:",
+            projectSlug: "garden-game", reply: ["answers": "m-2"], date: .now.addingTimeInterval(-60)
+        )
+        var details = AlertDetails()
+        details.agentName = "Pixel"
+        details.agentId = "a-pixel"
+        details.quote = .init(text: "Can the seed shop icons be warmer? They read a bit cold on the dark theme.", date: .now.addingTimeInterval(-12 * 60))
+        return AlertModel(payload: payload, details: details, pictures: ["media": picture(hue: 0.09)])
+    }
+
+    static func update() -> AlertModel {
+        let payload = AlertPayload(
+            kind: .update, title: "Fee rounding fixed",
+            body: "Checkout now rounds fees to the penny.",
+            markdown: "Checkout now rounds fees to the penny. All **412** tests pass and a pull request is open.\n\n```\n- total = fee * qty\n+ total = roundFee(fee * qty)\n```",
+            projectSlug: "garden-game", reply: ["update": "u-1"], date: .now.addingTimeInterval(-120)
+        )
+        var details = AlertDetails()
+        details.agentName = "Rover"
+        details.agentId = "a-rover"
+        return AlertModel(payload: payload, details: details)
+    }
+
+    /// A stand-in picture: a soft gradient with a couple of bars, like a screenshot of an app.
+    static func picture(hue: Double) -> UIImage {
+        let size = CGSize(width: 300, height: 400)
+        return UIGraphicsImageRenderer(size: size).image { context in
+            let colors = [UIColor(hue: hue, saturation: 0.55, brightness: 0.85, alpha: 1).cgColor,
+                          UIColor(hue: hue + 0.1, saturation: 0.5, brightness: 0.4, alpha: 1).cgColor]
+            let gradient = CGGradient(colorsSpace: nil, colors: colors as CFArray, locations: nil)!
+            context.cgContext.drawLinearGradient(gradient, start: .zero, end: CGPoint(x: size.width, y: size.height), options: [])
+            UIColor.white.withAlphaComponent(0.5).setFill()
+            UIBezierPath(roundedRect: CGRect(x: 24, y: 28, width: 110, height: 16), cornerRadius: 8).fill()
+            UIColor.white.withAlphaComponent(0.25).setFill()
+            UIBezierPath(roundedRect: CGRect(x: 24, y: 220, width: 252, height: 150), cornerRadius: 16).fill()
+        }
     }
 }
 

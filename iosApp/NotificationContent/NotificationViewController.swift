@@ -3,10 +3,12 @@ import UIKit
 import UserNotifications
 import UserNotificationsUI
 
-/// The expanded alert: the agent's own markdown, styled, in place of the plain banner text.
+/// The long-press view: the alert as the app's own card. It shows what the push carried at once,
+/// then fills in from the dashboard (time left, the agent, option pictures, the message replied to).
 final class NotificationViewController: UIViewController, UNNotificationContentExtension {
-    private static let maxHeight: CGFloat = 500
-    private var host: UIHostingController<AlertView>?
+    private static let maxHeight: CGFloat = 520
+    private var host: UIHostingController<AlertCard>?
+    private var loading: Task<Void, Never>?
 
     func didReceive(_ notification: UNNotification) {
         let content = notification.request.content
@@ -18,19 +20,32 @@ final class NotificationViewController: UIViewController, UNNotificationContentE
             if !actions.isEmpty { extensionContext?.notificationActions = actions }
         }
 
-        let alert = AlertView(
-            title: content.title,
-            markdown: info["markdown"] as? String,
-            plainText: content.body,
-            openLink: { [weak self] url in self?.openLink(url) },
-            openApp: { [weak self] in self?.extensionContext?.performNotificationDefaultAction() }
-        )
+        let model = AlertModel(payload: AlertPayload(content, date: notification.date), pictures: Self.pictures(in: content))
+        model.openApp = { [weak self] in self?.extensionContext?.performNotificationDefaultAction() }
+        model.openLink = { [weak self] url in self?.openLink(url) }
+        model.close = { [weak self] in
+            UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [notification.request.identifier])
+            self?.extensionContext?.dismissNotificationContentExtension()
+        }
+        model.resized = { [weak self] in
+            DispatchQueue.main.async { self?.fitToContent() }
+        }
+
+        let card = AlertCard(model: model)
         if let host {
-            host.rootView = alert
+            host.rootView = card
         } else {
-            embed(alert)
+            embed(card)
         }
         fitToContent()
+
+        loading?.cancel()
+        loading = Task { @MainActor [weak self] in
+            let details = await AlertLoader.details(for: model.payload)
+            guard !Task.isCancelled else { return }
+            withAnimation(Theme.motion(reduced: UIAccessibility.isReduceMotionEnabled)) { model.details = details }
+            self?.fitToContent()
+        }
     }
 
     override func viewDidLayoutSubviews() {
@@ -47,8 +62,8 @@ final class NotificationViewController: UIViewController, UNNotificationContentE
         if size != preferredContentSize { preferredContentSize = size }
     }
 
-    private func embed(_ alert: AlertView) {
-        let host = UIHostingController(rootView: alert)
+    private func embed(_ card: AlertCard) {
+        let host = UIHostingController(rootView: card)
         host.view.backgroundColor = .clear
         host.view.frame = view.bounds
         host.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
@@ -58,41 +73,24 @@ final class NotificationViewController: UIViewController, UNNotificationContentE
         self.host = host
     }
 
+    /// The pictures the service extension attached, by identifier. Attachments live outside this
+    /// extension's sandbox, so each one is opened under its security scope.
+    private static func pictures(in content: UNNotificationContent) -> [String: UIImage] {
+        var pictures: [String: UIImage] = [:]
+        for attachment in content.attachments {
+            let url = attachment.url
+            let scoped = url.startAccessingSecurityScopedResource()
+            defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+            if let data = try? Data(contentsOf: url), let image = UIImage(data: data) {
+                pictures[attachment.identifier] = image
+            }
+        }
+        return pictures
+    }
+
     /// `extensionContext.open` does nothing in an alert, so the app opens the link once it is up.
     private func openLink(_ url: URL) {
         PendingLink.leave(url)
         extensionContext?.performNotificationDefaultAction()
-    }
-}
-
-struct AlertView: View {
-    let title: String
-    let markdown: String?
-    let plainText: String
-    let openLink: (URL) -> Void
-    let openApp: () -> Void
-
-    var body: some View {
-        // No ScrollView: its ideal height is not its content's, so the alert would size to nothing.
-        // Anything past the height cap is cut off; a tap opens the full message in the app.
-        VStack(alignment: .leading, spacing: 8) {
-            if !title.isEmpty {
-                Text(title).font(.headline)
-            }
-            if let markdown {
-                MarkdownView(blocks: MarkdownBlock.parse(markdown))
-            } else {
-                Text(plainText)
-            }
-        }
-        .fixedSize(horizontal: false, vertical: true)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(16)
-        .contentShape(Rectangle())
-        .onTapGesture(perform: openApp)
-        .environment(\.openURL, OpenURLAction { url in
-            openLink(url)
-            return .handled
-        })
     }
 }
