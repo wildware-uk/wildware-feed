@@ -124,6 +124,43 @@ class GestureTest {
         assertTrue(left >= 0f, "the drawer stopped part way, its label at x=$left")
     }
 
+    private fun ComposeUiTest.pullDown() =
+        onRoot().performTouchInput { swipe(Offset(195f, 160f), Offset(195f, 700f), 500) }
+
+    @Test
+    fun pullingTheFeedDownRefreshesItAndTheIndicatorSettles() = runComposeUiTest {
+        phone()
+        pullDown()
+        waitForIdle()
+        assertEquals(1, events.count { it == FeedEvent.Refresh }, "got $events")
+
+        // The spinner shows for a moment at least, then goes once the read has landed (the state is
+        // not loading), so a second pull refreshes again.
+        mainClock.advanceTimeBy(1_000)
+        waitForIdle()
+        pullDown()
+        waitForIdle()
+        assertEquals(2, events.count { it == FeedEvent.Refresh }, "got $events")
+    }
+
+    @Test
+    fun whileTheReadIsStillRunningTheIndicatorStaysAndAPullDoesNotAskTwice() = runComposeUiTest {
+        setContent {
+            AgentTheme(dark = false) {
+                Box(Modifier.size(390.dp, 844.dp)) {
+                    FeedScreen(FakeFeed.state.copy(loading = true), onEvent = { events += it })
+                }
+            }
+        }
+        pullDown()
+        waitForIdle()
+        mainClock.advanceTimeBy(1_000)
+        waitForIdle()
+        pullDown()
+        waitForIdle()
+        assertEquals(1, events.count { it == FeedEvent.Refresh }, "got $events")
+    }
+
     @Test
     fun projectsReorderFromTheScreenReaderToo() = runComposeUiTest {
         phone(ScreenPreview(drawerOpen = true))
