@@ -1,7 +1,7 @@
 # Installing Agents on your computer
 
 Download the file for your computer from the
-[latest release](https://github.com/wildware-uk/agent-dashboard-ios/releases/latest), install it,
+[latest release](https://github.com/wildware-uk/wildware-feed/releases/latest), install it,
 then sign in with your dashboard's address and owner password.
 
 | Computer | File |

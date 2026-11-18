@@ -15,7 +15,7 @@ jobs:
           distribution: temurin
           java-version: 21
       - uses: gradle/actions/setup-gradle@v4
-      - run: ./gradlew :shared:assembleSharedDebugXCFramework
+      - run: iosApp/build-shared.sh
         timeout-minutes: 10
       - run: brew install xcodegen
         timeout-minutes: 5

@@ -49,5 +49,5 @@ cat <<NOTES
 - Anything else: \`chmod +x Agents-$version-x86_64.AppImage\` and run it.
 - On GNOME, the tray icon needs the "AppIndicator and KStatusNotifierItem Support" extension.
 
-Then sign in with your dashboard's address and owner password. More detail: [docs/INSTALL.md](https://github.com/wildware-uk/agent-dashboard-ios/blob/master/docs/INSTALL.md).
+Then sign in with your dashboard's address and owner password. More detail: [docs/INSTALL.md](https://github.com/wildware-uk/wildware-feed/blob/master/docs/INSTALL.md).
 NOTES

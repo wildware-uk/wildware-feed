@@ -1,6 +1,6 @@
 # Agents
 
-The native app for the [Agent Dashboard](https://github.com/wildware-uk/agent-dashboard) on iPhone, iPad, Apple Watch, Mac, Windows and Linux. MIT licensed. Desktop installers are on the [Releases](https://github.com/wildware-uk/agent-dashboard-ios/releases) page; see [docs/INSTALL.md](docs/INSTALL.md).
+The native app for the [Agent Dashboard](https://github.com/wildware-uk/agent-dashboard) on iPhone, iPad, Apple Watch, Mac, Windows and Linux. MIT licensed. Desktop installers are on the [Releases](https://github.com/wildware-uk/wildware-feed/releases) page; see [docs/INSTALL.md](docs/INSTALL.md).
 
 ## iPhone
 
@@ -69,14 +69,15 @@ resumes, re-reads and orders the feed the same way.
 You need a Mac with Xcode, JDK 21 and [XcodeGen](https://github.com/yonaskolb/XcodeGen).
 
 ```sh
-./gradlew :shared:assembleSharedDebugXCFramework
+iosApp/build-shared.sh
 DEVELOPMENT_TEAM=<your team id> xcodegen generate --spec iosApp/project.yml
 open iosApp/Agents.xcodeproj
 ```
 
-The Agents scheme rebuilds the Kotlin framework before each build. The same framework carries the
-watch's code, and the iPhone app carries the watch app, so building Agents builds both. The
-AgentsWatch scheme builds the watch app on its own.
+The Agents scheme rebuilds the Kotlin framework before each build, debug or release to match. The
+same framework carries the watch's code, and the iPhone app carries the watch app, so building
+Agents builds both. The AgentsWatch scheme builds the watch app on its own. TestFlight builds come
+from GitHub Actions: see [docs/IOS_RELEASE.md](docs/IOS_RELEASE.md).
 
 **Installing on the watch.** After installing a new build on the iPhone, open the Watch app on the
 iPhone, find Agents under Available Apps and tap Install (or turn on automatic app install). Then

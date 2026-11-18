@@ -9,6 +9,8 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.0"
+    # Local builds only. Release builds (.github/workflows/ios-release.yml) pass agents.version from
+    # gradle.properties and a fresh build number on the command line.
     MARKETING_VERSION: "0.1.0"
     CURRENT_PROJECT_VERSION: "1"
     DEVELOPMENT_TEAM: ${DEVELOPMENT_TEAM}
@@ -18,27 +20,31 @@ settings:
     EXCLUDED_ARCHS[sdk=iphonesimulator*]: x86_64
     EXCLUDED_ARCHS[sdk=watchsimulator*]: x86_64
 
-# Kotlin is built by Gradle, not Xcode: ./gradlew :shared:assembleSharedDebugXCFramework
-# (the Agents scheme runs it before every build). The extensions and the watch link that static
+# Kotlin is built by Gradle, not Xcode: iosApp/build-shared.sh builds Shared for the configuration
+# being built (debug or release) into shared/build/XCFrameworks/current (each scheme runs it first). The extensions and the watch link that static
 # framework. The iPhone app links ComposeApp instead: the Compose screens with `shared` exported in
 # the same framework, so the app carries one Kotlin runtime, not two. Its build phase builds it.
 targetTemplates:
   UsesShared:
     dependencies:
-      - framework: ../shared/build/XCFrameworks/debug/Shared.xcframework
+      - framework: ../shared/build/XCFrameworks/current/Shared.xcframework
         embed: false
     sources:
       - Common
+      - path: Privacy/PrivacyInfo.xcprivacy
+        buildPhase: resources
 
   # The watch can't use all of Common (Live Activities and alert setup are iPhone-only), just its login and client.
   UsesSharedOnWatch:
     dependencies:
-      - framework: ../shared/build/XCFrameworks/debug/Shared.xcframework
+      - framework: ../shared/build/XCFrameworks/current/Shared.xcframework
         embed: false
     sources:
       - Common/Credentials.swift
       - Common/Dashboard.swift
       - WatchCommon
+      - path: Privacy/PrivacyInfo.xcprivacy
+        buildPhase: resources
 
 targets:
   Agents:
@@ -48,6 +54,8 @@ targets:
       - path: App
       - path: Voice
       - path: Common
+      - path: Privacy/PrivacyInfo.xcprivacy
+        buildPhase: resources
     preBuildScripts:
       # Builds ComposeApp for just this device or simulator, and copies the screens' fonts into the app.
       - name: Build the Compose framework
@@ -58,8 +66,12 @@ targets:
       path: App/Info.plist
       properties:
         CFBundleDisplayName: Agents
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         AppIdentifierPrefix: $(AppIdentifierPrefix)
         UILaunchScreen: {}
+        # Only standard HTTPS, so no export compliance questions on each TestFlight build.
+        ITSAppUsesNonExemptEncryption: false
         # Lets Compose draw at 120 Hz on ProMotion screens.
         CADisableMinimumFrameDurationOnPhone: true
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
@@ -83,6 +95,8 @@ targets:
     entitlements:
       path: App/Agents.entitlements
       properties:
+        # Stays "development": archives are signed for development, and the App Store export
+        # re-signs with the distribution profile, which turns it into "production".
         aps-environment: development
         com.apple.developer.usernotifications.time-sensitive: true
         com.apple.security.application-groups: [group.dev.wildware.agents]
@@ -116,8 +130,11 @@ targets:
       path: Watch/Info.plist
       properties:
         CFBundleDisplayName: Agents
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         AppIdentifierPrefix: $(AppIdentifierPrefix)
         WKApplication: true
+        ITSAppUsesNonExemptEncryption: false
         WKCompanionAppBundleIdentifier: dev.wildware.agents
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
@@ -143,6 +160,8 @@ targets:
       path: WatchWidgets/Info.plist
       properties:
         CFBundleDisplayName: Agents
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         AppIdentifierPrefix: $(AppIdentifierPrefix)
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
@@ -167,6 +186,8 @@ targets:
       path: Widgets/Info.plist
       properties:
         CFBundleDisplayName: Agents
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         AppIdentifierPrefix: $(AppIdentifierPrefix)
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
@@ -190,6 +211,8 @@ targets:
       path: Share/Info.plist
       properties:
         CFBundleDisplayName: Agents
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         AppIdentifierPrefix: $(AppIdentifierPrefix)
         NSExtension:
           NSExtensionPointIdentifier: com.apple.share-services
@@ -219,6 +242,8 @@ targets:
       path: NotificationService/Info.plist
       properties:
         CFBundleDisplayName: Agents
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         AppIdentifierPrefix: $(AppIdentifierPrefix)
         NSExtension:
           NSExtensionPointIdentifier: com.apple.usernotifications.service
@@ -246,6 +271,8 @@ targets:
       path: NotificationContent/Info.plist
       properties:
         CFBundleDisplayName: Agents
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         NSExtension:
           NSExtensionPointIdentifier: com.apple.usernotifications.content-extension
           NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).NotificationViewController
@@ -306,7 +333,7 @@ schemes:
         - name: Build Kotlin
           settingsTarget: Agents
           script: |
-            cd "$SRCROOT/.." && ./gradlew :shared:assembleSharedDebugXCFramework
+            "$SRCROOT/build-shared.sh"
     run:
       config: Debug
     archive:
@@ -320,7 +347,7 @@ schemes:
         - name: Build Kotlin
           settingsTarget: AgentsWatch
           script: |
-            cd "$SRCROOT/.." && ./gradlew :shared:assembleSharedDebugXCFramework
+            "$SRCROOT/build-shared.sh"
     run:
       config: Debug
     archive:
@@ -334,7 +361,7 @@ schemes:
         - name: Build Kotlin
           settingsTarget: Agents
           script: |
-            cd "$SRCROOT/.." && ./gradlew :shared:assembleSharedDebugXCFramework
+            "$SRCROOT/build-shared.sh"
     test:
       config: Debug
       targets: [AgentsScreenshots, AgentsUITests]

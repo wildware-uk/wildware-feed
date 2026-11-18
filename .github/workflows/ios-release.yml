@@ -1,0 +1,379 @@
+name: iOS release
+
+# Builds the iPhone, iPad and Watch app and sends it to TestFlight. docs/IOS_RELEASE.md explains it.
+#
+# Manual only (Actions, iOS release, Run workflow): Mac minutes cost ten times Linux ones, so this
+# never runs on a push or a pull request.
+#
+# Signing is cloud-managed: no certificates or profiles live in the repo. Xcode signs with an App
+# Store Connect API key (Admin role) from the secrets ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8_BASE64
+# and APPLE_TEAM_ID, the same ones desktop-release.yml notarises with.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version, e.g. 1.2.3. Leave empty to use agents.version in gradle.properties.'
+        required: false
+        default: ''
+      notes:
+        description: 'What to Test (shown to TestFlight testers). Optional.'
+        required: false
+        default: ''
+      upload:
+        description: 'Upload to TestFlight. Untick to only build and sign the .ipa (kept as a run artifact).'
+        type: boolean
+        required: false
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-release
+  cancel-in-progress: false
+
+env:
+  BUNDLE_ID: dev.wildware.agents
+
+jobs:
+  # On Linux, so a missing secret or a bad key fails in seconds, before any Mac time is spent.
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      build: ${{ steps.version.outputs.build }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the secrets are there
+        timeout-minutes: 1
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8_BASE64: ${{ secrets.ASC_KEY_P8_BASE64 }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          missing=0
+          for name in ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_P8_BASE64 APPLE_TEAM_ID; do
+            if [ -z "${!name}" ]; then
+              echo "::error::The secret $name is missing. Add it in the repo's Settings, Secrets and variables, Actions (docs/IOS_RELEASE.md says where each comes from)."
+              missing=1
+            fi
+          done
+          [ "$missing" = 0 ] || exit 1
+          if ! printf '%s' "$ASC_KEY_P8_BASE64" | base64 --decode 2>/dev/null | grep -q "BEGIN PRIVATE KEY"; then
+            echo "::error::ASC_KEY_P8_BASE64 doesn't decode to a .p8 key. Make it with: base64 -i AuthKey_XXXXXXXXXX.p8 | pbcopy"
+            exit 1
+          fi
+          if ! echo "$APPLE_TEAM_ID" | grep -Eq '^[A-Z0-9]{10}$'; then
+            echo "::error::APPLE_TEAM_ID should be the 10-character team id (developer.apple.com, Membership details)."
+            exit 1
+          fi
+          echo "All four secrets are there."
+
+      - name: Work out the version and build number
+        id: version
+        timeout-minutes: 1
+        env:
+          INPUT_VERSION: ${{ github.event.inputs.version }}
+        run: |
+          set -euo pipefail
+          file_version="$(grep '^agents.version=' gradle.properties | cut -d= -f2 | tr -d '[:space:]')"
+          version="${INPUT_VERSION:-$file_version}"
+          if ! echo "$version" | grep -Eq '^[0-9]+\.[0-9]+(\.[0-9]+)?$'; then
+            echo "::error::Version '$version' must look like 1.2.3."
+            exit 1
+          fi
+          # Unique for every upload, re-runs included, and always going up.
+          build="${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "build=$build" >> "$GITHUB_OUTPUT"
+          echo "Building $version ($build)"
+
+      - name: Check the key with App Store Connect
+        timeout-minutes: 2
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8_BASE64: ${{ secrets.ASC_KEY_P8_BASE64 }}
+          UPLOAD: ${{ github.event.inputs.upload }}
+        run: |
+          set -euo pipefail
+          export ASC_KEY_PATH="$RUNNER_TEMP/asc-key.p8"
+          trap 'rm -f "$ASC_KEY_PATH"' EXIT
+          printf '%s' "$ASC_KEY_P8_BASE64" | base64 --decode > "$ASC_KEY_PATH"
+          if [ "$UPLOAD" = "false" ]; then
+            python3 .github/scripts/asc.py check "$BUNDLE_ID"
+          else
+            python3 .github/scripts/asc.py check "$BUNDLE_ID" --require-app
+          fi
+
+  build:
+    needs: check
+    runs-on: macos-26
+    # Two release Kotlin builds, an archive and an upload; a hang must still not run for hours.
+    timeout-minutes: 90
+    env:
+      VERSION: ${{ needs.check.outputs.version }}
+      BUILD: ${{ needs.check.outputs.build }}
+      UPLOAD: ${{ github.event.inputs.upload }}
+      TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v4
+
+      - run: brew install xcodegen
+        timeout-minutes: 5
+
+      # Release Kotlin links are slow and hungry, so they run here, with their own time limits and
+      # more memory. Xcode's own build steps then find them done.
+      - name: Build the Kotlin framework the extensions and watch use (release)
+        timeout-minutes: 30
+        env:
+          SHARED_CONFIGURATION: Release
+        run: iosApp/build-shared.sh --no-daemon -Dorg.gradle.jvmargs=-Xmx5g
+
+      - name: Build the Compose framework for iPhone (release)
+        timeout-minutes: 30
+        run: ./gradlew --no-daemon -Dorg.gradle.jvmargs=-Xmx5g :composeApp:linkReleaseFrameworkIosArm64
+
+      - name: Generate the Xcode project
+        timeout-minutes: 4
+        env:
+          DEVELOPMENT_TEAM: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          xcodegen generate --spec iosApp/project.yml &
+          pid=$!
+          for _ in $(seq 120); do kill -0 $pid 2>/dev/null || break; sleep 1; done
+          if kill -0 $pid 2>/dev/null; then
+            echo "xcodegen is stuck; where it is:"
+            sample $pid 3 | grep -E "XcodeGen|ProjectSpec|XcodeProj" | head -40
+            kill $pid
+            exit 1
+          fi
+          wait $pid
+
+      # The key goes to a file only for this run, and a keychain of its own holds the development
+      # certificate Xcode makes for the archive. The last step deletes both, whatever happens.
+      - name: Set up the signing key and keychain
+        timeout-minutes: 2
+        env:
+          ASC_KEY_P8_BASE64: ${{ secrets.ASC_KEY_P8_BASE64 }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/asc"
+          key="$RUNNER_TEMP/asc/AuthKey_$ASC_KEY_ID.p8"
+          printf '%s' "$ASC_KEY_P8_BASE64" | base64 --decode > "$key"
+          chmod 600 "$key"
+          echo "ASC_KEY_PATH=$key" >> "$GITHUB_ENV"
+          keychain="$RUNNER_TEMP/ios-release.keychain-db"
+          password="$(openssl rand -hex 24)"
+          echo "::add-mask::$password"
+          security create-keychain -p "$password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          security default-keychain -s "$keychain"
+          echo "KEYCHAIN=$keychain" >> "$GITHUB_ENV"
+
+      - name: Archive (Release, signed by Xcode)
+        timeout-minutes: 30
+        env:
+          # The scheme's pre-action rebuilds Shared; this keeps it on the release one.
+          SHARED_CONFIGURATION: Release
+        run: |
+          set -uo pipefail
+          xcodebuild archive \
+            -project iosApp/Agents.xcodeproj \
+            -scheme Agents \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/Agents.xcarchive" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$ASC_KEY_PATH" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            DEVELOPMENT_TEAM="$TEAM_ID" \
+            CODE_SIGN_STYLE=Automatic \
+            MARKETING_VERSION="$VERSION" \
+            CURRENT_PROJECT_VERSION="$BUILD" \
+            > archive.log 2>&1
+          status=$?
+          grep -E "error:|ARCHIVE (SUCCEEDED|FAILED)" archive.log | head -60 || true
+          if [ $status -ne 0 ] || ! grep -q "ARCHIVE SUCCEEDED" archive.log; then
+            echo "::error::The archive failed. The lines above say why; the full log is in the run's xcodebuild-logs artifact. docs/IOS_RELEASE.md lists the usual causes."
+            tail -40 archive.log
+            exit 1
+          fi
+
+      # Always export a local .ipa first and check it, so a broken build never reaches TestFlight.
+      - name: Export the .ipa (App Store signing, done in the cloud)
+        timeout-minutes: 15
+        run: |
+          set -euo pipefail
+          plist="$RUNNER_TEMP/ExportOptions.plist"
+          # The upload step reuses this file with destination switched to "upload".
+          write_options() {
+            cat > "$plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>$1</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>teamID</key><string>$TEAM_ID</string>
+            <key>uploadSymbols</key><true/>
+            <key>manageAppVersionAndBuildNumber</key><false/>
+          </dict>
+          </plist>
+          EOF
+          }
+          write_options export
+          if ! xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/Agents.xcarchive" \
+            -exportPath "$RUNNER_TEMP/export" \
+            -exportOptionsPlist "$plist" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$ASC_KEY_PATH" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            > export.log 2>&1; then
+            grep -E "error|Error" export.log | head -40 || true
+            echo "::error::Exporting the .ipa failed. Usually the key isn't Admin (cloud signing needs it) or a bundle id is missing a capability; see docs/IOS_RELEASE.md."
+            tail -30 export.log
+            exit 1
+          fi
+          ls -la "$RUNNER_TEMP/export"
+
+      - name: Check the .ipa
+        timeout-minutes: 3
+        run: |
+          set -euo pipefail
+          ipa="$(ls "$RUNNER_TEMP"/export/*.ipa | head -1)"
+          rm -rf "$RUNNER_TEMP/ipa" && mkdir -p "$RUNNER_TEMP/ipa" && unzip -q "$ipa" -d "$RUNNER_TEMP/ipa"
+          app="$RUNNER_TEMP/ipa/Payload/Agents.app"
+          problems=0
+          problem() { echo "::error::$1"; problems=1; }
+          read_key() { /usr/libexec/PlistBuddy -c "Print :$2" "$1/Info.plist" 2>/dev/null || true; }
+          bundles=("$app" "$app"/PlugIns/*.appex "$app/Watch/AgentsWatch.app" "$app"/Watch/AgentsWatch.app/PlugIns/*.appex)
+          [ -d "$app/Watch/AgentsWatch.app" ] || problem "The watch app isn't inside the iPhone app."
+          [ -d "$app/Watch/AgentsWatch.app/PlugIns/AgentsWatchWidgets.appex" ] || problem "The watch complication isn't inside the watch app."
+          for name in AgentsWidgets AgentsShare AgentsNotificationService AgentsNotificationContent; do
+            [ -d "$app/PlugIns/$name.appex" ] || problem "$name.appex is missing from the app."
+          done
+          for bundle in "${bundles[@]}"; do
+            [ -d "$bundle" ] || continue
+            short="$(basename "$bundle")"
+            [ "$(read_key "$bundle" CFBundleShortVersionString)" = "$VERSION" ] || problem "$short has version '$(read_key "$bundle" CFBundleShortVersionString)', not $VERSION."
+            [ "$(read_key "$bundle" CFBundleVersion)" = "$BUILD" ] || problem "$short has build '$(read_key "$bundle" CFBundleVersion)', not $BUILD."
+            [ -f "$bundle/PrivacyInfo.xcprivacy" ] || problem "$short has no PrivacyInfo.xcprivacy."
+            echo "$short: $(read_key "$bundle" CFBundleIdentifier) $(read_key "$bundle" CFBundleShortVersionString) ($(read_key "$bundle" CFBundleVersion))"
+          done
+          [ "$(read_key "$app" ITSAppUsesNonExemptEncryption)" = "false" ] || problem "The app doesn't say ITSAppUsesNonExemptEncryption = NO."
+          entitlements="$(codesign -d --entitlements - --xml "$app" 2>/dev/null)"
+          flat="$(echo "$entitlements" | tr -d ' \t\n')"
+          echo "$flat" | grep -q '<key>aps-environment</key><string>production</string>' || problem "The app's push entitlement isn't 'production'."
+          echo "$entitlements" | grep -q "group.dev.wildware.agents" || problem "The app lost its app group entitlement."
+          codesign -dvv "$app" 2>&1 | grep -E "^Authority=" | head -1 || true
+          [ "$problems" = 0 ] || exit 1
+          echo "The .ipa looks right."
+
+      - name: Keep the .ipa
+        if: github.event.inputs.upload == 'false'
+        uses: actions/upload-artifact@v4
+        timeout-minutes: 5
+        with:
+          name: Agents-${{ needs.check.outputs.version }}-${{ needs.check.outputs.build }}-ipa
+          path: ${{ runner.temp }}/export/*.ipa
+          retention-days: 7
+          if-no-files-found: error
+
+      - name: Upload to TestFlight
+        if: github.event.inputs.upload != 'false'
+        timeout-minutes: 25
+        run: |
+          set -euo pipefail
+          plist="$RUNNER_TEMP/ExportOptions.plist"
+          sed -i '' 's#<string>export</string>#<string>upload</string>#' "$plist"
+          grep -q "<string>upload</string>" "$plist"
+          if ! xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/Agents.xcarchive" \
+            -exportPath "$RUNNER_TEMP/upload" \
+            -exportOptionsPlist "$plist" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$ASC_KEY_PATH" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            > upload.log 2>&1; then
+            grep -E "error|Error" upload.log | head -40 || true
+            echo "::error::The upload failed. If it says the build number was used, re-run the workflow (each run gets a new one). See docs/IOS_RELEASE.md."
+            tail -30 upload.log
+            exit 1
+          fi
+          grep -E "Upload succeeded|EXPORT SUCCEEDED" upload.log || true
+          echo "Uploaded $VERSION ($BUILD). TestFlight shows it once Apple has processed it, usually 5 to 30 minutes."
+
+      # Xcode made a fresh development certificate for this run; its private key dies with the
+      # keychain, so revoke it rather than let them pile up to Apple's limit.
+      - name: Revoke this run's development certificate
+        if: always()
+        timeout-minutes: 3
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          [ -n "${KEYCHAIN:-}" ] && [ -f "$KEYCHAIN" ] || { echo "No keychain; nothing to revoke."; exit 0; }
+          sha1s="$(security find-certificate -a -Z "$KEYCHAIN" | awk '/SHA-1 hash:/ {print $3}')"
+          [ -n "$sha1s" ] || { echo "Xcode left no certificate in this run's keychain."; exit 0; }
+          python3 .github/scripts/asc.py revoke-certs $sha1s
+
+      - name: Delete the key and the keychain
+        if: always()
+        timeout-minutes: 2
+        run: |
+          rm -rf "$RUNNER_TEMP/asc" "$RUNNER_TEMP/ExportOptions.plist"
+          if [ -n "${KEYCHAIN:-}" ] && [ -f "$KEYCHAIN" ]; then security delete-keychain "$KEYCHAIN"; fi
+          security default-keychain -s login.keychain-db 2>/dev/null || true
+
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        timeout-minutes: 5
+        with:
+          name: xcodebuild-logs
+          path: |
+            archive.log
+            export.log
+            upload.log
+          if-no-files-found: ignore
+
+  # On Linux: Apple takes a while to process an upload, and waiting is cheaper here than on a Mac.
+  notes:
+    needs: [check, build]
+    if: github.event.inputs.upload != 'false' && github.event.inputs.notes != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set What to Test
+        timeout-minutes: 25
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8_BASE64: ${{ secrets.ASC_KEY_P8_BASE64 }}
+          NOTES: ${{ github.event.inputs.notes }}
+          VERSION: ${{ needs.check.outputs.version }}
+          BUILD: ${{ needs.check.outputs.build }}
+        run: |
+          set -euo pipefail
+          export ASC_KEY_PATH="$RUNNER_TEMP/asc-key.p8"
+          trap 'rm -f "$ASC_KEY_PATH"' EXIT
+          printf '%s' "$ASC_KEY_P8_BASE64" | base64 --decode > "$ASC_KEY_PATH"
+          printf '%s' "$NOTES" > "$RUNNER_TEMP/notes.txt"
+          python3 .github/scripts/asc.py notes "$BUNDLE_ID" "$VERSION" "$BUILD" "$RUNNER_TEMP/notes.txt" --wait-minutes 20
