@@ -23,6 +23,8 @@ dependencies {
     implementation(libs.coroutines.core)
     implementation(libs.sqlite.jdbc)
     implementation(libs.bouncycastle)
+    // String#localeCompare (the summary sorts project names with it): ICU collation, as Node has.
+    implementation(libs.icu4j)
 
     testImplementation(kotlin("test"))
     testImplementation(libs.junit.jupiter)

@@ -34,7 +34,7 @@ fun Route.pageRoutes(app: App) {
         "/projects/{slug}",
         HttpMethod.Get to {
             val slug = call.parameters["slug"]!!
-            if (app.reads.findProject(slug) == null) call.respondRaw(404, Pages.notFound(), "text/html")
+            if (runCatching { app.reads.findProject(slug) }.getOrNull() == null) call.respondRaw(404, Pages.notFound(), "text/html")
             else call.respondRaw(200, Pages.shell(), "text/html")
         },
     )

@@ -165,8 +165,11 @@ class ReadParityTest : ParityTest() {
         a.ok("heartbeat", obj("session_id" to session))
 
         eventually(timeout = 60.seconds, what = "media to finish processing") {
-            owner.get("/api/snapshot?limit=200").obj()["updates"]["items"].arr
-                .flatMap { it["media"].arr }.takeIf { all -> all.none { it["status"].s == "pending" } }
+            // Every card's media, requests' too: a picture still pending when one server reads it
+            // and ready when the other does is a race, not a difference.
+            val updates = owner.get("/api/snapshot?limit=200").obj()["updates"]["items"].arr
+            val requests = owner.get("/api/snapshot/requests").obj()["requests"].arr
+            (updates + requests).flatMap { it["media"].arr }.takeIf { all -> all.none { it["status"].s == "pending" } }
         }
 
         return listOf(

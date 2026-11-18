@@ -229,7 +229,7 @@ etag: "<media.sha256>-<variant>"
 
 `HEAD` is served by the GET handler with the body dropped (`node_modules/@sveltejs/kit/src/runtime/server/endpoint.js:19`). Media responses are never compressed (types not in the compress allowlist, `src/http/compress.ts:64-73`).
 
-`derivativesFor` (what cards list as `variants`): `[]` for missing/failed/off-allowlist; `file` → `["original"]` if bytes landed; else `original` (if bytes) then each derivative row in `ORDER BY kind, width, seq` (`src/media/serve.ts:224-271`, `src/db/derivatives.ts:106-113`). Card shape `MediaAttachment` `src/domain/media.ts:522-573`.
+`derivativesFor` (what cards list as `variants`) reads rows only, never the disk: `[]` for missing/failed/off-allowlist; `file` → `["original"]` if bytes landed; else `original` (if bytes) then each derivative row in `ORDER BY kind, width, seq` (so `video` comes before `poster`; a `thumb` row whose width is not 640 or 1600 is skipped) (`src/media/serve.ts:224-271`, `src/db/derivatives.ts:106-113`). Card shape `MediaAttachment` `src/domain/media.ts:522-573`.
 
 ---
 

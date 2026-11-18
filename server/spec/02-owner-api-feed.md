@@ -119,7 +119,7 @@ Times are epoch ms (integers). Ids are 26-char ULIDs (`src/db/ids.ts`, `isId` = 
 **CardRef**: `{"kind": "update"|"message"|"request", "id": "<id>"}`.
 
 **Reaction** (`src/db/reactions.ts:33-49`):
-`seq, id, card, messageId, actor, emoji, createdAt`. `messageId` is the card id when kind is message, else null. `card` is chosen from the row's anchor columns in the order message → update → request.
+`seq, id, card, messageId, actor, emoji, createdAt`. `messageId` is the card id when kind is message, else null. `card` is chosen from the row's anchor columns in the order message → update → request. A row with none of those three (a legacy task reaction) reads `{"kind":"request","id":null}`; acknowledgements, card tags, fields and app views fall back the same way.
 
 **Tag** (`src/db/tags.ts:32-43`): `seq, id, projectId, name, slug, colour, agentId, createdAt`.
 
@@ -249,7 +249,7 @@ Query params (`src/http/owner/messages.ts:258-278`); empty values are ignored ex
 | `task` | only messages with `task_id` = this (legacy; never set now) |
 | `project` | slug or id; resolved, 404 `no such project: <ref>` if unknown |
 | `replyTo` | one feed post and its replies (overrides all others) |
-| `limit` | must match `/^[0-9]+$/` else 400 `limit must be a positive integer`; `0` → same 400 from the domain; capped at 200 |
+| `limit` | must match `/^[0-9]+$/` else 400 `limit must be a positive integer`; `0`, or digits so long that `Number()` gives `Infinity`, → same 400 from the domain; capped at 200 |
 
 `listThread` (`src/domain/messages.ts:966-1008`):
 - `limit` default **200** (`MAX_MESSAGE_LIMIT`), not 50 (`src/domain/messages.ts:967`).

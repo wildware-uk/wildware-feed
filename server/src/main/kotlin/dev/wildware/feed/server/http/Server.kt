@@ -35,7 +35,8 @@ fun Application.feed(app: App) {
         authRoutes(app)
         pageRoutes(app)
         deviceRoutes(app)
-        readRoutes(app)
+        // No event bus yet (phase 2): every snapshot is stamped seq 0.
+        readRoutes(app, lastSeq = { 0L })
         agentRoutes(app)
 
         // Anything else. Under /api the guard has already turned strangers away: the owner gets a

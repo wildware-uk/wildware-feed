@@ -93,7 +93,7 @@ fun Route.deviceRoutes(app: App) {
             val device = call.currentDevice(app)
             val body = call.jsonObjectBody()
             if ("projects" !in body) throw invalid("send projects: an array of slugs, or null")
-            app.devices.setAlertProjects(device, body["projects"].jsValue()) { slug -> app.reads.findProject(slug)?.id }
+            app.devices.setAlertProjects(device, body["projects"].jsValue()) { slug -> app.reads.projectIdBySlug(slug) }
             call.respondOwner(200, buildJsonObject { put("ok", JsonPrimitive(true)) })
         },
     )

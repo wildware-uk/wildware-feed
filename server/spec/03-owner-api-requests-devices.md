@@ -348,7 +348,8 @@ base64url, no padding (43 chars); stores HMAC hex under `TOKEN_SECRET`.
 - Body must contain key `projects` → else 400 `send projects: an array of slugs, or null`.
 - `null` → no limit (`alert_project_ids = NULL`). Else array of strings → else
   `projects must be an array of project slugs, or null`; >200 → `projects must name at most 200`;
-  each `trim().toLowerCase()`, deduped; unknown slugs → 400 `unknown projects: a, b` (nothing written);
+  each `trim().toLowerCase()`, deduped, looked up by slug only (`findProjectBySlug`: a project id is
+  not accepted here, unlike other project references); unknown slugs → 400 `unknown projects: a, b` (nothing written);
   stored as JSON array of project ids (`domain/devices.ts:153`).
 - `[]` is valid and means "only alerts about no project" (`deviceWantsAlert`, `domain/devices.ts:184`).
 - 200 `{"ok":true}`.
