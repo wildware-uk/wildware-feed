@@ -128,20 +128,6 @@ fun Route.readRoutes(app: App, lastSeq: () -> Long) {
             }
         },
     )
-
-    endpoint(
-        "/api/push",
-        HttpMethod.Get to {
-            val vapid = app.config.vapid
-            val devices = reads.pushDevices()
-            call.respondOwner(200, buildJsonObject {
-                put("enabled", vapid != null)
-                put("publicKey", vapid?.publicKey?.let(::JsonPrimitive) ?: JsonNull)
-                put("subscriptions", devices.size)
-                put("devices", JsonArray(devices))
-            })
-        },
-    )
 }
 
 /**

@@ -14,7 +14,6 @@ data class Config(
     val maxVideoBytes: Long,
     val maxFileBytes: Long,
     val holdSeconds: Int,
-    val vapid: Vapid?,
     val apns: Apns?,
     /** Where to listen (adapter-node's PORT/HOST; same defaults). */
     val port: Int,
@@ -22,7 +21,6 @@ data class Config(
     /** The origin requests are taken to come from, for the CSRF check and redirects. */
     val origin: String,
 ) {
-    data class Vapid(val publicKey: String, val privateKey: String, val subject: String)
     data class Apns(val keyId: String, val teamId: String, val keyPath: String, val bundleId: String)
 
     class Invalid(val issues: List<String>) :
@@ -81,26 +79,10 @@ data class Config(
                 }
             }
 
-            val subject = get("VAPID_SUBJECT")
-            if (subject != null && !Regex("^(mailto:|https://)").containsMatchIn(subject)) {
-                issues += "VAPID_SUBJECT: VAPID_SUBJECT must be a mailto: address or an https:// URL"
-            }
-
             val fieldsOk = issues.isEmpty()
-            val vapidPublic = get("VAPID_PUBLIC_KEY")
-            val vapidPrivate = get("VAPID_PRIVATE_KEY")
-            if (fieldsOk && (vapidPublic == null) != (vapidPrivate == null)) {
-                issues += "VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY must be set together, or neither"
-            }
             val apnsParts = listOf("APNS_KEY_ID", "APNS_TEAM_ID", "APNS_KEY_PATH", "APNS_BUNDLE_ID").map(get)
             if (fieldsOk && apnsParts.any { it == null } && apnsParts.any { it != null }) {
                 issues += "APNS_KEY_ID, APNS_TEAM_ID, APNS_KEY_PATH and APNS_BUNDLE_ID must be set together, or none"
-            }
-
-            val vapid = if (vapidPublic != null && vapidPrivate != null) Vapid(vapidPublic, vapidPrivate, subject ?: base) else null
-            // Decided fix 6: push that would sign with an http address cannot work, so refuse to boot.
-            if (vapid != null && !Regex("^(mailto:|https://)").containsMatchIn(vapid.subject)) {
-                issues += "VAPID_SUBJECT: unset, so push would sign with PUBLIC_BASE_URL ($base), which is not https: and which push services reject. Set VAPID_SUBJECT=mailto:<your address>"
             }
 
             if (issues.isNotEmpty()) throw Invalid(issues)
@@ -119,7 +101,6 @@ data class Config(
                 maxVideoBytes = maxVideo,
                 maxFileBytes = maxFile,
                 holdSeconds = hold,
-                vapid = vapid,
                 apns = if (apnsParts.all { it != null }) Apns(apnsParts[0]!!, apnsParts[1]!!, apnsParts[2]!!, apnsParts[3]!!) else null,
                 port = port,
                 host = host,

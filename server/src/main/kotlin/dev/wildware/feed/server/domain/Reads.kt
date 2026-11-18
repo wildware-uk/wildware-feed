@@ -475,19 +475,6 @@ class Reads(private val db: Database, private val clock: () -> Long = System::cu
 
     fun unseenNotifications(): Long = db.one("SELECT count(*) AS n FROM notifications WHERE seen_at IS NULL") { it.getLong(1) } ?: 0
 
-    /** `GET /api/push`'s device list, by `created_at`; null prefs read as the default. */
-    fun pushDevices(): List<JsonObject> = db.query(
-        "SELECT seq, id, endpoint, p256dh, auth, label, created_at, last_sent_at, failures, prefs FROM push_subscriptions ORDER BY created_at",
-    ) { rs ->
-        val prefs = Js.parseOrNull(rs.getString("prefs"))
-        buildJsonObject {
-            put("endpoint", rs.getString("endpoint"))
-            put("label", rs.getString("label"))
-            put("last_sent_at", rs.longOrNull("last_sent_at"))
-            put("prefs", if (prefs == null || prefs is JsonNull) DEFAULT_PUSH_PREFS else prefs)
-        }
-    }
-
     companion object {
         val ID = Regex("^[0-9A-HJKMNP-TV-Z]{26}$")
         const val UPDATES_MAX = 200
@@ -499,9 +486,6 @@ class Reads(private val db: Database, private val clock: () -> Long = System::cu
             "video/mp4", "video/webm", "video/quicktime",
             "audio/mpeg", "audio/mp4", "audio/ogg", "audio/wav",
         )
-        val DEFAULT_PUSH_PREFS = buildJsonObject {
-            put("types", JsonArray(listOf("request", "update", "message", "comment").map(::JsonPrimitive)))
-        }
 
         private fun marks(ids: List<*>) = ids.joinToString(", ") { "?" }
 

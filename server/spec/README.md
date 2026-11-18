@@ -14,7 +14,7 @@ inconsistencies — encoded as they are, not fixed) and **Parity test notes** (b
 
 The website is deprecated (not to be used or worked on). The Kotlin server ports what the native app
 and agents use: the owner JSON API (device sign-in and device keys), the live streams, MCP, uploads,
-media, push and the background jobs. It does **not** port the web pages, the
+media, iOS push (APNs and Live Activities) and the background jobs. It does **not** port the web pages, the
 `/login`/`/logout` forms, the session cookie, the static site and service worker, or SvelteKit's
 browser-only behaviours (the CSRF form check, 303 redirects to `/login`); where the TS server would
 redirect a stranger, the Kotlin server answers `401 {"error":"unauthenticated"}`. Share links are
@@ -112,6 +112,9 @@ Deliberate differences, by decision rather than by limit (see "Scope of the Kotl
 
 - **No website.** No pages, `/login`, `/logout`, session cookie or CSRF form check; strangers get
   `401 {"error":"unauthenticated"}` instead of a redirect. Tests tagged `tsOnly`.
+- **No Web Push.** Only the website subscribed to it. No `/api/push` routes, no `VAPID_*` settings
+  (they are ignored, so decided fix 6's boot check is gone too), nothing sent. DevicesTest's web-push
+  test is tagged `tsOnly`. iOS alerts and Live Activities (APNs) are kept.
 - **No share links.** No `/s/...` routes, no `POST|DELETE /api/updates/[id]/share`, no `share` key on
   updates. `MediaTest` 16 is tagged `tsOnly`.
 

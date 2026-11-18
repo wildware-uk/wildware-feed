@@ -57,36 +57,6 @@ fun Route.requestRoutes(app: App) {
     )
 
     endpoint(
-        "/api/push",
-        HttpMethod.Post to {
-            if (app.config.vapid == null) throw conflict("push is not configured on this deployment")
-            val body = call.jsonObjectBody()
-            val keys = body["keys"] as? JsonObject ?: JsonObject(emptyMap())
-            val endpoint = app.pushSubscriptions.subscribe(
-                endpoint = jsStringOf(body["endpoint"]),
-                p256dh = jsStringOf(keys["p256dh"]),
-                auth = jsStringOf(keys["auth"]),
-                label = body["label"].jsString,
-            )
-            call.respondOwner(200, buildJsonObject {
-                put("subscribed", true)
-                put("endpoint", endpoint)
-            })
-        },
-        HttpMethod.Patch to {
-            val body = call.jsonObjectBody()
-            val endpoint = body["endpoint"].jsString ?: ""
-            if (endpoint == "") throw invalid("endpoint is required")
-            val prefs = app.pushSubscriptions.setPrefs(endpoint, body["prefs"])
-            call.respondOwner(200, buildJsonObject { put("prefs", prefs ?: JsonNull) })
-        },
-        HttpMethod.Delete to {
-            val removed = app.pushSubscriptions.unsubscribe(call.request.queryParameters["endpoint"] ?: "")
-            call.respondOwner(200, buildJsonObject { put("removed", removed) })
-        },
-    )
-
-    endpoint(
         "/api/apps/{view}/state",
         HttpMethod.Post to {
             val state = call.lenientObjectBody()["state"]

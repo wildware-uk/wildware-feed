@@ -3,6 +3,7 @@ package dev.wildware.feed.parity
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpMethod
+import org.junit.jupiter.api.Tag
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -102,6 +103,7 @@ class DevicesTest : ParityTest() {
     }
 
     @Test
+    @Tag("tsOnly")
     fun `web push is off without VAPID keys, and its inputs are still checked`() = parity {
         val status = owner.get("/api/push").obj()
         assertEquals(false, status["enabled"].bool)

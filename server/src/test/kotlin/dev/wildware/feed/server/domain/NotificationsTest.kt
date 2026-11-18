@@ -92,41 +92,4 @@ class NotificationsTest {
         assertEquals(listOf("""{"count":1}""", """{"count":1}"""), events.map { Wire.encode(it.payload) })
     }
 
-    @Test
-    fun `push preferences are checked and deduped`() {
-        val prefs = buildJsonObject {
-            put("priorities", JsonArray(listOf(JsonPrimitive("low"))))
-            put("types", JsonArray(listOf("update", "request", "update").map(::JsonPrimitive)))
-        }
-        assertEquals("""{"types":["update","request"],"priorities":["low"]}""", Wire.encode(PushSubscriptions.checkPrefs(prefs)!!))
-        assertNull(PushSubscriptions.checkPrefs(JsonNull))
-        assertNull(PushSubscriptions.checkPrefs(buildJsonObject { }))
-        fun refused(message: String, block: () -> Unit) = assertEquals(message, assertFailsWith<DomainError> { block() }.message)
-        refused("preferences must be an object, or null for the default") { PushSubscriptions.checkPrefs(JsonArray(emptyList())) }
-        refused("levels must be a list") { PushSubscriptions.checkPrefs(buildJsonObject { put("levels", "info") }) }
-        refused("types must be any of: request, update, message, comment") {
-            PushSubscriptions.checkPrefs(buildJsonObject { put("types", JsonArray(listOf(JsonPrimitive("bogus")))) })
-        }
-    }
-
-    @Test
-    fun `push subscriptions upsert on the endpoint and keep their prefs`() {
-        val push = PushSubscriptions(db) { now }
-        fun refused(message: String, block: () -> Unit) = assertEquals(message, assertFailsWith<DomainError> { block() }.message)
-        refused("endpoint is required") { push.subscribe("  ", "k", "a", null) }
-        refused("endpoint must be an absolute URL") { push.subscribe("nowhere", "k", "a", null) }
-        refused("endpoint must be an https URL") { push.subscribe("http://x.example/p", "k", "a", null) }
-        refused("endpoint must be an absolute URL") { push.subscribe("https://", "k", "a", null) }
-        refused("keys.p256dh and keys.auth are required") { push.subscribe("https://x.example/p", " ", "a", null) }
-        assertEquals("https://x.example/p", push.subscribe(" https://x.example/p ", "k", "a", "Firefox"))
-        push.setPrefs("https://x.example/p", buildJsonObject { put("types", JsonArray(listOf(JsonPrimitive("request")))) })
-        push.subscribe("https://x.example/p", "k2", "a2", null)
-        assertEquals(
-            listOf("k2", null, """{"types":["request"]}"""),
-            db.one("SELECT p256dh, label, prefs FROM push_subscriptions") { listOf(it.getString(1), it.getString(2), it.getString(3)) },
-        )
-        refused("no such subscription: https://y") { push.setPrefs("https://y", null) }
-        assertEquals(true, push.unsubscribe(" https://x.example/p"))
-        assertEquals(false, push.unsubscribe("https://x.example/p"))
-    }
 }

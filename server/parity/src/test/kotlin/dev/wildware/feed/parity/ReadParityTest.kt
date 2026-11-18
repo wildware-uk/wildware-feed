@@ -219,7 +219,6 @@ class ReadParityTest : ParityTest() {
             "/api/notifications",
             "/api/notifications?unseen=true",
             "/api/notifications?limit=2",
-            "/api/push",
         )
     }
 }

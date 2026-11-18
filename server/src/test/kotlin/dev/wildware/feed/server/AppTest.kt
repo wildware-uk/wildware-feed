@@ -10,7 +10,7 @@ class AppTest {
     private val config = Config(
         dataDir = "unused", adminPasswordHash = "\$argon2id\$x", sessionSecret = "s".repeat(32), tokenSecret = "t".repeat(32),
         publicBaseUrl = "http://localhost:5173", maxImageBytes = 1, maxVideoBytes = 1, maxFileBytes = 1, holdSeconds = 1,
-        vapid = null, apns = null, port = 0, host = "127.0.0.1", origin = "http://localhost:5173",
+        apns = null, port = 0, host = "127.0.0.1", origin = "http://localhost:5173",
     )
 
     @Test

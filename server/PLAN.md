@@ -13,7 +13,7 @@ MCP, uploads and media, push, and the background jobs. Not ported: the web pages
 `/login` and `/logout` forms, the session cookie, the static site and service worker, and SvelteKit's
 browser-only behaviours (the CSRF form check, redirects to `/login`), and share links: with no
 `/s/[token]` page to open, a link is pointless, so their owner routes and the `share` key on updates go
-too. A stranger on an owner path
+too. Web Push goes as well: only the website subscribed to it. A stranger on an owner path
 gets `401 {"error":"unauthenticated"}` everywhere. Parity tests for the website are tagged `tsOnly`.
 
 ## Shape
@@ -46,7 +46,7 @@ Each phase ends with its parity tests passing against the Kotlin server in CI, b
    cases: the SDK's argument-error wording, every summary line.
 4. **Media, push and jobs.** Uploads with sniffing and limits; derivatives (ffmpeg, thumbnails —
    the WebP question in `spec/10-embedding.md`); serving with ranges and ETags;
-   sweepers; Web Push; APNs and Live Activity.
+   sweepers; APNs and Live Activity. Web Push is dropped with the website (nothing else used it).
 5. **Side by side.** Run the Kotlin server on a copy of the live database next to the TS one; replay
    real traffic; compare.
 6. **Cut-over.** Swap the service; keep the TS build ready to swap back (the database stays

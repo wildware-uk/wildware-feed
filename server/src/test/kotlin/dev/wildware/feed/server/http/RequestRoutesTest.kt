@@ -25,7 +25,7 @@ class RequestRoutesTest {
     private val config = Config(
         dataDir = "unused", adminPasswordHash = "\$argon2id\$x", sessionSecret = "s".repeat(32), tokenSecret = "t".repeat(32),
         publicBaseUrl = "http://localhost:5173", maxImageBytes = 1, maxVideoBytes = 1, maxFileBytes = 1, holdSeconds = 1,
-        vapid = null, apns = null, port = 0, host = "127.0.0.1", origin = "http://localhost:5173",
+        apns = null, port = 0, host = "127.0.0.1", origin = "http://localhost:5173",
     )
 
     private fun withApp(block: suspend ApplicationTestBuilder.(App, String) -> Unit) {
@@ -122,24 +122,6 @@ class RequestRoutesTest {
         assertEquals(400, send(key, "POST", "/api/notifications/seen", """{"ids":null}""").status.value)
         assertEquals("""{"changed":0,"unseen":0}""", send(key, "POST", "/api/notifications/seen", "nonsense").bodyAsText())
         assertEquals("""{"changed":0,"unseen":0}""", send(key, "POST", "/api/notifications/seen").bodyAsText())
-    }
-
-    @Test
-    fun `push routes check their input with push off`() = withApp { _, key ->
-        assertEquals(
-            """{"error":"conflict","message":"push is not configured on this deployment"}""",
-            send(key, "POST", "/api/push", "{}").bodyAsText(),
-        )
-        assertEquals(
-            """{"error":"invalid_argument","message":"types must be any of: request, update, message, comment"}""",
-            send(key, "PATCH", "/api/push", """{"endpoint":"https://x","prefs":{"types":["bogus"]}}""").bodyAsText(),
-        )
-        assertEquals(
-            """{"error":"not_found","message":"no such subscription: https://x"}""",
-            send(key, "PATCH", "/api/push", """{"endpoint":"https://x"}""").bodyAsText(),
-        )
-        assertEquals("""{"error":"invalid_argument","message":"endpoint is required"}""", send(key, "DELETE", "/api/push").bodyAsText())
-        assertEquals("""{"removed":false}""", send(key, "DELETE", "/api/push?endpoint=https://nowhere.example/x").bodyAsText())
     }
 
     @Test
