@@ -78,10 +78,12 @@ What it does on Android:
   **Start at login**, or turns on **Do not disturb**.
 - **Updates.** Wildware Feed looks for a new version when it starts and every 6 hours, from this
   repo's GitHub releases. When there is one, **UPDATE AVAILABLE** shows at the top right of the
-  window (and **Update to …** in the tray menu). Click it, read what's new, then
-  **Install and restart**.
-  Nothing installs without that click. **Check for updates…** in the tray menu or the ⌘K / Ctrl+K
-  bar checks now; **Check for updates automatically** in the tray menu turns the timed checks off.
+  window. Click it, read what's new, then **Install and restart**. Or click **Install update …**
+  in the tray menu.
+  Nothing installs without one of those clicks. **Check for updates…** in the tray menu checks now
+  without opening the window: it says **Checking…**, then tells you if you're up to date or turns
+  into **Install update …**. The ⌘K / Ctrl+K bar can check too. **Check for updates automatically**
+  in the tray menu turns the timed checks off.
   - Mac: Wildware Feed must be somewhere your account can change (Applications is fine). If not, it
     opens the download for you to drag in.
   - Linux .deb / .rpm: your system asks for your password to install it.

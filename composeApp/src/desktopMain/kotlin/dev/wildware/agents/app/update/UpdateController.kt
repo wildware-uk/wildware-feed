@@ -2,9 +2,12 @@ package dev.wildware.agents.app.update
 
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 
 /** What the update dialog is showing, apart from an install in progress. */
@@ -53,6 +56,13 @@ class UpdateController(
 
     private var installing: Job? = null
 
+    private val checking = MutableStateFlow(false)
+
+    /** The tray menu's update item, kept up to date. */
+    val trayItem: Flow<TrayUpdate> = combine(checking, available, install) { checking, release, install ->
+        TrayUpdate.of(checking, release, install, canInstall = cannotInstallReason == null)
+    }.distinctUntilChanged()
+
     fun start(): Job = checker.start(scope)
 
     /** Opens the dialog on the newer version, from the pill or the tray. */
@@ -61,21 +71,38 @@ class UpdateController(
         mutablePrompt.value = UpdatePrompt.Offer(release)
     }
 
-    /** "Check for updates", from the tray or the command bar: says what it found either way. */
+    /** "Check for updates" from the command bar: the dialog says what it found either way. */
     fun checkByHand() {
-        if (updater.busy) return
+        if (updater.busy || !checking.compareAndSet(expect = false, update = true)) return
         updater.reset()
         mutablePrompt.value = UpdatePrompt.Checking
         scope.launch {
-            mutablePrompt.value = when (val result = checker.checkNow()) {
-                is CheckResult.Newer -> UpdatePrompt.Offer(result.release)
-                CheckResult.UpToDate -> UpdatePrompt.UpToDate
-                is CheckResult.Failed -> UpdatePrompt.CheckFailed(result.message)
+            try {
+                mutablePrompt.value = when (val result = checker.checkNow()) {
+                    is CheckResult.Newer -> UpdatePrompt.Offer(result.release)
+                    CheckResult.UpToDate -> UpdatePrompt.UpToDate
+                    is CheckResult.Failed -> UpdatePrompt.CheckFailed(result.message)
+                }
+            } finally {
+                checking.value = false
             }
         }
     }
 
-    /** "Install and restart", and "Retry" after a failure. */
+    /**
+     * "Check for updates…" in the tray: checks without opening the window, for the caller to say
+     * what it found. Null when it didn't check, because a check or an install is already running.
+     */
+    suspend fun checkQuietly(): CheckResult? {
+        if (updater.busy || !checking.compareAndSet(expect = false, update = true)) return null
+        try {
+            return checker.checkNow()
+        } finally {
+            checking.value = false
+        }
+    }
+
+    /** "Install and restart" (in the dialog, or "Install update" in the tray), and "Retry" after a failure. */
     fun installNow() {
         if (updater.busy) return
         val release = (mutablePrompt.value as? UpdatePrompt.Offer)?.release ?: available.value ?: return

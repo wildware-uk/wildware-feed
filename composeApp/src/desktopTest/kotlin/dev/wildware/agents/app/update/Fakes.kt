@@ -1,5 +1,6 @@
 package dev.wildware.agents.app.update
 
+import kotlinx.coroutines.CompletableDeferred
 import java.io.File
 
 /** A release, made up. */
@@ -39,8 +40,12 @@ class FakeReleaseSource(
     var checks = 0
     var downloads = 0
 
+    /** When set, each check waits for it, so a test can see a check part way. */
+    var gate: CompletableDeferred<Unit>? = null
+
     override suspend fun latest(): Release? {
         checks++
+        gate?.await()
         failWith?.let { throw it }
         return latest
     }

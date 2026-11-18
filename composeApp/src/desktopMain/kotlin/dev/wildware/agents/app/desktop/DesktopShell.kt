@@ -4,6 +4,8 @@ import dev.wildware.agents.StreamStatus
 import dev.wildware.agents.app.engine.AppModel
 import dev.wildware.agents.app.engine.AppScreen
 import dev.wildware.agents.app.engine.DashboardSession
+import dev.wildware.agents.app.ProductName
+import dev.wildware.agents.app.update.CheckResult
 import dev.wildware.agents.app.update.UpdateController
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -62,7 +64,7 @@ class DesktopShell(
         tray.install()
         updates?.let { updates ->
             checkingUpdates = updates.start()
-            watchingUpdates = scope.launch { updates.available.collect { tray.showUpdate(it?.version) } }
+            watchingUpdates = scope.launch { updates.trayItem.collect { tray.showUpdate(it) } }
         }
         watching = scope.launch {
             model.screen.collectLatest { screen ->
@@ -125,8 +127,20 @@ class DesktopShell(
 
     override fun checkForUpdates() {
         val updates = updates ?: return
+        scope.launch {
+            val result = updates.checkQuietly() ?: return@launch
+            // An answer to the owner's own click, so it shows even with Do not disturb on.
+            notifier.show(updateNotice(result, updates.current)) {
+                if (result is CheckResult.Newer) openUpdate() else open(null)
+            }
+        }
+    }
+
+    override fun installUpdate() {
+        val updates = updates ?: return
         openWindow(null)
-        updates.checkByHand()
+        // The dialog shows the download and install; one that can't install says why instead.
+        if (updates.cannotInstallReason == null) updates.installNow() else updates.showOffer()
     }
 
     override fun openUpdate() {
@@ -143,3 +157,17 @@ class DesktopShell(
         settingsStore.save(next)
     }
 }
+
+/** What a check from the tray found, as a notification. */
+fun updateNotice(result: CheckResult, current: String): DesktopNotice = when (result) {
+    CheckResult.UpToDate -> DesktopNotice(UpdateNoticeKey, "You're up to date", "You have $ProductName $current, the newest version.", null)
+    is CheckResult.Newer -> DesktopNotice(
+        UpdateNoticeKey,
+        "$ProductName ${result.release.version} is available",
+        "Choose Install update ${result.release.version} in the tray menu to install it and restart.",
+        null,
+    )
+    is CheckResult.Failed -> DesktopNotice(UpdateNoticeKey, "Couldn't check for updates", result.message, null)
+}
+
+private const val UpdateNoticeKey = "update-check"

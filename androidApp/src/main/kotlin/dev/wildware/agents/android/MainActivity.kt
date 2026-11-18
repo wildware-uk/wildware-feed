@@ -217,8 +217,8 @@ class MainActivity : ComponentActivity() {
         private const val ActionOpenCard = "dev.wildware.agents.OPEN_CARD"
         private const val ExtraCardId = "card"
 
-        /** Opens the app at a card, for a notification's tap. */
-        fun openCard(context: Context, cardId: String): Intent =
+        /** Opens the app, at [cardId] when there is one, for a notification's tap. */
+        fun openCard(context: Context, cardId: String?): Intent =
             Intent(context, MainActivity::class.java)
                 .setAction(ActionOpenCard)
                 .putExtra(ExtraCardId, cardId)
