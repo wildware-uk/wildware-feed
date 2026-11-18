@@ -91,10 +91,10 @@ internal fun FollowSystemBack(ui: FeedUi, widthPx: Float) {
                 ui.selecting != null -> ui.selecting = null
                 else -> ui.menu = null
             }
-            BackMode.CloseDrawer -> scope.launch { ui.drawer.settle(!back, motion.normal()) }
-            BackMode.OpenDrawer -> scope.launch { ui.drawer.settle(back, motion.normal()) }
+            BackMode.CloseDrawer -> scope.launch { ui.drawer.settle(!back, motion.settle()) }
+            BackMode.OpenDrawer -> scope.launch { ui.drawer.settle(back, motion.settle()) }
             BackMode.Thread -> scope.launch {
-                ui.threadBack.settle(back, motion.normal())
+                ui.threadBack.settle(back, motion.settle())
                 if (back) {
                     ui.phoneThreadOpen = false
                     ui.threadBack.snap(false)

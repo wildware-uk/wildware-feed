@@ -297,6 +297,37 @@ class PhoneFeelTest {
         assertTrue(cardsDrawn in 1..40, "drew $cardsDrawn cards for about five screens of scrolling")
     }
 
+    /** Where the drawer's title sits after letting go of a part-way swipe, frame by frame. */
+    private fun ComposeUiTest.drawerAfterRelease(reduceMotion: Boolean): List<Float> {
+        mainClock.autoAdvance = false
+        phoneFeed(reduceMotion = reduceMotion)
+        mainClock.advanceTimeBy(300)
+        onRoot().performTouchInput {
+            down(Offset(4f, 400f))
+            repeat(8) { moveBy(Offset(20f, 0f)); mainClock.advanceTimeByFrame() }
+            up()
+        }
+        return List(40) {
+            mainClock.advanceTimeByFrame()
+            onNodeWithText("Hold to reorder").fetchSemanticsNode().boundsInRoot.left
+        }
+    }
+
+    @Test
+    fun aReleasedDrawerGlidesOpenWithoutOvershooting() = runComposeUiTest {
+        val xs = drawerAfterRelease(reduceMotion = false)
+        val end = xs.last()
+        assertTrue(xs.first() < end - 20f, "it was still moving after the finger lifted: $xs")
+        assertTrue(xs.zipWithNext().all { (a, b) -> b >= a - 0.01f }, "it only ever moves towards open: $xs")
+        assertTrue(xs.all { it <= end + 0.01f }, "it never swings past open: $xs")
+    }
+
+    @Test
+    fun withReducedMotionAReleasedDrawerOpensAtOnce() = runComposeUiTest {
+        val xs = drawerAfterRelease(reduceMotion = true)
+        assertEquals(xs.last(), xs[1], "open by the second frame: $xs")
+    }
+
     @Test
     fun typingRedrawsTheBoxOnlyWhenItStopsBeingEmpty() = runComposeUiTest {
         phone { FeedScreen(FakeFeed.state.copy(openThread = null), SafeArea(54.dp, 34.dp)) }

@@ -113,9 +113,9 @@ fun Modifier.edgeSwipe(
             if (commit) haptics.performHapticFeedback(HapticFeedbackType.GestureEnd)
             scope.launch {
                 if (reverse) {
-                    progress.settle(open = !commit, spec = motion.normal())
+                    progress.settle(open = !commit, spec = motion.settle())
                 } else {
-                    progress.settle(open = commit, spec = motion.normal())
+                    progress.settle(open = commit, spec = motion.settle())
                 }
                 if (commit) onCommit() else onCancel()
             }
@@ -166,7 +166,7 @@ fun Modifier.swipeDownToDismiss(
                 onDismiss()
                 drag.offsetPx = 0f
             } else {
-                scope.springBack(drag, motion.normal())
+                scope.springBack(drag, motion.settle())
             }
         }
     }

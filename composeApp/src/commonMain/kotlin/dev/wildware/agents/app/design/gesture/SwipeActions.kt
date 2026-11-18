@@ -193,7 +193,7 @@ fun SwipeActions(
                             action.run()
                         }
                         scope.launch {
-                            animate(state.offsetPx, 0f, animationSpec = motion.normal()) { v, _ -> state.offsetPx = v }
+                            animate(state.offsetPx, 0f, animationSpec = motion.settle()) { v, _ -> state.offsetPx = v }
                         }
                     }
                 },
