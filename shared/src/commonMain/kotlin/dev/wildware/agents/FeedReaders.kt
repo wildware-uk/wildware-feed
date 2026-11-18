@@ -417,7 +417,9 @@ internal class ThreadsReader(
 
     override fun restoreFrom(cache: FeedCache, key: String): Boolean {
         val kept = cache.read(key, MessagesSnapshot.serializer()) ?: return false
-        apply(kept)
+        // A cache written before project feeds kept to their own project may hold another's messages.
+        val scope = projectSlug?.let { projectId() }
+        apply(if (projectSlug == null || scope == null) kept else kept.copy(messages = kept.messages.filter { it.projectId == scope }))
         return true
     }
 

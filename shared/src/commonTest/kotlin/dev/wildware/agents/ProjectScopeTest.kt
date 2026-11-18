@@ -100,4 +100,28 @@ class ProjectScopeTest {
         assertEquals(1, waitingIn("other"), "Other's count in the drawer rose")
         assertEquals(0, waitingIn("mega"))
     }
+
+    @Test
+    fun `a cache holding another project's message does not show it here`() = runTest {
+        val server = FakeDashboard(testScheduler).twoProjects().apply { readDelayMillis = 5_000 }
+        val owner = FeedCache.ownerOf("https://dash.test/", "Bearer device-key")
+        val json = kotlinx.serialization.json.Json { encodeDefaults = true }
+        val threads = MessagesSnapshot(seq = 9, messages = listOf(
+            FakeDashboard.message("mine", 6, "human", "In mega", 6_000, projectId = "p1"),
+            FakeDashboard.message("theirs", 7, "human", "In other", 7_000, projectId = "p2"),
+        ))
+        val timeline = FeedSnapshot(seq = 9, projects = server.projects, updates = UpdatesPage(listOf(FakeDashboard.update("u1", 5, projectId = "p1")), null, false))
+        val text = """{"version":${FeedCache.Version},"owner":"$owner","entries":{""" +
+            "\"timeline:mega\":" + json.encodeToString(FeedSnapshot.serializer(), timeline) + "," +
+            "\"threads:mega\":" + json.encodeToString(MessagesSnapshot.serializer(), threads) + "}}"
+        val cache = FeedCache(MemoryTextStore(text), owner, background = kotlin.coroutines.EmptyCoroutineContext)
+        val dashboard = Dashboard(server.client(), backgroundScope, ReadMarks(), clock = { testScheduler.currentTime }, cache = cache)
+        dashboard.start()
+        val mega = dashboard.feed("mega")
+        runCurrent()
+
+        assertTrue(mega.state.value.cached, "showing what was kept")
+        assertTrue("mine" in mega.state.value.allCards.map { it.id })
+        assertFalse("theirs" in mega.state.value.allCards.map { it.id }, "${mega.state.value.allCards.map { it.id }}")
+    }
 }
