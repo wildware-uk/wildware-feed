@@ -90,12 +90,12 @@ targets:
           - CFBundleURLName: dev.wildware.agents
             CFBundleURLSchemes: [agents]
         # The home screen says "Feed" ("Wildware Feed" is cut short under the icon); Siri answers to
-        # the full name, and to "Agents", the app's name before 1.0.2.
+        # the full name, and to "Agents", the app's name before 1.0.2. iOS refuses to install an app
+        # with more than three alternative names.
         INAlternativeAppNames:
           - INAlternativeAppName: Wildware Feed
           - INAlternativeAppName: Agents
           - INAlternativeAppName: Agent Dashboard
-          - INAlternativeAppName: Dashboard
     entitlements:
       path: App/Agents.entitlements
       properties:
