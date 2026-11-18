@@ -325,6 +325,7 @@ fun FeedHeader(ui: FeedUi, compact: Boolean, modifier: Modifier = Modifier) {
     val type = AgentTheme.type
     val online = state.agents.filter { it.presence == Presence.Online }
     Column(modifier) {
+        if (ui.missingLink) MissingLink(Modifier.padding(bottom = 12.dp)) { ui.missingLink = false }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 MetaText(if (state.current.slug == null) "EVERYTHING" else "PROJECT", style = type.overline)
@@ -621,6 +622,31 @@ fun Modifier.closesComposer(ui: FeedUi): Modifier = pointerInput(ui) {
     awaitEachGesture {
         awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
         if (ui.composerOpen) ui.closeComposer()
+    }
+}
+
+/** Said once, above the feed, when a link pointed at something that isn't here: better than a tap that seems to do nothing. */
+@Composable
+private fun MissingLink(modifier: Modifier = Modifier, onDismiss: () -> Unit) {
+    val colors = AgentTheme.colors
+    val shape = AgentTheme.shapes.medium
+    Row(
+        modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(colors.surfaceRaised)
+            .border(1.dp, colors.border, shape)
+            .semantics { liveRegion = LiveRegionMode.Polite }
+            .padding(start = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            "Couldn't find what that link pointed at. It may have been deleted.",
+            Modifier.weight(1f).padding(vertical = 10.dp),
+            color = colors.textMuted,
+            style = AgentTheme.type.body,
+        )
+        IconAction(Icons.Close, "Dismiss", onClick = onDismiss)
     }
 }
 

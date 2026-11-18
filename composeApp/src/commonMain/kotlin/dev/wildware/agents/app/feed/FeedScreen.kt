@@ -596,14 +596,16 @@ private fun LazyListScope.feedItems(ui: FeedUi, density: Density, list: LazyList
         section.items.forEachIndexed { i, item ->
             // By kind, so a card scrolling in takes over the layout of one of its kind that scrolled out.
             item(key = item.id, contentType = item::class) {
+                // Only the card a link opened changes when the ring comes and goes.
+                val lit by remember(item.id) { derivedStateOf { ui.highlighted == item.id } }
                 Box(Modifier.feedItemMotion(this).widthIn(max = FeedMaxWidth).fillMaxWidth()) {
-                    FeedRow(
+                    CompositionLocalProvider(LocalLit provides lit) { FeedRow(
                         item,
                         selected = density == Density.Comfortable && item.id == ui.threadId,
                         density = density,
                         first = i == 0,
                         last = i == section.items.lastIndex,
-                    )
+                    ) }
                 }
             }
         }

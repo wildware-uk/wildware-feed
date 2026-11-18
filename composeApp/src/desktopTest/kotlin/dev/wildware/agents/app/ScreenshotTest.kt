@@ -553,6 +553,21 @@ class ScreenshotTest {
 
 
 
+    /** A link's card wearing its ring, and the notice when a link points at nothing. */
+    @Test
+    fun deepLinkFocus() {
+        val fix = FakeFeed.state.openThread!!.id
+        for (dark in listOf(false, true)) {
+            val mode = if (dark) "dark" else "light"
+            for (size in listOf(Size.Phone, Size.Desktop)) {
+                shoot("${size.label}-$mode-link-ring", size, dark, startAt = fix, preview = ScreenPreview(highlighted = fix))
+                shoot("${size.label}-$mode-link-missing", size, dark, preview = ScreenPreview(missingLink = true))
+            }
+        }
+    }
+
+
+
     /** Increase Contrast on, in both themes, and the largest common text size. */
     @Test
     fun accessibilityVariants() {

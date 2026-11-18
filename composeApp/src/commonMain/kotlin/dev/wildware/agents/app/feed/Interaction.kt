@@ -173,6 +173,10 @@ data class ScreenPreview(
     val drawerOpen: Boolean = false,
     /** Phone only: the open thread is shown full screen. */
     val threadOpen: Boolean = false,
+    /** A card wearing the ring a link gives it. */
+    val highlighted: String? = null,
+    /** The "couldn't find what that link pointed at" notice. */
+    val missingLink: Boolean = false,
     /** The notification list under the bell, open. */
     val bellOpen: Boolean = false,
     /** The work-state choice, open. */
@@ -279,6 +283,21 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
         if (thread == null) return
         openThread(thread, phone = isPhone)
         emit(FeedEvent.OpenThread(thread))
+    }
+
+    /** The card a link just opened, ringed for a moment. */
+    var highlighted by mutableStateOf(preview.highlighted)
+
+    /** A link pointed at something the feed couldn't find. */
+    var missingLink by mutableStateOf(preview.missingLink)
+
+    /** The card that shows [id]: the card itself, or the card a reply or a question asked in its thread is under. */
+    fun cardFor(id: String): FeedItem? {
+        state.item(id)?.let { return it }
+        return state.sections.asSequence().flatMap { it.items }.firstOrNull { item ->
+            (item is Threaded && item.replies.any { r -> r.id == id || r.questions.any { it.id == id } }) ||
+                (item is FeedItem.Post && item.questions.any { it.id == id })
+        }
     }
 
     /** A card the feed should scroll to. A new [serial] each time, so asking twice scrolls twice. */

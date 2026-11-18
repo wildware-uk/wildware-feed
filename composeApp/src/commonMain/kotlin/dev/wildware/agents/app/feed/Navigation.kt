@@ -1,5 +1,8 @@
 package dev.wildware.agents.app.feed
 
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.semantics.SemanticsPropertyKey
+import kotlinx.coroutines.delay
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import dev.wildware.agents.app.design.AgentTheme
@@ -102,26 +105,83 @@ internal fun FollowNavigation(ui: FeedUi, navigator: AppNavigator?) {
             if (ui.state.current.slug == null && ui.isPhone) ui.drawer.settle(true, motion.normal())
         }
     }
+    // A folded card a link points at opens, as the website unfolds its focus.
+    val folds = LocalCardFolds.current
     LaunchedEffect(ui, navigator) {
         navigator.requests.filterNotNull().collect { open ->
             navigator.handled(open)
-            ui.goTo(open)
+            ui.goTo(open) { id -> if (folds.isFolded(id)) folds.set(id, false) }
         }
+    }
+    // The ring says "this one" for a moment, then the card is just a card again.
+    val ringed = ui.highlighted
+    LaunchedEffect(ringed) {
+        if (ringed == null) return@LaunchedEffect
+        delay(RingMillis)
+        if (ui.highlighted == ringed) ui.highlighted = null
     }
 }
 
-/** Shows [open]'s project, then its card with the thread open, waiting a while for the card to load. */
-internal suspend fun FeedUi.goTo(open: OpenCard) {
+/**
+ * Shows [open]'s project, then its card with the thread open, as the website follows `?focus=`. The id
+ * may be a reply or a question asked in a thread: its card is shown. A card not loaded yet is looked
+ * for in older pages, [MaxOlderPages] at most. Found, it is opened if folded ([unfold]), scrolled to
+ * and ringed for a moment; not found, the feed says so rather than seeming to do nothing.
+ */
+internal suspend fun FeedUi.goTo(open: OpenCard, unfold: (String) -> Unit = {}) {
     menu = null
     viewer = null
     bellOpen = false
+    missingLink = false
     drawer.snap(false)
     if (open.project != state.current.slug) emit(FeedEvent.SelectProject(open.project))
     val id = open.cardId ?: return
-    val item = withTimeoutOrNull(CardWaitMillis) { snapshotFlow { state.item(id) }.filterNotNull().first() }
-    if (item != null) reveal(id)
+    var pages = 0
+    val item = withTimeoutOrNull(CardWaitMillis) {
+        // Each look is a change in the feed: a project arriving, a page read. Not found yet, it reads
+        // one older page; it gives up when there is nothing older, or once the last allowed page is in.
+        snapshotFlow { Look(cardFor(id), state.current.slug == open.project && state.loaded, state.hasMore, state.loading, state.sections.sumOf { it.items.size }) }
+            .first { look ->
+                when {
+                    look.card != null -> true
+                    !look.here || look.loading -> false
+                    !look.more || pages >= MaxOlderPages -> true
+                    else -> {
+                        pages++
+                        emit(FeedEvent.LoadOlder)
+                        false
+                    }
+                }
+            }
+            .card
+    }
+    if (item == null) {
+        missingLink = true
+        return
+    }
+    unfold(item.id)
+    reveal(item.id)
+    highlighted = item.id
     if (item is Threaded) {
-        openThread(id, phone = isPhone)
-        emit(FeedEvent.OpenThread(id))
+        openThread(item.id, phone = isPhone)
+        emit(FeedEvent.OpenThread(item.id))
     }
 }
+
+/**
+ * One look for a linked card: found yet, the right feed showing, whether there is more to read, and
+ * how many cards are in (so a page that arrives without the card still counts as a new look).
+ */
+private data class Look(val card: FeedItem?, val here: Boolean, val more: Boolean, val loading: Boolean, val cards: Int)
+
+/** How many older pages a link reads looking for its card, as the website does. */
+internal const val MaxOlderPages = 5
+
+/** How long a linked card wears its ring. */
+internal const val RingMillis = 4_000L
+
+/** Set on a card a link just opened, while it wears its ring. Read by tests and accessibility checks. */
+val Highlighted = SemanticsPropertyKey<Boolean>("Highlighted")
+
+/** Whether the card being drawn is the one a link just opened. */
+internal val LocalLit = staticCompositionLocalOf { false }

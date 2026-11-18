@@ -77,12 +77,14 @@ fun CardFrame(
     val colors = AgentTheme.colors
     val shape = AgentTheme.shapes.large
     val pad = if (density == Density.Comfortable) 18.dp else 14.dp
+    val lit = LocalLit.current
     Box(
         modifier
             .fillMaxWidth()
+            .semantics { if (lit) this[Highlighted] = true }
             .clip(shape)
             .background(if (selected) colors.surfaceRaised else colors.surface)
-            .border(1.dp, if (selected) colors.borderStrong else colors.border, shape)
+            .border(if (lit) 2.dp else 1.dp, if (lit) colors.accent else if (selected) colors.borderStrong else colors.border, shape)
             .padding(horizontal = pad, vertical = pad - 2.dp),
     ) { content() }
 }
@@ -376,10 +378,12 @@ fun QuestionCard(
     val shape = AgentTheme.shapes.large
     val muted = colors.textMuted
     val pad = if (density == Density.Comfortable) 22.dp else 18.dp
+    val lit = LocalLit.current
     val frame = Modifier
+        .semantics { if (lit) this[Highlighted] = true }
         .clip(shape)
         .background(colors.waitingSoft)
-        .border(1.dp, colors.waiting.copy(alpha = 0.4f), shape)
+        .border(if (lit) 2.dp else 1.dp, if (lit) colors.waiting else colors.waiting.copy(alpha = 0.4f), shape)
     val ui = LocalFeedUi.current
     val primary = item.choices.firstOrNull { it.primary } ?: item.choices.firstOrNull()
     val decline = item.choices.lastOrNull { !it.primary }
