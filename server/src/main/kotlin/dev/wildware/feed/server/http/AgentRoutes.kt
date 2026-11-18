@@ -4,7 +4,9 @@ import dev.wildware.feed.server.App
 import dev.wildware.feed.server.domain.Agents
 import io.ktor.http.HttpMethod
 import io.ktor.server.application.ApplicationCall
+import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
+import io.ktor.utils.io.writeStringUtf8
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
@@ -23,8 +25,26 @@ fun Route.agentRoutes(app: App) {
     endpoint(
         "/api/agent/stream",
         HttpMethod.Get to {
-            val agent = call.agentFor(app, app.agentStreamLimiter, mcpStyle = false) ?: return@to
-            call.respondJson(501, Wire.error("not_implemented", "the agent stream arrives in phase 2 (agent ${agent.id})"))
+            call.agentFor(app, app.agentStreamLimiter, mcpStyle = false) ?: return@to
+            // Phase 1 opens the stream and keeps it alive; its frames arrive with the bus in phase 2.
+            call.respond(object : io.ktor.http.content.OutgoingContent.WriteChannelContent() {
+                override val contentType: io.ktor.http.ContentType? get() = null
+                override val headers: io.ktor.http.Headers get() = io.ktor.http.Headers.build {
+                    append("Content-Type", "text/event-stream; charset=utf-8")
+                    append("Cache-Control", "no-cache, no-store, no-transform")
+                    append("Connection", "keep-alive")
+                    append("X-Accel-Buffering", "no")
+                }
+                override suspend fun writeTo(channel: io.ktor.utils.io.ByteWriteChannel) {
+                    channel.writeStringUtf8("retry: 2000\n\n: connected\n\n")
+                    channel.flush()
+                    while (true) {
+                        kotlinx.coroutines.delay(15_000)
+                        channel.writeStringUtf8(": heartbeat ${Wire.isoOf(app.clock())}\n\n")
+                        channel.flush()
+                    }
+                }
+            })
         },
     )
 }

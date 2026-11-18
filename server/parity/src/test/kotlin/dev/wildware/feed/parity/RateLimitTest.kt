@@ -44,6 +44,7 @@ class RateLimitTest : ParityTest() {
 
     @Test
     @Order(2)
+    @org.junit.jupiter.api.Tag("media")
     fun `an upload token gets six attempts a minute`() = parity {
         val reserved = Media.reserve(alpha, "r.png", "image/png", 10)
         repeat(6) { Media.put(reserved["upload_url"].s, null, null) }

@@ -22,7 +22,11 @@ dependencies {
 }
 
 tasks.test {
-    useJUnitPlatform()
+    // PARITY_EXCLUDE_TAGS=media,mcp-tools skips tests for parts a server has not built yet
+    // (run-against-kotlin.sh sets it for the phases the Kotlin server has not reached).
+    useJUnitPlatform {
+        System.getenv("PARITY_EXCLUDE_TAGS")?.split(',')?.map { it.trim() }?.filter { it.isNotEmpty() }?.let { excludeTags(*it.toTypedArray()) }
+    }
     // Every PARITY_* variable reaches the tests; nothing else about the box should matter.
     System.getenv().filterKeys { it.startsWith("PARITY_") }.forEach { (k, v) -> environment(k, v) }
     // The suite shares one server, and some checks (rate limits, the event stream) assume

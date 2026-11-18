@@ -18,7 +18,9 @@ ref="${TS_SERVER_REF:-8d6c4f613503a545ed73db2cb898ba50cd57fc03}"
 remote="${TS_SERVER_REPO:-https://github.com/wildware-uk/agent-dashboard.git}"
 password="parity-$(openssl rand -hex 12)"
 # Phase 1: boot, auth and reads.
-kotlin_tests="${KOTLIN_TESTS:-SmokeTest AuthTest DatabaseTest McpToolsListTest ReadParityTest}"
+kotlin_tests="${KOTLIN_TESTS:-SmokeTest AuthTest DatabaseTest McpToolsListTest ReadParityTest RateLimitTest}"
+# Tests inside those classes that need a later phase.
+exclude_tags="${KOTLIN_EXCLUDE_TAGS:-media}"
 
 work="$(mktemp -d "${TMPDIR:-/tmp}/parity-kt.XXXXXX")"
 server_pid=""
@@ -119,7 +121,7 @@ filters=()
 for t in $kotlin_tests; do filters+=(--tests "*.$t"); done
 echo "== running against the Kotlin server: $kotlin_tests"
 status=0
-env "${common_env[@]}" PARITY_CLI="$work/kt-cli.sh" PARITY_READS=compare \
+env "${common_env[@]}" PARITY_CLI="$work/kt-cli.sh" PARITY_READS=compare PARITY_EXCLUDE_TAGS="$exclude_tags" \
     bash -c "cd '$repo_root' && timeout 1500 ./gradlew --no-daemon -Dorg.gradle.jvmargs=-Xmx3g :server-parity:test $(printf "%q " "${filters[@]}") $(printf "%q " "$@")" \
     || status=$?
 if [ "$status" -ne 0 ]; then echo "== Kotlin server log (last 80 lines)"; tail -80 "$work/kt.log"; fi

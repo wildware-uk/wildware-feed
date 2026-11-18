@@ -20,6 +20,19 @@ variables:
 - `PARITY_PORT=18120` — another port.
 - Anything after the options goes to Gradle, e.g. `--tests '*StreamTest*'`.
 
+## Run it against the Kotlin server
+
+```sh
+server/parity/run-against-kotlin.sh
+```
+
+It builds both servers, starts the TypeScript one on a fresh data folder, builds a rich database
+through its API and records every read (`ReadParityTest`, record mode), stops it, then starts the
+Kotlin server on the same folder with the same secrets and runs the test classes for the phases the
+Kotlin server has reached, plus `ReadParityTest` in compare mode. `KOTLIN_TESTS` and
+`KOTLIN_EXCLUDE_TAGS` change what runs (see the script). It takes the same `TS_SERVER_DIR`,
+`SKIP_BUILD` and `PARITY_PORT` as the TypeScript runner.
+
 ## Run it against any server
 
 ```sh
@@ -38,6 +51,8 @@ PARITY_CLI='/path/to/run-the-server-cli.sh' \
 - `PARITY_DATA_DIR` is the server's data directory. Only `DatabaseTest` uses it, read-only; without it
   those checks are skipped.
 - `PARITY_REQUIRE_FIXES=1` makes the decided-fix tests required (see below).
+- `PARITY_EXCLUDE_TAGS=media,...` skips tests tagged for parts a server has not built yet.
+- `PARITY_READS=record|compare` and `PARITY_READS_FILE` drive `ReadParityTest`; without them it is skipped.
 
 Without these variables every test is skipped, so a plain `./gradlew build` stays green.
 
@@ -71,4 +86,5 @@ Without these variables every test is skipped, so a plain `./gradlew build` stay
 | `DevicesTest` | Devices, APNs and Live Activity tokens, alert projects, Web Push settings, notifications |
 | `WebTest` | Page redirects, 404s, share page previews, asset caching, compression |
 | `DatabaseTest` | The migration table, and indexes only the schema can show (needs `PARITY_DATA_DIR`) |
+| `ReadParityTest` | Every read endpoint, recorded from one server and replayed against another on the same database |
 | `RateLimitTest` | MCP, upload and login limiters (runs last) |
