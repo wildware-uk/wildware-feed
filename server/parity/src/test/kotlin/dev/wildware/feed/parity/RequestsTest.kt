@@ -203,6 +203,7 @@ class RequestsTest : ParityTest() {
     }
 
     @Test
+    @org.junit.jupiter.api.Tag("media")
     fun `option pictures ride on the request and fall away with their option`() = parity {
         val image = Media.uploadPng(alpha)
         val video = Media.upload(alpha, "clip.mp4", "video/mp4", Media.tinyMp4())
