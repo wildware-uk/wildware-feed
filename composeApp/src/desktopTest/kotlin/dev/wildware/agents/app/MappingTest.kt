@@ -118,7 +118,7 @@ class MappingTest {
             .sections.single().items.single() as FeedItem.Question
         assertEquals(listOf("https://dash.test/media/md1/original", "https://dash.test/media/md2/original"), q.choices.map { it.image?.url })
         assertEquals(listOf("Dusk", "Dawn"), q.choices.map { it.image?.altText })
-        assertEquals("https://dash.test/media/md3/original", q.attachment?.url)
+        assertEquals(listOf("https://dash.test/media/md3/original"), q.attachments.map { it.url })
         assertTrue(q.hasPictures)
     }
 

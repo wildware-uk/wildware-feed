@@ -19,6 +19,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.focusable
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.snapshotFlow
@@ -52,6 +55,7 @@ import androidx.compose.ui.input.key.isCtrlPressed
 import androidx.compose.ui.input.key.isMetaPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.CustomAccessibilityAction
@@ -99,6 +103,7 @@ fun FeedScreen(
         CompositionLocalProvider(LocalFeedUi provides ui, LocalIsPhone provides phone, LocalPreview provides preview) {
             if (phone) PhoneFeed(ui, safeArea, startAt, widthPx) else DesktopFeed(ui, showThread = maxWidth >= 1100.dp, startAt)
             ui.viewer?.let { ImageViewer(it, if (phone) safeArea else SafeArea()) }
+            if (ui.commandOpen) CommandBar(ui, if (phone) safeArea else SafeArea())
         }
     }
 }
@@ -121,15 +126,21 @@ private fun DesktopFeed(ui: FeedUi, showThread: Boolean, startAt: String?) {
     val list = rememberLazyListState(startIndex(state, startAt, itemsBefore = 1))
     val toTop: () -> Unit = { scope.launch { if (motion.reduced) list.scrollToItem(0) else list.animateScrollToItem(0) } }
     val refresh: () -> Unit = { ui.emit(FeedEvent.Refresh) }
+    // The window listens for shortcuts from the start, before anything is clicked.
+    val rootFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { runCatching { rootFocus.requestFocus() } }
     Row(
-        Modifier.fillMaxSize().onPreviewKeyEvent { e ->
-            // F5 or Cmd/Ctrl+R refreshes; Home jumps to the newest item.
+        Modifier.fillMaxSize().focusRequester(rootFocus).focusable().onPreviewKeyEvent { e ->
+            // Cmd/Ctrl+K opens search and commands; F5 or Cmd/Ctrl+R refreshes; Home jumps to the newest item.
             if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
             when {
+                e.key == Key.K && (e.isMetaPressed || e.isCtrlPressed) -> { ui.commandOpen = true; true }
                 e.key == Key.F5 || (e.key == Key.R && (e.isMetaPressed || e.isCtrlPressed)) -> { refresh(); true }
-                e.key == Key.MoveHome -> { toTop(); true }
                 else -> false
             }
+        }.onKeyEvent { e ->
+            // Home only when nothing else took it, so it still moves the cursor in a text box.
+            if (e.type == KeyEventType.KeyDown && e.key == Key.MoveHome) { toTop(); true } else false
         },
     ) {
         Sidebar(ui, Modifier.width(272.dp))
@@ -159,8 +170,9 @@ private fun DesktopFeed(ui: FeedUi, showThread: Boolean, startAt: String?) {
                 contentAlignment = Alignment.Center,
             ) {
                 Composer(
+                    focus = ui.composerFocus,
                     placeholder = "Write to everyone in ${state.current.name}…",
-                    onSend = { ui.emit(FeedEvent.Post(it)) },
+                    onSend = { text, files -> ui.emit(FeedEvent.Post(text, files)) },
                     modifier = Modifier.widthIn(max = FeedMaxWidth),
                 )
             }
@@ -206,7 +218,8 @@ private fun PhoneFeed(ui: FeedUi, safeArea: SafeArea, startAt: String?, widthPx:
             .edgeSwipe(
                 ui.drawer,
                 width = { drawerWidthPx },
-                enabled = ui.phoneThread == null && ui.drawer.value == 0f,
+                // Only on the feed itself: not under a thread, a menu, the drawer or the picture viewer.
+                enabled = ui.phoneThread == null && ui.drawer.value == 0f && ui.viewer == null && ui.menu == null,
                 onCommit = {},
             ),
     ) {
@@ -230,7 +243,7 @@ private fun PhoneFeed(ui: FeedUi, safeArea: SafeArea, startAt: String?, widthPx:
                 state = list,
                 contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = safeArea.top + 8.dp, bottom = safeArea.bottom + 96.dp),
             ) {
-                item(key = "bar") { PhoneTopBar(state, onProjects = openDrawer, onTapBar = toTop) }
+                item(key = "bar") { PhoneTopBar(state, onProjects = openDrawer, onTapBar = toTop, onSearch = { ui.commandOpen = true }) }
                 item(key = "header") { FeedHeader(ui, compact = true, Modifier.padding(top = 12.dp, bottom = 16.dp)) }
                 feedItems(ui, Density.Compact)
             }
@@ -254,8 +267,9 @@ private fun PhoneFeed(ui: FeedUi, safeArea: SafeArea, startAt: String?, widthPx:
                 .padding(start = 12.dp, end = 12.dp, top = 18.dp, bottom = safeArea.bottom + 6.dp),
         ) {
             Composer(
+                focus = ui.composerFocus,
                 placeholder = "Message ${state.current.name}…",
-                onSend = { ui.emit(FeedEvent.Post(it)) },
+                onSend = { text, files -> ui.emit(FeedEvent.Post(text, files)) },
                 compact = true,
             )
         }
@@ -266,7 +280,7 @@ private fun PhoneFeed(ui: FeedUi, safeArea: SafeArea, startAt: String?, widthPx:
 }
 
 @Composable
-private fun PhoneTopBar(state: FeedState, onProjects: () -> Unit, onTapBar: () -> Unit) {
+private fun PhoneTopBar(state: FeedState, onProjects: () -> Unit, onTapBar: () -> Unit, onSearch: () -> Unit) {
     val colors = AgentTheme.colors
     val shape = AgentTheme.shapes.pill
     Row(
@@ -283,7 +297,7 @@ private fun PhoneTopBar(state: FeedState, onProjects: () -> Unit, onTapBar: () -
             UnreadBadge(state.totalUnread - state.current.unread, emphasised = true)
         }
         Spacer(Modifier.weight(1f))
-        IconAction(Icons.Search, "Search")
+        IconAction(Icons.Search, "Search", onClick = onSearch)
         IconAction(Icons.Bell, "Notifications")
         Box(Modifier.pressable("Your account", CircleShape) {}, contentAlignment = Alignment.Center) {
             Avatar(state.owner, 30.dp)

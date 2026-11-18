@@ -20,6 +20,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -288,28 +294,48 @@ private fun SheetRow(label: String, icon: ImageVector, destructive: Boolean, onC
 }
 
 /**
- * A full-screen image. Pinch or double-tap to zoom, drag to pan once zoomed, swipe down to
- * close. The toolbar does the same with buttons, and Escape, + and - work from a keyboard.
+ * Pictures full screen, one at a time. Swipe sideways (or the arrows, or the arrow keys) to go
+ * through them; pinch or double-tap to zoom, drag to pan once zoomed; swipe down to close.
+ * Escape, + and - work from a keyboard, and a screen reader gets next and previous as actions.
  */
 @Composable
-fun ImageViewer(attachment: Attachment, safeArea: SafeArea) {
+fun ImageViewer(gallery: Gallery, safeArea: SafeArea) {
     val ui = LocalFeedUi.current ?: return
-    val zoom = remember { ZoomState() }
+    val images = gallery.images
+    if (images.isEmpty()) return
+    val pager = rememberPagerState(initialPage = gallery.index.coerceIn(0, images.lastIndex)) { images.size }
+    val zooms = remember(images) { images.map { ZoomState() } }
+    val zoom = zooms[pager.currentPage]
     val drag = remember { DismissDrag() }
     val focus = remember { FocusRequester() }
+    val scope = rememberCoroutineScope()
+    val motion = AgentTheme.motion
     LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
     val close = { ui.viewer = null }
+    fun go(page: Int) {
+        if (page !in images.indices) return
+        scope.launch { if (motion.reduced) pager.scrollToPage(page) else pager.animateScrollToPage(page) }
+    }
+    val current = images[pager.currentPage]
     val fade = (1f - drag.offsetPx / 900f).coerceIn(0.3f, 1f)
     Box(
         Modifier
             .fillMaxSize()
             .background(Color.Black.copy(alpha = fade))
-            .semantics { paneTitle = "Image: ${attachment.altText}" }
+            .semantics {
+                paneTitle = "Pictures"
+                customActions = listOfNotNull(
+                    CustomAccessibilityAction("Next picture") { go(pager.currentPage + 1); true }.takeIf { pager.currentPage < images.lastIndex },
+                    CustomAccessibilityAction("Previous picture") { go(pager.currentPage - 1); true }.takeIf { pager.currentPage > 0 },
+                )
+            }
             .focusRequester(focus)
             .onKeyEvent { e ->
                 if (e.type != KeyEventType.KeyDown) return@onKeyEvent false
                 when (e.key) {
                     Key.Escape -> { close(); true }
+                    Key.DirectionRight -> { go(pager.currentPage + 1); true }
+                    Key.DirectionLeft -> { go(pager.currentPage - 1); true }
                     Key.Equals, Key.Plus, Key.NumPadAdd -> { zoom.zoomTo(zoom.scale * 1.5f); true }
                     Key.Minus, Key.NumPadSubtract -> { zoom.zoomTo(zoom.scale / 1.5f); true }
                     else -> false
@@ -318,50 +344,69 @@ fun ImageViewer(attachment: Attachment, safeArea: SafeArea) {
             .focusable()
             .swipeDownToDismiss(drag, enabled = { !zoom.isZoomed }, onDismiss = close),
     ) {
-        BoxWithConstraints(
-            Modifier
-                .fillMaxSize()
-                .offset { IntOffset(0, drag.offsetPx.roundToInt()) },
-            contentAlignment = Alignment.Center,
-        ) {
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(attachment.aspect)
-                    .zoomable(zoom)
-                    .graphicsLayer {
-                        scaleX = zoom.scale
-                        scaleY = zoom.scale
-                        translationX = zoom.pan.x
-                        translationY = zoom.pan.y
-                    }
-                    .semantics { contentDescription = attachment.altText },
-            ) { AttachmentImage(attachment, Modifier.fillMaxSize(), ContentScale.Fit) }
+        HorizontalPager(
+            state = pager,
+            modifier = Modifier.fillMaxSize().offset { IntOffset(0, drag.offsetPx.roundToInt()) },
+            // A zoomed picture keeps its drags for panning; swiping on to the next waits until it is back to size.
+            userScrollEnabled = !zoom.isZoomed,
+        ) { page ->
+            val image = images[page]
+            val pageZoom = zooms[page]
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(image.aspect)
+                        .zoomable(pageZoom)
+                        .graphicsLayer {
+                            scaleX = pageZoom.scale
+                            scaleY = pageZoom.scale
+                            translationX = pageZoom.pan.x
+                            translationY = pageZoom.pan.y
+                        }
+                        .semantics { contentDescription = image.altText },
+                ) { AttachmentImage(image, Modifier.fillMaxSize(), ContentScale.Fit) }
+            }
         }
         Row(
             Modifier.fillMaxWidth().padding(top = safeArea.top + 4.dp, start = 8.dp, end = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            IconAction(Icons.Close, "Close image", tint = Color.White, onClick = close)
-            Text(
-                attachment.title,
-                Modifier.weight(1f).padding(horizontal = 8.dp),
-                color = Color.White,
-                style = AgentTheme.type.label,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            IconAction(Icons.Close, "Close pictures", tint = Color.White, onClick = close)
+            Column(Modifier.weight(1f).padding(horizontal = 8.dp)) {
+                Text(current.title, color = Color.White, style = AgentTheme.type.label, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (images.size > 1) {
+                    Text(
+                        "${pager.currentPage + 1} of ${images.size}",
+                        Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+                        color = Color.White.copy(alpha = 0.6f),
+                        style = AgentTheme.type.meta,
+                    )
+                }
+            }
             IconAction(Icons.ZoomOut, "Zoom out", tint = Color.White) { zoom.zoomTo(zoom.scale / 1.5f) }
             IconAction(Icons.ZoomIn, "Zoom in", tint = Color.White) { zoom.zoomTo(zoom.scale * 1.5f) }
+        }
+        if (images.size > 1) {
+            if (pager.currentPage > 0) {
+                IconAction(Icons.Back, "Previous picture", Modifier.align(Alignment.CenterStart).padding(start = 8.dp), tint = Color.White) {
+                    go(pager.currentPage - 1)
+                }
+            }
+            if (pager.currentPage < images.lastIndex) {
+                IconAction(Icons.ChevronRight, "Next picture", Modifier.align(Alignment.CenterEnd).padding(end = 8.dp), tint = Color.White) {
+                    go(pager.currentPage + 1)
+                }
+            }
         }
         Column(
             Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = safeArea.bottom + 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Text(attachment.altText, color = Color.White.copy(alpha = 0.85f), style = AgentTheme.type.body)
+            Text(current.altText, color = Color.White.copy(alpha = 0.85f), style = AgentTheme.type.body)
             Spacer(Modifier.height(6.dp))
             Text(
-                "Pinch to zoom · swipe down to close",
+                if (images.size > 1) "Swipe for the next · pinch to zoom · swipe down to close" else "Pinch to zoom · swipe down to close",
                 Modifier.clearAndSetSemantics { },
                 color = Color.White.copy(alpha = 0.5f),
                 style = AgentTheme.type.meta,
@@ -423,7 +468,7 @@ fun ProjectsDrawer(ui: FeedUi, progress: EdgeProgress, widthPx: Float, safeArea:
             }
             Spacer(Modifier.height(6.dp))
             ReorderableColumn(
-                items = ui.projects,
+                items = ui.projects.filter { !it.archived },
                 keyOf = { it.id },
                 label = { it.name },
                 onMove = { from, to -> ui.emit(FeedEvent.MoveProject(from, to)) },
@@ -433,6 +478,7 @@ fun ProjectsDrawer(ui: FeedUi, progress: EdgeProgress, widthPx: Float, safeArea:
                     close()
                 }
             }
+            ArchivedProjects(ui)
             Spacer(Modifier.height(20.dp))
             SectionLabel("Agents", Modifier.padding(horizontal = 10.dp))
             Spacer(Modifier.height(6.dp))
@@ -631,7 +677,7 @@ fun ThreadComposer(ui: FeedUi?, threadId: String, modifier: Modifier = Modifier)
             placeholder = replying?.let { "Answer ${it.author.name}…" } ?: "Reply to the thread…",
             label = "Reply",
             compact = true,
-            onSend = { text -> ui?.emit(FeedEvent.SendReply(threadId, text, replying?.id)) },
+            onSend = { text, files -> ui?.emit(FeedEvent.SendReply(threadId, text, replying?.id, files)) },
         )
     }
 }

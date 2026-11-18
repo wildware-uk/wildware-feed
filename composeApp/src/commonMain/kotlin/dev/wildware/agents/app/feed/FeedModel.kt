@@ -36,6 +36,8 @@ data class Project(
     val hue: Int,
     /** The project's address on the dashboard; null for "All projects". */
     val slug: String? = null,
+    /** Finished with: listed apart, under "Archived". */
+    val archived: Boolean = false,
 )
 
 sealed interface Author {
@@ -65,6 +67,10 @@ data class Attachment(
     /** Where the real image is. Loaded with the device key. */
     val url: String? = null,
 )
+
+/** Pictures to look through full size, starting at [index]. */
+@Immutable
+data class Gallery(val images: List<Attachment>, val index: Int = 0)
 
 /** Which stand-in picture to paint until real images load. */
 enum class Scene { Dusk, Dawn, Night }
@@ -130,7 +136,7 @@ sealed interface FeedItem {
         override val title: String,
         val body: String,
         val status: WorkStatus? = null,
-        val attachment: Attachment? = null,
+        val attachments: List<Attachment> = emptyList(),
         val reactions: List<Reaction> = emptyList(),
         val acks: Acks = Acks(),
         override val replies: List<Reply> = emptyList(),
@@ -154,8 +160,8 @@ sealed interface FeedItem {
         val kind: QuestionKind = QuestionKind.Buttons,
         /** An answer is in the outbox, waiting for signal. */
         val sending: Boolean = false,
-        /** A picture on the question itself, not on an option. */
-        val attachment: Attachment? = null,
+        /** Pictures on the question itself, not on its options. */
+        val attachments: List<Attachment> = emptyList(),
     ) : FeedItem {
         val hasPictures: Boolean get() = choices.any { it.image != null }
     }
@@ -198,6 +204,8 @@ data class FeedState(
     val loading: Boolean = false,
     /** There are older cards to read further down. */
     val hasMore: Boolean = false,
+    /** What search looks through: every project's loaded cards, not only the one on screen. Empty means "what's on screen". */
+    val searchIndex: List<SearchEntry> = emptyList(),
 ) {
     fun item(id: String): FeedItem? = sections.firstNotNullOfOrNull { s -> s.items.firstOrNull { it.id == id } }
 }

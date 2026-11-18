@@ -12,7 +12,9 @@ import dev.wildware.agents.app.signin.SignInScreen
 import androidx.compose.runtime.Composable
 import dev.wildware.agents.app.feed.FakeFeed
 import dev.wildware.agents.app.feed.FeedItem
+import dev.wildware.agents.app.feed.Gallery
 import dev.wildware.agents.app.feed.MenuTarget
+import dev.wildware.agents.app.feed.PendingFile
 import dev.wildware.agents.app.feed.SafeArea
 import dev.wildware.agents.app.feed.ScreenPreview
 import org.jetbrains.skia.EncodedImageFormat
@@ -53,12 +55,12 @@ class ScreenshotTest {
     fun gestures() {
         val state = FakeFeed.state
         val fix = state.openThread as FeedItem.Update
-        val image = state.sections.flatMap { it.items }.filterIsInstance<FeedItem.Update>().firstNotNullOf { it.attachment }
+        val images = state.sections.flatMap { it.items }.filterIsInstance<FeedItem.Update>().first { it.attachments.isNotEmpty() }.attachments
         shoot("phone-light-gesture-swipe", Size.Phone, dark = false, preview = ScreenPreview(questionSwipe = 1.15f))
         shoot("phone-dark-gesture-menu", Size.Phone, dark = true, preview = ScreenPreview(menu = MenuTarget(fix.id, fix.agent.name, fix.title, own = false)))
         shoot("phone-light-gesture-drawer", Size.Phone, dark = false, preview = ScreenPreview(drawerOpen = true))
         shoot("phone-dark-gesture-thread", Size.Phone, dark = true, preview = ScreenPreview(threadOpen = true, replySwipe = "r3"))
-        shoot("phone-dark-gesture-viewer", Size.Phone, dark = true, preview = ScreenPreview(viewer = image))
+        shoot("phone-dark-gesture-viewer", Size.Phone, dark = true, preview = ScreenPreview(viewer = Gallery(images, index = 1)))
     }
 
     /** The sign-in screen, before anything is typed. Nothing reaches a network. */
@@ -73,6 +75,32 @@ class ScreenshotTest {
                 }
             }
         }
+    }
+
+    /** Search and commands open, with a search typed; a card with three pictures; files waiting in the composer. */
+    @Test
+    fun polish() {
+        shoot("desktop-dark-command-bar", Size.Desktop, dark = true, preview = ScreenPreview(command = "watch"))
+        shoot("phone-dark-command-bar", Size.Phone, dark = true, preview = ScreenPreview(command = ""))
+        shoot("desktop-light-picture-grid", Size.Desktop, dark = false, startAt = "u2")
+        shoot("phone-dark-picture-grid", Size.Phone, dark = true, startAt = "u2")
+        val files = listOf(
+            PendingFile("build-times.png", "image/png", samplePng()),
+            PendingFile("gradle-profile.html", "text/html", ByteArray(10)),
+        )
+        shoot("desktop-dark-attachments", Size.Desktop, dark = true, startAt = "o1", preview = ScreenPreview(composerFiles = files))
+    }
+
+    /** A small chart-like picture, so attachment thumbnails have something real to show. */
+    private fun samplePng(): ByteArray {
+        val image = java.awt.image.BufferedImage(240, 160, java.awt.image.BufferedImage.TYPE_INT_RGB)
+        val g = image.createGraphics()
+        g.paint = java.awt.GradientPaint(0f, 0f, java.awt.Color(0x1B1F3A), 240f, 160f, java.awt.Color(0x3A6B5C))
+        g.fillRect(0, 0, 240, 160)
+        g.color = java.awt.Color(0xC6F169)
+        listOf(40, 70, 55, 100, 130).forEachIndexed { i, h -> g.fillRect(20 + i * 44, 150 - h, 28, h) }
+        g.dispose()
+        return java.io.ByteArrayOutputStream().also { javax.imageio.ImageIO.write(image, "png", it) }.toByteArray()
     }
 
     /** A question answered by picture, with two pictures picked. */
@@ -113,8 +141,13 @@ class ScreenshotTest {
             CompositionLocalProvider(LocalDensity provides Density(size.scale, fontScale)) { content() }
         }.use { scene ->
             // A few frames let fonts, layout and anything launched on first composition settle.
+            // Pictures decode off the main thread, so give them a moment between frames.
             var t = 0L
-            repeat(4) { scene.render(t); t += 16_000_000L }
+            repeat(8) {
+                scene.render(t)
+                t += 16_000_000L
+                Thread.sleep(40)
+            }
             val image = scene.render(t)
             val png = image.encodeToData(EncodedImageFormat.PNG) ?: error("could not encode $name")
             val file = File(outDir, "$name.png")

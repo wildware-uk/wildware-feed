@@ -16,6 +16,8 @@ import dev.wildware.agents.StreamStatus
 import dev.wildware.agents.ThreadLine
 import dev.wildware.agents.app.feed.FeedEvent
 import dev.wildware.agents.app.feed.FeedState
+import dev.wildware.agents.app.feed.PendingFile
+import dev.wildware.agents.app.feed.searchEntriesOf
 import dev.wildware.agents.app.session.AppPlatform
 import dev.wildware.agents.app.session.SavedSession
 import kotlinx.coroutines.CoroutineScope
@@ -65,13 +67,16 @@ class DashboardSession(
     private val latest: EngineFeed get() = feed.state.value
 
     val state: StateFlow<FeedState> = combine(
-        feeds.flatMapLatest { it.state },
+        combine(feeds.flatMapLatest { it.state }, dashboard.projects, dashboard.online, outbox.items, selected) { feed, projects, online, items, slug ->
+            mapper.map(feed, projects, online, items, slug)
+        },
+        dashboard.everything.state,
         dashboard.projects,
-        dashboard.online,
-        outbox.items,
-        selected,
-    ) { feed, projects, online, items, slug -> mapper.map(feed, projects, online, items, slug) }
-        .stateIn(scope, SharingStarted.Eagerly, mapper.map(feed.state.value, emptyList(), emptyList(), emptyList(), null))
+    ) { shown, everything, projects ->
+        // Search looks across every project's loaded cards, whichever feed is on screen.
+        val all = if (shown.current.slug == null) shown else mapper.map(everything, projects, emptyList(), emptyList(), null)
+        shown.copy(searchIndex = searchEntriesOf(all.sections))
+    }.stateIn(scope, SharingStarted.Eagerly, mapper.map(feed.state.value, emptyList(), emptyList(), emptyList(), null))
 
     /** True once the dashboard has stopped taking this device's key. */
     val signedOut: StateFlow<Boolean> = dashboard.status
@@ -101,8 +106,10 @@ class DashboardSession(
             }
             is FeedEvent.DismissQuestion -> request(event.questionId)?.let { actions.dismiss(it.request, it.agentName) }
             is FeedEvent.React -> cardRef(event.targetId)?.let { actions.toggleReaction(it, event.emoji, reactionsOn(event.targetId)) }
-            is FeedEvent.SendReply -> cardRef(event.threadId)?.let { actions.reply(it, event.text, answers = event.answers) }
-            is FeedEvent.Post -> postTarget()?.let { actions.post(it, event.text) }
+            is FeedEvent.SendReply -> cardRef(event.threadId)?.let {
+                actions.reply(it, event.text.ifBlank { null }, answers = event.answers, files = event.files.map(::upload))
+            }
+            is FeedEvent.Post -> postTarget()?.let { actions.post(it, event.text.ifBlank { null }, event.files.map(::upload)) }
             is FeedEvent.Delete -> cardRef(event.targetId)?.let { actions.delete(it) }
             is FeedEvent.OpenThread -> dashboard.markRead(event.cardId)
             is FeedEvent.MarkAllRead -> latest.allCards.filter { it.unread > 0 }.forEach { dashboard.markRead(it.id) }
@@ -115,7 +122,7 @@ class DashboardSession(
             is FeedEvent.LoadOlder -> scope.launch { runCatching { feed.loadOlder() } }
             is FeedEvent.RetrySend -> outbox.retryNow(event.outboxId)
             is FeedEvent.DropUnsent -> outbox.remove(event.outboxId)
-            is FeedEvent.Reply, is FeedEvent.CopyText, is FeedEvent.CopyLink, is FeedEvent.MoveProject, is FeedEvent.SignOut -> Unit
+            is FeedEvent.Reply, is FeedEvent.CopyText, is FeedEvent.CopyLink, is FeedEvent.MoveProject, is FeedEvent.SignOut, is FeedEvent.ToggleTheme -> Unit
         }
     }
 
@@ -127,6 +134,8 @@ class DashboardSession(
         selected.value = slug
         old.close()
     }
+
+    private fun upload(file: PendingFile) = dev.wildware.agents.Attachment(file.name, file.mimeType, file.bytes)
 
     /** New posts go to the project on screen. "All projects" has no single place to post. */
     private fun postTarget(): ProjectRef? {

@@ -175,9 +175,9 @@ fun UpdateCard(
                 )
                 Spacer(Modifier.height(6.dp))
                 MarkdownBody(item.body)
-                if (item.attachment != null) {
+                if (item.attachments.isNotEmpty()) {
                     Spacer(Modifier.height(10.dp))
-                    AttachmentView(item.attachment) { ui?.viewer = item.attachment }
+                    MediaGrid(item.attachments) { i -> ui?.viewer = Gallery(item.attachments, i) }
                 }
                 if (item.tags.isNotEmpty()) {
                     FlowRow(Modifier.padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -354,9 +354,9 @@ fun QuestionCard(item: FeedItem.Question, modifier: Modifier = Modifier, density
         )
         Spacer(Modifier.height(6.dp))
         MarkdownBody(item.body)
-        if (item.attachment != null) {
+        if (item.attachments.isNotEmpty()) {
             Spacer(Modifier.height(10.dp))
-            AttachmentView(item.attachment) { ui?.viewer = item.attachment }
+            MediaGrid(item.attachments) { i -> ui?.viewer = Gallery(item.attachments, i) }
         }
         Spacer(Modifier.height(16.dp))
         if (item.hasPictures) {
@@ -369,7 +369,11 @@ fun QuestionCard(item: FeedItem.Question, modifier: Modifier = Modifier, density
                     QuestionKind.Text, QuestionKind.Unsupported -> PickMode.Instant
                 },
                 onPick = { i -> pick(item.choices[i]) },
-                onLookCloser = { i -> item.choices[i].image?.let { ui?.viewer = it } },
+                onLookCloser = { i ->
+                    // Look through every option's picture, starting at the one held.
+                    val pictures = item.choices.mapNotNull { it.image }
+                    item.choices[i].image?.let { ui?.viewer = Gallery(pictures, pictures.indexOf(it)) }
+                },
             ) { i, m ->
                 val image = item.choices[i].image
                 if (image != null) AttachmentImage(image, m) else Box(m.background(colors.surfaceSunken))

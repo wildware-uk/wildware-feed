@@ -14,6 +14,12 @@ object Icons {
     val Send = icon("send", "M12 19V5", "M5 12 12 5 19 12")
     val Plus = icon("plus", "M12 5V19", "M5 12H19")
     val ChevronDown = icon("chevron-down", "M6 9 12 15 18 9")
+    val ChevronRight = icon("chevron-right", "M9 6 15 12 9 18")
+    val Paperclip = icon(
+        "paperclip",
+        "M21.44 11.05 12.25 20.24A6 6 0 0 1 3.76 11.75L12.95 2.56A4 4 0 0 1 18.61 8.22L9.41 17.41A2 2 0 0 1 6.59 14.59L15.07 6.1",
+    )
+    val Refresh = icon("refresh", "M21 12A9 9 0 1 1 18.36 5.64", "M21 3V9H15")
     val Back = icon("back", "M19 12H5", "M12 19 5 12 12 5")
     val Hash = icon("hash", "M4 9H20", "M4 15H20", "M10 3 8 21", "M16 3 14 21")
     val Bell = icon(

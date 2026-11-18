@@ -9,6 +9,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.focus.FocusRequester
 import dev.wildware.agents.app.design.gesture.EdgeProgress
 
 /**
@@ -24,9 +25,9 @@ sealed interface FeedEvent {
     /** Start replying to a line in a thread: the reply box says who it answers. */
     data class Reply(val targetId: String) : FeedEvent
     /** Send a reply into a card's thread, answering [answers] when set. */
-    data class SendReply(val threadId: String, val text: String, val answers: String?) : FeedEvent
+    data class SendReply(val threadId: String, val text: String, val answers: String?, val files: List<PendingFile> = emptyList()) : FeedEvent
     /** Write a new post into the project on screen. */
-    data class Post(val text: String) : FeedEvent
+    data class Post(val text: String, val files: List<PendingFile> = emptyList()) : FeedEvent
     data class CopyText(val targetId: String) : FeedEvent
     data class CopyLink(val targetId: String) : FeedEvent
     data class Delete(val targetId: String) : FeedEvent
@@ -39,6 +40,7 @@ sealed interface FeedEvent {
     data class RetrySend(val outboxId: String) : FeedEvent
     data class DropUnsent(val outboxId: String) : FeedEvent
     data object MarkAllRead : FeedEvent
+    data object ToggleTheme : FeedEvent
     data object SignOut : FeedEvent
 }
 
@@ -84,10 +86,14 @@ data class ScreenPreview(
     val questionSwipe: Float = 0f,
     /** A reply to show swiped right, part-way to "Reply". */
     val replySwipe: String? = null,
+    /** The command bar, open with this typed in it. */
+    val command: String? = null,
+    /** Files already attached in the feed's composer. */
+    val composerFiles: List<PendingFile> = emptyList(),
     /** Options already picked on picture or choice questions, by question id. */
     val picked: Map<String, Set<String>> = emptyMap(),
     val menu: MenuTarget? = null,
-    val viewer: Attachment? = null,
+    val viewer: Gallery? = null,
     val drawerOpen: Boolean = false,
     /** Phone only: the open thread is shown full screen. */
     val threadOpen: Boolean = false,
@@ -109,6 +115,30 @@ class FeedUi(preview: ScreenPreview, initial: FeedState, var onEvent: (FeedEvent
     var replyingTo by mutableStateOf<Reply?>(null)
     var refreshing by mutableStateOf(false)
     var filter by mutableStateOf(FeedFilter.All)
+    var showArchived by mutableStateOf(false)
+    var commandOpen by mutableStateOf(preview.command != null)
+    val composerFocus = FocusRequester()
+
+    /** What search looks through: every project's loaded cards when the engine gives them, else what is on screen. */
+    val searchEntries: List<SearchEntry>
+        get() = state.searchIndex.ifEmpty { searchEntriesOf(state.sections) }
+
+    /** Puts the cursor in the composer, for "New post". */
+    fun focusComposer() {
+        runCatching { composerFocus.requestFocus() }
+    }
+
+    /** Shows a search result: its thread for a card or reply, the waiting questions for a question. */
+    fun openResult(hit: SearchEntry) {
+        if (state.current.slug != null && state.current.slug != hit.projectSlug) emit(FeedEvent.SelectProject(null))
+        val thread = hit.threadId
+        if (thread == null) {
+            filter = FeedFilter.Waiting
+            return
+        }
+        openThread(thread, phone = isPhone)
+        emit(FeedEvent.OpenThread(thread))
+    }
     var isPhone = false
 
     /** The sections as the chips narrow them, empty sections dropped. */
@@ -158,7 +188,11 @@ class FeedUi(preview: ScreenPreview, initial: FeedState, var onEvent: (FeedEvent
     fun emit(event: FeedEvent) {
         when (event) {
             is FeedEvent.React -> added[event.targetId] = event.emoji
-            is FeedEvent.MoveProject -> projectOrder = projects.map { it.id }.toMutableList().apply { add(event.to, removeAt(event.from)) }
+            // Moves count among the active projects; archived ones keep their place at the end.
+            is FeedEvent.MoveProject -> {
+                val (active, archived) = projects.partition { !it.archived }
+                projectOrder = active.map { it.id }.toMutableList().apply { add(event.to, removeAt(event.from)) } + archived.map { it.id }
+            }
             is FeedEvent.Answer, is FeedEvent.AnswerText, is FeedEvent.DismissQuestion -> picks.remove(questionIdOf(event))
             // "Reply" on a card opens its thread; on a line in a thread it answers that line.
             is FeedEvent.Reply -> if (state.item(event.targetId) is Threaded) {

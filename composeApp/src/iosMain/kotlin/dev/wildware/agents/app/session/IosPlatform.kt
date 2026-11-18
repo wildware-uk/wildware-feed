@@ -7,12 +7,13 @@ import platform.Foundation.NSCachesDirectory
 import platform.Foundation.NSSearchPathForDirectoriesInDomains
 import platform.Foundation.NSUserDomainMask
 import platform.UIKit.UIDevice
+import dev.wildware.agents.app.feed.FilePicker
 
 /**
  * The iPhone's platform. [sessions] comes from Swift, which keeps the key in the Keychain.
  * Read marks and the outbox stay in memory until the Swift app hands over its own stores.
  */
-fun iosPlatform(sessions: SessionStore): AppPlatform {
+fun iosPlatform(sessions: SessionStore, photoPicker: FilePicker? = null): AppPlatform {
     val caches = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, true).firstOrNull() as? String
     return AppPlatform(
         sessions = sessions,
@@ -21,5 +22,6 @@ fun iosPlatform(sessions: SessionStore): AppPlatform {
         httpEngine = { Darwin.create() },
         deviceName = UIDevice.currentDevice.name,
         imageCacheDir = caches?.let { "$it/agents-images" },
+        filePicker = photoPicker,
     )
 }

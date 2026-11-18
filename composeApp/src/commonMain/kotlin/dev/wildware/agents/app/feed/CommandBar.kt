@@ -1,0 +1,204 @@
+package dev.wildware.agents.app.feed
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.text.input.rememberTextFieldState
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.paneTitle
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import dev.wildware.agents.app.design.AgentTheme
+import dev.wildware.agents.app.design.Icons
+import dev.wildware.agents.app.design.TextInput
+import dev.wildware.agents.app.design.pressable
+
+/** One line in the command bar: something to do, somewhere to go, or something found. */
+private class Command(
+    val group: String,
+    val title: String,
+    val detail: String,
+    val icon: ImageVector,
+    val run: () -> Unit,
+)
+
+/**
+ * The ⌘K / Ctrl+K bar: type to search every loaded card and reply across projects, jump to a
+ * project, or run an action. Up and Down move, Enter runs, Escape closes. Every line is also a
+ * button, so it works by touch and with a screen reader too.
+ */
+@Composable
+fun CommandBar(ui: FeedUi, safeArea: SafeArea) {
+    val colors = AgentTheme.colors
+    val shape = AgentTheme.shapes.large
+    val query = rememberTextFieldState(LocalPreview.current.command.orEmpty())
+    val focus = remember { FocusRequester() }
+    var highlighted by remember { mutableIntStateOf(0) }
+    val close = { ui.commandOpen = false }
+    LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+
+    val commands by remember {
+        derivedStateOf { commandsFor(ui, query.text.toString().trim(), close) }
+    }
+    LaunchedEffect(query.text) { highlighted = 0 }
+    val list = rememberLazyListState()
+    LaunchedEffect(highlighted) { if (commands.isNotEmpty()) list.animateScrollToItem(highlighted.coerceIn(0, commands.lastIndex)) }
+
+    Box(Modifier.fillMaxSize()) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.45f))
+                .clickable(remember { MutableInteractionSource() }, indication = null, onClickLabel = "Close", onClick = close),
+        )
+        Column(
+            Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = safeArea.top + 64.dp, start = 12.dp, end = 12.dp)
+                .widthIn(max = 640.dp)
+                .fillMaxWidth()
+                .lift(AgentTheme.elevation.overlay, shape)
+                .clip(shape)
+                .background(colors.surfaceRaised)
+                .border(1.dp, colors.borderStrong, shape)
+                .semantics { paneTitle = "Search and commands" }
+                .onPreviewKeyEvent { e ->
+                    if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                    when (e.key) {
+                        Key.Escape -> { close(); true }
+                        Key.DirectionDown -> { highlighted = (highlighted + 1).coerceAtMost(commands.lastIndex.coerceAtLeast(0)); true }
+                        Key.DirectionUp -> { highlighted = (highlighted - 1).coerceAtLeast(0); true }
+                        Key.Enter -> { commands.getOrNull(highlighted)?.run?.invoke(); true }
+                        else -> false
+                    }
+                },
+        ) {
+            Row(Modifier.padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Search, null, tint = colors.textMuted, modifier = Modifier.size(18.dp))
+                TextInput(
+                    query,
+                    label = "Search or run a command",
+                    placeholder = "Search cards and replies, jump to a project, or run a command…",
+                    modifier = Modifier.weight(1f).padding(start = 10.dp).focusRequester(focus),
+                )
+                MetaText("esc", Modifier.padding(start = 8.dp))
+            }
+            Box(Modifier.fillMaxWidth().padding(horizontal = 0.dp).heightIn(max = 1.dp).background(colors.border))
+            if (commands.isEmpty()) {
+                MetaText("Nothing matches.", Modifier.padding(16.dp), color = colors.textMuted)
+            }
+            LazyColumn(Modifier.heightIn(max = 420.dp), state = list) {
+                itemsIndexed(commands) { i, command ->
+                    val first = i == 0 || commands[i - 1].group != command.group
+                    if (first) {
+                        SectionLabel(command.group, Modifier.padding(start = 16.dp, top = 12.dp, bottom = 4.dp))
+                    }
+                    CommandRow(command, highlighted = i == highlighted)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CommandRow(command: Command, highlighted: Boolean) {
+    val colors = AgentTheme.colors
+    val shape = AgentTheme.shapes.small
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 6.dp)
+            .clip(shape)
+            .background(if (highlighted) colors.text.copy(alpha = if (colors.isDark) 0.08f else 0.06f) else Color.Transparent)
+            .pressable("${command.title}. ${command.detail}", shape, role = Role.Button, onClick = command.run)
+            .semantics { selected = highlighted }
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(command.icon, null, tint = colors.textMuted, modifier = Modifier.size(16.dp))
+        Column(Modifier.padding(start = 12.dp).weight(1f)) {
+            Text(command.title, color = colors.text, style = AgentTheme.type.label, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (command.detail.isNotEmpty()) {
+                MetaText(command.detail, color = colors.textMuted)
+            }
+        }
+        if (highlighted) MetaText("↵")
+    }
+}
+
+/** What the bar offers for [query]: actions and projects whose names match, then search results. */
+private fun commandsFor(ui: FeedUi, query: String, close: () -> Unit): List<Command> {
+    fun done(action: () -> Unit): () -> Unit = {
+        close()
+        action()
+    }
+    val q = query.lowercase()
+    fun wanted(vararg words: String) = q.isEmpty() || words.any { it.lowercase().contains(q) }
+    val state = ui.state
+    val actions = buildList {
+        if (wanted("Mark all read")) add(Command("Actions", "Mark all read", "Clear every unread badge", Icons.Check, done { ui.emit(FeedEvent.MarkAllRead) }))
+        if (state.current.slug != null && wanted("New post", "write")) {
+            add(Command("Actions", "New post", "Write to everyone in ${state.current.name}", Icons.Plus, done { ui.focusComposer() }))
+        }
+        if (wanted("Refresh", "reload")) add(Command("Actions", "Refresh", "Read everything again", Icons.Refresh, done { ui.emit(FeedEvent.Refresh) }))
+        if (wanted("Switch theme", "dark", "light")) add(Command("Actions", "Switch light or dark", "", Icons.Moon, done { ui.emit(FeedEvent.ToggleTheme) }))
+        if (wanted("Sign out")) add(Command("Actions", "Sign out", "Forget this device's key", Icons.SignOut, done { ui.emit(FeedEvent.SignOut) }))
+    }
+    val projects = buildList {
+        if (wanted("All projects")) add(Command("Projects", "All projects", "Every project's feed", Icons.Inbox, done { ui.emit(FeedEvent.SelectProject(null)) }))
+        state.projects.filter { !it.archived && wanted(it.name) }.forEach { p ->
+            add(Command("Projects", p.name, if (p.unread > 0) "${p.unread} unread" else "", Icons.Hash, done { ui.emit(FeedEvent.SelectProject(p.slug)) }))
+        }
+    }
+    val found = if (q.isEmpty()) emptyList() else ui.searchEntries.filter { it.matches(q) }.take(25).map { hit ->
+        Command(
+            group = "Found",
+            title = hit.title.ifBlank { hit.snippet },
+            detail = listOf(hit.kind.label, hit.who, hit.projectName, hit.time).filter { it.isNotBlank() }.joinToString(" · "),
+            icon = when (hit.kind) {
+                SearchEntry.Kind.Card -> Icons.Hash
+                SearchEntry.Kind.Reply -> Icons.Reply
+                SearchEntry.Kind.Question -> Icons.Clock
+            },
+            run = done { ui.openResult(hit) },
+        )
+    }
+    // Typing usually means searching, so results lead once there is a query.
+    return if (q.isEmpty()) actions + projects else found + actions + projects
+}

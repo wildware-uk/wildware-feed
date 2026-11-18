@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -252,10 +254,7 @@ private fun names(agents: List<Agent>): String = when (agents.size) {
     else -> "${agents[0].name}, ${agents[1].name} and ${agents.size - 2} more"
 }
 
-/**
- * An image attached to an update. Until the image loader lands this paints a stand-in scene, so
- * the layout and the alt text can be judged now.
- */
+/** One attached picture at its own shape, with its file name under it. */
 @Composable
 fun AttachmentView(attachment: Attachment, modifier: Modifier = Modifier, onOpen: () -> Unit = {}) {
     val colors = AgentTheme.colors
@@ -317,6 +316,66 @@ private fun Scene.palette() = when (this) {
  * A painted stand-in for an attached picture, until the image loader lands. Each [Scene] looks
  * clearly different, so a grid of them can be told apart.
  */
+/**
+ * The pictures on a card, laid out like the website's media grid: one at its own shape, two side
+ * by side, three as one large and two small, four or more as two by two with "+N" on the last.
+ * Each opens the viewer at that picture.
+ */
+@Composable
+fun MediaGrid(images: List<Attachment>, modifier: Modifier = Modifier, onOpen: (Int) -> Unit) {
+    if (images.size == 1) {
+        AttachmentView(images[0], modifier) { onOpen(0) }
+        return
+    }
+    val gap = 4.dp
+    val shape = AgentTheme.shapes.medium
+    Column(modifier.widthIn(max = 560.dp).fillMaxWidth()) {
+        Box(Modifier.fillMaxWidth().aspectRatio(if (images.size == 2) 2f else 4f / 3f).clip(shape)) {
+            when (images.size) {
+                2 -> Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(gap)) {
+                    GridTile(images, 0, Modifier.weight(1f).fillMaxHeight(), onOpen)
+                    GridTile(images, 1, Modifier.weight(1f).fillMaxHeight(), onOpen)
+                }
+                3 -> Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(gap)) {
+                    GridTile(images, 0, Modifier.weight(2f).fillMaxHeight(), onOpen)
+                    Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(gap)) {
+                        GridTile(images, 1, Modifier.weight(1f).fillMaxWidth(), onOpen)
+                        GridTile(images, 2, Modifier.weight(1f).fillMaxWidth(), onOpen)
+                    }
+                }
+                else -> Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(gap)) {
+                    for (row in 0..1) {
+                        Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
+                            for (col in 0..1) {
+                                val i = row * 2 + col
+                                GridTile(images, i, Modifier.weight(1f).fillMaxHeight(), onOpen, more = if (i == 3) images.size - 4 else 0)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Image, null, tint = AgentTheme.colors.textFaint, modifier = Modifier.size(14.dp))
+            MetaText("${images.size} pictures", Modifier.padding(start = 6.dp))
+        }
+    }
+}
+
+@Composable
+private fun GridTile(images: List<Attachment>, index: Int, modifier: Modifier, onOpen: (Int) -> Unit, more: Int = 0) {
+    val image = images[index]
+    val spoken = "Picture ${index + 1} of ${images.size}: ${image.altText}" + if (more > 0) ", and $more more" else ""
+    Box(modifier.pressable(spoken, RectangleShape, role = Role.Image) { onOpen(index) }) {
+        AttachmentImage(image, Modifier.fillMaxSize())
+        if (more > 0) {
+            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.5f)), contentAlignment = Alignment.Center) {
+                Text("+$more", color = Color.White, style = AgentTheme.type.title)
+            }
+        }
+    }
+}
+
 @Composable
 internal fun SceneArt(scene: Scene, modifier: Modifier) {
     val p = scene.palette()

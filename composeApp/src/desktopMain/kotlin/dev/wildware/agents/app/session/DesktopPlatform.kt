@@ -3,6 +3,7 @@ package dev.wildware.agents.app.session
 import dev.wildware.agents.OutboxStorage
 import dev.wildware.agents.TextStore
 import io.ktor.client.engine.okhttp.OkHttp
+import dev.wildware.agents.app.feed.AwtFilePicker
 import java.io.File
 import java.net.InetAddress
 import java.nio.file.Files
@@ -123,5 +124,7 @@ fun desktopPlatform(dir: File = desktopConfigDir()): AppPlatform {
             outbox.clear()
             readMarks.delete()
         },
+        settings = FileTextStore(File(dir, "settings.txt")),
+        filePicker = AwtFilePicker { java.awt.Frame.getFrames().firstOrNull { it.isActive } },
     )
 }

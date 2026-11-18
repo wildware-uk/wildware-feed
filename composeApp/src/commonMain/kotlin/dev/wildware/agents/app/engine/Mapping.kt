@@ -113,7 +113,7 @@ internal class FeedMapper(
     }
 
     private fun ProjectSummary.toView() =
-        Project(project.id, project.name, unread = unread, waiting = waiting, hue = hue(project.id), slug = project.slug)
+        Project(project.id, project.name, unread = unread, waiting = waiting, hue = hue(project.id), slug = project.slug, archived = project.isArchived)
 
     private fun FeedCard.toItem(agents: AgentDirectory, project: (String?) -> Project): FeedItem? = when (this) {
         is UpdateCard -> {
@@ -127,7 +127,7 @@ internal class FeedMapper(
                 title = title,
                 body = body,
                 status = workStatus(update.status),
-                attachment = update.media.firstImage()?.let { image(it) },
+                attachments = update.media.images().map { image(it) },
                 reactions = reactions(reactions),
                 replies = replies(replies, unread, agents),
                 unreadReplies = unread,
@@ -173,7 +173,7 @@ internal class FeedMapper(
             kind = kind,
             sending = sending,
             // Only the question's own pictures: those on options show in the option grid instead.
-            attachment = request.cardMedia.firstImage()?.let { image(it) },
+            attachments = request.cardMedia.images().map { image(it) },
         )
     }
 
@@ -206,7 +206,7 @@ internal class FeedMapper(
     private fun reactions(views: List<ReactionView>): List<Reaction> =
         views.groupBy { it.emoji }.map { (emoji, all) -> Reaction(emoji, all.size, mine = all.any { it.isOwner }, spoken = emoji) }
 
-    private fun List<MediaView>.firstImage() = firstOrNull { it.kind == "image" && it.isReady }
+    private fun List<MediaView>.images() = filter { it.kind == "image" && it.isReady }
 
     private fun image(media: MediaView): Attachment {
         val variant = if ("thumb-1600" in media.variants) "thumb-1600" else "original"

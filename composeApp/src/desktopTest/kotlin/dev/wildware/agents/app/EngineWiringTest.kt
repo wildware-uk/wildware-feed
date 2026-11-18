@@ -24,6 +24,7 @@ import androidx.compose.ui.test.v2.runDesktopComposeUiTest
 import androidx.compose.ui.unit.dp
 import dev.wildware.agents.app.design.AccessibilityPrefs
 import dev.wildware.agents.app.session.AppPlatform
+import dev.wildware.agents.app.feed.PendingFile
 import dev.wildware.agents.app.session.MemorySessionStore
 import dev.wildware.agents.app.session.SavedSession
 import kotlin.test.AfterTest
@@ -45,8 +46,10 @@ class EngineWiringTest {
     @AfterTest
     fun closeStreams() = server.close()
 
+    private val picked = PendingFile("shot.png", "image/png", byteArrayOf(1, 2, 3))
+
     private fun ComposeUiTest.app(sessions: MemorySessionStore = MemorySessionStore(signedIn)) {
-        val platform = AppPlatform.inMemory(engine = { server.engine() }, sessions = sessions)
+        val platform = AppPlatform.inMemory(engine = { server.engine() }, sessions = sessions, filePicker = { it(listOf(picked)) })
         setContent {
             Box(Modifier.size(1440.dp, 900.dp)) {
                 AgentsApp(platform, dark = true, accessibility = AccessibilityPrefs())
@@ -159,6 +162,20 @@ class EngineWiringTest {
         onNodeWithContentDescription("Send").performClick()
         val body = waitForWrite("POST", "/api/messages")
         assertTrue("\"project\":\"mega\"" in body && "look at the build" in body, body)
+    }
+
+    @Test
+    fun attachedFilesUploadThroughTheEngineWithThePost() = runDesktopComposeUiTest(width = 1440, height = 900) {
+        app()
+        waitFor("Mega")
+        onNode(hasContentDescription("Mega,", substring = true)).performClick()
+        waitForLabel("Attach files")
+        onNodeWithContentDescription("Attach files").performClick()
+        onNodeWithContentDescription("Message").performTextInput("The build log")
+        onNodeWithContentDescription("Send").performClick()
+        waitForWrite("POST", "/api/media")
+        val body = waitForWrite("POST", "/api/messages")
+        assertTrue("md-up" in body && "The build log" in body && "\"project\":\"mega\"" in body, body)
     }
 
     @Test

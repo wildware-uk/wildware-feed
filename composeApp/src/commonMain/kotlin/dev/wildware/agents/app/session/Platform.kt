@@ -5,6 +5,7 @@ import dev.wildware.agents.MemoryTextStore
 import dev.wildware.agents.OutboxStorage
 import dev.wildware.agents.TextStore
 import io.ktor.client.engine.HttpClientEngine
+import dev.wildware.agents.app.feed.FilePicker
 
 /**
  * What the app needs from the device it runs on. Desktop and iPhone each build one; tests build
@@ -24,11 +25,19 @@ class AppPlatform(
     val imageCacheDir: String?,
     /** Forgets this device's read marks and outbox, on sign out. */
     val clearLocalData: () -> Unit = {},
+    /** The owner's own settings (light or dark), kept across sign-outs. */
+    val settings: TextStore = MemoryTextStore(),
+    /** Picks files to attach, or null where there is no picker yet. */
+    val filePicker: FilePicker? = null,
 ) {
     companion object {
         /** Everything in memory: for tests and previews. */
-        fun inMemory(engine: () -> HttpClientEngine, sessions: SessionStore = MemorySessionStore(), deviceName: String = "Test device") =
-            AppPlatform(sessions, MemoryTextStore(), MemoryOutboxStorage(), engine, deviceName, imageCacheDir = null)
+        fun inMemory(
+            engine: () -> HttpClientEngine,
+            sessions: SessionStore = MemorySessionStore(),
+            deviceName: String = "Test device",
+            filePicker: FilePicker? = null,
+        ) = AppPlatform(sessions, MemoryTextStore(), MemoryOutboxStorage(), engine, deviceName, imageCacheDir = null, filePicker = filePicker)
     }
 }
 

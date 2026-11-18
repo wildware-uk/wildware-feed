@@ -84,6 +84,7 @@ class FakeServer {
             return when {
                 path == "/api/messages" -> ok("""{"message":{"id":"m-new","author":"human","body":"sent","createdAt":1}}""", HttpStatusCode.Created)
                 path.endsWith("/reactions") -> ok("""{"reactions":[],"on":true}""")
+                path == "/api/media" -> ok("""{"media":{"id":"md-up","kind":"image","mime":"image/png","status":"pending"}}""", HttpStatusCode.Created)
                 else -> ok("{}")
             }
         }

@@ -4,6 +4,7 @@ import dev.wildware.agents.SignIn
 import dev.wildware.agents.SignInException
 import dev.wildware.agents.app.session.AppPlatform
 import dev.wildware.agents.app.session.SavedSession
+import dev.wildware.agents.app.design.ThemeChoice
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -31,6 +32,20 @@ class AppModel(private val platform: AppPlatform, private val scope: CoroutineSc
     val deviceName: String get() = platform.deviceName
 
     private var watcher: Job? = null
+
+    private val mutableTheme = MutableStateFlow(
+        platform.settings.read()?.trim()?.let { saved -> ThemeChoice.entries.firstOrNull { it.name == saved } } ?: ThemeChoice.System,
+    )
+
+    /** Light or dark, as the owner last picked. */
+    val theme: StateFlow<ThemeChoice> = mutableTheme.asStateFlow()
+
+    /** Flips between light and dark from whatever is showing now, and remembers it. */
+    fun toggleTheme(showingDark: Boolean) {
+        val next = if (showingDark) ThemeChoice.Light else ThemeChoice.Dark
+        mutableTheme.value = next
+        runCatching { platform.settings.write(next.name) }
+    }
 
     init {
         platform.sessions.load()?.let(::open)

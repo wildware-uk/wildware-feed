@@ -41,6 +41,20 @@ import androidx.compose.ui.unit.sp
 import dev.wildware.agents.app.design.AgentTheme
 import dev.wildware.agents.app.design.Icons
 import dev.wildware.agents.app.design.pressable
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.remember
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isMetaPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import dev.wildware.agents.app.design.TextInput
 import androidx.compose.foundation.text.input.clearText
 import androidx.compose.foundation.text.input.rememberTextFieldState
@@ -81,7 +95,7 @@ private fun Kbd(text: String, light: Boolean = false) {
 }
 
 @Composable
-private fun SearchField(modifier: Modifier = Modifier) {
+private fun SearchField(modifier: Modifier = Modifier, onClick: () -> Unit) {
     val colors = AgentTheme.colors
     val shape = AgentTheme.shapes.medium
     Row(
@@ -90,7 +104,7 @@ private fun SearchField(modifier: Modifier = Modifier) {
             .clip(shape)
             .background(colors.surfaceSunken)
             .border(1.dp, colors.border, shape)
-            .pressable("Search everything. Shortcut Command K", shape) {}
+            .pressable("Search everything. Shortcut Command K", shape, onClick = onClick)
             .padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -158,7 +172,7 @@ fun Sidebar(ui: FeedUi, modifier: Modifier = Modifier) {
                 IconAction(Icons.Bell, "Notifications")
             }
             Spacer(Modifier.height(14.dp))
-            SearchField()
+            SearchField { ui.commandOpen = true }
             Spacer(Modifier.height(14.dp))
             NavRow(
                 "All projects",
@@ -175,19 +189,24 @@ fun Sidebar(ui: FeedUi, modifier: Modifier = Modifier) {
                 leading = { Icon(Icons.Clock, null, tint = colors.waiting, modifier = Modifier.size(18.dp)) },
                 trailing = {
                     val waiting = state.projects.sumOf { it.waiting }
-                    Box(
+                    // Nothing waiting is the normal state: no badge, rather than a loud "0".
+                    if (waiting > 0) Box(
                         Modifier.clip(AgentTheme.shapes.pill).background(colors.waiting).padding(horizontal = 7.dp, vertical = 1.dp)
                             .clearAndSetSemantics { },
                     ) {
                         Text("$waiting", color = colors.onWaiting, style = AgentTheme.type.meta.copy(fontWeight = FontWeight.Bold, fontSize = 11.5.sp))
                     }
                 },
-                spoken = "Waiting on you, ${state.projects.sumOf { it.waiting }} questions",
+                spoken = when (val n = state.projects.sumOf { it.waiting }) {
+                    0 -> "Waiting on you, nothing"
+                    1 -> "Waiting on you, 1 question"
+                    else -> "Waiting on you, $n questions"
+                },
             )
             Spacer(Modifier.height(22.dp))
             SectionLabel("Projects", Modifier.padding(horizontal = 10.dp))
             Spacer(Modifier.height(8.dp))
-            ui.projects.forEach { p ->
+            ui.projects.filter { !it.archived }.forEach { p ->
                 val selected = p.id == state.current.id
                 NavRow(
                     p.name,
@@ -198,6 +217,7 @@ fun Sidebar(ui: FeedUi, modifier: Modifier = Modifier) {
                     onClick = { ui.emit(FeedEvent.SelectProject(p.slug)) },
                 )
             }
+            ArchivedProjects(ui)
             Spacer(Modifier.height(22.dp))
             Row(Modifier.padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                 SectionLabel("Agents", Modifier.weight(1f))
@@ -208,7 +228,37 @@ fun Sidebar(ui: FeedUi, modifier: Modifier = Modifier) {
             if (state.agents.isEmpty()) MetaText("No agents online right now", Modifier.padding(horizontal = 10.dp))
             Spacer(Modifier.height(18.dp))
         }
-        OwnerRow(state.owner) { ui.emit(FeedEvent.SignOut) }
+        OwnerRow(state.owner, onToggleTheme = { ui.emit(FeedEvent.ToggleTheme) }) { ui.emit(FeedEvent.SignOut) }
+    }
+}
+
+/**
+ * Archived projects, folded away under one row at the bottom of the list. They can share a name
+ * with an active project, so they never sit among the active ones.
+ */
+@Composable
+internal fun ArchivedProjects(ui: FeedUi) {
+    val archived = ui.projects.filter { it.archived }
+    if (archived.isEmpty()) return
+    val colors = AgentTheme.colors
+    NavRow(
+        "Archived",
+        selected = false,
+        leading = { Icon(if (ui.showArchived) Icons.ChevronDown else Icons.ChevronRight, null, tint = colors.textFaint, modifier = Modifier.size(15.dp)) },
+        trailing = { MetaText("${archived.size}") },
+        spoken = if (ui.showArchived) "Hide ${archived.size} archived projects" else "Show ${archived.size} archived projects",
+        onClick = { ui.showArchived = !ui.showArchived },
+    )
+    if (ui.showArchived) {
+        archived.forEach { p ->
+            NavRow(
+                p.name,
+                selected = p.id == ui.state.current.id,
+                leading = { ProjectGlyph(p) },
+                spoken = "${p.name}, archived",
+                onClick = { ui.emit(FeedEvent.SelectProject(p.slug)) },
+            )
+        }
     }
 }
 
@@ -240,7 +290,7 @@ private fun AgentRow(agent: Agent) {
 }
 
 @Composable
-private fun OwnerRow(owner: Author.Owner, onSignOut: () -> Unit) {
+private fun OwnerRow(owner: Author.Owner, onToggleTheme: () -> Unit, onSignOut: () -> Unit) {
     val colors = AgentTheme.colors
     Row(
         Modifier
@@ -254,6 +304,7 @@ private fun OwnerRow(owner: Author.Owner, onSignOut: () -> Unit) {
             Text(owner.name, color = colors.text, style = AgentTheme.type.label)
             MetaText("Owner")
         }
+        IconAction(Icons.Moon, if (AgentTheme.colors.isDark) "Switch to light" else "Switch to dark", onClick = onToggleTheme)
         IconAction(Icons.SignOut, "Sign out", onClick = onSignOut)
     }
 }
@@ -383,42 +434,79 @@ private fun TextAction(label: String, onClick: () -> Unit) {
 
 /**
  * The box for writing: to everyone in a project, or into a thread. Enter adds a line;
- * Cmd+Enter or Ctrl+Enter (or the arrow) sends.
+ * Cmd+Enter or Ctrl+Enter (or the arrow) sends. Files come in through the paperclip, by dropping
+ * them on the box, or by pasting a picture; each shows above the text with a way to remove it.
  */
 @Composable
 fun Composer(
     placeholder: String,
-    onSend: (String) -> Unit,
+    onSend: (String, List<PendingFile>) -> Unit,
     modifier: Modifier = Modifier,
     compact: Boolean = false,
     label: String = "Message",
+    /** Lets "New post" in the command bar put the cursor here. */
+    focus: FocusRequester? = null,
 ) {
     val colors = AgentTheme.colors
     val shape = AgentTheme.shapes.large
     val text = rememberTextFieldState()
+    val preview = LocalPreview.current
+    val files = remember { mutableStateListOf<PendingFile>().apply { if (focus != null) addAll(preview.composerFiles) } }
+    var hovering by remember { mutableStateOf(false) }
+    var refused by remember { mutableStateOf<String?>(null) }
+    val picker = LocalFilePicker.current
+    val add: (List<PendingFile>) -> Unit = { incoming ->
+        val (fits, big) = incoming.partition { !tooBig(it) }
+        files += fits
+        refused = big.firstOrNull()?.let { "${it.name} is over 25 MB, so it was left out." }
+    }
     val send = {
         val typed = text.text.toString().trim()
-        if (typed.isNotEmpty()) {
-            onSend(typed)
+        if (typed.isNotEmpty() || files.isNotEmpty()) {
+            onSend(typed, files.toList())
             text.clearText()
+            files.clear()
+            refused = null
         }
     }
-    Row(
+    Column(
         modifier
             .fillMaxWidth()
             .lift(AgentTheme.elevation.raised, shape)
             .clip(shape)
             .background(colors.surfaceRaised)
-            .border(1.dp, colors.border, shape)
-            .padding(start = 14.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .border(if (hovering) 2.dp else 1.dp, if (hovering) colors.accent else colors.border, shape)
+            .fileDropTarget(onHover = { hovering = it }, onFiles = add)
+            .padding(start = 6.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
     ) {
-        TextInput(text, label = label, placeholder = placeholder, modifier = Modifier.weight(1f), multiline = true, onSubmit = send)
-        if (!compact) {
-            IconAction(Icons.At, "Mention an agent") { text.edit { append("@") } }
-            MetaText("⌘↵", Modifier.padding(horizontal = 6.dp))
+        AttachmentStrip(files, onRemove = { files.remove(it) }, Modifier.padding(start = 8.dp, top = 8.dp, bottom = 4.dp))
+        refused?.let { MetaText(it, Modifier.padding(start = 8.dp, top = 4.dp), color = colors.error) }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (picker != null) {
+                IconAction(Icons.Paperclip, "Attach files") { picker.pick { picked -> add(picked) } }
+            } else {
+                Spacer(Modifier.width(8.dp))
+            }
+            TextInput(
+                text,
+                label = label,
+                placeholder = placeholder,
+                modifier = Modifier.weight(1f).then(if (focus != null) Modifier.focusRequester(focus) else Modifier).onPreviewKeyEvent { e ->
+                    // Paste a picture or files from the clipboard; plain text pastes as usual.
+                    val paste = e.type == KeyEventType.KeyDown && e.key == Key.V && (e.isMetaPressed || e.isCtrlPressed)
+                    val pasted = if (paste) clipboardFiles() else null
+                    if (pasted != null) add(pasted)
+                    pasted != null
+                },
+                multiline = true,
+                onSubmit = send,
+            )
+            if (!compact) {
+                IconAction(Icons.At, "Mention an agent") { text.edit { append("@") } }
+                MetaText("⌘↵", Modifier.padding(horizontal = 6.dp))
+            }
+            SendButton(enabled = text.text.isNotBlank() || files.isNotEmpty(), onClick = send)
         }
-        SendButton(enabled = text.text.isNotBlank(), onClick = send)
     }
 }
 

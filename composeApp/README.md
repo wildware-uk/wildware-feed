@@ -59,6 +59,12 @@ the only way to do a thing.
 | Pinch, double-tap, drag to zoom | Image viewer | Zoom buttons; + / - keys |
 | Swipe down to dismiss | Menus and image viewer | Cancel / Close buttons; Escape; tap outside |
 | Hold and drag to reorder | Projects in the drawer | Alt+Up / Alt+Down; screen reader "Move up / down" |
+| Swipe between pictures | Picture viewer | Arrow buttons; Left / Right keys; screen reader "Next / Previous picture" |
+| Drop files on the box, or paste a picture | Composer (desktop) | Paperclip button |
+
+Search and commands: Cmd+K or Ctrl+K (or the Search box, or the phone's search icon) opens a bar
+that searches every loaded card and reply across projects, jumps to a project, and runs actions:
+mark all read, new post, refresh, switch light or dark, sign out.
 
 Rules: swipes answer to fingers only, so mice keep plain clicks. Sideways swipes ignore touches
 that start in the 24pt left edge strip, which belongs to back and the drawer. Nothing listens to

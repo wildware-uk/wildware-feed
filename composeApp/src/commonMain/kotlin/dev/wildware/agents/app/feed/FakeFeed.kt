@@ -15,6 +15,7 @@ object FakeFeed {
     private val engine = Project("p3", "rust-engine", unread = 0, hue = 1, slug = "rust-engine")
     private val website = Project("p4", "website", unread = 2, hue = 3, slug = "website")
     private val infra = Project("p5", "infra", unread = 1, waiting = 1, hue = 4, slug = "infra")
+    private val oldDashboard = Project("p6", "agent-dashboard v1", unread = 0, hue = 0, slug = "agent-dashboard-v1", archived = true)
 
     private val fixReplies = listOf(
         Reply(
@@ -118,10 +119,10 @@ object FakeFeed {
         status = WorkStatus.InProgress,
         title = "New empty-state art for the feed",
         body = "Three takes on *\"nothing new\"*. I like the dusk one best: it is calm at night and still reads in light mode.",
-        attachment = Attachment(
-            title = "empty-state-dusk.png",
-            altText = "Soft rolling hills under a low sun at dusk",
-            aspect = 2.1f,
+        attachments = listOf(
+            Attachment("empty-state-dusk.png", "Soft rolling hills under a low sun at dusk", aspect = 2.1f, scene = Scene.Dusk),
+            Attachment("empty-state-dawn.png", "Green hills under a pale morning sky", aspect = 2.1f, scene = Scene.Dawn),
+            Attachment("empty-state-night.png", "Dark hills, a crescent moon and stars", aspect = 2.1f, scene = Scene.Night),
         ),
         reactions = listOf(Reaction("😍", 1, mine = true, spoken = "heart eyes")),
         acks = Acks(read = listOf(forge)),
@@ -162,7 +163,7 @@ object FakeFeed {
 
     val state = FeedState(
         owner = owner,
-        projects = listOf(dashboard, ios, engine, website, infra),
+        projects = listOf(dashboard, ios, engine, website, infra, oldDashboard),
         agents = listOf(forge, scout, relay, lumen, quill),
         current = dashboard,
         sections = listOf(

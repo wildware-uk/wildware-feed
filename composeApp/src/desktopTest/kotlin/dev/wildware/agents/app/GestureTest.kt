@@ -27,6 +27,7 @@ import dev.wildware.agents.app.feed.FakeFeed
 import dev.wildware.agents.app.feed.FeedEvent
 import dev.wildware.agents.app.feed.FeedItem
 import dev.wildware.agents.app.feed.FeedScreen
+import dev.wildware.agents.app.feed.Gallery
 import dev.wildware.agents.app.feed.QuickReaction
 import dev.wildware.agents.app.feed.ScreenPreview
 import kotlin.test.Test
@@ -132,12 +133,12 @@ class GestureTest {
 
     @Test
     fun swipingTheImageDownClosesIt() = runComposeUiTest {
-        val image = FakeFeed.state.sections.flatMap { it.items }.filterIsInstance<FeedItem.Update>().firstNotNullOf { it.attachment }
-        phone(ScreenPreview(viewer = image))
-        onNodeWithContentDescription("Close image").assertExists()
-        onNodeWithContentDescription(image.altText).performTouchInput { swipe(center, center + Offset(0f, 400f), 200) }
+        val images = FakeFeed.state.sections.flatMap { it.items }.filterIsInstance<FeedItem.Update>().first { it.attachments.isNotEmpty() }.attachments
+        phone(ScreenPreview(viewer = Gallery(images)))
+        onNodeWithContentDescription("Close pictures").assertExists()
+        onNodeWithContentDescription(images[0].altText).performTouchInput { swipe(center, center + Offset(0f, 400f), 200) }
         waitForIdle()
-        onNodeWithContentDescription("Close image").assertDoesNotExist()
+        onNodeWithContentDescription("Close pictures").assertDoesNotExist()
     }
 
     @Test
@@ -154,7 +155,7 @@ class GestureTest {
     fun longPressingAPictureOpensItFullSize() = runComposeUiTest {
         phone(startAt = "q2")
         onNodeWithContentDescription("Dawn").performTouchInput { longClick() }
-        onNodeWithContentDescription("Close image").assertExists()
+        onNodeWithContentDescription("Close pictures").assertExists()
         assertTrue(events.isEmpty(), "a long press must not pick: $events")
     }
 
