@@ -45,7 +45,7 @@ class FeedCacheTest {
     }
 
     @Test
-    fun `the next launch shows the last feed at once, then the server's`() = runTest {
+    fun `the next launch shows the last feed at once and then the server feed`() = runTest {
         val store = MemoryTextStore()
         firstLaunch(store, FakeDashboard(testScheduler).filled())
 
@@ -88,7 +88,7 @@ class FeedCacheTest {
     }
 
     @Test
-    fun `a cache in an older shape, or broken, is ignored`() = runTest {
+    fun `a cache in an older shape or broken is ignored`() = runTest {
         val server = FakeDashboard(testScheduler).filled().apply { readDelayMillis = 5_000 }
         val texts = listOf(
             """{"version":0,"owner":"$owner","entries":{"timeline:*":{"seq":1}}}""",
@@ -113,7 +113,7 @@ class FeedCacheTest {
     }
 
     @Test
-    fun `a burst of changes is written once, after a pause`() = runTest {
+    fun `a burst of changes is written once after a pause`() = runTest {
         var writes = 0
         val store = object : TextStore {
             var text: String? = null
