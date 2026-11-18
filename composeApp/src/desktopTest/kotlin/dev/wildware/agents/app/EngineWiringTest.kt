@@ -1,5 +1,7 @@
 package dev.wildware.agents.app
 
+import androidx.compose.ui.test.onFirst
+import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.Modifier
@@ -67,6 +69,20 @@ class EngineWiringTest {
     private fun ComposeUiTest.waitForLabel(label: String) =
         waitUntil(timeoutMillis = 10_000) { onAllNodes(hasContentDescription(label), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
 
+    /**
+     * Waits for [matcher] to match, then hands it back. The feed fills in over several server
+     * replies (cards, then their comments, then read marks), so a node can show before it is in
+     * its final shape; tests wait for the shape they need instead of the first sign of the card.
+     */
+    private fun ComposeUiTest.waitForNode(matcher: SemanticsMatcher, unmerged: Boolean = false): SemanticsNodeInteraction {
+        try {
+            waitUntil(timeoutMillis = 10_000) { onAllNodes(matcher, unmerged).fetchSemanticsNodes().isNotEmpty() }
+        } catch (timeout: Throwable) {
+            throw AssertionError("never saw ${matcher.description}; the screen had:\n" + onRoot().printToString(), timeout)
+        }
+        return onAllNodes(matcher, unmerged).onFirst()
+    }
+
     private fun waitForWrite(method: String, path: String): String {
         val until = System.currentTimeMillis() + 10_000
         while (System.currentTimeMillis() < until) {
@@ -81,7 +97,9 @@ class EngineWiringTest {
         val matcher = SemanticsMatcher("has action '$label'") { node ->
             node.config.getOrNull(SemanticsActions.CustomActions)?.any { it.label == label } == true
         }
-        val node = onAllNodes(if (on != null) matcher and on else matcher).fetchSemanticsNodes().first()
+        val target = if (on != null) matcher and on else matcher
+        waitForNode(target)
+        val node = onAllNodes(target).fetchSemanticsNodes().first()
         runOnIdle { node.config[SemanticsActions.CustomActions].first { it.label == label }.action() }
     }
 
@@ -116,16 +134,19 @@ class EngineWiringTest {
     fun answeringAQuestionSendsTheAnswer() = runDesktopComposeUiTest(width = 1440, height = 900) {
         app()
         waitFor("Ship the new sounds?")
-        onNodeWithText("Ship it", useUnmergedTree = true).performClick()
+        waitForNode(hasText("Ship it"), unmerged = true).performClick()
         val body = waitForWrite("POST", "/api/requests/r1/answer")
         assertTrue("Ship it" in body, body)
     }
 
     @Test
     fun aReplySaysWhichLineItAnswers() = runDesktopComposeUiTest(width = 1440, height = 900) {
+        // Replies land after their card here on purpose: that order once made this test flaky.
+        server.messagesDelayMs = 400
         app()
         waitFor("Fixed the unread counts")
-        onNodeWithContentDescription("Open thread, 1 reply").performClick()
+        // The reply can arrive after the card, and then also counts as new (", 1 new"), so match the start.
+        waitForNode(hasContentDescription("Open thread, 1 reply", substring = true)).performClick()
         waitFor("Confirmed on my side.")
         runCustomAction("Reply", on = hasAnyDescendant(hasText("Confirmed on my side.")))
         waitFor("Replying to scout")
@@ -156,7 +177,7 @@ class EngineWiringTest {
     fun postingGoesToTheProjectOnScreen() = runDesktopComposeUiTest(width = 1440, height = 900) {
         app()
         waitFor("Mega")
-        onNode(hasContentDescription("Mega,", substring = true)).performClick()
+        waitForNode(hasContentDescription("Mega,", substring = true)).performClick()
         waitForLabel("Message")
         onNodeWithContentDescription("Message").performTextInput("Can someone look at the build?")
         onNodeWithContentDescription("Send").performClick()
@@ -168,7 +189,7 @@ class EngineWiringTest {
     fun attachedFilesUploadThroughTheEngineWithThePost() = runDesktopComposeUiTest(width = 1440, height = 900) {
         app()
         waitFor("Mega")
-        onNode(hasContentDescription("Mega,", substring = true)).performClick()
+        waitForNode(hasContentDescription("Mega,", substring = true)).performClick()
         waitForLabel("Attach files")
         onNodeWithContentDescription("Attach files").performClick()
         onNodeWithContentDescription("Message").performTextInput("The build log")
@@ -183,7 +204,7 @@ class EngineWiringTest {
         server.failWrites = true
         app()
         waitFor("Ship the new sounds?")
-        onNodeWithText("Ship it", useUnmergedTree = true).performClick()
+        waitForNode(hasText("Ship it"), unmerged = true).performClick()
         waitFor("waiting to send", substring = true)
     }
 

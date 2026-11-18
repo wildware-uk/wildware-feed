@@ -75,6 +75,7 @@ import androidx.compose.ui.unit.dp
 import dev.wildware.agents.app.design.AgentTheme
 import dev.wildware.agents.app.design.Icons
 import dev.wildware.agents.app.design.pressable
+import dev.wildware.agents.app.design.AppMark
 
 /** Below this width the app uses the phone layout. */
 val PhoneBreakpoint = 700.dp
@@ -310,7 +311,7 @@ private fun PhoneTopBar(state: FeedState, onProjects: () -> Unit, onTapBar: () -
 private fun EmptyFeed(state: FeedState, filter: FeedFilter, modifier: Modifier) {
     val colors = AgentTheme.colors
     Column(modifier.padding(vertical = 48.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        AppMark(36.dp)
+        AppMark(44.dp)
         Spacer(Modifier.height(14.dp))
         Text(
             when {

@@ -2,7 +2,8 @@ package dev.wildware.agents.app
 
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.snapshotFlow
-import androidx.compose.ui.graphics.vector.rememberVectorPainter
+import androidx.compose.ui.graphics.painter.BitmapPainter
+import dev.wildware.agents.app.design.appIconBitmap
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
@@ -11,7 +12,6 @@ import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.WindowState
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
-import dev.wildware.agents.app.design.AppIcon
 import dev.wildware.agents.app.session.desktopConfigDir
 import dev.wildware.agents.app.session.desktopPlatform
 import kotlinx.coroutines.FlowPreview
@@ -64,7 +64,7 @@ fun main() {
                 exitApplication()
             },
             title = "Agents",
-            icon = rememberVectorPainter(AppIcon),
+            icon = appIconBitmap()?.let(::BitmapPainter),
             state = state,
         ) {
             window.minimumSize = java.awt.Dimension(380, 560)

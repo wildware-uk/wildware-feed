@@ -56,27 +56,9 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import dev.wildware.agents.app.design.TextInput
+import dev.wildware.agents.app.design.AppMark
 import androidx.compose.foundation.text.input.clearText
 import androidx.compose.foundation.text.input.rememberTextFieldState
-
-/** The app's mark: three stacked bars, a feed in miniature. */
-@Composable
-fun AppMark(size: androidx.compose.ui.unit.Dp = 28.dp) {
-    // The mark is always ink and lime, in light and dark alike.
-    val shape = AgentTheme.shapes.small
-    val bg = Brush.linearGradient(listOf(Color(0xFF1A1C20), Color(0xFF0B0C0E)))
-    val bar = Color(0xFFC6F169)
-    Box(
-        Modifier.size(size).clip(shape).background(bg).border(1.dp, AgentTheme.colors.borderStrong, shape).clearAndSetSemantics { },
-        contentAlignment = Alignment.Center,
-    ) {
-        Column(verticalArrangement = Arrangement.spacedBy(size * 0.08f)) {
-            listOf(0.5f, 0.36f, 0.22f).forEach { w ->
-                Box(Modifier.width(size * w).height(size * 0.08f).clip(CircleShape).background(bar))
-            }
-        }
-    }
-}
 
 @Composable
 private fun Kbd(text: String, light: Boolean = false) {
@@ -162,7 +144,7 @@ fun Sidebar(ui: FeedUi, modifier: Modifier = Modifier) {
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 14.dp)) {
             Spacer(Modifier.height(18.dp))
             Row(Modifier.padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                AppMark()
+                AppMark(30.dp)
                 Text(
                     "Agents",
                     Modifier.padding(start = 10.dp).weight(1f),

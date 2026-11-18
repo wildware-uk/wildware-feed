@@ -26,6 +26,7 @@ import io.ktor.utils.io.ByteChannel
 import io.ktor.utils.io.writeStringUtf8
 import kotlinx.serialization.json.Json
 import java.util.Collections
+import kotlinx.coroutines.delay
 
 /**
  * A dashboard in memory, answering the app through ktor's [MockEngine]: sign-in, the snapshot
@@ -70,12 +71,17 @@ class FakeServer {
 
     fun count(prefix: String) = calls.count { it.startsWith(prefix) }
 
+    /** Holds back the comments, so cards show before their replies, as on a slow line. */
+    @Volatile
+    var messagesDelayMs = 0L
+
     fun wrote(method: String, path: String): String? = writes.lastOrNull { it.first == "$method $path" }?.second
 
     private suspend fun MockRequestHandleScope.route(request: HttpRequestData): HttpResponseData {
         val path = request.url.encodedPath
         calls += path + request.url.encodedQuery.let { if (it.isEmpty()) "" else "?$it" }
         if (path == "/api/devices/sign-in") return signIn(request)
+        if (path == "/api/messages" && request.method == HttpMethod.Get && messagesDelayMs > 0) delay(messagesDelayMs)
         authorizations += request.headers[HttpHeaders.Authorization]
         if (request.method != HttpMethod.Get) {
             val body = request.text()

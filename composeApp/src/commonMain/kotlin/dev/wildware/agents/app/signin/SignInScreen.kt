@@ -45,7 +45,7 @@ import dev.wildware.agents.app.design.AgentTheme
 import dev.wildware.agents.app.design.Icons
 import dev.wildware.agents.app.design.TextInput
 import dev.wildware.agents.app.feed.AppButton
-import dev.wildware.agents.app.feed.AppMark
+import dev.wildware.agents.app.design.AppMark
 import dev.wildware.agents.app.feed.ButtonTone
 import dev.wildware.agents.app.feed.MetaText
 import dev.wildware.agents.app.feed.SafeArea
@@ -127,7 +127,7 @@ fun SignInScreen(
         contentAlignment = Alignment.TopCenter,
     ) {
         Column(Modifier.widthIn(max = 420.dp).fillMaxWidth().padding(top = lift)) {
-            AppMark(40.dp)
+            AppMark(52.dp)
             Spacer(Modifier.height(20.dp))
             Text("Sign in", Modifier.semantics { heading() }, color = colors.text, style = type.display)
             Spacer(Modifier.height(6.dp))

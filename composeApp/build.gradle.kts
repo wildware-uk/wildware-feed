@@ -40,6 +40,8 @@ kotlin {
             implementation(libs.datetime)
         }
         val desktopMain by getting {
+            // The window icon is the installers' own picture, so the two never drift apart.
+            resources.srcDir("packaging/icons")
             dependencies {
                 implementation(compose.desktop.currentOs)
                 implementation(libs.coroutines.swing)
@@ -74,6 +76,11 @@ compose.desktop {
             packageVersion = "1.0.0"
         }
     }
+}
+
+// Only the PNG is needed at run time; the .icns and .ico are for the installers.
+tasks.named<ProcessResources>("desktopProcessResources") {
+    exclude("*.icns", "*.ico")
 }
 
 // The screenshot test writes one PNG per size, theme and state here.

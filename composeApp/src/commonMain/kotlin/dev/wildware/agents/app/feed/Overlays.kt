@@ -84,6 +84,7 @@ import dev.wildware.agents.app.design.gesture.edgeSwipe
 import dev.wildware.agents.app.design.gesture.swipeDownToDismiss
 import dev.wildware.agents.app.design.gesture.zoomable
 import dev.wildware.agents.app.design.pressable
+import dev.wildware.agents.app.design.AppMark
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
@@ -452,7 +453,7 @@ fun ProjectsDrawer(ui: FeedUi, progress: EdgeProgress, widthPx: Float, safeArea:
                 .padding(top = safeArea.top + 8.dp, start = 14.dp, end = 14.dp, bottom = safeArea.bottom + 12.dp),
         ) {
             Row(Modifier.padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                AppMark()
+                AppMark(30.dp)
                 Text(
                     "Agents",
                     Modifier.padding(start = 10.dp).weight(1f).semantics { heading() },
