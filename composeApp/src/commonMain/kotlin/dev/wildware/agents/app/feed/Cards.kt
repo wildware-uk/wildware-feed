@@ -29,6 +29,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
@@ -241,7 +242,8 @@ fun UpdateCard(
                     style = type.title,
                 )
                 Spacer(Modifier.height(6.dp))
-                MarkdownBody(item.body)
+                // In its own thread the whole update is the point; in the feed a long one folds.
+                if (inThread) MarkdownBody(item.body) else Clamp(item.id, "the whole update", fade = if (selected) colors.surfaceRaised else colors.surface) { MarkdownBody(item.body) }
                 if (item.attachments.isNotEmpty()) {
                     Spacer(Modifier.height(10.dp))
                     MediaGrid(item.attachments, onOpen = rememberTileOpener(item.attachments))
@@ -434,7 +436,7 @@ fun QuestionCard(
             style = type.title.copy(fontSize = type.title.fontSize * 1.08f),
         )
         Spacer(Modifier.height(6.dp))
-        MarkdownBody(item.body)
+        Clamp(item.id, "the whole explanation", fade = colors.waitingSoft.compositeOver(colors.background)) { MarkdownBody(item.body) }
         if (item.attachments.isNotEmpty()) {
             Spacer(Modifier.height(10.dp))
             MediaGrid(item.attachments, onOpen = rememberTileOpener(item.attachments))
@@ -621,7 +623,8 @@ fun PostCard(item: FeedItem.Post, modifier: Modifier = Modifier, density: Densit
             )
             Column(Modifier.padding(start = indent, top = 8.dp)) {
                 if (density == Density.Compact && item.status != null) Chips(null, item.status, modifier = Modifier.padding(bottom = 8.dp), onStatus = chooseStatus)
-                if (own) PlainBody(item.body) else MarkdownBody(item.body)
+                val body = @Composable { if (own) PlainBody(item.body) else MarkdownBody(item.body) }
+                if (inThread) body() else Clamp(item.id, "the whole post") { body() }
                 TagChips(tags, Modifier.padding(top = 10.dp))
                 val inline = LocalInlineThreads.current && !inThread
                 val showThread = item.replies.isNotEmpty() && !inThread && !inline

@@ -167,6 +167,22 @@ class ScreenshotTest {
         }
     }
 
+    /** A long update in the feed: folded to a screen's worth, with the rest a tap away. */
+    @Test
+    fun longBody() {
+        val long = (1..14).joinToString("\n\n") { i ->
+            "**Step $i.** Cleared the old Gradle caches on the build box and checked the daemon logs for leaks after each run."
+        }
+        val state = FakeFeed.state.copy(
+            openThread = null,
+            sections = FakeFeed.state.sections.map { s ->
+                s.copy(items = s.items.map { if (it is FeedItem.Update && it.id == "u3") it.copy(body = long) else it })
+            },
+        )
+        shoot("phone-dark-long-body", Size.Phone, dark = true) { AgentsPreview(dark = true, state = state, safeArea = Size.Phone.safeArea, startAt = "u3") }
+        shoot("desktop-light-long-body", Size.Desktop, dark = false) { AgentsPreview(dark = false, state = state, safeArea = Size.Desktop.safeArea, startAt = "u3") }
+    }
+
     /** The sign-in screen, before anything is typed. Nothing reaches a network. */
     @Test
     fun signIn() {

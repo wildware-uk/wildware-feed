@@ -428,6 +428,15 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
         return DeleteAsk(id, question)
     }
 
+    /** Long bodies the owner opened in full, by card id. They stay open while the feed is up. */
+    private val unfolded = mutableStateMapOf<String, Boolean>()
+
+    fun isUnfolded(key: String): Boolean = unfolded[key] == true
+
+    fun toggleFold(key: String) {
+        unfolded[key] = !isUnfolded(key)
+    }
+
     fun emit(event: FeedEvent) {
         if (event is FeedEvent.EditTags) {
             tagging = event.targetId
