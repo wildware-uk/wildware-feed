@@ -35,6 +35,8 @@ object Icons {
     )
     val Check = icon("check", "M20 6 9 17 4 12")
     val Reply = icon("reply", "M9 14 4 9 9 4", "M20 20V13A4 4 0 0 0 16 9H4")
+    /** A text cursor (I-beam): select text. */
+    val SelectText = icon("select-text", "M9 4h6", "M9 20h6", "M12 4v16")
     val More = icon("more", circle(5f, 12f, 1f), circle(12f, 12f, 1f), circle(19f, 12f, 1f))
     val Copy = icon(
         "copy",

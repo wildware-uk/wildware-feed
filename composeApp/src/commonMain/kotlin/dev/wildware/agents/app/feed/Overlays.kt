@@ -91,9 +91,14 @@ import kotlin.math.roundToInt
 /** One row of a context menu, with its icon. */
 private data class MenuRow(val label: String, val icon: ImageVector, val destructive: Boolean, val event: FeedEvent?)
 
-private fun menuRows(target: MenuTarget): List<MenuRow> = buildList {
+/**
+ * [phone] adds "Select text": on a phone a press anywhere on a card opens this menu, so picking out
+ * some of its words starts here. On the desktop a drag selects.
+ */
+private fun menuRows(target: MenuTarget, phone: Boolean = false): List<MenuRow> = buildList {
     add(MenuRow("Reply", Icons.Reply, false, FeedEvent.Reply(target.id)))
     add(MenuRow("Copy text", Icons.Copy, false, FeedEvent.CopyText(target.id)))
+    if (phone) add(MenuRow("Select text", Icons.SelectText, false, FeedEvent.SelectText(target.id)))
     add(MenuRow("Copy link", Icons.Link, false, FeedEvent.CopyLink(target.id)))
     if (target.own) add(MenuRow("Delete", Icons.Trash, true, FeedEvent.Delete(target.id)))
 }
@@ -128,7 +133,7 @@ private fun rememberRunner(ui: FeedUi, target: MenuTarget): (FeedEvent) -> Unit 
     val clipboard = LocalClipboardManager.current
     return { e ->
         when (e) {
-            is FeedEvent.CopyText -> clipboard.setText(AnnotatedString(target.text))
+            is FeedEvent.CopyText -> clipboard.setText(AnnotatedString(ui.textOf(target.id) ?: target.text))
             is FeedEvent.CopyLink -> clipboard.setText(AnnotatedString("agents://item/${target.id}"))
             else -> Unit
         }
@@ -271,7 +276,7 @@ fun ActionSheet(target: MenuTarget, bottomInset: androidx.compose.ui.unit.Dp) {
                 }
             }
             Box(Modifier.fillMaxWidth().height(1.dp).background(colors.border))
-            menuRows(target).forEach { row -> SheetRow(row.label, row.icon, row.destructive) { row.event?.let(run) } }
+            menuRows(target, phone = true).forEach { row -> SheetRow(row.label, row.icon, row.destructive) { row.event?.let(run) } }
             Box(Modifier.fillMaxWidth().height(1.dp).background(colors.border))
             SheetRow("Cancel", Icons.Close, false) { ui.menu = null }
         }

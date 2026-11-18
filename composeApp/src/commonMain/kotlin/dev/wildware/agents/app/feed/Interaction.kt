@@ -33,6 +33,8 @@ sealed interface FeedEvent {
     /** Write a new post into the project on screen. */
     data class Post(val text: String, val files: List<PendingFile> = emptyList()) : FeedEvent
     data class CopyText(val targetId: String) : FeedEvent
+    /** Phones: show this card's or line's words with all of them selected, to pick some out. */
+    data class SelectText(val targetId: String) : FeedEvent
     data class CopyLink(val targetId: String) : FeedEvent
     data class Delete(val targetId: String) : FeedEvent
     data class OpenThread(val cardId: String) : FeedEvent
@@ -65,6 +67,10 @@ enum class FeedFilter(val label: String) {
         FromYou -> item is FeedItem.Post && item.author is Author.Owner
     }
 }
+
+/** Words open for selecting on a phone: whose they are, and the words themselves. */
+@Immutable
+data class SelectingText(val id: String, val text: String)
 
 /** The thing a context menu is open on. */
 @Immutable
@@ -126,6 +132,26 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
     var filter by mutableStateOf(FeedFilter.All)
     var showArchived by mutableStateOf(false)
     var commandOpen by mutableStateOf(preview.command != null)
+
+    /** Phones: the words open for selecting, from a card menu's "Select text". */
+    var selecting by mutableStateOf<SelectingText?>(null)
+
+    /**
+     * A card's or line's words as plain text, the way "Copy text" and "Select text" give them: an
+     * update's title and then its body, a post's or reply's body, a question and its detail.
+     */
+    fun textOf(id: String): String? {
+        fun plain(markdown: String) = dev.wildware.agents.PlainText.fromMarkdown(markdown)
+        for (item in state.sections.asSequence().flatMap { it.items }) {
+            if (item.id == id) return when (item) {
+                is FeedItem.Update -> listOf(item.title, plain(item.body)).filter { it.isNotBlank() }.joinToString("\n\n")
+                is FeedItem.Post -> plain(item.body)
+                is FeedItem.Question -> listOf(item.prompt, plain(item.body)).filter { it.isNotBlank() }.joinToString("\n\n")
+            }
+            if (item is Threaded) item.replies.firstOrNull { it.id == id }?.let { return plain(it.body) }
+        }
+        return null
+    }
     val composerFocus = FocusRequester()
 
     /** Words and files shared in from another app, waiting for the next project composer on screen. */
@@ -253,6 +279,7 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
                 replyingTo = card?.replies?.firstOrNull { it.id == event.targetId }
             }
             is FeedEvent.SendReply -> replyingTo = null
+            is FeedEvent.SelectText -> selecting = textOf(event.targetId)?.let { SelectingText(event.targetId, it) }
             is FeedEvent.SelectProject -> threadId = null
             else -> Unit
         }

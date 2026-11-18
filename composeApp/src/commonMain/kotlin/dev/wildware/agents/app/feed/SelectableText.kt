@@ -98,13 +98,18 @@ fun rememberCopyState(): CopyState {
  *
  * Everything inside is one selection, so a drag can run across paragraphs, lists and code.
  * Desktop: drag, double-click a word, triple-click a paragraph, Ctrl/Cmd+C, right-click for Copy.
- * Phones: hold on the text for the system's handles and Copy menu.
+ * Phones: the card menu's "Select text" (see below).
  *
- * The text keeps its own gestures. A press that lands on it is not passed on to the card around
- * it, so holding text selects rather than opening the card's menu, a double-click picks a word
- * rather than reacting, and a right-click offers Copy rather than the card's actions. The card's
- * own gestures still work everywhere else on it (its header, title and footer), and from the
- * keyboard and screen readers. Horizontal swipes are left alone: the card still swipes.
+ * Desktop: the text keeps its own gestures. A press that lands on it is not passed on to the card
+ * around it, so a double-click picks a word rather than reacting, and a right-click offers Copy
+ * rather than the card's actions. The card's own gestures still work everywhere else on it (its
+ * header, title and footer), and from the keyboard and screen readers.
+ *
+ * Phones press like iMessage: holding anywhere on a card, text included, opens the card's menu,
+ * and a double-tap anywhere reacts. Picking out some of the words is the menu's "Select text".
+ * Inline code still copies on a tap, and code blocks keep their Copy button.
+ *
+ * Horizontal swipes are left alone everywhere: the card still swipes.
  */
 @Composable
 fun SelectableText(
@@ -112,6 +117,13 @@ fun SelectableText(
     copy: CopyState = rememberCopyState(),
     content: @Composable () -> Unit,
 ) {
+    if (LocalIsPhone.current) {
+        Box(modifier.fillMaxWidth()) {
+            content()
+            CopiedNotice(copy)
+        }
+        return
+    }
     Box(modifier.fillMaxWidth().keepPressesForText(copy)) {
         SelectionContainer { content() }
         CopiedNotice(copy)

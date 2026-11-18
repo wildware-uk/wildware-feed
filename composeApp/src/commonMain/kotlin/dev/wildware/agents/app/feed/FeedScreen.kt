@@ -124,6 +124,7 @@ fun FeedScreen(
         CompositionLocalProvider(LocalFeedUi provides ui, LocalIsPhone provides phone, LocalPreview provides preview) {
             if (phone) PhoneFeed(ui, safeArea, startAt, widthPx) else DesktopFeed(ui, showRail = maxWidth >= RailBreakpoint, startAt)
             ui.viewer?.let { ImageViewer(it, if (phone) safeArea else SafeArea()) }
+            ui.selecting?.let { SelectTextSheet(ui, it, safeArea) }
             if (ui.commandOpen) CommandBar(ui, if (phone) safeArea else SafeArea())
         }
         FollowNavigation(ui, navigator)

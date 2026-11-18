@@ -1,5 +1,8 @@
 package dev.wildware.agents.app
 
+import androidx.compose.ui.test.hasText
+import dev.wildware.agents.app.feed.QuickReaction
+import androidx.compose.ui.text.TextRange
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.CompositionLocalProvider
@@ -193,14 +196,56 @@ class TextSelectionTest {
         assertEquals(code, clipboard.text)
     }
 
+    // Phones press like iMessage: the card's menu and reaction come first, from anywhere on it, and
+    // selecting is something the menu offers. The desktop keeps free drag-selection (above).
+
     @Test
-    fun onAPhoneLongPressOnBodyTextSelectsInsteadOfOpeningTheMenu() = runComposeUiTest {
+    fun onAPhoneLongPressOnBodyTextOpensTheCardMenu() = runComposeUiTest {
         phone()
         val first = onNodeWithText(firstLine, substring = true).performScrollTo()
         first.performTouchInput { longClick(first.charCenter("sessions")) }
         waitForIdle()
+        onNodeWithText("Copy link").assertExists()
+        onNodeWithText("Select text").assertExists()
+    }
+
+    @Test
+    fun onAPhoneDoubleTapOnBodyTextReacts() = runComposeUiTest {
+        phone()
+        val first = onNodeWithText(firstLine, substring = true).performScrollTo()
+        first.performTouchInput { doubleClick(first.charCenter("sessions")) }
+        waitForIdle()
+        assertEquals(listOf<FeedEvent>(FeedEvent.React("u1", QuickReaction)), events)
+    }
+
+    @Test
+    fun onAPhoneCopyTextCopiesTheWholeCardNotJustItsTitle() = runComposeUiTest {
+        phone()
+        val first = onNodeWithText(firstLine, substring = true).performScrollTo()
+        first.performTouchInput { longClick(first.charCenter("sessions")) }
+        onNodeWithText("Copy text").performClick()
+        waitForIdle()
+        val copied = clipboard.text.orEmpty()
+        assertTrue(copied.startsWith(fixTitle) && firstLine in copied && "**" !in copied, "copied: $copied")
+    }
+
+    @Test
+    fun onAPhoneSelectTextOpensTheCardsTextWithAllOfItSelected() = runComposeUiTest {
+        phone()
+        val first = onNodeWithText(firstLine, substring = true).performScrollTo()
+        first.performTouchInput { longClick(first.charCenter("sessions")) }
+        onNodeWithText("Select text").performClick()
+        waitForIdle()
+
+        val field = onNode(SemanticsMatcher.keyIsDefined(SemanticsProperties.EditableText) and hasText(firstLine, substring = true))
+        val node = field.fetchSemanticsNode()
+        val length = node.config[SemanticsProperties.EditableText].text.length
+        assertEquals(TextRange(0, length), node.config[SemanticsProperties.TextSelectionRange])
         onNodeWithText("Copy link").assertDoesNotExist()
-        assertTrue(events.isEmpty(), "got $events")
+
+        onNodeWithText("Done").performClick()
+        waitForIdle()
+        field.assertDoesNotExist()
     }
 
     @Test

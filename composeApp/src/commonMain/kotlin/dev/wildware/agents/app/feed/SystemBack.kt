@@ -65,7 +65,7 @@ internal fun FollowSystemBack(ui: FeedUi, widthPx: Float) {
     val feels = system.ownsLeftEdge
 
     fun modeNow(): BackMode? = when {
-        ui.viewer != null || ui.commandOpen || ui.menu != null -> BackMode.Overlay
+        ui.viewer != null || ui.commandOpen || ui.menu != null || ui.selecting != null -> BackMode.Overlay
         ui.drawer.value > 0f -> BackMode.CloseDrawer
         ui.phoneThread != null -> BackMode.Thread
         system.ownsLeftEdge && ui.isPhone -> BackMode.OpenDrawer
@@ -84,6 +84,7 @@ internal fun FollowSystemBack(ui: FeedUi, widthPx: Float) {
             BackMode.Overlay -> if (back) when {
                 ui.viewer != null -> ui.viewer = null
                 ui.commandOpen -> ui.commandOpen = false
+                ui.selecting != null -> ui.selecting = null
                 else -> ui.menu = null
             }
             BackMode.CloseDrawer -> scope.launch { ui.drawer.settle(!back, motion.normal()) }

@@ -195,7 +195,7 @@ class DashboardSession(
             is FeedEvent.LoadOlder -> scope.launch { runCatching { feed.loadOlder() } }
             is FeedEvent.RetrySend -> outbox.retryNow(event.outboxId)
             is FeedEvent.DropUnsent -> outbox.remove(event.outboxId)
-            is FeedEvent.Reply, is FeedEvent.CopyText, is FeedEvent.CopyLink, is FeedEvent.MoveProject, is FeedEvent.SignOut, is FeedEvent.ToggleTheme -> Unit
+            is FeedEvent.Reply, is FeedEvent.CopyText, is FeedEvent.SelectText, is FeedEvent.CopyLink, is FeedEvent.MoveProject, is FeedEvent.SignOut, is FeedEvent.ToggleTheme -> Unit
         }
     }
 
