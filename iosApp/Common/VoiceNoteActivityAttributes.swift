@@ -19,7 +19,7 @@ struct VoiceNoteActivityAttributes: ActivityAttributes {
 extension VoiceNoteActivityAttributes {
     func headline(_ state: ContentState) -> String {
         switch state.phase {
-        case .recording: projectName.map { "Recording for \($0)" } ?? "Recording a voice note"
+        case .recording: projectName.map { "Recording · \($0)" } ?? "Recording a voice note"
         case .sending: "Sending your voice note…"
         case .sent: "Sent to \(state.detail ?? projectName ?? "your agents")"
         case .queued: "Will send to \(state.detail ?? projectName ?? "your agents") when there's signal"

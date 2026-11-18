@@ -73,7 +73,7 @@ actor LiveActivityController {
             return
         }
         for activity in running {
-            await activity.update(ActivityContent(state: state, staleDate: nil))
+            await activity.update(ActivityContent(state: state.keepingServerFields(of: activity.content.state), staleDate: nil))
         }
     }
 
@@ -117,4 +117,16 @@ actor LiveActivityController {
 
 extension Data {
     var hexString: String { map { String(format: "%02x", $0) }.joined() }
+}
+
+extension AgentsActivityAttributes.ContentState {
+    /// The app builds its state from the summary, which doesn't yet carry everything the server pushes
+    /// (the asking agent's id, what agents are working on). Keeps those from the last push rather than
+    /// blanking them until the next one.
+    func keepingServerFields(of pushed: Self) -> Self {
+        var merged = self
+        if merged.working == nil { merged.working = pushed.working }
+        if merged.topAgentId == nil, merged.topRequestId == pushed.topRequestId { merged.topAgentId = pushed.topAgentId }
+        return merged
+    }
 }

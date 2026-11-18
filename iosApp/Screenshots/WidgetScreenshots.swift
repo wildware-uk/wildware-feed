@@ -98,11 +98,88 @@ final class WidgetScreenshots: XCTestCase {
     }
 
     func testLiveActivity() throws {
+        let soon = Int(Date.now.addingTimeInterval(41 * 60 + 52).timeIntervalSince1970)
+        var choice = waiting
+        choice.topAgent = "Lumen"
+        choice.topAgentId = "a-lumen"
+        choice.topProject = "harbor-app"
+        choice.topQuestion = "The build is green. What next?"
+        choice.topKind = "choice"
+        choice.topOptions = ["Ship it", "Keep testing", "Not now"]
+        choice.topDefault = nil
+        choice.topExpiresAt = soon + 3600
+        var text = waiting
+        text.topAgent = "Pixel"
+        text.topAgentId = "a-pixel"
+        text.topQuestion = "What should the release notes call the new seed shop?"
+        text.topKind = "text"
+        text.waiting = 3
+        var sent = waiting
+        sent.sentAnswer = "Yes"
+        sent.waiting = 1
+        var working = quietState
+        working.working = Self.working
+        var old = waiting
+        // A server from before the new fields: only the first seven keys.
+        old.topAgentId = nil; old.topProject = nil; old.topExpiresAt = nil; old.topOptions = nil; old.topDefault = nil
+
+        let states: [(String, AgentsActivityAttributes.ContentState)] = [
+            ("question", waiting), ("choice", choice), ("text", text), ("sent", sent),
+            ("working", working), ("quiet", quietState), ("old-server", old),
+        ]
         for scheme in Scheme.allCases {
-            try save("live-activity-question-\(scheme)", liveActivity(LockScreenView(state: waiting)), scheme: scheme)
-            try save("live-activity-quiet-\(scheme)", liveActivity(LockScreenView(state: quietState)), scheme: scheme)
+            for (name, state) in states {
+                let card = LockScreenView(state: state)
+                    .padding(14)
+                    .frame(width: 361, alignment: .leading)
+                    .background(state.showsQuestion && state.sentAnswer == nil ? Theme.waitingSoft : Theme.surface)
+                    .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                let fitted = UIHostingController(rootView: card).sizeThatFits(in: CGSize(width: 361, height: 1000))
+                XCTAssertLessThanOrEqual(fitted.height, 160, "live-activity-\(name) is taller than Apple's 160pt")
+                try save("live-activity-\(name)-\(scheme)", card, scheme: scheme)
+            }
         }
     }
+
+    func testDynamicIsland() throws {
+        var working = quietState
+        working.working = Self.working
+        for (name, state) in [("waiting", waiting), ("working", working)] {
+            let compact = HStack {
+                CompactLeading(state: state)
+                Spacer()
+                CompactTrailing(state: state)
+            }
+            .padding(.horizontal, 12)
+            .frame(width: 250, height: 37)
+            .background(.black, in: Capsule())
+            try save("island-compact-\(name)", compact, scheme: .dark)
+
+            let minimal = MinimalView(state: state)
+                .frame(width: 37, height: 37)
+                .background(.black, in: Circle())
+            try save("island-minimal-\(name)", minimal, scheme: .dark)
+
+            let expanded = VStack(spacing: 0) {
+                HStack(alignment: .top) {
+                    IslandLeading(state: state)
+                    Spacer()
+                    IslandTrailing(state: state)
+                }
+                IslandBottom(state: state)
+            }
+            .padding(EdgeInsets(top: 16, leading: 18, bottom: 18, trailing: 18))
+            .frame(width: 371)
+            .background(.black, in: RoundedRectangle(cornerRadius: 44, style: .continuous))
+            try save("island-expanded-\(name)", expanded, scheme: .dark)
+        }
+    }
+
+    private static let working: [AgentsActivityAttributes.ContentState.Working] = [
+        .init(agentId: "a-rover", agent: "Rover", task: "Fixing fee rounding at checkout", since: Int(Date.now.timeIntervalSince1970) - 12 * 60),
+        .init(agentId: "a-lumen", agent: "Lumen", task: "Porting the share sheet to Compose", since: Int(Date.now.timeIntervalSince1970) - 40 * 60),
+        .init(agentId: "a-pixel", agent: "Pixel", task: "Drawing the seed shop icons", since: Int(Date.now.timeIntervalSince1970) - 3 * 60),
+    ]
 
     func testVoiceNoteLiveActivity() throws {
         let note = VoiceNoteActivityAttributes(startedAt: .now.addingTimeInterval(-12), projectName: "garden-game")

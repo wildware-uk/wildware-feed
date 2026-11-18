@@ -33,6 +33,9 @@ struct AgentsActivityAttributes: ActivityAttributes {
         var topDefault: String? = nil
         /// What agents are busy with, at most three.
         var working: [Working]? = nil
+        /// Set on the phone, never by the server: the answer just tapped on the activity, shown as
+        /// "Sent" until the server's next push replaces the whole state.
+        var sentAnswer: String? = nil
 
         struct Working: Codable, Hashable {
             var agentId: String?

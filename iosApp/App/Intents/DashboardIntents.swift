@@ -1,3 +1,4 @@
+import ActivityKit
 import AppIntents
 #if COMPOSE_APP
 import ComposeApp
@@ -134,7 +135,19 @@ struct AnswerRequestIntent: AppIntent, LiveActivityIntent {
             client.close()
             WidgetCenter.shared.reloadAllTimelines()
         }
-        _ = try await client.answerFromAction(requestId: requestId, kind: kind, options: options, actionId: actionId, typedText: nil)
+        let answered = try await client.answerFromAction(requestId: requestId, kind: kind, options: options, actionId: actionId, typedText: nil)
+        if answered.boolValue { await showSent() }
         return .result()
+    }
+
+    /// Flips the Live Activity to "Sent" at once; the server's next push replaces it with what comes next.
+    private func showSent() async {
+        guard let requestKind = RequestKind.companion.fromWire(value: kind) else { return }
+        let title = RequestActions.shared.actionsFor(kind: requestKind, options: options).first { $0.id == actionId }?.title ?? "Answered"
+        for activity in Activity<AgentsActivityAttributes>.activities where activity.content.state.topRequestId == requestId {
+            var state = activity.content.state
+            state.sentAnswer = title
+            await activity.update(ActivityContent(state: state, staleDate: nil))
+        }
     }
 }
