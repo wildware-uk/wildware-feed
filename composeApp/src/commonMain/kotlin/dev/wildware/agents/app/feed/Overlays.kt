@@ -100,6 +100,7 @@ private fun menuRows(target: MenuTarget, phone: Boolean = false): List<MenuRow> 
     add(MenuRow("Copy text", Icons.Copy, false, FeedEvent.CopyText(target.id)))
     if (phone) add(MenuRow("Select text", Icons.SelectText, false, FeedEvent.SelectText(target.id)))
     add(MenuRow("Copy link", Icons.Link, false, FeedEvent.CopyLink(target.id)))
+    if (target.taggable) add(MenuRow("Tags…", Icons.Hash, false, FeedEvent.EditTags(target.id)))
     if (target.own) add(MenuRow("Delete", Icons.Trash, true, FeedEvent.Delete(target.id)))
 }
 

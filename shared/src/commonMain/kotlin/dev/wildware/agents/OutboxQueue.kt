@@ -253,6 +253,10 @@ class OwnerActions(
     /** Deletes a message (a post takes its replies with it) or an update. */
     fun delete(card: CardRef): String = queue(emptyList()) { id, _ -> Outbox.delete(id, clock(), card) }
 
+    /** Puts a tag on a card or takes it off; with [create], [tag] is a new word to make on the way. */
+    fun tag(card: CardRef, tag: String, on: Boolean, create: Boolean = false): String =
+        queue(emptyList()) { id, _ -> Outbox.tag(id, clock(), card, tag, on, create) }
+
     private fun queue(files: List<Attachment>, build: (String, List<OutboxFile>) -> OutboxItem): String {
         val id = newId()
         val stored = files.map { OutboxFile("$id-${newId()}", it.filename, it.mimeType) to it.bytes }

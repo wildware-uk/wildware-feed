@@ -128,6 +128,7 @@ fun FeedScreen(
             ui.viewer?.let { ImageViewer(it, if (phone) safeArea else SafeArea()) }
             ui.selecting?.let { SelectTextSheet(ui, it, safeArea) }
             if (ui.commandOpen) CommandBar(ui, if (phone) safeArea else SafeArea())
+            ui.tagging?.let { TagPicker(ui, it) }
         }
         FollowNavigation(ui, navigator)
         FollowSystemBack(ui, widthPx)
@@ -195,6 +196,7 @@ private fun DesktopColumns(ui: FeedUi, showRail: Boolean, startAt: String?) {
             }
             LoadOlderWhenNearEnd(ui, list)
             ScrollToRevealed(ui, list, itemsBefore = 1)
+            ScrollToTopWhenAsked(ui, list)
             val scrolled by remember { derivedStateOf { list.firstVisibleItemIndex > 3 } }
             if (scrolled) BackToTop(Modifier.align(Alignment.TopCenter).padding(top = 14.dp), toTop)
             // "All projects" has no one place to post to, so the box shows once a project is open.
@@ -293,6 +295,7 @@ private fun PhoneFeed(ui: FeedUi, safeArea: SafeArea, startAt: String?, widthPx:
             }
             LoadOlderWhenNearEnd(ui, list)
             ScrollToRevealed(ui, list, itemsBefore = 2)
+            ScrollToTopWhenAsked(ui, list)
         }
         // Tapping the status bar area scrolls to the top, as it does across iOS.
         Box(
@@ -427,6 +430,13 @@ private const val RevealWaitMillis = 10_000L
  * link. It waits for the card to load, shows every card if the chips hid it, and leaves a little
  * room above it so the "Back to top" pill doesn't cover its header.
  */
+/** Takes the feed back to its top when [FeedUi.toTopAsked] goes up, such as when a tag filter is set. */
+@Composable
+private fun ScrollToTopWhenAsked(ui: FeedUi, list: LazyListState) {
+    val asked = ui.toTopAsked
+    LaunchedEffect(asked) { if (asked > 0) list.scrollToItem(0) }
+}
+
 @Composable
 private fun ScrollToRevealed(ui: FeedUi, list: LazyListState, itemsBefore: Int) {
     val target = ui.revealing ?: return

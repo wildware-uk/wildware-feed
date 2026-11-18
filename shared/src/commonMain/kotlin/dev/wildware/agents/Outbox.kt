@@ -29,6 +29,12 @@ enum class OutboxKind {
 
     /** Deletes [OutboxItem.card]: a message or an update. */
     Delete,
+
+    /**
+     * Puts a tag on [OutboxItem.card], or takes it off when [OutboxItem.on] is false. [OutboxItem.value]
+     * is the tag's id, or a new word when [OutboxItem.create].
+     */
+    Tag,
 }
 
 /** A photo or file waiting to go up with its message. [name] is the file in the outbox's folder. */
@@ -76,15 +82,17 @@ data class OutboxItem(
     val emoji: String? = null,
     /** For a reaction: on or off. Never a toggle, so sending twice can't undo it. */
     val on: Boolean? = null,
-    /** An in-app answer, as JSON text. */
+    /** An in-app answer, as JSON text; for a tag, the tag's id or new word. */
     val value: String? = null,
+    /** For a tag: make the word on the way, as the project doesn't have it yet. */
+    val create: Boolean? = null,
 ) {
     /** Items in one thread go in the order they were written. */
     val threadKey: String
         get() = when (kind) {
             OutboxKind.Answer -> "request=${answer?.requestId}"
             OutboxKind.RequestAnswer, OutboxKind.Dismiss -> "request=${card?.id}"
-            OutboxKind.React, OutboxKind.Delete -> "card=${card?.kind}/${card?.id}"
+            OutboxKind.React, OutboxKind.Delete, OutboxKind.Tag -> "card=${card?.kind}/${card?.id}"
             else -> thread.entries.sortedBy { it.key }.joinToString("&") { "${it.key}=${it.value}" }
         }
 
@@ -162,6 +170,10 @@ object Outbox {
 
     fun delete(id: String, nowMillis: Long, card: CardRef) =
         OutboxItem(id, nowMillis, OutboxKind.Delete, "Delete", card = card)
+
+    /** [tag] is a tag id, or a new word to make on the way when [create]. */
+    fun tag(id: String, nowMillis: Long, card: CardRef, tag: String, on: Boolean, create: Boolean) =
+        OutboxItem(id, nowMillis, OutboxKind.Tag, if (on) "Tag" else "Untag", card = card, on = on, value = tag, create = create.takeIf { it })
 
     /**
      * Whether a failure is worth trying again. Not reaching the dashboard, a timeout, rate limiting
@@ -311,6 +323,11 @@ internal suspend fun DashboardClient.deliverQueued(item: OutboxItem, attachments
                         else -> throw DashboardException(400, "invalid_argument", "Only messages and updates can be deleted.")
                     }
                 }
+            }
+            OutboxKind.Tag -> {
+                val card = item.card ?: return DeliveryResult(DeliveryOutcome.GiveUp, message = "It has no card.")
+                val tag = item.value ?: return DeliveryResult(DeliveryOutcome.GiveUp, message = "It has no tag.")
+                tagCard(card, tag, item.on ?: true, create = item.create == true)
             }
         }
         DeliveryResult(DeliveryOutcome.Sent, 200, ticketMessageId = ticketMessageId, sent = sent)

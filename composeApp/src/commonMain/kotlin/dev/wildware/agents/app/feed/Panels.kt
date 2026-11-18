@@ -352,6 +352,8 @@ fun FeedHeader(ui: FeedUi, compact: Boolean, modifier: Modifier = Modifier) {
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            // First, so it is in sight on a phone, where the row scrolls sideways.
+            TagFilterChip()
             val counts = remember(state.sections) {
                 val all = state.sections.flatMap { it.items }
                 FeedFilter.entries.associateWith { f -> all.count(f::matches) }

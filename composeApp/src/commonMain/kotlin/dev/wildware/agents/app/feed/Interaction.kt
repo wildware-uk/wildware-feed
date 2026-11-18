@@ -37,6 +37,10 @@ sealed interface FeedEvent {
     data class SelectText(val targetId: String) : FeedEvent
     data class CopyLink(val targetId: String) : FeedEvent
     data class Delete(val targetId: String) : FeedEvent
+    /** Put a tag on a card, or take it off. [tag] is its id, or with [create] a new word to make on the way. */
+    data class Tag(val targetId: String, val tag: String, val on: Boolean, val create: Boolean = false) : FeedEvent
+    /** Open the tag picker for a card. The screen handles it; nothing is sent. */
+    data class EditTags(val targetId: String) : FeedEvent
     data class OpenThread(val cardId: String) : FeedEvent
     data class MoveProject(val from: Int, val to: Int) : FeedEvent
     /** Show one project's feed, or every project's for null. */
@@ -81,6 +85,8 @@ data class MenuTarget(
     val own: Boolean,
     /** Where the pointer was, in the target's own coordinates, for menus that open at the cursor. */
     val at: Offset = Offset.Zero,
+    /** A card that can wear tags: an update or a post, not a reply. */
+    val taggable: Boolean = false,
 )
 
 /** The emoji a double-tap adds. */
@@ -197,18 +203,25 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
         get() {
             val from = state.sections
             val by = filter
-            if (from === sectionsFrom && by == sectionsFilter) return filteredSections
+            if (from === sectionsFrom && by == sectionsFilter && tagFilter == sectionsTag && tagsHere.toMap() == sectionsTags) return filteredSections
+            val tag = tagFilter
             val filtered = when {
-                by == FeedFilter.All && from.all { it.items.isNotEmpty() } -> from
-                else -> from.map { it.copy(items = it.items.filter(by::matches)) }.filter { it.items.isNotEmpty() }
+                by == FeedFilter.All && tag == null && from.all { it.items.isNotEmpty() } -> from
+                else -> from.map { section ->
+                    section.copy(items = section.items.filter { by.matches(it) && (tag == null || tagsFor(it.id, tagOf(it)).any { t -> t.name == tag }) })
+                }.filter { it.items.isNotEmpty() }
             }
             sectionsFrom = from
             sectionsFilter = by
+            sectionsTag = tagFilter
+            sectionsTags = tagsHere.toMap()
             filteredSections = filtered
             return filtered
         }
     private var sectionsFrom: List<FeedSection>? = null
     private var sectionsFilter: FeedFilter? = null
+    private var sectionsTag: String? = null
+    private var sectionsTags: Map<String, Map<String, Pair<CardTag, Boolean>>> = emptyMap()
     private var filteredSections: List<FeedSection> = emptyList()
     val drawer = EdgeProgress(if (preview.drawerOpen) 1f else 0f)
 
@@ -254,7 +267,82 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
         replyingTo = null
     }
 
+    /** The card whose tag picker is open. */
+    var tagging by mutableStateOf<String?>(null)
+
+    /**
+     * Only cards wearing this tag are shown, by name; null for all. Setting one takes the feed to
+     * its top, where the header says which tag it is showing and how to show everything again.
+     */
+    var tagFilter: String?
+        get() = tagFilterState
+        set(value) {
+            if (value != null && value != tagFilterState) toTopAsked++
+            tagFilterState = value
+        }
+    private var tagFilterState by mutableStateOf<String?>(null)
+
+    /** Goes up by one each time the feed should go back to its top. */
+    var toTopAsked by mutableStateOf(0)
+        private set
+
+    /** Tags the owner put on or took off here, by card then tag key, drawn before the server answers. */
+    private val tagsHere = mutableStateMapOf<String, Map<String, Pair<CardTag, Boolean>>>()
+
+    /** New words made here, until the server's list has them. */
+    private val madeHere = mutableStateListOf<CardTag>()
+
+    /** The tags a card shows: the server's, with the owner's latest changes here on top. */
+    fun tagsFor(id: String, base: List<CardTag>): List<CardTag> {
+        val changes = tagsHere[id] ?: return base
+        var tags = base
+        changes.values.forEach { (tag, on) ->
+            val has = tags.any { it.id == tag.id || it.name.equals(tag.name, ignoreCase = true) }
+            tags = when {
+                on && !has -> tags + tag
+                !on && has -> tags.filter { it.id != tag.id && !it.name.equals(tag.name, ignoreCase = true) }
+                else -> tags
+            }
+        }
+        return tags
+    }
+
+    /** The words a card in [projectId] can wear, in the project's order, with any made here last. */
+    fun vocabularyFor(projectId: String?): List<CardTag> {
+        val known = state.tags.filter { it.projectId == null || it.projectId == projectId }
+        return known + madeHere.filter { m -> m.projectId == projectId && known.none { it.name.equals(m.name, ignoreCase = true) } }
+    }
+
+    private fun tagOf(item: FeedItem): List<CardTag> = when (item) {
+        is FeedItem.Update -> item.tags
+        is FeedItem.Post -> item.tags
+        is FeedItem.Question -> emptyList()
+    }
+
+    private fun noteTag(event: FeedEvent.Tag) {
+        val project = state.item(event.targetId)?.let(::projectOf)
+        val tag = if (event.create) {
+            CardTag("new:${event.tag.lowercase()}", event.tag, null, project).also { made ->
+                if (madeHere.none { it.id == made.id }) madeHere += made
+            }
+        } else {
+            vocabularyFor(project).firstOrNull { it.id == event.tag } ?: CardTag(event.tag, event.tag)
+        }
+        tagsHere[event.targetId] = tagsHere[event.targetId].orEmpty() + (tag.name.lowercase() to (tag to event.on))
+    }
+
+    private fun projectOf(item: FeedItem): String = when (item) {
+        is FeedItem.Update -> item.project.id
+        is FeedItem.Post -> item.project.id
+        is FeedItem.Question -> item.project.id
+    }
+
     fun emit(event: FeedEvent) {
+        if (event is FeedEvent.EditTags) {
+            tagging = event.targetId
+            menu = null
+            return
+        }
         when (event) {
             // Reacting is a toggle: the same emoji again takes it back, as the server does.
             is FeedEvent.React -> {
@@ -280,6 +368,7 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
             }
             is FeedEvent.SendReply -> replyingTo = null
             is FeedEvent.SelectText -> selecting = textOf(event.targetId)?.let { SelectingText(event.targetId, it) }
+            is FeedEvent.Tag -> noteTag(event)
             is FeedEvent.SelectProject -> threadId = null
             else -> Unit
         }

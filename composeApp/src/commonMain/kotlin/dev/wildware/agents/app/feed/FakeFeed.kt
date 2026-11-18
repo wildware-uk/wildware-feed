@@ -15,6 +15,17 @@ object FakeFeed {
     private val engine = Project("p3", "rust-engine", unread = 0, hue = 1, slug = "rust-engine")
     private val website = Project("p4", "website", unread = 2, hue = 3, slug = "website")
     private val infra = Project("p5", "infra", unread = 1, waiting = 1, hue = 4, slug = "infra")
+    private val bugTag = CardTag("t1", "bug", "rose", projectId = "p1")
+    private val sessionsTag = CardTag("t2", "sessions", "blue", projectId = "p1")
+
+    /** The words agent-dashboard uses for its cards. */
+    private val dashboardTags = listOf(
+        bugTag,
+        sessionsTag,
+        CardTag("t3", "feature", "green", projectId = "p1"),
+        CardTag("t4", "high priority", "amber", projectId = "p1"),
+    )
+
     private val oldDashboard = Project("p6", "agent-dashboard v1", unread = 0, hue = 0, slug = "agent-dashboard-v1", archived = true)
 
     private val fixReplies = listOf(
@@ -76,7 +87,7 @@ object FakeFeed {
         acks = Acks(read = listOf(scout, relay)),
         replies = fixReplies,
         unreadReplies = 2,
-        tags = listOf("bug", "sessions"),
+        tags = listOf(bugTag, sessionsTag),
     )
 
     private val question = FeedItem.Question(
@@ -173,6 +184,7 @@ object FakeFeed {
         ),
         openThread = fix,
         totalUnread = 19,
+        tags = dashboardTags,
     )
 
     /** The clock [allProjects] is drawn at, so its countdowns read the same every time. */

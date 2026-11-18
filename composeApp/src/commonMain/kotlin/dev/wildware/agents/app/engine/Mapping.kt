@@ -18,6 +18,7 @@ import dev.wildware.agents.app.feed.Acks
 import dev.wildware.agents.app.feed.Agent
 import dev.wildware.agents.app.feed.Attachment
 import dev.wildware.agents.app.feed.Author
+import dev.wildware.agents.app.feed.CardTag
 import dev.wildware.agents.app.feed.Choice
 import dev.wildware.agents.app.feed.FeedItem
 import dev.wildware.agents.app.feed.FeedSection
@@ -113,6 +114,7 @@ internal class FeedMapper(
             loaded = feed.loaded || feed.cached,
             loading = feed.loading,
             hasMore = feed.hasMore,
+            tags = feed.tags.map { it.toCardTag() },
         )
     }
 
@@ -124,6 +126,8 @@ internal class FeedMapper(
         }
         feed.waiting.forEach { put(it.request.agentId, it.agentName) }
     }
+
+    private fun dev.wildware.agents.TagView.toCardTag() = CardTag(id, name, colour, projectId)
 
     private fun ProjectSummary.toView() =
         Project(project.id, project.name, unread = unread, waiting = waiting, hue = hue(project.id), slug = project.slug, archived = project.isArchived)
@@ -159,7 +163,7 @@ internal class FeedMapper(
                 reactions = reactions(reactions),
                 replies = replies(replies, unread, agents, project, threads),
                 unreadReplies = unread,
-                tags = tags.map { it.name },
+                tags = tags.map { it.toCardTag() },
             )
         }
         is PostCard -> FeedItem.Post(
@@ -171,6 +175,7 @@ internal class FeedMapper(
             acks = acks(this, agents),
             replies = replies(replies, unread, agents, project, threads),
             unreadReplies = unread,
+            tags = tags.map { it.toCardTag() },
             reactions = reactions(reactions),
             sending = post.sending,
             questions = post.questions.map { it.toQuestion(agents, project, threads) },

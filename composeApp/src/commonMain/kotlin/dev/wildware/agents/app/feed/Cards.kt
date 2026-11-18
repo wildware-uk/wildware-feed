@@ -195,7 +195,8 @@ fun UpdateCard(
     val type = AgentTheme.type
     val ui = LocalFeedUi.current
     val indent = if (density == Density.Compact) 0.dp else BodyIndent
-    val target = MenuTarget(item.id, item.agent.name, item.title, own = false)
+    val target = MenuTarget(item.id, item.agent.name, item.title, own = false, taggable = true)
+    val tags = ui?.tagsFor(item.id, item.tags) ?: item.tags
     val reactions = ui?.reactionsFor(item.id, item.reactions) ?: item.reactions
     WithMenu(target, modifier) { gestures ->
     CardFrame(gestures, selected = selected, density = density) {
@@ -224,11 +225,7 @@ fun UpdateCard(
                     Spacer(Modifier.height(10.dp))
                     MediaGrid(item.attachments) { i -> ui?.viewer = Gallery(item.attachments, i) }
                 }
-                if (item.tags.isNotEmpty()) {
-                    FlowRow(Modifier.padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        item.tags.forEach { Tag(it) }
-                    }
-                }
+                TagChips(tags, Modifier.padding(top = 10.dp))
                 val inline = LocalInlineThreads.current && !inThread
                 val showThread = item.replies.isNotEmpty() && !inThread && !inline
                 val hasFooter = reactions.isNotEmpty() || showThread
@@ -254,19 +251,6 @@ fun UpdateCard(
 }
 }
 
-@Composable
-private fun Tag(text: String) {
-    val colors = AgentTheme.colors
-    Text(
-        "#$text",
-        Modifier
-            .clip(AgentTheme.shapes.small)
-            .background(colors.text.copy(alpha = if (colors.isDark) 0.07f else 0.045f))
-            .padding(horizontal = 7.dp, vertical = 2.dp),
-        color = colors.textMuted,
-        style = AgentTheme.type.meta,
-    )
-}
 
 /** "4 replies · 2 new", with the faces of who replied. Opens the thread. */
 @Composable
@@ -590,7 +574,8 @@ fun PostCard(item: FeedItem.Post, modifier: Modifier = Modifier, density: Densit
     val ui = LocalFeedUi.current
     val own = item.author is Author.Owner
     val indent = if (density == Density.Compact) 0.dp else BodyIndent
-    val target = MenuTarget(item.id, if (own) "You" else item.author.name, item.body, own = own)
+    val target = MenuTarget(item.id, if (own) "You" else item.author.name, item.body, own = own, taggable = true)
+    val tags = ui?.tagsFor(item.id, item.tags) ?: item.tags
     val reactions = ui?.reactionsFor(item.id, item.reactions) ?: item.reactions
     WithMenu(target, modifier.alpha(if (item.sending) SendingAlpha else 1f)) { gestures ->
     CardFrame(gestures, density = density) {
@@ -607,6 +592,7 @@ fun PostCard(item: FeedItem.Post, modifier: Modifier = Modifier, density: Densit
             )
             Column(Modifier.padding(start = indent, top = 8.dp)) {
                 if (own) PlainBody(item.body) else MarkdownBody(item.body)
+                TagChips(tags, Modifier.padding(top = 10.dp))
                 val inline = LocalInlineThreads.current && !inThread
                 val showThread = item.replies.isNotEmpty() && !inThread && !inline
                 if (reactions.isNotEmpty() || showThread) {

@@ -87,6 +87,10 @@ const val SendingLabel = "Sending…"
 /** How faded a line still in the outbox is drawn. */
 const val SendingAlpha = 0.6f
 
+/** One of a project's words for its cards, such as "bug". [colour] is a palette name: rose, amber, green, blue, violet or grey. */
+@Immutable
+data class CardTag(val id: String, val name: String, val colour: String? = null, val projectId: String? = null)
+
 @Immutable
 data class Reply(
     val id: String,
@@ -197,7 +201,7 @@ sealed interface FeedItem {
         val acks: Acks = Acks(),
         override val replies: List<Reply> = emptyList(),
         override val unreadReplies: Int = 0,
-        val tags: List<String> = emptyList(),
+        val tags: List<CardTag> = emptyList(),
     ) : Threaded {
         override val starter: Author get() = Author.AgentAuthor(agent)
     }
@@ -246,6 +250,7 @@ sealed interface FeedItem {
         val sending: Boolean = false,
         /** Questions an agent asked under the post itself, shown at the top of its thread. */
         val questions: List<Question> = emptyList(),
+        val tags: List<CardTag> = emptyList(),
     ) : Threaded {
         override val title: String get() = body.lineSequence().first().take(120)
         override val starter: Author get() = author
@@ -276,6 +281,8 @@ data class FeedState(
     val hasMore: Boolean = false,
     /** What search looks through: every project's loaded cards, not only the one on screen. Empty means "what's on screen". */
     val searchIndex: List<SearchEntry> = emptyList(),
+    /** Every word the projects on screen use for their cards, for the tag picker. */
+    val tags: List<CardTag> = emptyList(),
 ) {
     fun item(id: String): FeedItem? = sections.firstNotNullOfOrNull { s -> s.items.firstOrNull { it.id == id } }
 }

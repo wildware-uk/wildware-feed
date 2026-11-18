@@ -142,6 +142,22 @@ class DashboardClient(
         http.delete("api/messages/${messageId.encodeURLPathPart()}") { authorise() }.requireSuccess()
     }
 
+    /**
+     * Puts one of the project's tags on a card, or takes it off. [tag] is the tag's id, or with
+     * [create] a new word the project doesn't have yet. Says on or off, so sending it twice does no harm.
+     */
+    @Throws(Exception::class)
+    suspend fun tagCard(card: CardRef, tag: String, on: Boolean, create: Boolean = false) {
+        http.post("api/cards/${card.kind.encodeURLPathPart()}/${card.id.encodeURLPathPart()}/tags") {
+            authorise()
+            jsonBody(buildJsonObject {
+                put("tag", tag)
+                put("on", on)
+                if (create) put("create", true)
+            })
+        }.requireSuccess()
+    }
+
     /** Deletes an update card. */
     @Throws(Exception::class)
     suspend fun deleteUpdate(updateId: String) {
