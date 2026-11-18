@@ -33,6 +33,16 @@ class PostgresToSqlite(private val log: (String) -> Unit = {}) {
                         val rows = copyTable(pg, target, table, columns)
                         log("  $table: $rows rows")
                     }
+                    // SQLite's next seq continues from Postgres's, past any rows deleted there.
+                    val next = copier.nextSeqs(pg, tables.filter { "seq" in it.second }.map { it.first })
+                    for ((table, n) in next) {
+                        val updated = target.prepareStatement("UPDATE sqlite_sequence SET seq = ? WHERE name = ?").use { st ->
+                            st.setLong(1, n - 1); st.setString(2, table); st.executeUpdate()
+                        }
+                        if (updated == 0) target.prepareStatement("INSERT INTO sqlite_sequence (name, seq) VALUES (?, ?)").use { st ->
+                            st.setString(1, table); st.setLong(2, n - 1); st.executeUpdate()
+                        }
+                    }
                 }
                 target.commit()
             } catch (e: Throwable) {

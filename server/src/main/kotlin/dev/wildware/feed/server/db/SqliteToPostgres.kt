@@ -69,9 +69,12 @@ class SqliteToPostgres(private val log: (String) -> Unit = {}) {
                     log("  ${it.table}: ${it.rows} rows" + if (it.nulsReplaced > 0) ", ${it.nulsReplaced} NUL characters replaced" else "")
                 }
             }.also {
+                // The next seq continues from SQLite's high-water mark, which deleted rows leave above max(seq).
+                val next = nextSeqs(source)
                 for ((table, columns) in tables) {
-                    if ("seq" in columns) pg.createStatement().use { st ->
-                        st.execute("SELECT setval(pg_get_serial_sequence('\"$table\"', 'seq'), COALESCE((SELECT max(seq) FROM \"$table\"), 0) + 1, false)")
+                    if ("seq" in columns) pg.prepareStatement("SELECT setval(pg_get_serial_sequence('\"$table\"', 'seq'), ?, false)").use { st ->
+                        st.setLong(1, next[table] ?: 1L)
+                        st.executeQuery().close()
                     }
                 }
             }
@@ -113,10 +116,36 @@ class SqliteToPostgres(private val log: (String) -> Unit = {}) {
         return TableReport(table, rows, hex(digest.digest()), nuls)
     }
 
+    /** The seq SQLite would give each table's next row: one past the larger of its high-water mark and max(seq). */
+    fun nextSeqs(sqlite: Connection): Map<String, Long> {
+        val high = sqlite.createStatement().use { st ->
+            st.executeQuery("SELECT name, seq FROM sqlite_sequence").use { rs -> buildMap { while (rs.next()) put(rs.getString(1), rs.getLong(2)) } }
+        }
+        return tables(sqlite).filter { "seq" in it.second }.associate { (table, _) ->
+            val max = sqlite.createStatement().use { st -> st.executeQuery("SELECT coalesce(max(seq), 0) FROM \"$table\"").use { it.next(); it.getLong(1) } }
+            table to maxOf(max, high[table] ?: 0L) + 1
+        }
+    }
+
+    /** The seq Postgres will give each table's next row. */
+    fun nextSeqs(pg: Connection, tables: List<String>): Map<String, Long> = tables.associateWith { table ->
+        val name = pg.createStatement().use { st ->
+            st.executeQuery("SELECT pg_get_serial_sequence('\"$table\"', 'seq')").use { it.next(); it.getString(1) }
+        }
+        pg.createStatement().use { st ->
+            st.executeQuery("SELECT last_value, is_called FROM $name").use { it.next(); if (it.getBoolean(2)) it.getLong(1) + 1 else it.getLong(1) }
+        }
+    }
+
     /** Counts and checksums on both sides; throws [Mismatch] naming every table that differs. */
     fun verify(source: Connection, target: Database): List<TableReport> {
         val tables = tables(source)
         val wrong = mutableListOf<String>()
+        val sqliteNext = nextSeqs(source)
+        val pgNext = target.withConnection { nextSeqs(it, sqliteNext.keys.toList()) }
+        for ((table, next) in sqliteNext) {
+            if (pgNext[table] != next) wrong += "$table (next seq: SQLite $next, Postgres ${pgNext[table]})"
+        }
         val reports = tables.map { (table, columns) ->
             val a = checksum(source, table, columns, replaceNul = true)
             val b = target.withConnection { checksum(it, table, columns, replaceNul = false) }

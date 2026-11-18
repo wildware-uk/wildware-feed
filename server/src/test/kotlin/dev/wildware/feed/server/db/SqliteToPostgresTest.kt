@@ -18,6 +18,9 @@ class SqliteToPostgresTest {
             db.update("INSERT INTO agents (id, name, token_hash, created_at) VALUES ('A1', 'rover', 'h1', 10)")
             db.update("INSERT INTO agents (id, name, token_hash, created_at, last_seen_at) VALUES ('A2', 'it''s', 'h2', 11, 99)")
             db.update("INSERT INTO projects (id, slug, name, status, pinned, created_at, updated_at) VALUES ('P1', 'p', 'P', 'active', 0, 1, 1)")
+            // A deleted newest row leaves SQLite's high-water mark above max(seq); the copy must keep it.
+            db.update("INSERT INTO tags (id, project_id, name, slug, created_at) VALUES ('T1', 'P1', 'gone', 'gone', 1)")
+            db.update("DELETE FROM tags WHERE id = 'T1'")
         }
         // The TS server could store a NUL; Kotlin's own writes can't reach SQLite with one either way.
         DriverManager.getConnection("jdbc:sqlite:${dir.path}/${Database.FILE_NAME}").use { c ->
@@ -42,6 +45,8 @@ class SqliteToPostgresTest {
             val seqs = target.query("SELECT seq FROM agents ORDER BY seq") { it.getLong(1) }
             assertEquals(3, seqs.size)
             assertTrue(seqs[2] > seqs[1])
+            target.update("INSERT INTO tags (id, project_id, name, slug, created_at) VALUES ('T2', 'P1', 'new', 'new', 2)")
+            assertEquals(2L, target.one("SELECT seq FROM tags WHERE id = 'T2'") { it.getLong(1) }, "the next tag continues past the deleted one, as in SQLite")
 
             target.update("UPDATE agents SET name = 'changed' WHERE id = 'A2'")
             val e = assertFailsWith<SqliteToPostgres.Mismatch> { tool.openSource(file).use { tool.verify(it, target) } }
