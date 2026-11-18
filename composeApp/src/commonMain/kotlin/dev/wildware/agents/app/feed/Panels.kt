@@ -674,10 +674,11 @@ fun ReplyView(reply: Reply, modifier: Modifier = Modifier) {
 }
 
 @Composable
-internal fun NewDivider(count: Int) {
+internal fun NewDivider(count: Int, newAbove: Boolean = false) {
     val colors = AgentTheme.colors
+    val where = if (newAbove) "above" else "below"
     Row(
-        Modifier.fillMaxWidth().padding(vertical = 6.dp).semantics(mergeDescendants = true) { contentDescription = "$count new replies below" },
+        Modifier.fillMaxWidth().padding(vertical = 6.dp).semantics(mergeDescendants = true) { contentDescription = "$count new replies $where" },
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(Modifier.weight(1f).height(1.dp).background(colors.accent.copy(alpha = 0.5f)))

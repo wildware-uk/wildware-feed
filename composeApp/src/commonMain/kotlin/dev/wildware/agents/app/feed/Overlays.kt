@@ -9,6 +9,9 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.runtime.key
+import androidx.compose.ui.layout.positionInParent
+import androidx.compose.ui.layout.onPlaced
 import dev.wildware.agents.app.design.AgentColors
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -730,6 +733,15 @@ fun PhoneThreadScreen(ui: FeedUi, item: Threaded, widthPx: Float, safeArea: Safe
             }
             // A preview showing a swiped reply opens scrolled to the replies.
             val scroll = rememberScrollState(if (preview.replySwipe != null) 100_000 else 0)
+            // Where the replies start. Not state: only the scroll below reads it.
+            val repliesAt = remember { intArrayOf(0) }
+            // The owner's reply lands at the top of the replies at once; bring it into view.
+            val newest = item.replies.lastOrNull()
+            LaunchedEffect(newest?.id) {
+                if (newest?.sending == true && newest.author is Author.Owner) {
+                    if (motion.reduced) scroll.scrollTo(repliesAt[0]) else scroll.animateScrollTo(repliesAt[0])
+                }
+            }
             Column(
                 Modifier.weight(1f).closesComposer(ui).verticalScroll(scroll).padding(horizontal = 16.dp),
             ) {
@@ -737,16 +749,17 @@ fun PhoneThreadScreen(ui: FeedUi, item: Threaded, widthPx: Float, safeArea: Safe
                 FeedItemView(item, selected = false, density = Density.Compact, inThread = true)
                 HeadQuestions(item)
                 Spacer(Modifier.height(14.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.onPlaced { repliesAt[0] = it.positionInParent().y.roundToInt() }, verticalAlignment = Alignment.CenterVertically) {
                     SectionLabel(if (item.replies.size == 1) "1 reply" else "${item.replies.size} replies")
                     Spacer(Modifier.weight(1f))
                     if (item.replies.isNotEmpty()) MetaText("Swipe a reply right to answer it")
                 }
                 Spacer(Modifier.height(6.dp))
-                val firstUnread = item.replies.indexOfFirst { it.unread }
-                item.replies.forEachIndexed { i, reply ->
-                    if (i == firstUnread) NewDivider(item.unreadReplies)
-                    InteractiveReply(reply)
+                // Newest first, under the card; the "N new" line under the new ones.
+                val order = remember(item.replies) { NewestFirst(item.replies, all = true) }
+                order.replies.forEachIndexed { i, reply ->
+                    key(reply.id) { InteractiveReply(reply) }
+                    if (i == order.newLineAfter) NewDivider(item.unreadReplies, newAbove = true)
                 }
                 Spacer(Modifier.height(12.dp))
             }

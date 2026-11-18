@@ -1,5 +1,6 @@
 package dev.wildware.agents.app.feed
 
+import androidx.compose.runtime.key
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -35,7 +36,24 @@ val LocalInlineThreads = staticCompositionLocalOf { false }
 internal const val InlineReplies = 5
 
 /**
- * A card's thread, under the card: its replies, newest last, and a reply box. New replies (the
+ * Replies as they are shown: newest first. [replies] come oldest first, as the engine keeps them,
+ * so a reply being sent (the newest) lands at the top at once. [shown] is how many of the newest
+ * show before "Show earlier replies": [InlineReplies], or more so that no new reply is hidden.
+ * [newLineAfter] is the index the "N new" line follows: the oldest new reply, when older ones sit
+ * under it.
+ */
+internal class NewestFirst(replies: List<Reply>, all: Boolean) {
+    val replies: List<Reply> = replies.asReversed()
+    private val oldestNew = this.replies.indexOfLast { it.unread }
+    val shown: Int = when {
+        all || this.replies.size <= InlineReplies + 1 -> this.replies.size
+        else -> maxOf(InlineReplies, oldestNew + 1)
+    }
+    val newLineAfter: Int = if (oldestNew in 0 until this.replies.lastIndex) oldestNew else -1
+}
+
+/**
+ * A card's thread, under the card: its replies, newest first, and a reply box. New replies (the
  * owner's own at once, faded until sent, and agents' as they arrive) show here without opening
  * anything. A long thread shows its newest few, and never hides one the owner hasn't read.
  */
@@ -45,12 +63,8 @@ fun InlineThread(item: Threaded, modifier: Modifier = Modifier) {
     val colors = AgentTheme.colors
     val replies = item.replies
     val expanded = ui?.expandedThreads?.contains(item.id) == true
-    val firstUnread = replies.indexOfFirst { it.unread }
-    val from = when {
-        expanded || replies.size <= InlineReplies + 1 -> 0
-        firstUnread in 0 until replies.size - InlineReplies -> firstUnread
-        else -> replies.size - InlineReplies
-    }
+    val order = remember(replies, expanded) { NewestFirst(replies, all = expanded) }
+    val hidden = replies.size - order.shown
     val replying = ui?.threadId == item.id
 
     // Seen here is read: the badge clears once the new replies have been on screen a moment.
@@ -68,13 +82,14 @@ fun InlineThread(item: Threaded, modifier: Modifier = Modifier) {
             Spacer(Modifier.height(6.dp))
         }
         HeadQuestions(item)
-        if (from > 0) {
-            TextAction("Show ${from} earlier ${if (from == 1) "reply" else "replies"}") { ui?.expandedThreads?.add(item.id) }
+        for (i in 0 until order.shown) {
+            // Keyed by id: a new reply arrives at the top, and the ones under it keep their place.
+            val reply = order.replies[i]
+            key(reply.id) { InteractiveReply(reply) }
+            if (i == order.newLineAfter) NewDivider(item.unreadReplies, newAbove = true)
         }
-        replies.forEachIndexed { i, reply ->
-            if (i < from) return@forEachIndexed
-            if (i == firstUnread && i > 0) NewDivider(item.unreadReplies)
-            InteractiveReply(reply)
+        if (hidden > 0) {
+            TextAction("Show $hidden earlier ${if (hidden == 1) "reply" else "replies"}") { ui?.expandedThreads?.add(item.id) }
         }
         if (replying) {
             val focus = remember { FocusRequester() }
