@@ -58,7 +58,12 @@ internal class NewestFirst(replies: List<Reply>, all: Boolean) {
  * anything. A long thread shows its newest few, and never hides one the owner hasn't read.
  */
 @Composable
-fun InlineThread(item: Threaded, modifier: Modifier = Modifier) {
+fun InlineThread(
+    item: Threaded,
+    modifier: Modifier = Modifier,
+    /** What adding to the thread is called: "Reply", or "Discuss" under a question, where replying would sound like answering. */
+    action: String = "Reply",
+) {
     val ui = LocalFeedUi.current
     val colors = AgentTheme.colors
     val replies = item.replies
@@ -97,7 +102,7 @@ fun InlineThread(item: Threaded, modifier: Modifier = Modifier) {
             LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
         } else {
             Spacer(Modifier.height(if (replies.isEmpty()) 10.dp else 4.dp))
-            ReplyAction { ui?.openThread(item.id, phone = false) }
+            ReplyAction(action) { ui?.openThread(item.id, phone = false) }
         }
     }
 }
@@ -105,18 +110,18 @@ fun InlineThread(item: Threaded, modifier: Modifier = Modifier) {
 private const val MarkReadAfterMillis = 1_500L
 
 @Composable
-private fun ReplyAction(onClick: () -> Unit) {
+private fun ReplyAction(label: String, onClick: () -> Unit) {
     val colors = AgentTheme.colors
     val shape = AgentTheme.shapes.pill
     Row(
         Modifier
             .clip(shape)
-            .pressable("Reply", shape, labelIsShown = true, onClick = onClick)
+            .pressable(label, shape, labelIsShown = true, onClick = onClick)
             .padding(horizontal = 8.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(Icons.Reply, null, tint = colors.textMuted, modifier = Modifier.size(15.dp))
-        Text("Reply", Modifier.padding(start = 6.dp), color = colors.textMuted, style = AgentTheme.type.label)
+        Text(label, Modifier.padding(start = 6.dp), color = colors.textMuted, style = AgentTheme.type.label)
     }
 }
 

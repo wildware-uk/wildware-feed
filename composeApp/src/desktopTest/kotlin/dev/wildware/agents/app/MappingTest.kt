@@ -304,6 +304,19 @@ class MappingTest {
         state.sections.firstOrNull { it.label == "Waiting on you" }?.items.orEmpty().map { it as FeedItem.Question }
 
     @Test
+    fun aQuestionCarriesTheTalkAboutItWithItsAcks() {
+        val thinking = AckView("k1", agentId = "a1", card = CardRef(CardKinds.Message, "d2"), messageId = "d2", state = "thinking")
+        val talk = listOf(line("d1", "agent:a1", noon - 9_000), line("d2", "human", noon - 4_000, acks = listOf(thinking)))
+        val asked = question("q1").copy(discussion = talk, unread = 1)
+        val q = waitingOf(mapper.map(feed(emptyList(), waiting = listOf(asked)), listOf(mega), emptyList(), emptyList(), null)).single()
+        assertEquals(listOf("d1", "d2"), q.replies.map { it.id })
+        assertEquals(1, q.unreadReplies)
+        assertEquals(listOf(true, false), q.replies.map { it.unread })
+        assertEquals(listOf("a1"), q.replies[1].acks.thinking.map { it.id })
+        assertTrue(q.replies[0].acks.thinking.isEmpty())
+    }
+
+    @Test
     fun aQuestionAskedInAThreadIsWaitingOnYouWithWhatItAnswers() {
         val asked = question("q1", messageId = "m2")
         val replies = listOf(line("m1", "human", noon - 3_000), line("m2", "agent:a1", noon - 2_000).copy(questions = listOf(asked)))

@@ -663,6 +663,7 @@ fun ReplyView(reply: Reply, modifier: Modifier = Modifier) {
             MarkdownBody(reply.body)
             PostMedia(reply.attachments, reply.sounds, reply.files)
             if (reply.undelivered) NotDelivered(Modifier.padding(top = 6.dp))
+            AckLine(reply.acks, Modifier.padding(top = 6.dp))
             // A question asked under this reply is answered right here, as on the website.
             reply.questions.forEach { q ->
                 QuestionCard(q, Modifier.padding(top = 8.dp), density = Density.Compact, inThread = true)

@@ -1,5 +1,6 @@
 package dev.wildware.agents.app
 
+import dev.wildware.agents.app.feed.Reply
 import dev.wildware.agents.app.feed.FormField
 import dev.wildware.agents.app.feed.QuestionKind
 import androidx.compose.runtime.CompositionLocalProvider
@@ -457,6 +458,35 @@ class ScreenshotTest {
             }
         }
     }
+
+    /** A question being talked over before it is answered: inline on a desktop; the card and its thread on a phone. */
+    @Test
+    fun questionDiscussion() {
+        val asked = FakeFeed.state.sections.flatMap { it.items }.filterIsInstance<FeedItem.Question>().first()
+        val talk = listOf(
+            Reply("d1", Author.AgentAuthor(asked.agent), "10:01", "Happy to wait if you want the numbers first."),
+            Reply("d2", FakeFeed.state.owner, "10:03", "What did the test group say about the volume?", acks = Acks(thinking = listOf(asked.agent))),
+        )
+        val q = asked.copy(replies = talk)
+        val state = FakeFeed.state.copy(
+            sections = FakeFeed.state.sections.map { sec -> sec.copy(items = sec.items.map { if (it.id == q.id) q else it }) },
+            openThread = q,
+        )
+        for (dark in listOf(false, true)) {
+            val mode = if (dark) "dark" else "light"
+            shoot("desktop-$mode-question-talk", Size.Desktop, dark) {
+                AgentsPreview(dark = dark, state = state, safeArea = Size.Desktop.safeArea)
+            }
+            shoot("phone-$mode-question-talk", Size.Phone, dark) {
+                AgentsPreview(dark = dark, state = state, safeArea = Size.Phone.safeArea)
+            }
+            shoot("phone-$mode-question-thread", Size.Phone, dark) {
+                AgentsPreview(dark = dark, state = state, safeArea = Size.Phone.safeArea, preview = ScreenPreview(threadOpen = true))
+            }
+        }
+    }
+
+
 
     /** Increase Contrast on, in both themes, and the largest common text size. */
     @Test

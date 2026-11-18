@@ -62,7 +62,8 @@ class StickyWaitingTest {
     fun onDesktopToo() = runComposeUiTest {
         feed(1440, FakeFeed.allProjects)
         val last = FakeFeed.allProjects.sections.first().items.last() as FeedItem.Question
-        onNodeWithText(last.prompt).performScrollTo()
+        // Scrolls the list itself: the last question may not be composed yet, so it can't be asked to scroll.
+        onNode(androidx.compose.ui.test.hasScrollToNodeAction()).performScrollToNode(androidx.compose.ui.test.hasText(last.prompt))
         onNodeWithText("WAITING ON YOU (3)").assertIsDisplayed()
     }
 }

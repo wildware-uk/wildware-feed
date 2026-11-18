@@ -1,5 +1,6 @@
 package dev.wildware.agents.app.engine
 
+import dev.wildware.agents.AckView
 import dev.wildware.agents.FeedCard
 import dev.wildware.agents.LiveAgentView
 import dev.wildware.agents.MediaView
@@ -257,6 +258,8 @@ internal class FeedMapper(
                     ?: "Asked in a thread"
             },
             threadId = request.messageId?.let { threads.find(it)?.first } ?: request.updateId,
+            replies = replies(discussion, unread, agents, project, threads),
+            unreadReplies = unread,
         )
     }
 
@@ -283,6 +286,7 @@ internal class FeedMapper(
                 attachments = line.media.tiles().map { tile(it) },
                 sounds = line.media.sounds(),
                 files = line.media.files(),
+                acks = acks(line.acks, agents),
             )
         }
     }
@@ -299,8 +303,9 @@ internal class FeedMapper(
     private fun author(line: ThreadLine, agents: AgentDirectory): Author =
         line.message.agentId?.let { Author.AgentAuthor(agents.agent(it, line.authorName)) } ?: OwnerAuthor
 
-    private fun acks(post: PostCard, agents: AgentDirectory): Acks {
-        val acks = post.post.acks
+    private fun acks(post: PostCard, agents: AgentDirectory): Acks = acks(post.post.acks, agents)
+
+    private fun acks(acks: List<AckView>, agents: AgentDirectory): Acks {
         return Acks(
             read = acks.filter { it.state == "read" || it.state == "done" }.map { agents.agent(it.agentId) }.distinct(),
             thinking = acks.filter { it.state == "thinking" }.map { agents.agent(it.agentId) }.distinct(),

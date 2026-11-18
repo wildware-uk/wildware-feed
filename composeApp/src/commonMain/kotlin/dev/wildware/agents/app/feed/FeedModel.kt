@@ -150,6 +150,8 @@ data class Reply(
     val attachments: List<Attachment> = emptyList(),
     val sounds: List<Sound> = emptyList(),
     val files: List<FileAttachment> = emptyList(),
+    /** Agents reading it or thinking about it: "scout is thinking…". */
+    val acks: Acks = Acks(),
 )
 
 @Immutable
@@ -288,8 +290,13 @@ sealed interface FeedItem {
         val inReplyTo: String? = null,
         /** The card whose thread it was asked in, to jump there. */
         val threadId: String? = null,
-    ) : FeedItem {
+        /** The talk about the question before it is answered: its own thread, oldest first. */
+        override val replies: List<Reply> = emptyList(),
+        override val unreadReplies: Int = 0,
+    ) : Threaded {
         val hasPictures: Boolean get() = choices.any { it.image != null }
+        override val title: String get() = prompt
+        override val starter: Author get() = Author.AgentAuthor(agent)
     }
 
     /** Something written straight into the feed, by the owner or by an agent. */

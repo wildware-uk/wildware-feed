@@ -1,5 +1,10 @@
 package dev.wildware.agents.app
 
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.performKeyInput
+import androidx.compose.ui.test.pressKey
+import androidx.compose.ui.test.withKeyDown
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.foundation.layout.Box
@@ -456,5 +461,19 @@ class EngineWiringTest {
         waitForLabel("Owner password")
         assertNull(sessions.load())
         assertNotNull(onNodeWithContentDescription("Owner password").fetchSemanticsNode())
+    }
+
+    @Test
+    fun talkingOverAQuestionPostsIntoThatQuestion() = runDesktopComposeUiTest(width = 1440, height = 900) {
+        app()
+        waitFor("Ship the new sounds?")
+        onNodeWithText("Discuss").performScrollTo().performClick()
+        val box = hasSetTextAction() and hasContentDescription("Reply")
+        waitForNode(box)
+        onNode(box).performTextInput("Which sounds exactly?")
+        onNode(box).performKeyInput { withKeyDown(Key.MetaLeft) { pressKey(Key.Enter) } }
+        waitUntil(timeoutMillis = 5_000) { server.wrote("POST", "/api/messages") != null }
+        val body = server.wrote("POST", "/api/messages")!!
+        assertTrue("\"request\":\"r1\"" in body && "Which sounds exactly?" in body, body)
     }
 }

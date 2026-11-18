@@ -327,6 +327,8 @@ fun QuestionCard(
     density: Density = Density.Comfortable,
     /** Drawn under the reply it answers, so it needn't say what it answers. */
     inThread: Boolean = false,
+    /** The talk about it, under its controls. Off where the card is the head of its own thread. */
+    showDiscussion: Boolean = true,
 ) {
     val colors = AgentTheme.colors
     val type = AgentTheme.type
@@ -516,8 +518,49 @@ fun QuestionCard(
                 style = type.meta,
             )
         }
+        // Talking it over before deciding, as on the website: under the controls, so the answer is
+        // still plainly the way to respond. A question asked inside a thread is talked over there.
+        if (showDiscussion && !inThread) {
+            if (LocalInlineThreads.current) InlineThread(item, action = "Discuss") else DiscussButton(item)
+        }
     }
 }
+}
+
+/** On a phone: opens the question's own thread, to talk it over. Says how many replies, and how many are new. */
+@Composable
+private fun DiscussButton(item: FeedItem.Question) {
+    val colors = AgentTheme.colors
+    val shape = AgentTheme.shapes.pill
+    val ui = LocalFeedUi.current
+    val n = item.replies.size
+    val spoken = buildString {
+        append("Discuss")
+        if (n > 0) append(", $n ${if (n == 1) "reply" else "replies"}")
+        if (item.unreadReplies > 0) append(", ${item.unreadReplies} new")
+    }
+    Row(
+        Modifier
+            .padding(top = 10.dp)
+            .clip(shape)
+            .pressable(spoken, shape) {
+                ui?.openThread(item.id, phone = true)
+                ui?.emit(FeedEvent.OpenThread(item.id))
+            }
+            .padding(start = 4.dp, end = 10.dp, top = 4.dp, bottom = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Reply, null, tint = colors.textMuted, modifier = Modifier.size(15.dp))
+        Text(
+            if (n == 0) "Discuss" else "Discuss · ${if (n == 1) "1 reply" else "$n replies"}",
+            Modifier.padding(start = 6.dp),
+            color = colors.textMuted,
+            style = AgentTheme.type.label,
+        )
+        if (item.unreadReplies > 0) {
+            Box(Modifier.padding(start = 6.dp).size(7.dp).clip(CircleShape).background(colors.accent))
+        }
+    }
 }
 
 /** "Or write an answer": a one-line box that sends on Enter or its arrow. */
@@ -686,7 +729,7 @@ internal fun PostMedia(attachments: List<Attachment>, sounds: List<Sound>, files
 fun FeedItemView(item: FeedItem, selected: Boolean, density: Density, modifier: Modifier = Modifier, inThread: Boolean = false) {
     when (item) {
         is FeedItem.Update -> UpdateCard(item, modifier, selected = selected, density = density, inThread = inThread)
-        is FeedItem.Question -> QuestionCard(item, modifier, density = density)
+        is FeedItem.Question -> QuestionCard(item, modifier, density = density, showDiscussion = !inThread)
         is FeedItem.Post -> PostCard(item, modifier, density = density, inThread = inThread)
     }
 }
