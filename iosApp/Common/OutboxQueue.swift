@@ -1,5 +1,9 @@
 import Foundation
+#if COMPOSE_APP
+import ComposeApp
+#else
 import Shared
+#endif
 import UserNotifications
 
 enum OutboxError: LocalizedError {

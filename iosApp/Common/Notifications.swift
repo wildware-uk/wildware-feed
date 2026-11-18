@@ -1,4 +1,8 @@
+#if COMPOSE_APP
+import ComposeApp
+#else
 import Shared
+#endif
 import UserNotifications
 
 /// Notification buttons. Message and update alerts share fixed categories; a request's category

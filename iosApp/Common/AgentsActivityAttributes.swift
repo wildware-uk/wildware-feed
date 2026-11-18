@@ -1,6 +1,10 @@
 import ActivityKit
 import Foundation
+#if COMPOSE_APP
+import ComposeApp
+#else
 import Shared
+#endif
 
 /// The Live Activity's shape. The server pushes `ContentState` with these exact keys,
 /// and names this type in push-to-start payloads, so renaming anything here breaks both.

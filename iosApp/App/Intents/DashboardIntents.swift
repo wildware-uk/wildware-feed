@@ -1,5 +1,9 @@
 import AppIntents
+#if COMPOSE_APP
+import ComposeApp
+#else
 import Shared
+#endif
 import WidgetKit
 
 struct CreateTicketIntent: AppIntent {

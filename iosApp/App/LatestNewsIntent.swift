@@ -1,5 +1,9 @@
 import AppIntents
+#if COMPOSE_APP
+import ComposeApp
+#else
 import Shared
+#endif
 import SwiftUI
 
 /// "What did Garden Game say in Agents?" Reads the project's latest update out, and shows it.

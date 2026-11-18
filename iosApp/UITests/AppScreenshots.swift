@@ -1,56 +1,29 @@
 import UIKit
 import XCTest
 
-/// Drives the real app in the simulator: the first-run screen, then the dashboard loaded inside it.
+/// Drives the real app in the simulator. The screens are drawn by Compose, so the tests wait and
+/// take pictures rather than tapping through them.
 final class AppScreenshots: XCTestCase {
-    func testFirstRunThenDashboard() throws {
+    /// A phone with no key opens on the sign-in screen.
+    func testFirstRun() throws {
         let app = XCUIApplication()
         app.launch()
-
-        let address = app.textFields.firstMatch
-        XCTAssertTrue(address.waitForExistence(timeout: 15))
-        address.tap()
-        address.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 12))
-        address.typeText(ProcessInfo.processInfo.environment["DASHBOARD_URL"] ?? "https://dashboard.example.com")
-        try save("app-setup")
-
-        app.buttons["Connect"].tap()
-        XCTAssertTrue(app.webViews.firstMatch.waitForExistence(timeout: 20))
-        // The page fetches its scripts after the web view appears; give it time to draw.
-        Thread.sleep(forTimeInterval: 8)
-        try save("app-dashboard")
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 15))
+        // Compose draws its first frame, and loads its fonts, a moment after launch.
+        Thread.sleep(forTimeInterval: 5)
+        XCTAssertEqual(app.state, .runningForeground, "The app closed on its first screen")
+        try save("app-sign-in")
     }
 
-    /// The Inbox and composer bar with made-up questions (the app's `-sample-inbox` switch), so they show without a dashboard.
-    func testInboxAndComposer() throws {
+    /// The feed on made-up data (the app's `-sample-inbox` switch), so it shows without a dashboard.
+    func testSampleFeed() throws {
         let app = XCUIApplication()
         app.launchArguments = ["-sample-inbox"]
         app.launch()
-
-        XCTAssertTrue(app.webViews.firstMatch.waitForExistence(timeout: 20))
-        Thread.sleep(forTimeInterval: 6)
-        try save("app-composer")
-
-        let isPad = UIDevice.current.userInterfaceIdiom == .pad
-        if !isPad {
-            let inbox = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Inbox'")).firstMatch
-            XCTAssertTrue(inbox.waitForExistence(timeout: 5))
-            inbox.tap()
-        }
-        let question = app.staticTexts["Tests pass. Merge the fee-rounding branch into main?"]
-        XCTAssertTrue(question.waitForExistence(timeout: 10))
-        Thread.sleep(forTimeInterval: 1)
-        try save("app-inbox")
-
-        app.staticTexts["The build is green. What next?"].tap()
-        XCTAssertTrue(app.buttons["Ship it"].waitForExistence(timeout: 5))
-        Thread.sleep(forTimeInterval: 1)
-        try save("app-question")
-
-        app.buttons["Reply without answering"].tap()
-        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label CONTAINS 'Reply to Harbor App'")).firstMatch.waitForExistence(timeout: 5))
-        Thread.sleep(forTimeInterval: 1)
-        try save("app-composer-reply")
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 15))
+        Thread.sleep(forTimeInterval: 5)
+        XCTAssertEqual(app.state, .runningForeground, "The app closed while drawing the feed")
+        try save("app-feed")
     }
 
     private func save(_ name: String) throws {

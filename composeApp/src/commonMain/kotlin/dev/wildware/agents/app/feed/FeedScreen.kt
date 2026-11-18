@@ -89,6 +89,8 @@ fun FeedScreen(
     safeArea: SafeArea = SafeArea(),
     startAt: String? = null,
     preview: ScreenPreview = ScreenPreview(),
+    /** Where notifications, widgets and search ask the feed to go. */
+    navigator: AppNavigator? = null,
     onEvent: (FeedEvent) -> Unit = {},
 ) {
     val colors = AgentTheme.colors
@@ -106,6 +108,7 @@ fun FeedScreen(
             ui.viewer?.let { ImageViewer(it, if (phone) safeArea else SafeArea()) }
             if (ui.commandOpen) CommandBar(ui, if (phone) safeArea else SafeArea())
         }
+        FollowNavigation(ui, navigator)
     }
 }
 

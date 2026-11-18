@@ -1,7 +1,12 @@
 import BackgroundTasks
+import Combine
 import Network
+#if COMPOSE_APP
+import ComposeApp
+#else
 import Shared
-import SwiftUI
+#endif
+import Foundation
 
 /// Keeps the outbox moving while the app lives: sends on launch, on coming forward, when the network
 /// comes back, when another process queues something, when the next retry falls due, and in the background.
@@ -131,67 +136,5 @@ final class OutboxRunner: ObservableObject {
         processing.earliestBeginDate = refresh.earliestBeginDate
         try? BGTaskScheduler.shared.submit(refresh)
         try? BGTaskScheduler.shared.submit(processing)
-    }
-}
-
-/// The "Waiting to send" list: what hasn't gone yet, and what the dashboard refused.
-struct OutboxSheet: View {
-    @ObservedObject private var runner = OutboxRunner.shared
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        NavigationStack {
-            TimelineView(.periodic(from: .now, by: 15)) { context in
-                List {
-                    if !runner.waiting.isEmpty {
-                        Section("Waiting to send") {
-                            ForEach(runner.waiting, id: \.id) { row($0, now: context.date) }
-                        }
-                    }
-                    if !runner.failed.isEmpty {
-                        Section("Couldn't send") {
-                            ForEach(runner.failed, id: \.id) { row($0, now: context.date) }
-                        }
-                    }
-                }
-                .overlay {
-                    if runner.items.isEmpty {
-                        ContentUnavailableView("Everything has been sent", systemImage: "checkmark.circle")
-                    }
-                }
-            }
-            .navigationTitle("Outbox")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
-                ToolbarItem(placement: .primaryAction) {
-                    Button("Send now") { runner.kick(ignoreBackoff: true) }.disabled(runner.waiting.isEmpty)
-                }
-            }
-            .refreshable { runner.kick(ignoreBackoff: true) }
-        }
-    }
-
-    private func row(_ item: OutboxItem, now: Date) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(item.label).font(.subheadline.weight(.semibold))
-            if let text = item.text ?? item.answer?.typedText, !text.isEmpty {
-                Text(text).lineLimit(3)
-            }
-            if !item.files.isEmpty {
-                Label(item.files.count == 1 ? "1 photo" : "\(item.files.count) photos", systemImage: "photo")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            Text(Outbox.shared.status(item: item, nowMillis: Int64(now.timeIntervalSince1970 * 1000)))
-                .font(.caption)
-                .foregroundStyle(item.gaveUp ? Color.red : Color.secondary)
-        }
-        .swipeActions(edge: .trailing) {
-            Button("Delete", systemImage: "trash", role: .destructive) { runner.delete(item) }
-        }
-        .swipeActions(edge: .leading) {
-            Button("Try again", systemImage: "arrow.clockwise") { runner.retry(item) }.tint(.blue)
-        }
     }
 }

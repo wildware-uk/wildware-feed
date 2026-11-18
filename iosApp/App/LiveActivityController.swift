@@ -1,6 +1,10 @@
 import ActivityKit
 import Foundation
+#if COMPOSE_APP
+import ComposeApp
+#else
 import Shared
+#endif
 
 /// Keeps one Live Activity on the lock screen and Dynamic Island, and tells the dashboard
 /// where to push its updates so it stays current while the app is closed.

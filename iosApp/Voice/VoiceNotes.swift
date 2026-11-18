@@ -1,7 +1,11 @@
 import ActivityKit
 import AVFoundation
 import Foundation
+#if COMPOSE_APP
+import ComposeApp
+#else
 import Shared
+#endif
 
 enum VoiceNoteError: LocalizedError {
     case microphoneOff, liveActivitiesOff, couldNotRecord, noProject, nothingHeard, refused

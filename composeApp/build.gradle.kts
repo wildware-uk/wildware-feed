@@ -13,11 +13,17 @@ kotlin {
     // Mac, Windows and Linux all run this one JVM build.
     jvm("desktop")
 
-    // The iPhone app will embed this framework and show the Compose screen.
+    // The iPhone app links this one framework. It carries `shared` too (exported, so Swift sees the
+    // same types the widgets and extensions use), because two Kotlin frameworks in one app would each
+    // bring their own Kotlin runtime and their own copy of `shared`. Xcode builds it through
+    // `embedAndSignAppleFrameworkForXcode`, for just the device or simulator it is building.
     listOf(iosArm64(), iosSimulatorArm64()).forEach { target ->
         target.binaries.framework {
             baseName = "ComposeApp"
             isStatic = true
+            export(project(":shared"))
+            // Swift calls into Kotlin from notification and Siri threads, not only the main one.
+            binaryOption("objcExportSuspendFunctionLaunchThreadRestriction", "none")
         }
     }
 
@@ -49,6 +55,8 @@ kotlin {
             }
         }
         iosMain.dependencies {
+            // `api` so the framework can export it to Swift.
+            api(project(":shared"))
             implementation(libs.ktor.client.darwin)
         }
         val desktopTest by getting {

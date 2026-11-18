@@ -1,6 +1,10 @@
 import Foundation
 import Security
+#if COMPOSE_APP
+import ComposeApp
+#else
 import Shared
+#endif
 
 /// Where this phone's dashboard lives and the device key that lets the app, its widgets,
 /// its share sheet and Siri act as the owner. Stored once, read by every target.

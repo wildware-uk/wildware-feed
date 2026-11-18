@@ -26,6 +26,7 @@ import dev.wildware.agents.app.feed.MediaAuth
 import dev.wildware.agents.app.feed.SafeArea
 import dev.wildware.agents.app.feed.ScreenPreview
 import dev.wildware.agents.app.feed.agentsImageLoader
+import dev.wildware.agents.app.feed.AppNavigator
 import dev.wildware.agents.app.session.AppPlatform
 import dev.wildware.agents.app.signin.SignInScreen
 import kotlinx.coroutines.CoroutineScope
@@ -44,6 +45,8 @@ fun AgentsApp(
     dark: Boolean? = null,
     accessibility: AccessibilityPrefs = systemAccessibility(),
     safeArea: SafeArea = SafeArea(),
+    /** Where notifications, widgets and search ask the feed to go. */
+    navigator: AppNavigator? = null,
 ) {
     val scope = remember { CoroutineScope(SupervisorJob() + Dispatchers.Default) }
     DisposableEffect(scope) { onDispose { scope.cancel() } }
@@ -69,7 +72,7 @@ fun AgentsApp(
                     LocalMediaAuth provides MediaAuth(session.client.serverUrl, session.client.authorizationHeader),
                     LocalFilePicker provides platform.filePicker,
                 ) {
-                    FeedScreen(state, safeArea) { event ->
+                    FeedScreen(state, safeArea, navigator = navigator) { event ->
                         when (event) {
                             is FeedEvent.SignOut -> model.signOut()
                             is FeedEvent.ToggleTheme -> model.toggleTheme(showingDark = isDark)

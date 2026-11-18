@@ -1,4 +1,8 @@
+#if COMPOSE_APP
+import ComposeApp
+#else
 import Shared
+#endif
 import UIKit
 import UserNotifications
 import WidgetKit
@@ -31,9 +35,8 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         _ center: UNUserNotificationCenter,
         willPresent notification: UNNotification
     ) async -> UNNotificationPresentationOptions {
+        // The feed hears about it over its own live connection; the widgets need telling.
         WidgetCenter.shared.reloadAllTimelines()
-        // Most alerts are a question arriving or being settled, so the Inbox reads the dashboard again.
-        Task { await InboxStore.shared.refresh() }
         return [.banner, .list, .sound]
     }
 
@@ -76,11 +79,10 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         }
         await MainActor.run { OutboxRunner.shared.reload() }
         WidgetCenter.shared.reloadAllTimelines()
-        await InboxStore.shared.refresh()
         await LiveActivityController.shared.refresh(startIfNeeded: false)
     }
 
-    /// Dashboard links (or bare paths) open in the app's own page; anything else goes to Safari.
+    /// Dashboard links (or bare paths) open their card in the feed; anything else goes to Safari.
     @MainActor
     private func follow(_ link: URL) async {
         let isDashboard = link.scheme == nil || link.host() == CredentialStore.server?.host()

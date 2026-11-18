@@ -1,6 +1,10 @@
 import CoreSpotlight
 import Foundation
+#if COMPOSE_APP
+import ComposeApp
+#else
 import Shared
+#endif
 import UniformTypeIdentifiers
 
 /// Puts projects and recent updates into the phone's search. Each item's identifier is the

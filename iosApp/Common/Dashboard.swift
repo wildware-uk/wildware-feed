@@ -1,5 +1,9 @@
 import Foundation
+#if COMPOSE_APP
+import ComposeApp
+#else
 import Shared
+#endif
 
 /// The way into the Kotlin client from any target. Nil until the phone is linked.
 enum Dashboard {

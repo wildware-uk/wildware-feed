@@ -1,5 +1,9 @@
 import AppIntents
+#if COMPOSE_APP
+import ComposeApp
+#else
 import Shared
+#endif
 
 /// A dashboard project as Siri sees it, so "the garden game agent" can be resolved to a board.
 struct ProjectEntity: AppEntity {

@@ -1,6 +1,10 @@
+@file:OptIn(ExperimentalObjCName::class)
+
 package dev.wildware.agents.app.feed
 
 import androidx.compose.runtime.Immutable
+import kotlin.experimental.ExperimentalObjCName
+import kotlin.native.ObjCName
 
 /*
  * What the feed screen draws. These are view shapes only, shaped for the screen. The engine's
@@ -57,6 +61,8 @@ data class Reaction(val emoji: String, val count: Int, val mine: Boolean, val sp
 @Immutable
 data class Acks(val read: List<Agent> = emptyList(), val thinking: List<Agent> = emptyList())
 
+// The iPhone framework also exports the engine's own Attachment, so this one goes by another name there.
+@ObjCName("FeedAttachment")
 @Immutable
 data class Attachment(
     val title: String,
@@ -187,6 +193,8 @@ sealed interface FeedItem {
 @Immutable
 data class FeedSection(val label: String, val items: List<FeedItem>)
 
+// The engine has a FeedState too; on iPhone this one is FeedScreenState.
+@ObjCName("FeedScreenState")
 @Immutable
 data class FeedState(
     val owner: Author.Owner,

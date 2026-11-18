@@ -1,5 +1,9 @@
 import AppIntents
+#if COMPOSE_APP
+import ComposeApp
+#else
 import Shared
+#endif
 
 /// Settings → Focus → a Focus → Add Filter → Agents. While that Focus is on, only the projects
 /// picked here alert this phone; the dashboard holds the rest back. Turning the Focus off runs

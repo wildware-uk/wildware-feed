@@ -55,7 +55,7 @@ jobs:
     runs-on: macos-26
     needs: shared-tests
     # Mac minutes are billed at ten times the Linux rate, so a hang must not run for hours.
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -64,6 +64,11 @@ jobs:
           java-version: 21
       - uses: gradle/actions/setup-gradle@v4
       - run: ./gradlew :shared:assembleSharedDebugXCFramework
+        timeout-minutes: 10
+      # The app's own build phase runs this again through embedAndSignAppleFrameworkForXcode, and finds it done.
+      - name: Build the Compose framework for the simulator
+        timeout-minutes: 15
+        run: ./gradlew :composeApp:linkDebugFrameworkIosSimulatorArm64
       - name: Shared tests on the iPhone simulator
         timeout-minutes: 10
         run: ./gradlew :shared:iosSimulatorArm64Test --no-daemon
@@ -83,6 +88,7 @@ jobs:
           fi
           wait $pid
       - name: Build app and extensions for the simulator
+        timeout-minutes: 15
         run: |
           set -o pipefail
           xcodebuild build \
@@ -111,6 +117,14 @@ jobs:
           app=$(find ~/Library/Developer/Xcode/DerivedData -type d -name Agents.app -path "*Debug-iphonesimulator*" | head -1)
           ls "$app/Watch"
           [ -d "$app/Watch/AgentsWatch.app/PlugIns/AgentsWatchWidgets.appex" ]
+      - name: The iPhone app carries the Compose screens and their fonts
+        timeout-minutes: 2
+        run: |
+          app=$(find ~/Library/Developer/Xcode/DerivedData -type d -name Agents.app -path "*Debug-iphonesimulator*" | head -1)
+          code="$app/Agents.debug.dylib"
+          [ -f "$code" ] || code="$app/Agents"
+          nm "$code" | grep -q MainViewController
+          find "$app" -name "*.ttf" | grep -q geist
       - name: The alert extension links the framework iOS looks up when it starts
         timeout-minutes: 2
         run: |
@@ -122,6 +136,7 @@ jobs:
           otool -L "$code" | grep -q UserNotificationsUI.framework
       - if: failure()
         uses: actions/upload-artifact@v4
+        timeout-minutes: 5
         with:
           name: xcodebuild-log
           path: |

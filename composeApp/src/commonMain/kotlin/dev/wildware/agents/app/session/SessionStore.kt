@@ -5,7 +5,13 @@ import kotlinx.serialization.json.Json
 
 /** A signed-in device: which dashboard, its key, and what the device is called there. */
 @Serializable
-data class SavedSession(val server: String, val token: String, val deviceName: String)
+data class SavedSession(
+    val server: String,
+    val token: String,
+    val deviceName: String,
+    /** The dashboard's id for this device. The iPhone hands it to the watch with the key. */
+    val deviceId: String? = null,
+)
 
 /**
  * Where the device key lives between launches. It is a password in all but name, so each

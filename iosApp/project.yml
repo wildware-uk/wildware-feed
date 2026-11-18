@@ -19,7 +19,9 @@ settings:
     EXCLUDED_ARCHS[sdk=watchsimulator*]: x86_64
 
 # Kotlin is built by Gradle, not Xcode: ./gradlew :shared:assembleSharedDebugXCFramework
-# (the Agents scheme runs it before every build). Each target links the static framework.
+# (the Agents scheme runs it before every build). The extensions and the watch link that static
+# framework. The iPhone app links ComposeApp instead: the Compose screens with `shared` exported in
+# the same framework, so the app carries one Kotlin runtime, not two. Its build phase builds it.
 targetTemplates:
   UsesShared:
     dependencies:
@@ -42,16 +44,24 @@ targets:
   Agents:
     type: application
     platform: iOS
-    templates: [UsesShared]
     sources:
       - path: App
       - path: Voice
+      - path: Common
+    preBuildScripts:
+      # Builds ComposeApp for just this device or simulator, and copies the screens' fonts into the app.
+      - name: Build the Compose framework
+        basedOnDependencyAnalysis: false
+        script: |
+          cd "$SRCROOT/.." && ./gradlew :composeApp:embedAndSignAppleFrameworkForXcode
     info:
       path: App/Info.plist
       properties:
         CFBundleDisplayName: Agents
         AppIdentifierPrefix: $(AppIdentifierPrefix)
         UILaunchScreen: {}
+        # Lets Compose draw at 120 Hz on ProMotion screens.
+        CADisableMinimumFrameDurationOnPhone: true
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
         UISupportedInterfaceOrientations~ipad: [UIInterfaceOrientationPortrait, UIInterfaceOrientationPortraitUpsideDown, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
         NSSupportsLiveActivities: true
@@ -82,6 +92,12 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: dev.wildware.agents
         TARGETED_DEVICE_FAMILY: "1,2"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        FRAMEWORK_SEARCH_PATHS: $(inherited) $(SRCROOT)/../composeApp/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)
+        OTHER_LDFLAGS: $(inherited) -framework ComposeApp
+        # Swift files shared with the extensions import ComposeApp here and Shared there.
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: $(inherited) COMPOSE_APP
+        # Gradle reads and writes outside the sandbox Xcode gives build scripts.
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
     dependencies:
       - target: AgentsWidgets
       - target: AgentsShare
