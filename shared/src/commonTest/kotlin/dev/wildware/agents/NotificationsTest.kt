@@ -21,7 +21,7 @@ class NotificationsTest {
     }
 
     @Test
-    fun `the list and the unseen count are read at start, newest first`() = runTest {
+    fun `the list and the unseen count are read at start with the newest first`() = runTest {
         val server = FakeDashboard(testScheduler).apply {
             notifications = listOf(FakeDashboard.notification("n1", 3, seen = true), FakeDashboard.notification("n2", 5))
         }
@@ -49,7 +49,7 @@ class NotificationsTest {
     }
 
     @Test
-    fun `seeing one sends only its id, and the list is read again`() = runTest {
+    fun `seeing one sends only its id and then reads the list again`() = runTest {
         val server = FakeDashboard(testScheduler).apply {
             notifications = listOf(FakeDashboard.notification("n1", 3), FakeDashboard.notification("n2", 5))
         }

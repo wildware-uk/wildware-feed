@@ -20,6 +20,10 @@ jobs:
         with:
           distribution: temurin
           java-version: 21
+      # The iOS build rejects some characters in test names that the JVM takes; catch them here, in seconds.
+      - name: Test names Kotlin/Native accepts
+        timeout-minutes: 2
+        run: python3 .github/scripts/check-native-test-names.py
       - uses: gradle/actions/setup-gradle@v4
       - run: ./gradlew :shared:jvmTest
 
