@@ -108,6 +108,12 @@ Places where the Kotlin server cannot match the TS server exactly, kept small an
   (`LocaleCompareTest`). One tie still differs: names equal except for case and `ß`/`ss` sort
   `strasse` < `straße` < `Strasse` in Kotlin and `strasse` < `Strasse` < `straße` in Node.
 
+- **Thumbnails** are WebP at quality 80, but made by ffmpeg's libwebp rather than sharp, so their
+  bytes differ; widths, heights, variants and types match. Without ffmpeg an image is `ready` with
+  only `original`. An animated WebP original fails to derive (ffmpeg cannot decode it).
+- **Notification text** (iOS alert bodies) is made from markdown with commonmark-java instead of
+  markdown-it. Ordinary markdown gives the same text; unusual constructs may differ.
+
 Deliberate differences, by decision rather than by limit (see "Scope of the Kotlin server" above):
 
 - **No website.** No pages, `/login`, `/logout`, session cookie or CSRF form check; strangers get

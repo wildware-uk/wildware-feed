@@ -13,6 +13,7 @@ import dev.wildware.feed.server.mcp.registerFeedTools
 import dev.wildware.feed.server.mcp.registerRequestTools
 import dev.wildware.feed.server.mcp.registerSessionTools
 import dev.wildware.feed.server.mcp.registerMediaTools
+import dev.wildware.feed.server.push.startApplePush
 
 /**
  * Everything one running server holds: its settings, the database and the in-memory state that a
@@ -88,12 +89,15 @@ class App(val config: Config, val db: Database, val clock: () -> Long = System::
         }, periodMs, periodMs, java.util.concurrent.TimeUnit.MILLISECONDS)
     }
 
+    private var stopApplePush: () -> Unit = {}
+
     /** The background jobs (spec/08 §1). Called once when the server starts serving. */
     fun startJobs() {
         every(dev.wildware.feed.server.domain.Sessions.SWEEP_INTERVAL_MS, "presence sweep") { sessions.sweep() }
         every(dev.wildware.feed.server.domain.Requests.SWEEP_INTERVAL_MS, "request sweep") { requests.expireDue() }
         every(dev.wildware.feed.server.media.Derive.WORKER_INTERVAL_MS, "media derive") { derive.tick() }
         every(15 * 60_000L, "media sweep") { uploads.sweep() }
+        stopApplePush = startApplePush()
     }
 
     init {
@@ -106,6 +110,7 @@ class App(val config: Config, val db: Database, val clock: () -> Long = System::
 
     override fun close() {
         stopNotificationRecorder()
+        stopApplePush()
         derive.close()
         scheduler.shutdownNow()
         db.close()

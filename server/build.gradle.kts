@@ -23,6 +23,9 @@ dependencies {
     implementation(libs.coroutines.core)
     implementation(libs.sqlite.jdbc)
     implementation(libs.bouncycastle)
+    implementation(libs.commonmark)
+    implementation(libs.commonmark.tables)
+    implementation(libs.commonmark.strikethrough)
 
     testImplementation(kotlin("test"))
     testImplementation(libs.junit.jupiter)
