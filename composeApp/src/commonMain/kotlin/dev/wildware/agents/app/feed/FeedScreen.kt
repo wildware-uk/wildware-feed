@@ -1,5 +1,15 @@
 package dev.wildware.agents.app.feed
 
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.VisibilityThreshold
+import androidx.compose.foundation.lazy.LazyItemScope
+import androidx.compose.ui.unit.IntOffset
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.onEach
@@ -193,9 +203,18 @@ fun FeedScreen(
         val widthPx = constraints.maxWidth.toFloat()
         CompositionLocalProvider(LocalFeedUi provides ui, LocalIsPhone provides phone, LocalPreview provides preview) {
             if (phone) PhoneFeed(ui, safeArea, startAt, widthPx) else DesktopFeed(ui, showRail = maxWidth >= RailBreakpoint, startAt)
-            ui.viewer?.let { ImageViewer(it, if (phone) safeArea else SafeArea()) }
+            val motion = AgentTheme.motion
+            // Pictures open by fading and growing into place; search drops in from above.
+            Presence(ui.viewer, fadeIn(motion.normal()) + scaleIn(motion.settle(), initialScale = 0.92f), fadeOut(motion.fast())) {
+                ImageViewer(it, if (phone) safeArea else SafeArea())
+            }
             ui.selecting?.let { SelectTextSheet(ui, it, safeArea) }
-            if (ui.commandOpen) CommandBar(ui, if (phone) safeArea else SafeArea())
+            Presence(Unit.takeIf { ui.commandOpen }, fadeIn(motion.fast()), fadeOut(motion.fast())) {
+                CommandBar(ui, if (phone) safeArea else SafeArea(), Modifier.animateEnterExit(
+                    enter = slideInVertically(motion.settle()) { -it / 10 } + scaleIn(motion.settle(), initialScale = 0.97f),
+                    exit = slideOutVertically(motion.fast()) { -it / 14 },
+                ))
+            }
             ui.tagging?.let { TagPicker(ui, it) }
             if (ui.bellOpen) NotificationPanel(ui, if (phone) safeArea else SafeArea()) { path -> scope.launch { ui.goTo(OpenCard.fromPath(path)) } }
         }
@@ -267,7 +286,7 @@ private fun DesktopColumns(ui: FeedUi, showRail: Boolean, startAt: String?) {
             ScrollToRevealed(ui, list, itemsBefore = 1)
             ScrollToTopWhenAsked(ui, list)
             val scrolled by remember { derivedStateOf { list.firstVisibleItemIndex > 3 } }
-            if (scrolled) BackToTop(Modifier.align(Alignment.TopCenter).padding(top = 14.dp), toTop)
+            BackToTopPill(scrolled, Modifier.align(Alignment.TopCenter).padding(top = 14.dp), toTop)
             // "All projects" has no one place to post to, so the box shows once a project is open.
             if (state.current.slug != null) Box(
                 Modifier
@@ -310,7 +329,7 @@ private fun PhoneFeed(ui: FeedUi, safeArea: SafeArea, startAt: String?, widthPx:
     val list = rememberLazyListState(startIndex(state, startAt, itemsBefore = 2))
     val toTop: () -> Unit = { scope.launch { if (motion.reduced) list.scrollToItem(0) else list.animateScrollToItem(0) } }
     val drawerWidthPx = widthPx * DrawerWidthFraction
-    val openDrawer: () -> Unit = { scope.launch { ui.drawer.settle(true, motion.normal()) } }
+    val openDrawer: () -> Unit = { scope.launch { ui.drawer.settle(true, motion.settle()) } }
     val refresh: () -> Unit = {
         ui.refreshing = true
         ui.emit(FeedEvent.Refresh)
@@ -375,7 +394,7 @@ private fun PhoneFeed(ui: FeedUi, safeArea: SafeArea, startAt: String?, widthPx:
                 .clearAndSetSemantics { },
         )
         val scrolled by remember { derivedStateOf { list.firstVisibleItemIndex > 4 } }
-        if (scrolled) BackToTop(Modifier.align(Alignment.TopCenter).padding(top = safeArea.top + 8.dp), toTop)
+        BackToTopPill(scrolled, Modifier.align(Alignment.TopCenter).padding(top = safeArea.top + 8.dp), toTop)
         if (state.current.slug != null) Column(
             Modifier
                 .align(Alignment.BottomCenter)
@@ -393,7 +412,14 @@ private fun PhoneFeed(ui: FeedUi, safeArea: SafeArea, startAt: String?, widthPx:
         }
         ui.phoneThread?.let { PhoneThreadScreen(ui, it, widthPx, safeArea) }
         ProjectsDrawer(ui, ui.drawer, drawerWidthPx, safeArea)
-        ui.menu?.let { ActionSheet(it, safeArea) }
+        // The menu's sheet rises from the bottom over a fading scrim, and sinks back when closed.
+        val motion = AgentTheme.motion
+        Presence(ui.menu, fadeIn(motion.fast()), fadeOut(motion.normal())) { target ->
+            ActionSheet(target, safeArea, Modifier.animateEnterExit(
+                enter = slideInVertically(motion.settle()) { it },
+                exit = slideOutVertically(motion.normal()) { it },
+            ))
+        }
     }
 }
 
@@ -455,12 +481,13 @@ private fun PhoneWaitingButton() {
 @Composable
 private fun EmptyFeed(state: FeedState, filter: FeedFilter, modifier: Modifier) {
     val colors = AgentTheme.colors
+    // The first load shows the shape of the feed at once; the cards then fade in over it.
+    if (!state.loaded) return SkeletonFeed(modifier.padding(top = 8.dp, start = 4.dp))
     Column(modifier.padding(vertical = 48.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         AppMark(44.dp)
         Spacer(Modifier.height(14.dp))
         Text(
             when {
-                !state.loaded -> "Loading the feed…"
                 filter != FeedFilter.All -> "Nothing matches “${filter.label}”"
                 else -> "Nothing here yet"
             },
@@ -469,7 +496,7 @@ private fun EmptyFeed(state: FeedState, filter: FeedFilter, modifier: Modifier) 
         )
         Spacer(Modifier.height(4.dp))
         MetaText(
-            if (state.loaded) "Updates and questions from your agents will show up here." else "This takes a moment the first time.",
+            "Updates and questions from your agents will show up here.",
             color = colors.textMuted,
         )
     }
@@ -557,12 +584,12 @@ private fun LazyListScope.feedItems(ui: FeedUi, density: Density, list: LazyList
                 StickyHeading(section, first = s == 0, list, key)
             }
         } else item(key = key, contentType = "section") {
-            SectionHeading(section, first = s == 0, Modifier.widthIn(max = FeedMaxWidth).fillMaxWidth())
+            SectionHeading(section, first = s == 0, Modifier.feedItemMotion(this).widthIn(max = FeedMaxWidth).fillMaxWidth())
         }
         section.items.forEachIndexed { i, item ->
             // By kind, so a card scrolling in takes over the layout of one of its kind that scrolled out.
             item(key = item.id, contentType = item::class) {
-                Box(Modifier.widthIn(max = FeedMaxWidth).fillMaxWidth()) {
+                Box(Modifier.feedItemMotion(this).widthIn(max = FeedMaxWidth).fillMaxWidth()) {
                     FeedRow(
                         item,
                         selected = density == Density.Comfortable && item.id == ui.threadId,
@@ -601,6 +628,24 @@ private fun StickyHeading(section: FeedSection, first: Boolean, list: LazyListSt
                 if (held > 0) drawRect(colors.background, topLeft = Offset(0f, -held - gap), size = Size(size.width, size.height + held + gap))
             },
     )
+}
+
+/**
+ * A card arriving fades in while the cards below slide down to make room; one leaving fades out as
+ * the rest close up; a card that moves glides to its new place. Springs, as iOS lists move.
+ * Nothing moves with reduced motion.
+ */
+@Composable
+private fun Modifier.feedItemMotion(scope: LazyItemScope): Modifier {
+    val motion = AgentTheme.motion
+    if (motion.reduced) return this
+    return with(scope) {
+        animateItem(
+            fadeInSpec = motion.normal(),
+            placementSpec = spring(dampingRatio = 1f, stiffness = Spring.StiffnessMediumLow, visibilityThreshold = IntOffset.VisibilityThreshold),
+            fadeOutSpec = motion.fast(),
+        )
+    }
 }
 
 @Composable

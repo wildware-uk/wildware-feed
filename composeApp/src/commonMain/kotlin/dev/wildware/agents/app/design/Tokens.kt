@@ -1,8 +1,10 @@
 package dev.wildware.agents.app.design
 
-import androidx.compose.animation.core.AnimationSpec
+import androidx.compose.animation.core.FiniteAnimationSpec
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Immutable
@@ -59,12 +61,21 @@ data class AgentMotion(val reduced: Boolean) {
     val standard = 220
     val gentle = 360
 
-    fun <T> fast(): AnimationSpec<T> = spec(quick)
-    fun <T> normal(): AnimationSpec<T> = spec(standard)
-    fun <T> slow(): AnimationSpec<T> = spec(gentle)
+    fun <T> fast(): FiniteAnimationSpec<T> = spec(quick)
+    fun <T> normal(): FiniteAnimationSpec<T> = spec(standard)
+    fun <T> slow(): FiniteAnimationSpec<T> = spec(gentle)
 
-    private fun <T> spec(ms: Int): AnimationSpec<T> =
+    private fun <T> spec(ms: Int): FiniteAnimationSpec<T> =
         if (reduced) snap() else tween(ms, easing = Emphasized)
+
+    /**
+     * For things that move into place: sheets, drawers, screens, cards making room. A spring with no
+     * bounce, as iOS moves its own sheets; it picks up the speed a flick gave it.
+     */
+    fun <T> settle(): FiniteAnimationSpec<T> = if (reduced) snap() else spring(dampingRatio = 1f, stiffness = 520f)
+
+    /** For small things that answer a touch: a light, quick spring with a hint of bounce. */
+    fun <T> pop(): FiniteAnimationSpec<T> = if (reduced) snap() else spring(dampingRatio = 0.72f, stiffness = Spring.StiffnessMedium)
 
     companion object {
         /** Starts briskly and settles softly. */

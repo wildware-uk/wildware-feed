@@ -74,7 +74,7 @@ private class Command(
  * button, so it works by touch and with a screen reader too.
  */
 @Composable
-fun CommandBar(ui: FeedUi, safeArea: SafeArea) {
+fun CommandBar(ui: FeedUi, safeArea: SafeArea, panelModifier: Modifier = Modifier) {
     val colors = AgentTheme.colors
     val shape = AgentTheme.shapes.large
     val query = rememberTextFieldState(LocalPreview.current.command.orEmpty())
@@ -99,7 +99,7 @@ fun CommandBar(ui: FeedUi, safeArea: SafeArea) {
                 .clickable(remember { MutableInteractionSource() }, indication = null, onClickLabel = "Close", onClick = close),
         )
         Column(
-            Modifier
+            panelModifier
                 .align(Alignment.TopCenter)
                 .padding(top = safeArea.top + 64.dp, start = 12.dp, end = 12.dp)
                 .widthIn(max = 640.dp)

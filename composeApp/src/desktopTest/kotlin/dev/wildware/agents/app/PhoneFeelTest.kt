@@ -8,6 +8,20 @@ import androidx.compose.runtime.CompositionTracer
 import androidx.compose.runtime.InternalComposeTracingApi
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.LocalIndication
+import androidx.compose.foundation.background
+import androidx.compose.foundation.indication
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.PressInteraction
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.graphics.toPixelMap
+import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performTouchInput
+import dev.wildware.agents.app.design.AccessibilityPrefs
+import dev.wildware.agents.app.feed.FeedState
+import dev.wildware.agents.app.feed.MenuTarget
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.hasSetTextAction
@@ -131,6 +145,86 @@ class PhoneFeelTest {
         assertEquals(0, calls["DrawerProjectRow"] ?: 0, "rows redrew while the drawer slid: $calls")
         assertEquals(0, calls["PhoneFeed"] ?: 0, "the feed redrew while the drawer slid: $calls")
         assertEquals(0, calls["ProjectsDrawer"] ?: 0, "the drawer redrew while it slid: $calls")
+    }
+
+    private fun ComposeUiTest.phoneFeed(preview: ScreenPreview = ScreenPreview(), reduceMotion: Boolean = false, state: FeedState = FakeFeed.state.copy(openThread = null)) = setContent {
+        AgentTheme(dark = true, AccessibilityPrefs(reduceMotion = reduceMotion)) {
+            Box(Modifier.size(390.dp, 844.dp)) { FeedScreen(state, SafeArea(54.dp, 34.dp), preview = preview) }
+        }
+    }
+
+    private val menu = ScreenPreview(menu = MenuTarget("u1", "forge", "Reading messages in one session no longer hides them", own = false))
+
+    @Test
+    fun theMenuSheetSinksAwayRatherThanVanishing() = runComposeUiTest {
+        mainClock.autoAdvance = false
+        phoneFeed(menu)
+        mainClock.advanceTimeBy(300)
+        onNodeWithText("Cancel").performClick()
+        mainClock.advanceTimeByFrame()
+        onNodeWithText("Cancel").assertExists("still on screen, on its way out")
+        mainClock.advanceTimeBy(800)
+        onNodeWithText("Cancel").assertDoesNotExist()
+    }
+
+    @Test
+    fun withReducedMotionTheMenuGoesAtOnce() = runComposeUiTest {
+        mainClock.autoAdvance = false
+        phoneFeed(menu, reduceMotion = true)
+        mainClock.advanceTimeBy(300)
+        onNodeWithText("Cancel").performClick()
+        mainClock.advanceTimeByFrame()
+        mainClock.advanceTimeByFrame()
+        onNodeWithText("Cancel").assertDoesNotExist()
+    }
+
+    @Test
+    fun theFirstLoadShowsTheFeedsShapeNotAWait() = runComposeUiTest {
+        phoneFeed(state = FakeFeed.state.copy(openThread = null, loaded = false, sections = emptyList()))
+        onNodeWithContentDescription("Loading the feed").assertExists()
+        onNodeWithText("Loading the feed…").assertDoesNotExist()
+    }
+
+    @Test
+    fun aButtonAnswersATouchInTheNextFrame() = runComposeUiTest {
+        mainClock.autoAdvance = false
+        phoneFeed()
+        mainClock.advanceTimeBy(300)
+        val button = onNodeWithContentDescription("Notifications")
+        val before = button.captureToImage().toPixelMap()
+        button.performTouchInput { down(center) }
+        mainClock.advanceTimeByFrame()
+        val pressed = button.captureToImage().toPixelMap()
+        button.performTouchInput { up() }
+        mainClock.advanceTimeBy(600)
+        val after = button.captureToImage().toPixelMap()
+        val middle = before.width / 2 to before.height / 2
+        assertTrue(before[middle.first, middle.second] != pressed[middle.first, middle.second], "pressing changed nothing in the first frame")
+        assertEquals(before[middle.first, middle.second], after[middle.first, middle.second], "it eased back once let go")
+    }
+
+    /** A finger that lands on a card and then scrolls cancels the press: the card must not stay dimmed. */
+    @Test
+    fun aCancelledPressLetsGo() = runComposeUiTest {
+        mainClock.autoAdvance = false
+        val source = MutableInteractionSource()
+        val press = PressInteraction.Press(androidx.compose.ui.geometry.Offset(10f, 10f))
+        setContent {
+            AgentTheme(dark = true) {
+                Box(Modifier.size(44.dp).background(AgentTheme.colors.background).indication(source, LocalIndication.current).testTag("button"))
+            }
+        }
+        mainClock.advanceTimeByFrame()
+        val before = onNodeWithTag("button").captureToImage().toPixelMap()
+        runOnIdle { kotlinx.coroutines.runBlocking { source.emit(press) } }
+        mainClock.advanceTimeByFrame()
+        mainClock.advanceTimeByFrame()
+        val pressed = onNodeWithTag("button").captureToImage().toPixelMap()
+        runOnIdle { kotlinx.coroutines.runBlocking { source.emit(PressInteraction.Cancel(press)) } }
+        mainClock.advanceTimeBy(600)
+        val after = onNodeWithTag("button").captureToImage().toPixelMap()
+        assertTrue(before[22, 22] != pressed[22, 22], "the press showed")
+        assertEquals(before[22, 22], after[22, 22], "the press let go")
     }
 
     @Test

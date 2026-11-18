@@ -1,5 +1,14 @@
 package dev.wildware.agents.app.feed
 
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -232,23 +241,29 @@ private fun DragHandle() {
  * tap outside, or press Cancel to close it.
  */
 @Composable
-fun ActionSheet(target: MenuTarget, safeArea: SafeArea) {
+fun ActionSheet(target: MenuTarget, safeArea: SafeArea, sheetModifier: Modifier = Modifier) {
     val ui = LocalFeedUi.current ?: return
     val colors = AgentTheme.colors
     val run = rememberRunner(ui, target)
     val drag = remember { DismissDrag() }
+    // Where a swipe let go, so the sheet sinks away from there rather than jumping back up first.
+    var letGoAt by remember { androidx.compose.runtime.mutableFloatStateOf(0f) }
+    val haptics = LocalHapticFeedback.current
     val shape = RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp)
     Box(Modifier.fillMaxSize()) {
         Scrim({ 0.38f }, "Close menu") { ui.menu = null }
         Column(
-            Modifier
+            sheetModifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .offset { IntOffset(0, drag.offsetPx.roundToInt()) }
+                .offset { IntOffset(0, maxOf(drag.offsetPx, letGoAt).roundToInt()) }
                 .lift(AgentTheme.elevation.overlay, shape)
                 .clip(shape)
                 .background(colors.surfaceRaised)
-                .swipeDownToDismiss(drag) { ui.menu = null }
+                .swipeDownToDismiss(drag) {
+                    letGoAt = drag.offsetPx
+                    ui.menu = null
+                }
                 .semantics { paneTitle = "Actions" }
                 .safePadding(safeArea, bottom = 0.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -274,7 +289,10 @@ fun ActionSheet(target: MenuTarget, safeArea: SafeArea) {
                             .size(48.dp)
                             .clip(CircleShape)
                             .background(colors.surfaceSunken)
-                            .pressable("React with $emoji", CircleShape) { ui.emit(FeedEvent.React(target.id, emoji)) },
+                            .pressable("React with $emoji", CircleShape) {
+                                haptics.performHapticFeedback(HapticFeedbackType.ToggleOn)
+                                ui.emit(FeedEvent.React(target.id, emoji))
+                            },
                         contentAlignment = Alignment.Center,
                     ) { Text(emoji, fontSize = 22.sp) }
                 }
@@ -321,7 +339,12 @@ fun ImageViewer(gallery: Gallery, safeArea: SafeArea) {
     val scope = rememberCoroutineScope()
     val motion = AgentTheme.motion
     LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
-    val close = { ui.viewer = null }
+    // Where a swipe let go, so the picture fades away from there rather than jumping back first.
+    var letGoAt by remember { androidx.compose.runtime.mutableFloatStateOf(0f) }
+    val close = {
+        letGoAt = drag.offsetPx
+        ui.viewer = null
+    }
     fun go(page: Int) {
         if (page !in images.indices) return
         scope.launch { if (motion.reduced) pager.scrollToPage(page) else pager.animateScrollToPage(page) }
@@ -331,7 +354,7 @@ fun ImageViewer(gallery: Gallery, safeArea: SafeArea) {
         Modifier
             .fillMaxSize()
             // Fades as it is pulled down. Read while drawing, so the drag never recomposes the viewer.
-            .drawBehind { drawRect(Color.Black.copy(alpha = (1f - drag.offsetPx / 900f).coerceIn(0.3f, 1f))) }
+            .drawBehind { drawRect(Color.Black.copy(alpha = (1f - maxOf(drag.offsetPx, letGoAt) / 900f).coerceIn(0.3f, 1f))) }
             .semantics {
                 paneTitle = "Pictures"
                 customActions = listOfNotNull(
@@ -356,7 +379,7 @@ fun ImageViewer(gallery: Gallery, safeArea: SafeArea) {
     ) {
         HorizontalPager(
             state = pager,
-            modifier = Modifier.fillMaxSize().offset { IntOffset(0, drag.offsetPx.roundToInt()) },
+            modifier = Modifier.fillMaxSize().offset { IntOffset(0, maxOf(drag.offsetPx, letGoAt).roundToInt()) },
             // A zoomed picture keeps its drags for panning; swiping on to the next waits until it is back to size.
             userScrollEnabled = !zoom.isZoomed,
         ) { page ->
@@ -438,7 +461,7 @@ fun ProjectsDrawer(ui: FeedUi, progress: EdgeProgress, widthPx: Float, safeArea:
     val colors = AgentTheme.colors
     val motion = AgentTheme.motion
     val scope = rememberCoroutineScope()
-    val close: () -> Unit = { scope.launch { progress.settle(false, motion.normal()) } }
+    val close: () -> Unit = { scope.launch { progress.settle(false, motion.settle()) } }
     val density = LocalDensity.current
     val width = with(density) { widthPx.toDp() }
     Box(
@@ -636,7 +659,7 @@ fun PhoneThreadScreen(ui: FeedUi, item: Threaded, widthPx: Float, safeArea: Safe
     val scope = rememberCoroutineScope()
     val back: () -> Unit = {
         scope.launch {
-            ui.threadBack.settle(true, motion.normal())
+            ui.threadBack.settle(true, motion.settle())
             ui.phoneThreadOpen = false
             ui.threadBack.snap(false)
         }
@@ -644,7 +667,7 @@ fun PhoneThreadScreen(ui: FeedUi, item: Threaded, widthPx: Float, safeArea: Safe
     LaunchedEffect(item.id) {
         if (!preview.threadOpen) {
             ui.threadBack.snap(true)
-            ui.threadBack.settle(false, motion.normal())
+            ui.threadBack.settle(false, motion.settle())
         }
     }
     Box(Modifier.fillMaxSize()) {
@@ -717,7 +740,9 @@ fun ThreadComposer(ui: FeedUi?, threadId: String, modifier: Modifier = Modifier,
     val colors = AgentTheme.colors
     Column(modifier) {
         val replying = ui?.replyingTo
-        if (replying != null) {
+        val motion = AgentTheme.motion
+        // "Replying to …" opens above the box, pushing it up smoothly, and folds away when done.
+        Presence(replying, expandVertically(motion.settle()) + fadeIn(motion.normal()), shrinkVertically(motion.normal()) + fadeOut(motion.fast())) { shown ->
             Row(
                 Modifier
                     .fillMaxWidth()
@@ -729,10 +754,10 @@ fun ThreadComposer(ui: FeedUi?, threadId: String, modifier: Modifier = Modifier,
             ) {
                 Icon(Icons.Reply, null, tint = colors.accent, modifier = Modifier.size(16.dp))
                 Column(Modifier.padding(start = 8.dp).weight(1f)) {
-                    Text("Replying to ${replying.author.name}", color = colors.text, style = AgentTheme.type.label)
-                    MetaText(replying.body.replace("**", ""), color = colors.textMuted)
+                    Text("Replying to ${shown.author.name}", color = colors.text, style = AgentTheme.type.label)
+                    MetaText(shown.body.replace("**", ""), color = colors.textMuted)
                 }
-                IconAction(Icons.Close, "Stop replying to ${replying.author.name}") { ui.replyingTo = null }
+                IconAction(Icons.Close, "Stop replying to ${shown.author.name}") { ui?.replyingTo = null }
             }
         }
         Composer(
@@ -743,6 +768,18 @@ fun ThreadComposer(ui: FeedUi?, threadId: String, modifier: Modifier = Modifier,
             focus = focus,
         )
     }
+}
+
+/** [BackToTop] once [shown], dropping in from above and lifting away again. */
+@Composable
+fun BackToTopPill(shown: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    val motion = AgentTheme.motion
+    Presence(
+        Unit.takeIf { shown },
+        fadeIn(motion.fast()) + slideInVertically(motion.pop()) { -it } + scaleIn(motion.pop(), initialScale = 0.8f),
+        fadeOut(motion.fast()) + slideOutVertically(motion.fast()) { -it / 2 },
+        modifier,
+    ) { BackToTop(onClick = onClick) }
 }
 
 /** A pill that appears once the feed is scrolled, to jump back to the top. */
