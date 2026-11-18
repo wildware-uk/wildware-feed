@@ -8,13 +8,13 @@ Reads the key from ASC_KEY_ID, ASC_ISSUER_ID and ASC_KEY_PATH (the .p8 file).
 
   asc.py check BUNDLE_ID [--require-app]        the key works; the app exists in App Store Connect
   asc.py notes BUNDLE_ID VERSION BUILD FILE     sets the TestFlight "What to Test" text
-  asc.py revoke-certs SHA1 [SHA1 ...]           revokes the certificates with these fingerprints
+  asc.py cert-ids                               lists every certificate id (to prove none changed)
+  asc.py create-cert CSR OUT                    makes one development certificate (run once, by hand)
   asc.py ensure-ids "ID=Name=CAP,CAP" ...       registers missing bundle ids and turns capabilities on
 """
 
 import argparse
 import base64
-import hashlib
 import json
 import os
 import subprocess
@@ -152,23 +152,28 @@ def notes(args):
     print(f"Set What to Test on build {args.version} ({args.build}).")
 
 
-def revoke_certs(args):
-    wanted = {s.replace(":", "").lower() for s in args.sha1}
-    url = "/v1/certificates"
-    query = {"limit": "200", "fields[certificates]": "name,certificateType,certificateContent"}
-    revoked = 0
+def cert_ids(args):
+    """Prints every certificate id in the account, one per line, sorted, so a run can prove it
+    neither made nor revoked one."""
+    ids, url, query = [], "/v1/certificates", {"limit": "200", "fields[certificates]": "name"}
     while url:
         page = call("GET", url, query=query)
-        for cert in page["data"]:
-            content = cert["attributes"].get("certificateContent")
-            if content and hashlib.sha1(base64.b64decode(content)).hexdigest() in wanted:
-                call("DELETE", f"/v1/certificates/{cert['id']}")
-                print(f"Revoked {cert['attributes'].get('name')} ({cert['attributes'].get('certificateType')}).")
-                revoked += 1
+        ids += [cert["id"] for cert in page["data"]]
         url = page.get("links", {}).get("next")
         query = None
-    if not revoked:
-        print("No matching certificate in the account; nothing to revoke.")
+    print("\n".join(sorted(ids)))
+
+
+def create_cert(args):
+    """Asks Apple for one Apple Development certificate for this CSR and writes it to OUT (DER).
+    Run once, by hand, to make the long-lived signing certificate; the release never calls it."""
+    csr = open(args.csr).read()
+    body = "".join(l for l in csr.splitlines() if "CERTIFICATE REQUEST" not in l)
+    made = call("POST", "/v1/certificates", body={"data": {"type": "certificates", "attributes": {
+        "certificateType": "DEVELOPMENT", "csrContent": body}}})["data"]
+    open(args.out, "wb").write(base64.b64decode(made["attributes"]["certificateContent"]))
+    print(f"Made {made['attributes'].get('name')} (id {made['id']}), "
+          f"expires {made['attributes'].get('expirationDate')}.")
 
 
 def ensure_ids(args):
@@ -221,9 +226,12 @@ def main():
     p.add_argument("notes_file")
     p.add_argument("--wait-minutes", type=int, default=20)
     p.set_defaults(run=notes)
-    p = commands.add_parser("revoke-certs")
-    p.add_argument("sha1", nargs="+")
-    p.set_defaults(run=revoke_certs)
+    p = commands.add_parser("cert-ids")
+    p.set_defaults(run=cert_ids)
+    p = commands.add_parser("create-cert")
+    p.add_argument("csr")
+    p.add_argument("out")
+    p.set_defaults(run=create_cert)
     p = commands.add_parser("ensure-ids")
     p.add_argument("specs", nargs="+")
     p.set_defaults(run=ensure_ids)

@@ -182,12 +182,14 @@ jobs:
           fi
           wait $pid
 
-      # The key goes to a file only for this run, and a keychain of its own holds the development
-      # certificate Xcode makes for the archive. The last step deletes both, whatever happens.
+      # The key goes to a file only for this run, and a keychain of its own holds the long-lived
+      # signing certificate. The last step deletes both, whatever happens.
       - name: Set up the signing key and keychain
         timeout-minutes: 2
         env:
           ASC_KEY_P8_BASE64: ${{ secrets.ASC_KEY_P8_BASE64 }}
+          SIGNING_P12_BASE64: ${{ secrets.IOS_SIGNING_P12_BASE64 }}
+          SIGNING_P12_PASSWORD: ${{ secrets.IOS_SIGNING_P12_PASSWORD }}
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/asc"
@@ -195,6 +197,7 @@ jobs:
           printf '%s' "$ASC_KEY_P8_BASE64" | base64 --decode > "$key"
           chmod 600 "$key"
           echo "ASC_KEY_PATH=$key" >> "$GITHUB_ENV"
+          export ASC_KEY_PATH="$key"
           keychain="$RUNNER_TEMP/ios-release.keychain-db"
           password="$(openssl rand -hex 24)"
           echo "::add-mask::$password"
@@ -204,6 +207,21 @@ jobs:
           security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
           security default-keychain -s "$keychain"
           echo "KEYCHAIN=$keychain" >> "$GITHUB_ENV"
+          # One long-lived Apple Development certificate, kept as a secret, signs every archive, so
+          # Xcode finds an identity and never asks Apple for a new one.
+          if [ -z "$SIGNING_P12_BASE64" ] || [ -z "$SIGNING_P12_PASSWORD" ]; then
+            echo "::error::IOS_SIGNING_P12_BASE64 or IOS_SIGNING_P12_PASSWORD is missing. See docs/IOS_RELEASE.md, 'The signing certificate'."
+            exit 1
+          fi
+          p12="$RUNNER_TEMP/asc/signing.p12"
+          printf '%s' "$SIGNING_P12_BASE64" | base64 --decode > "$p12"
+          security import "$p12" -k "$keychain" -P "$SIGNING_P12_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security -T /usr/bin/xcodebuild
+          rm -f "$p12"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$password" "$keychain" >/dev/null
+          identities="$(security find-identity -v -p codesigning "$keychain" | grep -c 'Apple Development' || true)"
+          [ "$identities" -ge 1 ] || { echo "::error::The signing certificate didn't import as a usable identity."; exit 1; }
+          python3 .github/scripts/asc.py cert-ids > "$RUNNER_TEMP/certs-before.txt"
+          echo "Signing with the long-lived certificate; $(wc -l < "$RUNNER_TEMP/certs-before.txt") certificates in the account before the run."
 
       - name: Archive (Release, signed by Xcode)
         timeout-minutes: 45
@@ -370,18 +388,21 @@ jobs:
           grep -E "Upload succeeded|EXPORT SUCCEEDED" upload.log || true
           echo "Uploaded $VERSION ($BUILD). TestFlight shows it once Apple has processed it, usually 5 to 30 minutes."
 
-      # Xcode made a fresh development certificate for this run; its private key dies with the
-      # keychain, so revoke it rather than let them pile up to Apple's limit.
-      - name: Revoke this run's development certificate
+      # The run must leave the account's certificates exactly as it found them: Apple emails the
+      # owner on every revoke, and every new certificate counts toward Apple's limit.
+      - name: Check no certificate was made or revoked
         if: always()
         timeout-minutes: 3
-        continue-on-error: true
         run: |
-          set -uo pipefail
-          [ -n "${KEYCHAIN:-}" ] && [ -f "$KEYCHAIN" ] || { echo "No keychain; nothing to revoke."; exit 0; }
-          sha1s="$(security find-certificate -a -Z "$KEYCHAIN" | awk '/SHA-1 hash:/ {print $3}')"
-          [ -n "$sha1s" ] || { echo "Xcode left no certificate in this run's keychain."; exit 0; }
-          python3 .github/scripts/asc.py revoke-certs $sha1s
+          set -euo pipefail
+          [ -f "$RUNNER_TEMP/certs-before.txt" ] || { echo "No starting list; the run stopped before signing."; exit 0; }
+          python3 .github/scripts/asc.py cert-ids > "$RUNNER_TEMP/certs-after.txt"
+          if ! diff -q "$RUNNER_TEMP/certs-before.txt" "$RUNNER_TEMP/certs-after.txt" >/dev/null; then
+            echo "::error::The account's certificates changed during this run. Look in Certificates, Identifiers & Profiles and tell the owner before running again."
+            diff "$RUNNER_TEMP/certs-before.txt" "$RUNNER_TEMP/certs-after.txt" || true
+            exit 1
+          fi
+          echo "Certificates unchanged: $(wc -l < "$RUNNER_TEMP/certs-after.txt") in the account, none made or revoked."
 
       - name: Delete the key and the keychain
         if: always()

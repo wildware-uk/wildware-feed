@@ -1,0 +1,47 @@
+# Makes the ONE long-lived Apple Development certificate the iOS release signs with. Run it by
+# hand, once (and again only when that certificate nears its expiry), never from a release.
+#
+# The private key never leaves the owner's machine: give this the certificate signing request
+# (public), and it returns the certificate (public) as an artifact. Pair them into a .p12 locally
+# and store it as IOS_SIGNING_P12_BASE64 with IOS_SIGNING_P12_PASSWORD. See docs/IOS_RELEASE.md.
+name: iOS signing certificate
+
+on:
+  workflow_dispatch:
+    inputs:
+      csr_base64:
+        description: 'The certificate signing request (PEM), base64-encoded on one line.'
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  make:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ask Apple for the certificate
+        timeout-minutes: 2
+        env:
+          ASC_KEY_P8_BASE64: ${{ secrets.ASC_KEY_P8_BASE64 }}
+          CSR_BASE64: ${{ inputs.csr_base64 }}
+        run: |
+          set -euo pipefail
+          export ASC_KEY_PATH="$RUNNER_TEMP/asc-key.p8"
+          printf '%s' "$ASC_KEY_P8_BASE64" | base64 --decode > "$ASC_KEY_PATH"
+          chmod 600 "$ASC_KEY_PATH"
+          printf '%s' "$CSR_BASE64" | base64 --decode > "$RUNNER_TEMP/request.csr"
+          grep -q "BEGIN CERTIFICATE REQUEST" "$RUNNER_TEMP/request.csr" || { echo "::error::That isn't a PEM certificate signing request."; exit 1; }
+          mkdir -p out
+          python3 .github/scripts/asc.py create-cert "$RUNNER_TEMP/request.csr" out/signing.cer
+          rm -f "$ASC_KEY_PATH"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: signing-certificate
+          path: out/signing.cer
+          retention-days: 1

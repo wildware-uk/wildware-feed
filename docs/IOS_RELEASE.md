@@ -35,8 +35,31 @@ Team Keys, **+**. Pick the **Admin** role: signing in the cloud needs it. Downlo
 
 The desktop release uses the same four to notarise the Mac app, so they may already be there.
 
-No certificates or profiles go in the repo. Xcode makes what it needs with the key on each run, and
-the run revokes its throwaway development certificate at the end.
+No certificates or profiles go in the repo. Xcode makes the profiles it needs with the key on each
+run, and App Store signing happens in Apple's cloud.
+
+## The signing certificate
+
+Every archive is signed with **one long-lived Apple Development certificate**, kept as two more
+secrets. A run never makes or revokes a certificate: its last step compares the account's
+certificates before and after, and fails if anything changed. (Apple emails the account holder on
+every revoke, so a certificate per run means an email per run.)
+
+| Secret | What |
+| --- | --- |
+| `IOS_SIGNING_P12_BASE64` | The certificate and its private key as a `.p12`, base64 on one line |
+| `IOS_SIGNING_P12_PASSWORD` | The `.p12`'s password |
+
+To make it (once, and again only when it nears expiry, about a year):
+
+1. On your own machine: `openssl req -new -newkey rsa:2048 -nodes -keyout signing.key -subj "/CN=Wildware Feed CI" -out signing.csr`
+2. Run the **iOS signing certificate** workflow with `base64 -w0 signing.csr` as its input. The key
+   stays with you; only the request goes up.
+3. Download its `signing-certificate` artifact (`signing.cer`), then:
+   `openssl x509 -inform DER -in signing.cer -out signing.pem` and
+   `openssl pkcs12 -export -legacy -inkey signing.key -in signing.pem -out signing.p12 -passout pass:<password>`
+4. Store `base64 -w0 signing.p12` as `IOS_SIGNING_P12_BASE64` and the password as
+   `IOS_SIGNING_P12_PASSWORD`, then delete the local files.
 
 ## Capabilities each bundle id needs
 
@@ -76,8 +99,9 @@ The first red line in the run says what is wrong. The full Xcode logs are on the
 - **"Your team has no devices"**: development signing needs at least one registered iPhone and
   one Apple Watch. Register them on developer.apple.com, Devices.
 - **"The build number has already been used"**: run the workflow again; the new run gets a new number.
-- **"Maximum number of certificates"**: revoke old "Created via API" development certificates on
-  developer.apple.com, Certificates.
+- **"The account's certificates changed during this run"**: Xcode made or revoked one, usually
+  because the signing certificate expired or its secret is wrong. Check Certificates on
+  developer.apple.com, replace the secret (see "The signing certificate"), and tell the owner.
 - **Gradle runs out of memory, or a step times out**: run it again once. If it keeps happening, raise
   the step's `timeout-minutes` or `-Xmx` in `.github/workflows/ios-release.yml`.
 - **What to Test didn't appear**: Apple took longer than 20 minutes to process the build. The build
