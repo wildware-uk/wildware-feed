@@ -83,6 +83,16 @@ the commit pinned in `server/parity/run-against-ts.sh` (`TS_SERVER_REF`), builds
 suite: all 114 tests pass against the pinned commit, which has every decided fix. Move the pin
 forward when the TS server changes.
 
+## Known differences in the Kotlin server
+
+Places where the Kotlin server cannot match the TS server exactly, kept small and each pinned by a test.
+
+- **Sorting names** (`/api/summary` projects): the TS server uses JavaScript's `localeCompare` (ICU).
+  The Kotlin server uses the JDK's collator with special cases for spaces and punctuation, symbols
+  and emoji, letters with a stroke, and compatibility characters, so realistic names sort the same
+  (`LocaleCompareTest`). One tie still differs: names equal except for case and `ß`/`ss` sort
+  `strasse` < `straße` < `Strasse` in Kotlin and `strasse` < `Strasse` < `straße` in Node.
+
 ## The parity suite
 
 `server/parity/` (Gradle module `:server-parity`) runs these checks against any running server. See
