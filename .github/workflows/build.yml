@@ -23,6 +23,34 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - run: ./gradlew :shared:jvmTest
 
+  compose-desktop:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v4
+      # Ubuntu has no colour emoji font, and the screenshots show emoji reactions.
+      - name: Install an emoji font
+        timeout-minutes: 5
+        run: sudo apt-get update -q && sudo apt-get install -yq fonts-noto-color-emoji
+      - name: Build the desktop app
+        timeout-minutes: 10
+        run: ./gradlew :composeApp:desktopJar
+      - name: Draw the screenshots
+        timeout-minutes: 10
+        run: ./gradlew :composeApp:desktopTest
+      - if: always()
+        uses: actions/upload-artifact@v4
+        timeout-minutes: 5
+        with:
+          name: compose-screenshots
+          path: composeApp/build/screenshots/*.png
+          if-no-files-found: warn
+
   ios:
     runs-on: macos-26
     needs: shared-tests

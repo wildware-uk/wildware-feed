@@ -1,0 +1,84 @@
+package dev.wildware.agents.app.design
+
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.addPathNodes
+import androidx.compose.ui.unit.dp
+
+/** A small set of line icons drawn on a 24-unit grid, so the app needs no icon library. */
+object Icons {
+    val Search = icon("search", circle(11f, 11f, 7f), "M21 21 16.5 16.5")
+    val Send = icon("send", "M12 19V5", "M5 12 12 5 19 12")
+    val Plus = icon("plus", "M12 5V19", "M5 12H19")
+    val ChevronDown = icon("chevron-down", "M6 9 12 15 18 9")
+    val Back = icon("back", "M19 12H5", "M12 19 5 12 12 5")
+    val Hash = icon("hash", "M4 9H20", "M4 15H20", "M10 3 8 21", "M16 3 14 21")
+    val Bell = icon(
+        "bell",
+        "M6 8A6 6 0 0 1 18 8C18 15 21 17 21 17H3S6 15 6 8",
+        "M10.3 21A1.94 1.94 0 0 0 13.7 21",
+    )
+    val Settings = icon(
+        "settings",
+        "M4 21V14", "M4 10V3", "M12 21V12", "M12 8V3", "M20 21V16", "M20 12V3",
+        "M1 14H7", "M9 8H15", "M17 16H23",
+    )
+    val Check = icon("check", "M20 6 9 17 4 12")
+    val Reply = icon("reply", "M9 14 4 9 9 4", "M20 20V13A4 4 0 0 0 16 9H4")
+    val More = icon("more", circle(5f, 12f, 1f), circle(12f, 12f, 1f), circle(19f, 12f, 1f))
+    val Copy = icon(
+        "copy",
+        rect(9f, 9f, 13f, 13f, 2f),
+        "M5 15H4A2 2 0 0 1 2 13V4A2 2 0 0 1 4 2H13A2 2 0 0 1 15 4V5",
+    )
+    val Smile = icon(
+        "smile",
+        circle(12f, 12f, 10f),
+        "M8 14S9.5 16 12 16 16 14 16 14",
+        "M9 9H9.01", "M15 9H15.01",
+    )
+    val Close = icon("close", "M18 6 6 18", "M6 6 18 18")
+    val Inbox = icon(
+        "inbox",
+        "M22 12H16L14 15H10L8 12H2",
+        "M5.45 5.11 2 12V18A2 2 0 0 0 4 20H20A2 2 0 0 0 22 18V12L18.55 5.11A2 2 0 0 0 16.76 4H7.24A2 2 0 0 0 5.45 5.11Z",
+    )
+    val At = icon("at", circle(12f, 12f, 4f), "M16 8V13A3 3 0 0 0 22 13V12A10 10 0 1 0 18.08 19.94")
+    val Image = icon(
+        "image",
+        rect(3f, 3f, 18f, 18f, 2f),
+        circle(9f, 9f, 2f),
+        "M21 15 17.91 11.91A2 2 0 0 0 15.09 11.91L6 21",
+    )
+    val Clock = icon("clock", circle(12f, 12f, 10f), "M12 6V12L16 14")
+    val Moon = icon("moon", "M12 3A6 6 0 0 0 21 12 9 9 0 1 1 12 3Z")
+    val Grip = icon("grip", "M5 9H19", "M5 15H19")
+    val ZoomIn = icon("zoom-in", circle(11f, 11f, 7f), "M21 21 16.5 16.5", "M11 8V14", "M8 11H14")
+    val ZoomOut = icon("zoom-out", circle(11f, 11f, 7f), "M21 21 16.5 16.5", "M8 11H14")
+    val Link = icon("link", "M10 13A5 5 0 0 0 17.54 13.54L20.54 10.54A5 5 0 0 0 13.47 3.47L11.75 5.18", "M14 11A5 5 0 0 0 6.46 10.46L3.46 13.46A5 5 0 0 0 10.53 20.53L12.24 18.82")
+    val Trash = icon("trash", "M3 6H21", "M19 6V20A2 2 0 0 1 17 22H7A2 2 0 0 1 5 20V6", "M8 6V4A2 2 0 0 1 10 2H14A2 2 0 0 1 16 4V6")
+    val ArrowUp = icon("arrow-up", "M12 19V5", "M5 12 12 5 19 12")
+}
+
+private fun icon(name: String, vararg paths: String): ImageVector =
+    ImageVector.Builder(name, 24.dp, 24.dp, 24f, 24f).apply {
+        paths.forEach { data ->
+            addPath(
+                pathData = addPathNodes(data),
+                stroke = SolidColor(Color.Black),
+                strokeLineWidth = 1.8f,
+                strokeLineCap = StrokeCap.Round,
+                strokeLineJoin = StrokeJoin.Round,
+            )
+        }
+    }.build()
+
+private fun circle(cx: Float, cy: Float, r: Float) =
+    "M${cx - r} ${cy}A$r $r 0 1 0 ${cx + r} ${cy}A$r $r 0 1 0 ${cx - r} ${cy}Z"
+
+private fun rect(x: Float, y: Float, w: Float, h: Float, r: Float) =
+    "M${x + r} ${y}H${x + w - r}A$r $r 0 0 1 ${x + w} ${y + r}V${y + h - r}" +
+        "A$r $r 0 0 1 ${x + w - r} ${y + h}H${x + r}A$r $r 0 0 1 $x ${y + h - r}V${y + r}A$r $r 0 0 1 ${x + r} ${y}Z"
