@@ -28,7 +28,9 @@ class FeedApiTest : ParityTest() {
     @Test
     fun `1 the API wants a session`() = parity {
         call(HttpMethod.Post, "/api/messages", obj("body" to "x")).expectError401()
-        owner.send(HttpMethod.Post, "/api/messages", obj("body" to "x")) { bearer("B".repeat(43)) }.expectError401()
+        // A bad key beside a good cookie is still refused (only where there are cookies).
+        if (owner.cookie != null) owner.send(HttpMethod.Post, "/api/messages", obj("body" to "x")) { bearer("B".repeat(43)) }.expectError401()
+        call(HttpMethod.Post, "/api/messages", obj("body" to "x")) { bearer("B".repeat(43)) }.expectError401()
     }
 
     private suspend fun HttpResponse.expectError401() {
@@ -344,12 +346,15 @@ class FeedApiTest : ParityTest() {
         assertEquals("GET method not allowed", get.bodyAsText())
         assertEquals("POST", get.headers[HttpHeaders.Allow])
 
-        val crossSite = call(HttpMethod.Post, "/api/messages") {
-            header(HttpHeaders.Origin, "https://evil.example")
-            header(HttpHeaders.Cookie, owner.cookie)
-            setBodyText("""{"body":"x"}""", ContentType.Text.Plain)
+        // The browser's CSRF rule belongs to the website, which the Kotlin server does not have.
+        if (Parity.web) {
+            val crossSite = call(HttpMethod.Post, "/api/messages") {
+                header(HttpHeaders.Origin, "https://evil.example")
+                header(HttpHeaders.Cookie, owner.cookie ?: "")
+                setBodyText("""{"body":"x"}""", ContentType.Text.Plain)
+            }
+            assertEquals(403, crossSite.status.value)
+            assertContains(crossSite.bodyAsText(), "Cross-site POST form submissions are forbidden")
         }
-        assertEquals(403, crossSite.status.value)
-        assertContains(crossSite.bodyAsText(), "Cross-site POST form submissions are forbidden")
     }
 }

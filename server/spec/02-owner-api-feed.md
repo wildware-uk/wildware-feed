@@ -211,6 +211,22 @@ Body (lenient): `name` string (else 400 `name must be a string`); `colour` optio
 
 Response always `200 {"tag": Tag}` (never 201).
 
+### 2.5 `PATCH /api/tags/[id]`
+
+Body (lenient): `name` absent or a string (else 400 `name must be a string`); `colour` absent, null or a string (else 400 `colour must be a palette name, or null`) (`src/http/owner/tags.ts:53-73`).
+
+`renameTag` (`src/domain/tags.ts`), in order:
+1. Unknown id → 404 `no such tag: <id>`.
+2. Colour not null/absent and not a palette name → 400 `colour must be one of grey, rose, amber, green, blue, violet`.
+3. `name` given: trimmed; the same three checks as §2.4 step 2-3; another tag in the project with that slug → **400** (not 409) `this project already has a tag called <JSON.stringify(its name)>`.
+4. Write `name`/`slug` (when given) and `colour` (when given; `null` clears it), publish `tags.changed {projectId}`. Always: `{}` writes the same row and still publishes.
+
+Response `200 {"tag": Tag}`.
+
+### 2.6 `DELETE /api/tags/[id]`
+
+No body. Unknown id → 404 `no such tag: <id>` (so a second delete is a 404). Deletes the tag's `card_tags` rows and the tag in one transaction, publishes `tags.changed {projectId}`. Response `200 {"tag":{"id":"<id>","projectId":"<project id>"}}`.
+
 ---
 
 ## 3. Updates
