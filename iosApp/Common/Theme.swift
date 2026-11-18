@@ -360,3 +360,49 @@ struct FlowLayout: Layout {
         return rows.filter { !$0.indices.isEmpty }
     }
 }
+
+// MARK: - Time left
+
+/// "41 minutes left", for VoiceOver.
+func spokenTimeLeft(until expiry: Date?, from now: Date) -> String? {
+    guard let expiry, expiry > now else { return nil }
+    let formatter = DateComponentsFormatter()
+    formatter.unitsStyle = .full
+    formatter.maximumUnitCount = 1
+    formatter.allowedUnits = [.day, .hour, .minute]
+    return formatter.string(from: now, to: expiry).map { "\($0) left" }
+}
+
+/// "41:43 left": the one way time left is written, on every surface. It counts down by itself.
+struct TimeLeftText: View {
+    let expiry: Date
+    let now: Date
+    var showsClock = true
+
+    var body: some View {
+        HStack(spacing: 4) {
+            if showsClock {
+                Image(systemName: "clock").font(.system(size: 10, weight: .semibold)).accessibilityHidden(true)
+            }
+            // A live timer claims all the width it is offered. Sizing it by placeholder digits in the same
+            // font keeps it to its own width at every text size.
+            Text(placeholder)
+                .hidden()
+                .overlay(alignment: .trailing) {
+                    Text(timerInterval: now...expiry, countsDown: true, showsHours: true)
+                        .monospacedDigit()
+                        .multilineTextAlignment(.trailing)
+                }
+            Text("left")
+        }
+        .lineLimit(1)
+        .fixedSize()
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(spokenTimeLeft(until: expiry, from: now) ?? "")
+    }
+
+    private var placeholder: String {
+        let seconds = expiry.timeIntervalSince(now)
+        return seconds >= 36000 ? "00:00:00" : seconds >= 3600 ? "0:00:00" : "00:00"
+    }
+}

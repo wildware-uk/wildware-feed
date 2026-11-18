@@ -64,7 +64,7 @@ struct VoiceNoteStatusView: View {
                 Text(attributes.headline(state))
                     .font(Theme.Font.bodyStrong.weight(.semibold))
                     .foregroundStyle(Theme.text)
-                    .lineLimit(1)
+                    .lineLimit(2)
                 switch state.phase {
                 case .recording:
                     Text(attributes.startedAt, style: .timer)

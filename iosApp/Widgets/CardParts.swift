@@ -5,40 +5,6 @@ import WidgetKit
 
 /// The pieces the app's waiting card is made of, sized for widgets and Live Activities.
 
-/// "41 minutes left", for VoiceOver.
-func spokenTimeLeft(until expiry: Date?, from now: Date) -> String? {
-    guard let expiry, expiry > now else { return nil }
-    let formatter = DateComponentsFormatter()
-    formatter.unitsStyle = .full
-    formatter.maximumUnitCount = 1
-    formatter.allowedUnits = [.day, .hour, .minute]
-    return formatter.string(from: now, to: expiry).map { "\($0) left" }
-}
-
-/// "41:43 left": the one way time left is written, on every surface. It counts down by itself.
-struct TimeLeftText: View {
-    let expiry: Date
-    let now: Date
-    var showsClock = true
-
-    var body: some View {
-        HStack(spacing: 4) {
-            if showsClock {
-                Image(systemName: "clock").font(.system(size: 10, weight: .semibold))
-            }
-            Text(timerInterval: now...expiry, countsDown: true, showsHours: true)
-                .monospacedDigit()
-                .multilineTextAlignment(.trailing)
-                // A live timer claims all the width it is offered; this keeps it to its digits.
-                .frame(maxWidth: expiry.timeIntervalSince(now) >= 3600 ? 62 : 44, alignment: .trailing)
-            Text("left")
-        }
-        .fixedSize()
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(spokenTimeLeft(until: expiry, from: now) ?? "")
-    }
-}
-
 /// Who asked and where, with the time left on the right.
 struct AskerRow: View {
     let agent: String
@@ -47,17 +13,21 @@ struct AskerRow: View {
     var expiry: Date?
     let now: Date
     var chipSize: CGFloat = 20
+    /// False where there's only room for the chip and the time (the small widget); VoiceOver still says who.
+    var showsName = true
 
     var body: some View {
         HStack(spacing: Theme.Space.s) {
             AgentChip(name: agent, agentId: agentId, size: chipSize)
-            Text(agent).font(Theme.Font.label.weight(.semibold)).foregroundStyle(Theme.text).lineLimit(1)
+            if showsName {
+                Text(agent).font(Theme.Font.label.weight(.semibold)).foregroundStyle(Theme.text).lineLimit(1)
+            }
             if let project {
                 Text(project).font(Theme.Font.meta).foregroundStyle(Theme.textMuted).lineLimit(1)
             }
             Spacer(minLength: Theme.Space.xs)
             if let expiry, expiry > now {
-                TimeLeftText(expiry: expiry, now: now)
+                TimeLeftText(expiry: expiry, now: now, showsClock: showsName)
                     .font(Theme.Font.meta.weight(.medium))
                     .foregroundStyle(Theme.waiting)
                     .widgetAccentable()
@@ -202,5 +172,38 @@ extension View {
     @ViewBuilder
     func cardBackground(waiting: Bool) -> some View {
         containerBackground(for: .widget) { waiting ? Theme.waitingSoft : Theme.surface }
+    }
+}
+
+extension EnvironmentValues {
+    /// True when drawn to a picture (the screenshot tests): views that only tick on a real screen,
+    /// like a timer-driven ring, draw a still frame instead of a placeholder.
+    @Entry var drawsStill = false
+}
+
+/// An amber ring that drains as a question runs out of time, with a label inside.
+struct CountdownRing<Label: View>: View {
+    let expiry: Date
+    let now: Date
+    @ViewBuilder let label: Label
+    @Environment(\.drawsStill) private var drawsStill
+
+    var body: some View {
+        if drawsStill {
+            ZStack {
+                Circle().stroke(Theme.waiting.opacity(0.25), lineWidth: 3)
+                Circle().trim(from: 0, to: 0.7).stroke(Theme.waiting, style: StrokeStyle(lineWidth: 3, lineCap: .round)).rotationEffect(.degrees(-90))
+                label
+            }
+            .padding(2)
+        } else {
+            ProgressView(timerInterval: now...expiry, countsDown: true) {
+                EmptyView()
+            } currentValueLabel: {
+                label
+            }
+            .progressViewStyle(.circular)
+            .tint(Theme.waiting)
+        }
     }
 }

@@ -22,11 +22,7 @@ struct RequestView: View {
                     .font(Theme.Font.sans(16, .semibold, relativeTo: .headline))
                     .foregroundStyle(Theme.text)
                 if let expiry = request.expiry, expiry > .now {
-                    HStack(spacing: 4) {
-                        Image(systemName: "clock")
-                        Text(timerInterval: Date.now...expiry, countsDown: true, showsHours: true).monospacedDigit()
-                        Text("left")
-                    }
+                    TimeLeftText(expiry: expiry, now: .now)
                     .font(Theme.Font.meta)
                     .foregroundStyle(Theme.waiting)
                 }

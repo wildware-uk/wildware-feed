@@ -42,7 +42,7 @@ struct StatusSnippet: View {
     private func stat(_ value: Int, _ label: String, _ color: Color) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text("\(value)").font(Theme.Font.mono(28, .medium, relativeTo: .title)).foregroundStyle(color)
-            Text(label).overline().foregroundStyle(Theme.textMuted)
+            Text(label).overline().foregroundStyle(Theme.textMuted).lineLimit(1).minimumScaleFactor(0.6)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)

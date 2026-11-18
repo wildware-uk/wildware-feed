@@ -279,6 +279,7 @@ final class WidgetScreenshots: XCTestCase {
             .background(LinearGradient(colors: scheme.wallpaper, startPoint: .topLeading, endPoint: .bottomTrailing))
             .environment(\.colorScheme, scheme.colorScheme)
             .environment(\.dynamicTypeSize, textSize)
+            .environment(\.drawsStill, true)
         let renderer = ImageRenderer(content: framed)
         renderer.scale = 3
         let png = try XCTUnwrap(renderer.uiImage?.pngData(), "\(name) drew nothing")

@@ -124,14 +124,9 @@ private struct RequestCard: View {
                 trailingProject: model.details?.projectName ?? model.payload.projectSlug
             ) {
                 if let expiry = request?.expiry, expiry > .now {
-                    HStack(spacing: 4) {
-                        Image(systemName: "clock").font(.system(size: 10, weight: .semibold))
-                        Text(timerInterval: Date.now...expiry, countsDown: true, showsHours: true).monospacedDigit()
-                        Text("left")
-                    }
-                    .font(Theme.Font.meta.weight(.medium))
-                    .foregroundStyle(Theme.waiting)
-                    .accessibilityElement(children: .combine)
+                    TimeLeftText(expiry: expiry, now: .now)
+                        .font(Theme.Font.meta.weight(.medium))
+                        .foregroundStyle(Theme.waiting)
                 }
             }
             Text(inlineMarkdown(question))
@@ -353,6 +348,21 @@ private struct CardHeader<Trailing: View>: View {
     @ViewBuilder let trailing: Trailing
 
     var body: some View {
+        // One line when it fits; with big text or a long name, the time goes on a line of its own.
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: Theme.Space.s) {
+                who.fixedSize()
+                Spacer(minLength: Theme.Space.xs)
+                trailing.fixedSize()
+            }
+            VStack(alignment: .leading, spacing: Theme.Space.xs) {
+                who
+                trailing.fixedSize()
+            }
+        }
+    }
+
+    private var who: some View {
         HStack(spacing: Theme.Space.s) {
             if let name {
                 AgentChip(name: name, agentId: agentId)
@@ -366,8 +376,6 @@ private struct CardHeader<Trailing: View>: View {
             if let trailingProject {
                 Text(trailingProject).font(Theme.Font.meta).foregroundStyle(Theme.textMuted).lineLimit(1)
             }
-            Spacer(minLength: Theme.Space.xs)
-            trailing
         }
     }
 }

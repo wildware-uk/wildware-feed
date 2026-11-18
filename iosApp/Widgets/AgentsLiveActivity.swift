@@ -258,13 +258,9 @@ struct MinimalView: View {
     var body: some View {
         if state.waiting > 0 {
             if let expiry = state.topExpiry, expiry > .now {
-                ProgressView(timerInterval: Date.now...expiry, countsDown: true) {
-                    EmptyView()
-                } currentValueLabel: {
+                CountdownRing(expiry: expiry, now: .now) {
                     Text("\(state.waiting)").font(Theme.Font.fixedMono(12))
                 }
-                .progressViewStyle(.circular)
-                .tint(Theme.waiting)
                 .foregroundStyle(Theme.waiting)
                 .accessibilityLabel("\(state.waiting) waiting on you")
             } else {

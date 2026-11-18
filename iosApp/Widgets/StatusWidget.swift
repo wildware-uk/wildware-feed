@@ -141,7 +141,7 @@ private struct StatusSmall: View {
                     .minimumScaleFactor(0.85)
                     .padding(.top, Theme.Space.s)
                 Spacer(minLength: Theme.Space.xs)
-                AskerRow(agent: top.agentName, agentId: top.agentId, project: nil, expiry: top.expiry, now: now, chipSize: 18)
+                AskerRow(agent: top.agentName, agentId: top.agentId, project: nil, expiry: top.expiry, now: now, chipSize: 18, showsName: false)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         } else {
@@ -182,11 +182,15 @@ private struct StatusMedium: View {
     var body: some View {
         if let top = snapshot.top {
             VStack(alignment: .leading, spacing: 0) {
-                HStack {
-                    DotLabel(text: "Waiting on you · \(snapshot.waiting)", color: Theme.waiting).widgetAccentable()
-                    Spacer(minLength: Theme.Space.s)
-                    Text("\(snapshot.inProgress) working · \(snapshot.online.count) online")
-                        .font(Theme.Font.meta).foregroundStyle(Theme.textMuted).lineLimit(1)
+                ViewThatFits(in: .horizontal) {
+                    HStack {
+                        DotLabel(text: "Waiting on you · \(snapshot.waiting)", color: Theme.waiting).widgetAccentable().fixedSize()
+                        Spacer(minLength: Theme.Space.s)
+                        Text("\(snapshot.inProgress) working · \(snapshot.online.count) online")
+                            .font(Theme.Font.meta).foregroundStyle(Theme.textMuted).fixedSize()
+                    }
+                    DotLabel(text: "Waiting on you · \(snapshot.waiting)", color: Theme.waiting).widgetAccentable().fixedSize()
+                    DotLabel(text: "\(snapshot.waiting) waiting", color: Theme.waiting).widgetAccentable()
                 }
                 AskerRow(agent: top.agentName, agentId: top.agentId, project: top.projectName, expiry: top.expiry, now: now, chipSize: 18)
                     .padding(.top, Theme.Space.s)
@@ -277,15 +281,12 @@ private struct StatusCircular: View {
     var body: some View {
         if let top = snapshot.top, let expiry = top.expiry, expiry > now {
             // The ring drains as the oldest question runs out of time.
-            ProgressView(timerInterval: now...expiry, countsDown: true) {
-                EmptyView()
-            } currentValueLabel: {
+            CountdownRing(expiry: expiry, now: now) {
                 VStack(spacing: 0) {
                     RobotMark(color: .primary).frame(height: 13)
                     Text("\(snapshot.waiting)").font(Theme.Font.fixedMono(18))
                 }
             }
-            .progressViewStyle(.circular)
             .widgetAccentable()
             .accessibilityLabel("\(snapshot.waiting) waiting on you")
         } else {

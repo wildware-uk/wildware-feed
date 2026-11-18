@@ -159,7 +159,7 @@ struct ProjectWidgetContent: View {
 
     private func small(_ card: ProjectCard) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            Header(card: card, big: !showsBackground)
+            Header(card: card, big: !showsBackground, narrow: true)
             Text(card.headline)
                 .font(showsBackground ? Theme.Font.title : Theme.Font.sans(22, .semibold, relativeTo: .title2))
                 .foregroundStyle(Theme.text)
@@ -170,7 +170,7 @@ struct ProjectWidgetContent: View {
                 Text(card.excerpt).font(Theme.Font.label.weight(.regular)).foregroundStyle(Theme.textMuted).lineLimit(2).padding(.top, 3)
             }
             Spacer(minLength: 0)
-            if let latest = card.latest { Byline(update: latest, big: !showsBackground) }
+            if let latest = card.latest { Byline(update: latest, big: !showsBackground, showsName: false) }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
@@ -194,7 +194,7 @@ struct ProjectWidgetContent: View {
                     HStack(alignment: .top, spacing: Theme.Space.m) {
                         News(card: card, large: false, asking: true)
                         if let request = card.questions.first {
-                            QuestionWell(request: request, now: entry.date, narrow: true).frame(width: 128)
+                            QuestionWell(request: request, now: entry.date, narrow: true).frame(width: 140)
                         }
                     }
                     .padding(.top, Theme.Space.s)
@@ -211,6 +211,8 @@ struct ProjectWidgetContent: View {
     private struct Header: View {
         let card: ProjectCard
         let big: Bool
+        /// The small widget: the count goes without its word, so the project's name has the room.
+        var narrow = false
 
         var body: some View {
             HStack(spacing: 6) {
@@ -219,9 +221,13 @@ struct ProjectWidgetContent: View {
                     .font(big ? Theme.Font.mono(14, .medium, relativeTo: .headline) : Theme.Font.overline)
                     .foregroundStyle(Theme.textMuted)
                     .lineLimit(1)
+                    .minimumScaleFactor(0.8)
                 Spacer(minLength: 0)
                 if card.waiting > 0 {
-                    DotLabel(text: "\(card.waiting) waiting", color: Theme.waiting).widgetAccentable()
+                    DotLabel(text: narrow ? "\(card.waiting)" : "\(card.waiting) waiting", color: Theme.waiting)
+                        .widgetAccentable()
+                        .fixedSize()
+                        .accessibilityLabel("\(card.waiting) waiting on you")
                 } else if !big {
                     AppMarkTile(size: 16)
                 }
@@ -282,14 +288,22 @@ struct ProjectWidgetContent: View {
     private struct Byline: View {
         let update: RecentUpdate
         let big: Bool
+        /// False in the small widget, where the chip's initial says who and the time needs the room.
+        var showsName = true
 
         var body: some View {
             HStack(spacing: 6) {
                 AgentChip(name: update.agentName, agentId: nil, size: big ? 22 : 18)
                 // A clock time, not "6 min ago": the widget redraws every few minutes, and a ticking timer reads badly.
-                Text("\(update.agentName) · \(Text(update.date, format: Calendar.current.isDateInToday(update.date) ? Date.FormatStyle.dateTime.hour().minute() : Date.FormatStyle.dateTime.month(.abbreviated).day()))")
+                let time = Text(update.date, format: Calendar.current.isDateInToday(update.date)
+                    ? Date.FormatStyle.dateTime.hour().minute()
+                    : Date.FormatStyle.dateTime.month(.abbreviated).day())
+                (showsName ? Text("\(update.agentName) · \(time)") : time)
                     .lineLimit(1)
+                    .minimumScaleFactor(0.8)
             }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("\(update.agentName), \(update.date.formatted(date: .omitted, time: .shortened))")
             .font(big ? Theme.Font.mono(14, relativeTo: .subheadline) : Theme.Font.meta)
             .foregroundStyle(Theme.textMuted)
         }
