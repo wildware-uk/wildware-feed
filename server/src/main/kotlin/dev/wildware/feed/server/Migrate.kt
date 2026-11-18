@@ -10,28 +10,33 @@ import java.io.File
  * TS server's CLI, so it lives beside it.
  */
 object Migrate {
-    const val USAGE = """feed-server migrate --from <data dir> [--verify-only] [--sizes-only]
+    const val USAGE = """feed-server migrate --from <data dir> [--verify-only] [--sizes-only] [--media-only]
 
   Copies <data dir>/agent-dashboard.db into the Postgres database at DATABASE_URL (which must be new),
   then checks every table's row count and checksum. With MEDIA_STORE=s3 (and the S3_* settings) it
   also copies <data dir>/media into the bucket, skipping objects already there, then checks every
   original's SHA-256 (or only its size, with --sizes-only) and every derivative's size.
-  --verify-only skips the copies and only checks. Stop the old server first, so nothing changes."""
+  --verify-only skips the copies and only checks. Stop the old server first, so nothing changes.
+  --media-only copies and checks only the media (against the SQLite file; no DATABASE_URL needed),
+  which can run ahead of the cut-over while the old server is still running."""
 
     fun run(args: List<String>, env: Map<String, String>, out: (String) -> Unit, err: (String) -> Unit): Int {
         var from: String? = null
         var verifyOnly = false
         var sizesOnly = false
+        var mediaOnly = false
         val it = args.iterator()
         while (it.hasNext()) {
             when (val a = it.next()) {
                 "--from" -> from = if (it.hasNext()) it.next() else null
                 "--verify-only" -> verifyOnly = true
                 "--sizes-only" -> sizesOnly = true
+                "--media-only" -> mediaOnly = true
                 "-h", "--help" -> { out(USAGE); return 0 }
                 else -> { err("unknown argument: $a"); err(USAGE); return 2 }
             }
         }
+        if (mediaOnly && from != null) return mediaOnly(from, env, sizesOnly, verifyOnly, out, err)
         val url = env["DATABASE_URL"]?.takeIf { it.isNotBlank() }
         if (from == null || url == null) {
             err(if (from == null) "--from <data dir> is needed" else "DATABASE_URL is not set")
@@ -74,6 +79,31 @@ object Migrate {
             err(e.message ?: e.toString())
             1
         }
+    }
+
+    private fun mediaOnly(from: String, env: Map<String, String>, sizesOnly: Boolean, verifyOnly: Boolean, out: (String) -> Unit, err: (String) -> Unit): Int = try {
+        val store = bucket(env) ?: throw IllegalArgumentException("--media-only needs MEDIA_STORE=s3 and the S3_* settings")
+        val media = dev.wildware.feed.server.media.MediaToStore(File(from, "media").toPath().toRealPath(), store, out)
+        if (!verifyOnly) {
+            out("Copying media…")
+            val c = media.copy()
+            out("Media: ${c.files} files; ${c.uploaded} sent (${c.bytesSent / 1_000_000} MB), ${c.linked} copied in the bucket, ${c.skipped} already there")
+        }
+        // Against the old database, read-only: the server may still be running on it.
+        Database.openReadOnly(from).use { db ->
+            val v = media.verify(db, hashes = !sizesOnly)
+            if (v.problems.isEmpty()) {
+                out("Media identical: ${v.originals} originals${if (sizesOnly) " by size" else " by SHA-256"}, ${v.derivatives} derivatives by size")
+                0
+            } else {
+                v.problems.take(20).forEach(err)
+                err("${v.problems.size} media problems")
+                1
+            }
+        }
+    } catch (e: Exception) {
+        err(e.message ?: e.toString())
+        1
     }
 
     /** The bucket MEDIA_STORE=s3 names, or null when media stays on disk. */

@@ -116,6 +116,15 @@ class Database private constructor(
         fun open(config: dev.wildware.feed.server.Config): Database =
             config.databaseUrl?.let { openPostgres(it) } ?: open(config.dataDir)
 
+        /** `<dataDir>/agent-dashboard.db`, read-only and not migrated (another server may be running on it). */
+        fun openReadOnly(dataDir: String): Database {
+            val file = File(dataDir, FILE_NAME)
+            require(file.isFile) { "no database at $file" }
+            val connection = DriverManager.getConnection("jdbc:sqlite:file:${file.absolutePath}?mode=ro")
+            connection.createStatement().use { it.execute("PRAGMA busy_timeout = 5000") }
+            return Database(connection, Dialect.SQLITE)
+        }
+
         /** `<dataDir>/agent-dashboard.db`, created with its folder if missing, then migrated. */
         fun open(dataDir: String, migrate: Boolean = true): Database {
             val file = File(dataDir, FILE_NAME)
