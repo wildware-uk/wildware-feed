@@ -492,11 +492,18 @@ fun ProjectsDrawer(ui: FeedUi, progress: EdgeProgress, widthPx: Float, safeArea:
             SectionLabel("Agents", Modifier.padding(horizontal = 10.dp))
             Spacer(Modifier.height(6.dp))
             ui.state.agents.forEach { a ->
-                Row(Modifier.padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    Modifier
+                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                        .semantics(mergeDescendants = true) { contentDescription = agentSpoken(a) },
+                    verticalAlignment = Alignment.Top,
+                ) {
                     Avatar(Author.AgentAuthor(a), 26.dp, showPresence = true)
-                    Column(Modifier.padding(start = 10.dp)) {
-                        Text(a.name, color = colors.text, style = AgentTheme.type.label)
-                        MetaText(a.doing ?: a.presence.label)
+                    Column(Modifier.padding(start = 10.dp).clearAndSetSemantics { }) {
+                        val sessions = a.details?.sessions ?: 1
+                        Text(a.name + if (sessions > 1) "  ·  $sessions sessions" else "", color = colors.text, style = AgentTheme.type.label)
+                        val details = a.details
+                        if (details == null) MetaText(a.doing ?: a.presence.label) else AgentFacts(details)
                     }
                 }
             }

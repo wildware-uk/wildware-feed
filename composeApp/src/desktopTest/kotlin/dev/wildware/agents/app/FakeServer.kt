@@ -56,7 +56,9 @@ class FakeServer {
             question = "Ship the new sounds?", options = listOf("Ship it", "Not now"), expiresAt = now() + 3_600_000,
         ),
     )
-    var agents = listOf(LiveAgentView(agentId = "a1", name = "forge", lastHeartbeatAt = now()))
+    var agents = listOf(
+        LiveAgentView(agentId = "a1", name = "forge", lastHeartbeatAt = now(), host = "build-box", cwd = "/work/garden-game", model = "claude-opus-5-5"),
+    )
     var seq = 10L
 
     /** Make every write fail, as when the server is down: the outbox keeps them waiting. */

@@ -1,6 +1,7 @@
 package dev.wildware.agents.app
 
 import dev.wildware.agents.CardKinds
+import dev.wildware.agents.LiveAgentView
 import dev.wildware.agents.CardRef
 import dev.wildware.agents.MessageView
 import dev.wildware.agents.MediaView
@@ -15,6 +16,7 @@ import dev.wildware.agents.ThreadLine
 import dev.wildware.agents.UpdateCard
 import dev.wildware.agents.UpdateView
 import dev.wildware.agents.app.engine.FeedMapper
+import dev.wildware.agents.app.feed.AgentDetails
 import dev.wildware.agents.app.feed.FeedItem
 import dev.wildware.agents.app.feed.Level
 import dev.wildware.agents.app.feed.LinkStatus
@@ -151,6 +153,31 @@ class MappingTest {
         assertEquals(listOf("Dusk", "Dawn"), q.choices.map { it.image?.altText })
         assertEquals(listOf("https://dash.test/media/md3/original"), q.attachments.map { it.url })
         assertTrue(q.hasPictures)
+    }
+
+    @Test
+    fun aLiveAgentCarriesItsModelMachineFolderSessionsAndLastBeat() {
+        fun live(id: String, beatAgo: Long, sessions: Int = 1) = LiveAgentView(
+            agentId = id, name = "forge-$id", lastHeartbeatAt = noon - beatAgo, sessions = sessions,
+            host = "build-box", cwd = "/work/garden-game", model = "claude-opus-5-5",
+        )
+        val state = mapper.map(feed(emptyList()), listOf(mega), listOf(live("a1", 2_000, sessions = 2), live("a2", 45_000), live("a3", 200_000)), emptyList(), null)
+
+        assertEquals(
+            listOf(
+                AgentDetails(model = "claude-opus-5-5", host = "build-box", cwd = "/work/garden-game", sessions = 2, lastSeen = "just now"),
+                AgentDetails(model = "claude-opus-5-5", host = "build-box", cwd = "/work/garden-game", sessions = 1, lastSeen = "45s ago"),
+                AgentDetails(model = "claude-opus-5-5", host = "build-box", cwd = "/work/garden-game", sessions = 1, lastSeen = "3m ago"),
+            ),
+            state.agents.map { it.details },
+        )
+    }
+
+    @Test
+    fun blankDetailsAreLeftOut() {
+        val bare = LiveAgentView(agentId = "a1", name = "forge", lastHeartbeatAt = noon, host = " ", cwd = "", model = null)
+        val details = mapper.map(feed(emptyList()), listOf(mega), listOf(bare), emptyList(), null).agents.single().details
+        assertEquals(AgentDetails(model = null, host = null, cwd = null, sessions = 1, lastSeen = "just now"), details)
     }
 
     @Test

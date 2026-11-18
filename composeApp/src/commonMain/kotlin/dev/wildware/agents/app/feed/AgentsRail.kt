@@ -14,6 +14,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
@@ -51,18 +52,48 @@ fun AgentsRail(ui: FeedUi, modifier: Modifier = Modifier) {
 @Composable
 private fun AgentRow(agent: Agent) {
     val colors = AgentTheme.colors
-    val doing = agent.doing
+    val details = agent.details
     Row(
         Modifier
             .fillMaxWidth()
             .padding(vertical = 7.dp)
-            .semantics(mergeDescendants = true) { contentDescription = listOfNotNull(agent.name, agent.role, doing).joinToString(", ") },
-        verticalAlignment = Alignment.CenterVertically,
+            .semantics(mergeDescendants = true) { contentDescription = agentSpoken(agent) },
+        verticalAlignment = Alignment.Top,
     ) {
         Avatar(Author.AgentAuthor(agent), 30.dp, showPresence = true)
-        Column(Modifier.padding(start = 10.dp).weight(1f)) {
-            Text(agent.name, color = colors.text, style = AgentTheme.type.label, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            MetaText(doing ?: agent.role, color = colors.textMuted)
+        Column(Modifier.padding(start = 10.dp).weight(1f).clearAndSetSemantics { }) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(agent.name, Modifier.weight(1f, fill = false), color = colors.text, style = AgentTheme.type.label, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (details != null && details.sessions > 1) MetaText("  ${details.sessions} sessions", color = colors.textMuted)
+            }
+            if (details == null) {
+                MetaText(agent.doing ?: agent.role, color = colors.textMuted)
+            } else {
+                AgentFacts(details)
+            }
         }
     }
 }
+
+/** Model, machine, folder and last heartbeat, a line each, as the website's rail lists them. */
+@Composable
+internal fun AgentFacts(details: AgentDetails) {
+    val colors = AgentTheme.colors
+    details.model?.let { MetaText(it, color = colors.textMuted) }
+    details.host?.let { MetaText(it, color = colors.textMuted) }
+    // Folders are long; the end is the part that says which project it is.
+    details.cwd?.let {
+        Text(
+            it.takeLast(48).let { tail -> if (tail.length < it.length) "…$tail" else tail },
+            color = colors.textFaint,
+            style = AgentTheme.type.meta,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+    MetaText(details.lastSeen, color = colors.textFaint)
+}
+
+/** An agent as a screen reader says it: name, whether it is online, then what its session says. */
+internal fun agentSpoken(agent: Agent): String =
+    listOfNotNull(agent.name, agent.presence.label.lowercase(), agent.details?.spoken ?: agent.doing).joinToString(", ")

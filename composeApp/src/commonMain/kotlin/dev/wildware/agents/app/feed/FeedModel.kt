@@ -29,7 +29,32 @@ data class Agent(
     val hue: Int,
     /** What it says it is doing, if it is online. */
     val doing: String? = null,
+    /** What its live session says about it; null when it is offline. */
+    val details: AgentDetails? = null,
 )
+
+/** An online agent's session, as the website's rail lists it. */
+@Immutable
+data class AgentDetails(
+    val model: String?,
+    val host: String?,
+    /** The folder it is working in. */
+    val cwd: String?,
+    /** How many sessions it has open; more than one is worth saying. */
+    val sessions: Int,
+    /** "just now", "45s ago", "3m ago": its last heartbeat. */
+    val lastSeen: String,
+) {
+    /** All of it in one line for a screen reader. */
+    val spoken: String
+        get() = listOfNotNull(
+            model,
+            host?.let { "on $it" },
+            cwd?.let { "in $it" },
+            "$sessions sessions".takeIf { sessions > 1 },
+            "last seen $lastSeen",
+        ).joinToString(", ")
+}
 
 @Immutable
 data class Project(

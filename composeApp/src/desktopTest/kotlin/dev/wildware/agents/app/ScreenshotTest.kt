@@ -12,7 +12,9 @@ import dev.wildware.agents.app.design.AccessibilityPrefs
 import dev.wildware.agents.app.design.AgentTheme
 import dev.wildware.agents.app.signin.SignInScreen
 import androidx.compose.runtime.Composable
+import dev.wildware.agents.app.feed.AgentDetails
 import dev.wildware.agents.app.feed.FakeFeed
+import dev.wildware.agents.app.feed.Presence
 import dev.wildware.agents.app.feed.FeedItem
 import dev.wildware.agents.app.feed.Gallery
 import dev.wildware.agents.app.feed.MenuTarget
@@ -190,6 +192,28 @@ class ScreenshotTest {
                 shoot("${size.label}-${if (dark) "dark" else "light"}-form", size, dark) {
                     AgentsPreview(dark = dark, state = state, safeArea = size.safeArea, startAt = "q1")
                 }
+            }
+        }
+    }
+
+    /** Who is online and what their sessions say: the rail on a desktop, the drawer on a phone. */
+    @Test
+    fun agentDetails() {
+        val facts = listOf(
+            AgentDetails("claude-opus-5-5", "build-box", "/work/agent-dashboard", sessions = 2, lastSeen = "just now"),
+            AgentDetails("claude-sonnet-5-5", "laptop", "/home/dev/ios-companion", sessions = 1, lastSeen = "12s ago"),
+            AgentDetails("claude-haiku-5-5", "build-box", "/work/infra", sessions = 1, lastSeen = "1m ago"),
+        )
+        var i = 0
+        val agents = FakeFeed.state.agents.map { a -> if (a.presence == Presence.Online) a.copy(details = facts[i++ % facts.size]) else a }
+        val state = FakeFeed.state.copy(agents = agents)
+        for (dark in listOf(false, true)) {
+            val mode = if (dark) "dark" else "light"
+            shoot("desktop-$mode-agents", Size.Desktop, dark) {
+                AgentsPreview(dark = dark, state = state, safeArea = Size.Desktop.safeArea)
+            }
+            shoot("phone-$mode-agents", Size.Phone, dark) {
+                AgentsPreview(dark = dark, state = state, safeArea = Size.Phone.safeArea, preview = ScreenPreview(drawerOpen = true))
             }
         }
     }

@@ -14,6 +14,7 @@ import dev.wildware.agents.RequestKind
 import dev.wildware.agents.StreamStatus
 import dev.wildware.agents.ThreadLine
 import dev.wildware.agents.UpdateCard
+import dev.wildware.agents.app.feed.AgentDetails
 import dev.wildware.agents.app.feed.Acks
 import dev.wildware.agents.app.feed.Agent
 import dev.wildware.agents.app.feed.Attachment
@@ -68,7 +69,7 @@ internal class FeedMapper(
     ): FeedState {
         val onlineIds = online.mapTo(HashSet()) { it.agentId }
         val names = agentNames(feed) + online.associate { it.agentId to it.name }
-        val agents = AgentDirectory(names, online.associateBy { it.agentId }, onlineIds)
+        val agents = AgentDirectory(names, online.associateBy { it.agentId }, onlineIds, now())
         val viewProjects = projects.map { it.toView() }
         val byId = viewProjects.associateBy { it.id }
         val current = when (selectedSlug) {
@@ -332,6 +333,7 @@ internal class FeedMapper(
         private val names: Map<String, String>,
         private val online: Map<String, LiveAgentView>,
         private val onlineIds: Set<String>,
+        private val now: Long,
     ) {
         fun agent(id: String, fallbackName: String? = null): Agent {
             val live = online[id]
@@ -341,7 +343,16 @@ internal class FeedMapper(
                 role = "Agent",
                 presence = if (id in onlineIds) Presence.Online else Presence.Offline,
                 hue = hue(id),
-                doing = live?.host?.let { "On $it" },
+                doing = live?.host?.takeIf { it.isNotBlank() }?.let { "On ${it.trim()}" },
+                details = live?.let {
+                    AgentDetails(
+                        model = it.model?.trim()?.takeIf(String::isNotEmpty),
+                        host = it.host?.trim()?.takeIf(String::isNotEmpty),
+                        cwd = it.cwd?.trim()?.takeIf(String::isNotEmpty),
+                        sessions = it.sessions,
+                        lastSeen = heartbeatLabel(it.lastHeartbeatAt, now),
+                    )
+                },
             )
         }
     }
@@ -349,6 +360,16 @@ internal class FeedMapper(
     companion object {
         const val Yes = "Yes"
         const val No = "No"
+    }
+}
+
+/** "just now", "45s ago", "3m ago", as the website says how long since an agent's heartbeat. */
+internal fun heartbeatLabel(lastHeartbeatAt: Long, now: Long): String {
+    val seconds = maxOf(0L, kotlin.math.round((now - lastHeartbeatAt) / 1000.0).toLong())
+    return when {
+        seconds < 5 -> "just now"
+        seconds < 60 -> "${seconds}s ago"
+        else -> "${seconds / 60}m ago"
     }
 }
 

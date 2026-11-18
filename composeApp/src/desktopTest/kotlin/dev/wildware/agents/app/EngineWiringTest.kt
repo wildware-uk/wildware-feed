@@ -188,6 +188,13 @@ class EngineWiringTest {
     }
 
     @Test
+    fun theAgentsListSaysWhichModelWhereAndWhen() = runDesktopComposeUiTest(width = 1440, height = 900) {
+        app()
+        // Drawn a line each; said in one go.
+        waitForNode(hasContentDescription("forge, online, claude-opus-5-5, on build-box, in /work/garden-game, last seen just now"))
+    }
+
+    @Test
     fun aReplySaysWhichLineItAnswers() = runDesktopComposeUiTest(width = 1440, height = 900) {
         // Replies land after their card here on purpose: that order once made this test flaky.
         server.messagesDelayMs = 400
