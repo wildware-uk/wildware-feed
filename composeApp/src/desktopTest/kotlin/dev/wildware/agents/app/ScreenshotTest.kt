@@ -121,6 +121,17 @@ class ScreenshotTest {
         }
     }
 
+    /** The first load: grey stand-ins in the feed's shape, not a "Loading" line. */
+    @Test
+    fun firstLoad() {
+        val loading = FakeFeed.state.copy(loaded = false, sections = emptyList(), openThread = null)
+        for (dark in listOf(false, true)) {
+            shoot("phone-${if (dark) "dark" else "light"}-loading", Size.Phone, dark) {
+                AgentsPreview(dark = dark, state = loading, safeArea = Size.Phone.safeArea)
+            }
+        }
+    }
+
     /** The sign-in screen, before anything is typed. Nothing reaches a network. */
     @Test
     fun signIn() {
