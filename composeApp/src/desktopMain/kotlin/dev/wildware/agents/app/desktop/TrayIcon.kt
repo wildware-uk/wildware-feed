@@ -4,7 +4,6 @@ import java.awt.BasicStroke
 import java.awt.Color
 import java.awt.Font
 import java.awt.RenderingHints
-import java.awt.geom.Arc2D
 import java.awt.geom.Ellipse2D
 import java.awt.geom.RoundRectangle2D
 import java.awt.image.BufferedImage
@@ -30,14 +29,15 @@ enum class TrayStyle {
     /** The app's own tile (packaging/icons/agents.png): Windows and Linux trays. */
     Tile,
 
-    /** A lime radar on nothing, sized for the Mac menu bar, where a full tile looks heavy. */
+    /** The robot on nothing, sized for the Mac menu bar, where a full tile looks heavy. */
     MenuBar,
 }
 
 /** The tray icon at [size] pixels, with an optional red [badge] in its top right corner. */
 object TrayIconImage {
     private val Ink = Color(0x11, 0x12, 0x15)
-    private val Lime = Color(0xC6, 0xF1, 0x69)
+    private val Blue = Color(0x2D, 0x74, 0xF0)
+    private val Navy = Color(0x14, 0x21, 0x3D)
     private val Red = Color(0xE5, 0x48, 0x4D)
 
     /** The app icon (packaging/icons/agents.png, on the classpath) cropped to its tile, without the shadow around it. */
@@ -58,13 +58,14 @@ object TrayIconImage {
         g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY)
         val base = tile
         when {
-            style == TrayStyle.MenuBar -> radar(g, size, 0.0, size.toDouble())
-            // The full icon's fine rings vanish at tray sizes, so small ones get the bold radar on the ink tile.
+            // Blue rather than black or white: AWT cannot mark it as a template image, and blue reads on both menu bars.
+            style == TrayStyle.MenuBar -> robot(g, 0.0, size.toDouble(), head = Blue, eyes = Color.WHITE)
             base != null && size >= DetailedFrom -> g.drawImage(base.getScaledInstance(size, size, java.awt.Image.SCALE_SMOOTH), 0, 0, null)
             else -> {
-                g.color = Ink
+                // The tile's margin would waste a tray's few pixels, so small sizes draw the robot larger on a full tile.
+                g.color = Blue
                 g.fill(RoundRectangle2D.Double(0.0, 0.0, size.toDouble(), size.toDouble(), size * 0.45, size * 0.45))
-                radar(g, size, size * 0.12, size * 0.76)
+                robot(g, size * 0.14, size * 0.72, head = Color.WHITE, eyes = Navy)
             }
         }
         if (badge != null) badge(g, size, badge)
@@ -75,16 +76,25 @@ object TrayIconImage {
     /** Below this the tray draws its own bold tile rather than shrinking the detailed icon. */
     private const val DetailedFrom = 48
 
-    /** The icon's radar, drawn plainly in the square at [at] of side [side]: a ring, the sweep, the centre and the waiting blip. */
-    private fun radar(g: java.awt.Graphics2D, size: Int, at: Double, side: Double) {
-        val s = side / 32.0
-        fun x(v: Double) = at + v * s
-        g.color = Lime
-        g.stroke = BasicStroke((2.0 * s).toFloat().coerceAtLeast(1f))
-        g.draw(Ellipse2D.Double(x(3.0), x(3.0), 26 * s, 26 * s))
-        g.fill(Arc2D.Double(x(3.0), x(3.0), 26 * s, 26 * s, 45.0, 45.0, Arc2D.PIE))
-        g.fill(Ellipse2D.Double(x(13.5), x(13.5), 5 * s, 5 * s))
-        g.fill(Ellipse2D.Double(x(19.5), x(19.5), 6 * s, 6 * s))
+    /**
+     * The icon's robot in the square at [at] of side [side]: antenna, head and two eyes, in the
+     * icon's own 1024 coordinates, cropped to the robot so it fills the square.
+     */
+    private fun robot(g: java.awt.Graphics2D, at: Double, side: Double, head: Color, eyes: Color) {
+        // The robot spans x 252–772 and y 158–732 in the icon; this square holds it, centred.
+        val span = 650.0
+        val left = 512.0 - span / 2
+        val top = 120.0
+        fun x(v: Double) = at + (v - left) * side / span
+        fun y(v: Double) = at + (v - top) * side / span
+        fun l(v: Double) = v * side / span
+        g.color = head
+        g.fill(RoundRectangle2D.Double(x(500.0), y(200.0), l(24.0), l(100.0), l(24.0), l(24.0)))
+        g.fill(Ellipse2D.Double(x(474.0), y(158.0), l(76.0), l(76.0)))
+        g.fill(RoundRectangle2D.Double(x(252.0), y(292.0), l(520.0), l(440.0), l(340.0), l(340.0)))
+        g.color = eyes
+        g.fill(Ellipse2D.Double(x(342.0), y(446.0), l(104.0), l(132.0)))
+        g.fill(Ellipse2D.Double(x(578.0), y(446.0), l(104.0), l(132.0)))
     }
 
     private fun badge(g: java.awt.Graphics2D, size: Int, badge: String) {

@@ -163,10 +163,10 @@ class DesktopIntegrationTest {
     }
 
     @Test
-    fun `the Mac menu bar icon is the radar on nothing`() {
+    fun `the Mac menu bar icon is the robot on nothing`() {
         val icon = TrayIconImage.draw(32, style = TrayStyle.MenuBar)
         assertEquals(0, icon.getRGB(0, 0) ushr 24, "no tile behind it")
-        assertTrue(icon.getRGB(16, 16) ushr 24 > 0, "the radar's centre")
+        assertTrue(icon.getRGB(16, 16) ushr 24 > 0, "the robot's head")
     }
 
     @Test
