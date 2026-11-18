@@ -102,3 +102,15 @@ class DeriveTest {
         assertEquals(0, db.one("SELECT count(*) FROM derivatives WHERE media_id = ?", id) { it.getInt(1) })
     }
 }
+
+class FfmpegThreadsTest {
+    @Test
+    fun `a thread cap goes before the input and before the output, and nothing changes without one`() {
+        val args = listOf("-y", "-ss", "1", "-i", "in.mp4", "-frames:v", "1", "out.jpg")
+        kotlin.test.assertEquals(args, FfmpegTools().withThreads(args))
+        kotlin.test.assertEquals(
+            listOf("-y", "-ss", "1", "-threads", "1", "-i", "in.mp4", "-frames:v", "1", "-threads", "1", "out.jpg"),
+            FfmpegTools(threads = 1).withThreads(args),
+        )
+    }
+}

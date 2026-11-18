@@ -32,6 +32,9 @@ data class Config(
     val databaseUrl: String? = null,
     /** MEDIA_STORE=s3 and S3_*: media in a bucket (Cloudflare R2, S3, MinIO). Null: on disk under [dataDir]. */
     val s3: S3? = null,
+    /** FFMPEG_THREADS: ffmpeg's thread cap (null: ffmpeg decides). DERIVE_WORKERS: derivations at once. */
+    val ffmpegThreads: Int? = null,
+    val deriveWorkers: Int = 2,
 ) {
     /** A private S3-compatible bucket, addressed path-style. [toString] leaves the secret out. */
     data class S3(val endpoint: String, val bucket: String, val accessKeyId: String, val secretAccessKey: String, val region: String) {
@@ -142,6 +145,8 @@ data class Config(
                 xffDepth = env["XFF_DEPTH"]?.toIntOrNull() ?: 1,
                 databaseUrl = env["DATABASE_URL"]?.takeIf { it.isNotBlank() },
                 s3 = s3,
+                ffmpegThreads = env["FFMPEG_THREADS"]?.toIntOrNull()?.takeIf { it > 0 },
+                deriveWorkers = env["DERIVE_WORKERS"]?.toIntOrNull()?.takeIf { it > 0 } ?: 2,
             )
         }
 

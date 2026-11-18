@@ -14,6 +14,8 @@ application {
     // `server` runs the HTTP server; `server <command>` runs the admin CLI (Main.kt).
     mainClass.set("dev.wildware.feed.server.MainKt")
     applicationName = "feed-server"
+    // sqlite-jdbc loads its native library; say so, rather than print a warning on every start.
+    applicationDefaultJvmArgs = listOf("--enable-native-access=ALL-UNNAMED")
 }
 
 dependencies {

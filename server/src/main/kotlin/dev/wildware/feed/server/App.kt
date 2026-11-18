@@ -63,7 +63,9 @@ class App(val config: Config, val db: Database, val clock: () -> Long = System::
     )
 
     /** Thumbnails, posters and transcodes for uploaded media. */
-    val derive = dev.wildware.feed.server.media.Derive(db, bus, mediaPaths, clock = clock)
+    val derive = dev.wildware.feed.server.media.Derive(
+        db, bus, mediaPaths, dev.wildware.feed.server.media.FfmpegTools(threads = config.ffmpegThreads), clock, config.deriveWorkers,
+    )
 
     /** Which file answers a media URL. */
     val serve = dev.wildware.feed.server.media.Serve(db, mediaPaths)

@@ -19,7 +19,12 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
 /** Running ffmpeg and ffprobe the way the TS server does (spec/07 §5, TS `src/media/ffmpeg.ts`). */
-class FfmpegTools(private val ffmpeg: String = "ffmpeg", private val ffprobe: String = "ffprobe") {
+class FfmpegTools(
+    private val ffmpeg: String = "ffmpeg",
+    private val ffprobe: String = "ffprobe",
+    /** FFMPEG_THREADS: caps decoder and encoder threads (memory grows with them); null leaves it to ffmpeg. */
+    private val threads: Int? = null,
+) {
     data class Probe(val durationMs: Long?, val width: Int?, val height: Int?, val videoCodec: String?, val audioCodec: String?)
 
     /** Whether ffmpeg can be run at all; a desktop install may not have it. */
@@ -43,7 +48,15 @@ class FfmpegTools(private val ffmpeg: String = "ffmpeg", private val ffprobe: St
     }
 
     fun ffmpeg(args: List<String>) {
-        run(ffmpeg, listOf("-hide_banner", "-nostdin", "-loglevel", "error") + args, FFMPEG_TIMEOUT_MS)
+        run(ffmpeg, listOf("-hide_banner", "-nostdin", "-loglevel", "error") + withThreads(args), FFMPEG_TIMEOUT_MS)
+    }
+
+    /** `-threads N` before the input (decoding) and before the output file (encoding). */
+    internal fun withThreads(args: List<String>): List<String> {
+        val n = threads ?: return args
+        val input = args.indexOf("-i").takeIf { it >= 0 } ?: return args
+        val cap = listOf("-threads", n.toString())
+        return args.subList(0, input) + cap + args.subList(input, args.size - 1) + cap + args.last()
     }
 
     private fun JsonObject.str(key: String) = (this[key] as? JsonPrimitive)?.takeIf { it.isString }?.content
@@ -110,12 +123,14 @@ class Derive(
     private val paths: MediaPaths,
     private val tools: FfmpegTools = FfmpegTools(),
     private val clock: () -> Long = System::currentTimeMillis,
+    /** DERIVE_WORKERS: how many media are derived at once (each may run an ffmpeg). */
+    workers: Int = 2,
 ) {
     private class Produced(val kind: String, val width: Int?, val height: Int?, val name: String, val bytes: Long)
     private class Measured(val files: List<Produced>, val width: Int?, val height: Int?, val durationMs: Long?)
     private class Row(val id: String, val kind: String, val mime: String, val sha256: String, val status: String)
 
-    private val pool = Executors.newFixedThreadPool(2) { r -> Thread(r, "media-derive").apply { isDaemon = true } }
+    private val pool = Executors.newFixedThreadPool(workers) { r -> Thread(r, "media-derive").apply { isDaemon = true } }
     private val queued = ConcurrentHashMap.newKeySet<String>()
 
     /** One worker tick: queue every pending media with bytes, oldest first, 50 at a time. */
