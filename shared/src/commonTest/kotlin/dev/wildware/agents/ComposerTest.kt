@@ -88,7 +88,7 @@ class ComposerTest {
     }
 
     @Test
-    fun `photos alone can be sent, but not into the page`() {
+    fun `photos alone can be sent but not into the page`() {
         assertTrue(Composer.canSend("", 1, ComposerTarget.Project(mega)))
         assertFalse(Composer.canSend("  ", 0, ComposerTarget.Project(mega)))
         assertFalse(Composer.canSend("", 1, box))

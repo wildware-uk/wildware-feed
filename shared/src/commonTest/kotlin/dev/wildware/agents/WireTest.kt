@@ -32,7 +32,7 @@ class WireTest {
     }
 
     @Test
-    fun `threads, questions and presence as the server sends them`() {
+    fun `threads and questions and presence as the server sends them`() {
         val messages = json.decodeFromString(MessagesSnapshot.serializer(), MESSAGES)
         val reply = messages.messages.single()
         assertEquals("u1", reply.updateId)
@@ -91,7 +91,7 @@ class WireTest {
     }
 
     @Test
-    fun `SSE frames read fields, comments, many data lines and the retry hint`() = runTest {
+    fun `SSE frames read fields and comments and many data lines and the retry hint`() = runTest {
         var retry = 0L
         val reader = SseReader(
             ByteReadChannel("retry: 2000\n\n: connected\n\nid: 7\nevent: update.created\ndata: {\"a\":1,\ndata: \"b\":2}\n\n: heartbeat\n\nevent: resync\ndata: {}\n\n"),
@@ -114,7 +114,7 @@ class WireTest {
     }
 
     @Test
-    fun `read marks survive being written and read back, capped`() {
+    fun `read marks survive being written and read back and are capped`() {
         val store = MemoryTextStore()
         val marks = ReadMarks(store)
         val comment = FakeDashboard.message("m", 1, "agent:a1", "x", 5_000)

@@ -305,7 +305,7 @@ internal sealed interface ThreadKey {
     /** The talk about a question: `?request=`. */
     data class Request(val id: String) : ThreadKey
 
-    /** A post and the replies under it: `?replyTo=`. Empty once the post is deleted. */
+    /** A post and the replies under it: `?replyTo=`. Empty once the post is deleted. Any other message answers with itself alone. */
     data class Post(val id: String) : ThreadKey
 
     /** A task's thread: `?task=`. */
@@ -395,8 +395,9 @@ internal class ThreadsReader(
     /**
      * Which thread an event is about. A message already held answers it from its own row; a new
      * one from its event, which names the thread (`updateId`, `requestId`, `replyTo`, `taskId`,
-     * all null for a post). An event that names neither, such as a pin on a message this reader
-     * hasn't loaded, falls back to reading everything.
+     * all null for a post). Anything else about a message this reader doesn't hold (a pin, an
+     * emoji, an ack, possibly on a message whose own read is still on its way) reads that one
+     * message: `?replyTo=<id>` answers with the message itself, and its replies if it is a post.
      */
     private fun threadOf(event: StreamEvent): Target {
         val payload = event.payload
@@ -408,11 +409,11 @@ internal class ThreadsReader(
             "reaction.updated" -> {
                 if (payload.cardKind() != CardKinds.Message) return Target.Nothing
                 val id = payload.string("messageId") ?: (payload?.get("card") as? JsonObject).string("id") ?: return Target.Everything
-                held(id) ?: Target.Everything
+                held(id) ?: alone(id)
             }
             "ack.updated" -> {
                 val id = payload.string("messageId") ?: return Target.Nothing
-                held(id) ?: Target.Everything
+                held(id) ?: alone(id)
             }
             "media.ready" -> {
                 // Only a message's media: an update's or a question's is another reader's business.
@@ -424,7 +425,7 @@ internal class ThreadsReader(
                     val mediaId = payload.string("mediaId")
                     snapshot.media.entries.firstOrNull { (_, media) -> media.any { it.id == mediaId } }?.key
                 }
-                messageId?.let(::held) ?: Target.Nothing
+                messageId?.let { held(it) ?: alone(it) } ?: Target.Nothing
             }
             else -> Target.Everything
         }
@@ -432,14 +433,17 @@ internal class ThreadsReader(
 
     private fun held(messageId: String): Target? = snapshot.messages.firstOrNull { it.id == messageId }?.let(::anchorOf)
 
+    /** Just that message (and its replies, if it is a post). */
+    private fun alone(messageId: String): Target = Target.Thread(ThreadKey.Post(messageId))
+
     private fun anchorOf(message: MessageView): Target =
         Target.Thread(keyOf(message.id, message.updateId, message.requestId, message.replyTo, message.taskId))
 
     private fun fromPayload(payload: JsonObject?): Target {
         val messageId = payload.string("messageId")
         if (payload == null || messageId == null) return Target.Everything
-        // A pin or status change on a message says only which message: no way to tell its thread.
-        if (Anchors.none { it in payload }) return Target.Everything
+        // A pin or status change on a message says only which message: read that message.
+        if (Anchors.none { it in payload }) return alone(messageId)
         return Target.Thread(
             keyOf(messageId, payload.string("updateId"), payload.string("requestId"), payload.string("replyTo"), payload.string("taskId")),
         )

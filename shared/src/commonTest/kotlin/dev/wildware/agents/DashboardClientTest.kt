@@ -112,7 +112,7 @@ class DashboardClientTest {
     }
 
     @Test
-    fun `the composer talks over a question in its own thread, photos and all`() = runTest {
+    fun `the composer talks over a question in its own thread with photos`() = runTest {
         client { request ->
             if (request.url.encodedPath == "/api/media") json("""{"media":{"id":"x1"}}""", HttpStatusCode.Created)
             else json("""{"message":{"id":"m4"}}""", HttpStatusCode.Created)
@@ -169,7 +169,7 @@ class DashboardClientTest {
     }
 
     @Test
-    fun `turning a focus filter off, or listing nothing, lifts the limit`() = runTest {
+    fun `turning a focus filter off or listing nothing lifts the limit`() = runTest {
         val api = client { json("""{"ok":true}""") }
         api.setAlertProjects(null)
         api.setAlertProjects(emptyList())

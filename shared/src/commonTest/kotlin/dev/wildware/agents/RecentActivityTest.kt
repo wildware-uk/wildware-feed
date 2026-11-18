@@ -70,7 +70,7 @@ class RecentActivityTest {
     }
 
     @Test
-    fun `siri reads who posted last, when, and the first two sentences`() {
+    fun `siri reads who posted last and when and the first two sentences`() {
         val activity = activity(
             update("u1", gardenGame, title = "Merged", text = "Merged\nAll tests pass. The fee bug is gone. Next I will deploy.", at = now - 5 * minute),
         )
@@ -141,7 +141,7 @@ class RecentActivityTest {
     }
 
     @Test
-    fun `a widget for a quiet project, or a deleted one`() {
+    fun `a widget for a quiet project or a deleted one`() {
         val card = ProjectCard.build("garden-game", summary(), activity(), CardSize.Small)!!
         assertEquals("Nothing posted yet", card.headline)
         assertEquals("Nothing posted yet", card.statusLine)
@@ -150,7 +150,7 @@ class RecentActivityTest {
     }
 
     @Test
-    fun `spotlight finds projects and their updates, and forgets what's gone`() {
+    fun `spotlight finds projects and their updates and forgets what's gone`() {
         val gone = ProjectRef("archived", "Archived")
         val activity = activity(
             update("u1", gardenGame, title = "Merged", text = "Merged\nAll tests pass.", at = now),

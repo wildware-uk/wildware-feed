@@ -37,7 +37,7 @@ class OwnerActionsTest {
     }
 
     @Test
-    fun `a reply answering a line says which line, on the right thread`() = runTest {
+    fun `a reply answering a line says which line on the right thread`() = runTest {
         val server = FakeDashboard(testScheduler)
         val (_, actions) = setUp(server)
 
@@ -78,7 +78,7 @@ class OwnerActionsTest {
     }
 
     @Test
-    fun `a reaction is sent as on or off, never as a toggle`() = runTest {
+    fun `a reaction is sent as on or off and never as a toggle`() = runTest {
         val server = FakeDashboard(testScheduler)
         val (_, actions) = setUp(server)
         val mine = listOf(ReactionView("x", 1, CardRef("update", "u1"), null, HumanAuthor, "👍"))
@@ -113,7 +113,7 @@ class OwnerActionsTest {
     }
 
     @Test
-    fun `with no signal sends wait, keep their order, and go when it returns`() = runTest {
+    fun `with no signal sends wait in order and go when it returns`() = runTest {
         var online = false
         val server = FakeDashboard(testScheduler).apply {
             onWrite = { _, _ -> if (!online) throw IllegalStateException("No route to host") else null }

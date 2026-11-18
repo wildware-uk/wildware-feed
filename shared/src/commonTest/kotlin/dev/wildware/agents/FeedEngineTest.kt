@@ -220,7 +220,7 @@ class FeedEngineTest {
     }
 
     @Test
-    fun `a question asked in a thread sits under its line, not at the top`() = runTest {
+    fun `a question asked in a thread sits under its line and not at the top`() = runTest {
         val server = FakeDashboard(testScheduler).apply {
             updates = listOf(FakeDashboard.update("u1", 5))
             messages = listOf(FakeDashboard.message("m1", 6, "agent:a1", "Should I?", 6_000, updateId = "u1"))
@@ -260,7 +260,7 @@ class FeedEngineTest {
     }
 
     @Test
-    fun `a burst of events is one read, and events at or below the read are ignored`() = runTest {
+    fun `a burst of events is one read and events at or below the read are ignored`() = runTest {
         val server = FakeDashboard(testScheduler)
         val dashboard = started(server)
         val reads = server.count("/api/snapshot?")
@@ -325,7 +325,7 @@ class FeedEngineTest {
     }
 
     @Test
-    fun `agents' replies count as unread until the card is read, the owner's never do`() = runTest {
+    fun `agents' replies count as unread until the card is read but the owner's never do`() = runTest {
         val server = FakeDashboard(testScheduler).apply {
             updates = listOf(FakeDashboard.update("u1", 5))
             messages = listOf(FakeDashboard.message("m1", 6, "agent:a1", "Old news", 6_000, updateId = "u1"))
@@ -338,7 +338,8 @@ class FeedEngineTest {
             FakeDashboard.message("m2", 11, "agent:a1", "Done", 11_000, updateId = "u1"),
             FakeDashboard.message("m3", 12, "human", "Thanks", 12_000, updateId = "u1"),
         )
-        server.connections.single().event("message.created", 12, payload("messageId" to "m3"))
+        server.connections.single().event("message.created", 11, messageEvent("m2", updateId = "u1"))
+        server.connections.single().event("message.created", 12, messageEvent("m3", updateId = "u1"))
         runCurrent()
         assertEquals(1, dashboard.everything.state.value.cards.single().unread)
         assertEquals(1, dashboard.projects.value.first { it.project.slug == "mega" }.unread)
@@ -424,7 +425,7 @@ class FeedEngineTest {
     }
 
     @Test
-    fun `a new message whose event doesn't name its thread re-reads everything`() = runTest {
+    fun `a new message whose event doesn't name its thread reads that message alone`() = runTest {
         val server = FakeDashboard(testScheduler).apply { updates = listOf(FakeDashboard.update("u1", 5)) }
         val dashboard = started(server)
         val whole = server.wholeThreadReads()
@@ -433,12 +434,13 @@ class FeedEngineTest {
         server.connections.single().event("message.created", 11, payload("messageId" to "m1", "projectId" to "p1", "author" to "agent:a1"))
         runCurrent()
 
-        assertEquals(whole + 1, server.wholeThreadReads())
+        assertEquals(whole, server.wholeThreadReads())
+        assertEquals(1, server.count("/api/messages?replyTo=m1"))
         assertEquals("m1", dashboard.everything.state.value.cards.single().replies.single().message.id)
     }
 
     @Test
-    fun `an emoji, an edit or a delivery on a line already held re-reads only its thread`() = runTest {
+    fun `an emoji or an edit or a delivery on a line already held re-reads only its thread`() = runTest {
         val server = FakeDashboard(testScheduler).apply {
             updates = listOf(FakeDashboard.update("u1", 5))
             messages = listOf(
@@ -560,7 +562,7 @@ class FeedEngineTest {
     }
 
     @Test
-    fun `a pin on a post this feed holds re-reads that post, one it doesn't hold reads everything`() = runTest {
+    fun `a pin re-reads the post it is on whether or not the feed holds it`() = runTest {
         val server = FakeDashboard(testScheduler).apply { messages = listOf(FakeDashboard.message("post1", 3, "human", "Pin me", 3_000)) }
         val dashboard = started(server)
         val whole = server.wholeThreadReads()
@@ -572,9 +574,12 @@ class FeedEngineTest {
         assertEquals(whole, server.wholeThreadReads())
         assertEquals(listOf("post1"), dashboard.everything.state.value.pinned.map { it.id })
 
-        server.connections.single().event("message.updated", 12, payload("messageId" to "elsewhere", "projectId" to "p1", "author" to ""))
+        // An old post past the newest 200, pinned: it comes into the feed by itself.
+        server.messages += FakeDashboard.message("old", 1, "human", "From September", 1_000).copy(pinned = true)
+        server.connections.single().event("message.updated", 12, payload("messageId" to "old", "projectId" to "p1", "author" to ""))
         runCurrent()
-        assertEquals(whole + 1, server.wholeThreadReads())
+        assertEquals(whole, server.wholeThreadReads())
+        assertEquals(listOf("post1", "old"), dashboard.everything.state.value.pinned.map { it.id })
     }
 
     @Test
@@ -614,5 +619,29 @@ class FeedEngineTest {
         runCurrent()
 
         assertEquals(reads + 1, server.count("/api/snapshot/requests"))
+    }
+
+    @Test
+    fun `an emoji on a reply whose own read is still on its way is not lost`() = runTest {
+        val server = FakeDashboard(testScheduler).apply { messages = listOf(FakeDashboard.message("post1", 3, "human", "Look", 3_000)) }
+        val dashboard = started(server)
+        val whole = server.wholeThreadReads()
+        val connection = server.connections.single()
+
+        server.messages += FakeDashboard.message("r1", 11, "agent:a1", "Seen", 11_000, replyTo = "post1")
+        server.reactions = listOf(ReactionView("x1", 12, CardRef("message", "r1"), "r1", "human", "👀"))
+        connection.event("message.created", 11, messageEvent("r1", replyTo = "post1"))
+        connection.event("reaction.updated", 12, buildJsonObject {
+            putJsonObject("card") { put("kind", "message"); put("id", "r1") }
+            put("messageId", "r1"); put("projectId", "p1"); put("actor", "human"); put("emoji", "👀"); put("on", true)
+        })
+        connection.event("ack.updated", 13, buildJsonObject {
+            put("ackId", "k1"); put("agentId", "a1"); put("messageId", "r1"); put("state", "done")
+            putJsonObject("card") { put("kind", "message"); put("id", "r1") }
+        })
+        runCurrent()
+
+        assertEquals(whole, server.wholeThreadReads())
+        assertEquals("👀", dashboard.everything.state.value.cards.single().replies.single().reactions.single().emoji)
     }
 }

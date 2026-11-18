@@ -79,7 +79,7 @@ class InboxTest {
     }
 
     @Test
-    fun `every option gets a button, even more than the lock screen fits`() {
+    fun `every option gets a button even more than the lock screen fits`() {
         val options = listOf("A", "B", "C", "D", "E", "F")
         val request = request("r", kind = RequestKind.Choice, options = options)
         val choices = Inbox.choices(request)

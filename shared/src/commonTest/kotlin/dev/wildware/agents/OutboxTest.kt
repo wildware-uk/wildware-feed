@@ -47,7 +47,7 @@ class OutboxTest {
     }
 
     @Test
-    fun `the network coming back skips the wait, but each pass tries an item once`() {
+    fun `the network coming back skips the wait but each pass tries an item once`() {
         val waiting = message("a", 1).copy(attempts = 3, nextAttemptAtMillis = now + 60_000)
         assertNull(Outbox.next(listOf(waiting), now, false, emptyList()))
         assertEquals("a", Outbox.next(listOf(waiting), now, true, emptyList())?.id)
@@ -80,7 +80,7 @@ class OutboxTest {
     }
 
     @Test
-    fun `a sent item leaves, a failed one waits longer each time, a refused one stays listed`() {
+    fun `a sent item leaves and a failed one waits longer each time and a refused one stays listed`() {
         val items = listOf(message("a", 1), message("b", 2))
         assertEquals(listOf("b"), Outbox.afterAttempt(items, "a", DeliveryResult(DeliveryOutcome.Sent), now).map { it.id })
 
@@ -168,7 +168,7 @@ class OutboxTest {
     }
 
     @Test
-    fun `a ticket whose mark failed is only marked on the retry, never posted twice`() = runTest {
+    fun `a ticket whose mark failed is only marked on the retry and never posted twice`() = runTest {
         val paths = mutableListOf<String>()
         val first = client { request ->
             paths += request.url.encodedPath
