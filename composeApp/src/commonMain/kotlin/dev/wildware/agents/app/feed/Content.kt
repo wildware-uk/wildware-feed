@@ -44,7 +44,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathOperation
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
@@ -56,10 +55,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.layout.layout
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.ui.unit.sp
-import com.mikepenz.markdown.compose.LocalMarkdownColors
 import com.mikepenz.markdown.compose.components.markdownComponents
 import com.mikepenz.markdown.compose.elements.MarkdownCodeFence
-import com.mikepenz.markdown.compose.elements.MarkdownHighlightedCode
 import com.mikepenz.markdown.m3.Markdown
 import com.mikepenz.markdown.m3.markdownColor
 import com.mikepenz.markdown.m3.markdownTypography
@@ -68,8 +65,6 @@ import com.mikepenz.markdown.model.State
 import com.mikepenz.markdown.model.parseMarkdown
 import kotlin.concurrent.atomics.AtomicReference
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
-import dev.snipme.highlights.Highlights
-import dev.snipme.highlights.model.SyntaxTheme
 import dev.wildware.agents.app.design.AgentTheme
 import dev.wildware.agents.app.design.CodeColors
 import dev.wildware.agents.app.design.Icons
@@ -100,6 +95,8 @@ object MarkdownCache {
     private fun parse(markdown: String): State {
         onParse?.invoke(markdown)
         val state = parseMarkdown(markdown)
+        // Code blocks are highlighted here too, so drawing one only applies colours.
+        if (state is State.Success) runCatching { CodeHighlights.warm(state.node, state.content) }
         while (true) {
             val held = parsed.load()
             val next = LinkedHashMap<String, State>(held.size + 1)
@@ -117,6 +114,9 @@ object MarkdownCache {
  * after it appears makes the feed jump. The parse is kept in [MarkdownCache], and the renderer's
  * styles are kept across redraws, so a card that redraws with the same text skips its body.
  */
+/** Space around a code block's text, inside its frame. */
+internal val CodeBlockPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 2.dp, bottom = 6.dp)
+
 /** The widest a run of prose is set, so a wide window widens the card, not the lines. */
 val ProseMaxWidth = 820.dp
 
@@ -126,7 +126,6 @@ fun MarkdownBody(markdown: String, modifier: Modifier = Modifier, color: Color =
     val type = AgentTheme.type
     val state = remember(markdown) { MarkdownCache.get(markdown) }
     val code = colors.code
-    val highlights = remember(code) { Highlights.Builder().theme(code.toSyntaxTheme()) }
     val inlineCodeBackground = colors.text.copy(alpha = if (colors.isDark) 0.10f else 0.06f)
     val inlineCode = type.code.copy(fontSize = type.body.fontSize * 0.88f, color = colors.text)
     val copy = rememberCopyState()
@@ -156,19 +155,13 @@ fun MarkdownBody(markdown: String, modifier: Modifier = Modifier, color: Color =
         ),
         padding = markdownPadding(
             block = 6.dp, list = 2.dp, listItemTop = 3.dp, listItemBottom = 0.dp,
-            codeBlock = PaddingValues(start = 14.dp, end = 14.dp, top = 2.dp, bottom = 6.dp),
+            codeBlock = CodeBlockPadding,
         ),
         components = markdownComponents(
             codeFence = { model ->
                 MarkdownCodeFence(model.content, model.node, model.typography.code) { text, language, style ->
                     CodeBlock(text, language) {
-                        MarkdownHighlightedCode(
-                            code = text,
-                            language = language,
-                            style = style,
-                            highlightsBuilder = highlights,
-                            immediate = true,
-                        )
+                        HighlightedCode(text, language, style, code, CodeBlockPadding)
                     }
                 }
             },
@@ -182,19 +175,6 @@ fun MarkdownBody(markdown: String, modifier: Modifier = Modifier, color: Color =
 fun PlainBody(text: String, modifier: Modifier = Modifier, color: Color = AgentTheme.colors.text) {
     SelectableText(modifier) { Text(text, color = color, style = AgentTheme.type.body) }
 }
-
-private fun CodeColors.toSyntaxTheme() = SyntaxTheme(
-    key = "agents",
-    code = text.toArgb() and 0xFFFFFF,
-    keyword = keyword.toArgb() and 0xFFFFFF,
-    string = string.toArgb() and 0xFFFFFF,
-    literal = literal.toArgb() and 0xFFFFFF,
-    comment = comment.toArgb() and 0xFFFFFF,
-    metadata = literal.toArgb() and 0xFFFFFF,
-    multilineComment = comment.toArgb() and 0xFFFFFF,
-    punctuation = punctuation.toArgb() and 0xFFFFFF,
-    mark = punctuation.toArgb() and 0xFFFFFF,
-)
 
 /** A code block with its language and a copy button above it. Long lines scroll sideways. */
 @Composable
@@ -229,21 +209,10 @@ private fun CodeBlock(code: String, language: String?, content: @Composable () -
                 CopyCodeButton(code.trimEnd('\n', '\r'), tint = headerText)
             }
         }
-        Box(Modifier.trimVertical(8.dp)) {
-            // The highlighter brings its own background; the block above already paints one.
-            androidx.compose.runtime.CompositionLocalProvider(
-                LocalMarkdownColors provides markdownColor(codeBackground = Color.Transparent),
-            ) { content() }
-        }
+        content()
     }
 }
 
-/** Drops [amount] from the top and bottom of the child's layout, to undo padding it brings along. */
-private fun Modifier.trimVertical(amount: Dp) = layout { measurable, constraints ->
-    val placeable = measurable.measure(constraints)
-    val trim = amount.roundToPx()
-    layout(placeable.width, (placeable.height - 2 * trim).coerceAtLeast(0)) { placeable.place(0, -trim) }
-}
 
 /**
  * Emoji reactions, plus a button to add one. Tapping a reaction adds the owner's own, or takes it
