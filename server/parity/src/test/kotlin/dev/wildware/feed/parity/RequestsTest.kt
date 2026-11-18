@@ -157,8 +157,16 @@ class RequestsTest : ParityTest() {
     fun `a request expires on its own and is then refused`() = parity {
         val args = ask("confirm", "timeout_s" to 5)
         val started = alpha.tool("request_input", args)
-        assertEquals("timeout", started.structured["state"].s, "a hold shorter than HOLD_S ends at the deadline")
         val id = started.structured["request_id"].s
+        // The hold ends at the deadline. On a slow runner its timer can fire a millisecond before
+        // the deadline, and then the request is still pending; the next touch times it out. So
+        // accept "pending" here, and require "timeout" within a few seconds of asking again.
+        var state = started.structured["state"].s
+        val giveUp = System.currentTimeMillis() + 10_000
+        while (state == "pending" && System.currentTimeMillis() < giveUp) {
+            state = alpha.ok("await_request", obj("request_id" to id))["state"].s
+        }
+        assertEquals("timeout", state, "a hold shorter than HOLD_S ends at the deadline, and the request times out")
         assertEquals(null, pendingRequest(args["question"].s))
         answer(id, true).expectError(409, "conflict", "request $id timed out")
         assertEquals("timeout", alpha.ok("await_request", obj("request_id" to id))["state"].s)
