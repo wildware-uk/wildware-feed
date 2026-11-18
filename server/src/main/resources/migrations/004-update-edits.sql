@@ -1,0 +1,2 @@
+
+ALTER TABLE updates ADD COLUMN edited_at INTEGER;

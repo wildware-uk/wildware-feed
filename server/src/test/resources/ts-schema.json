@@ -1,0 +1,692 @@
+[
+ {
+  "type": "index",
+  "name": "acknowledgements_agent_message",
+  "table": "acknowledgements",
+  "sql": "CREATE UNIQUE INDEX acknowledgements_agent_message ON acknowledgements (agent_id, message_id)\n\tWHERE message_id IS NOT NULL"
+ },
+ {
+  "type": "index",
+  "name": "acknowledgements_agent_request",
+  "table": "acknowledgements",
+  "sql": "CREATE UNIQUE INDEX acknowledgements_agent_request ON acknowledgements (agent_id, request_id)\n\tWHERE request_id IS NOT NULL"
+ },
+ {
+  "type": "index",
+  "name": "acknowledgements_agent_task",
+  "table": "acknowledgements",
+  "sql": "CREATE UNIQUE INDEX acknowledgements_agent_task ON acknowledgements (agent_id, task_id)\n\tWHERE task_id IS NOT NULL"
+ },
+ {
+  "type": "index",
+  "name": "acknowledgements_agent_update",
+  "table": "acknowledgements",
+  "sql": "CREATE UNIQUE INDEX acknowledgements_agent_update ON acknowledgements (agent_id, update_id)\n\tWHERE update_id IS NOT NULL"
+ },
+ {
+  "type": "index",
+  "name": "acknowledgements_id",
+  "table": "acknowledgements",
+  "sql": "CREATE UNIQUE INDEX acknowledgements_id ON acknowledgements (id)"
+ },
+ {
+  "type": "index",
+  "name": "acknowledgements_message",
+  "table": "acknowledgements",
+  "sql": "CREATE INDEX acknowledgements_message ON acknowledgements (message_id)"
+ },
+ {
+  "type": "index",
+  "name": "acknowledgements_request",
+  "table": "acknowledgements",
+  "sql": "CREATE INDEX acknowledgements_request ON acknowledgements (request_id)"
+ },
+ {
+  "type": "index",
+  "name": "acknowledgements_task",
+  "table": "acknowledgements",
+  "sql": "CREATE INDEX acknowledgements_task ON acknowledgements (task_id)"
+ },
+ {
+  "type": "index",
+  "name": "acknowledgements_update",
+  "table": "acknowledgements",
+  "sql": "CREATE INDEX acknowledgements_update ON acknowledgements (update_id)"
+ },
+ {
+  "type": "index",
+  "name": "app_views_message",
+  "table": "app_views",
+  "sql": "CREATE INDEX app_views_message ON app_views (message_id)"
+ },
+ {
+  "type": "index",
+  "name": "app_views_request",
+  "table": "app_views",
+  "sql": "CREATE INDEX app_views_request ON app_views (request_id)"
+ },
+ {
+  "type": "index",
+  "name": "app_views_update",
+  "table": "app_views",
+  "sql": "CREATE INDEX app_views_update ON app_views (update_id)"
+ },
+ {
+  "type": "index",
+  "name": "approvals_agent_seq",
+  "table": "approvals",
+  "sql": "CREATE INDEX approvals_agent_seq ON approvals (agent_id, seq DESC)"
+ },
+ {
+  "type": "index",
+  "name": "approvals_agent_state",
+  "table": "approvals",
+  "sql": "CREATE INDEX approvals_agent_state ON approvals (agent_id, state)"
+ },
+ {
+  "type": "index",
+  "name": "approvals_message",
+  "table": "approvals",
+  "sql": "CREATE INDEX approvals_message ON approvals (message_id)"
+ },
+ {
+  "type": "index",
+  "name": "approvals_state_expires",
+  "table": "approvals",
+  "sql": "CREATE INDEX approvals_state_expires ON approvals (state, expires_at)"
+ },
+ {
+  "type": "index",
+  "name": "card_fields_message",
+  "table": "card_fields",
+  "sql": "CREATE INDEX card_fields_message ON card_fields (message_id)"
+ },
+ {
+  "type": "index",
+  "name": "card_fields_message_slug",
+  "table": "card_fields",
+  "sql": "CREATE UNIQUE INDEX card_fields_message_slug ON card_fields (message_id, slug)\n\tWHERE message_id IS NOT NULL"
+ },
+ {
+  "type": "index",
+  "name": "card_fields_request",
+  "table": "card_fields",
+  "sql": "CREATE INDEX card_fields_request ON card_fields (request_id)"
+ },
+ {
+  "type": "index",
+  "name": "card_fields_request_slug",
+  "table": "card_fields",
+  "sql": "CREATE UNIQUE INDEX card_fields_request_slug ON card_fields (request_id, slug)\n\tWHERE request_id IS NOT NULL"
+ },
+ {
+  "type": "index",
+  "name": "card_fields_update",
+  "table": "card_fields",
+  "sql": "CREATE INDEX card_fields_update ON card_fields (update_id)"
+ },
+ {
+  "type": "index",
+  "name": "card_fields_update_slug",
+  "table": "card_fields",
+  "sql": "CREATE UNIQUE INDEX card_fields_update_slug ON card_fields (update_id, slug)\n\tWHERE update_id IS NOT NULL"
+ },
+ {
+  "type": "index",
+  "name": "card_tags_message",
+  "table": "card_tags",
+  "sql": "CREATE UNIQUE INDEX card_tags_message ON card_tags (tag_id, message_id)\n\tWHERE message_id IS NOT NULL"
+ },
+ {
+  "type": "index",
+  "name": "card_tags_message_card",
+  "table": "card_tags",
+  "sql": "CREATE INDEX card_tags_message_card ON card_tags (message_id)"
+ },
+ {
+  "type": "index",
+  "name": "card_tags_request",
+  "table": "card_tags",
+  "sql": "CREATE UNIQUE INDEX card_tags_request ON card_tags (tag_id, request_id)\n\tWHERE request_id IS NOT NULL"
+ },
+ {
+  "type": "index",
+  "name": "card_tags_request_card",
+  "table": "card_tags",
+  "sql": "CREATE INDEX card_tags_request_card ON card_tags (request_id)"
+ },
+ {
+  "type": "index",
+  "name": "card_tags_tag",
+  "table": "card_tags",
+  "sql": "CREATE INDEX card_tags_tag ON card_tags (tag_id)"
+ },
+ {
+  "type": "index",
+  "name": "card_tags_update",
+  "table": "card_tags",
+  "sql": "CREATE UNIQUE INDEX card_tags_update ON card_tags (tag_id, update_id)\n\tWHERE update_id IS NOT NULL"
+ },
+ {
+  "type": "index",
+  "name": "card_tags_update_card",
+  "table": "card_tags",
+  "sql": "CREATE INDEX card_tags_update_card ON card_tags (update_id)"
+ },
+ {
+  "type": "index",
+  "name": "derivatives_media_kind",
+  "table": "derivatives",
+  "sql": "CREATE INDEX derivatives_media_kind ON derivatives (media_id, kind)"
+ },
+ {
+  "type": "index",
+  "name": "derivatives_media_kind_width",
+  "table": "derivatives",
+  "sql": "CREATE UNIQUE INDEX derivatives_media_kind_width\n\tON derivatives (media_id, kind, coalesce(width, -1))"
+ },
+ {
+  "type": "index",
+  "name": "embeds_message",
+  "table": "embeds",
+  "sql": "CREATE INDEX embeds_message ON embeds (message_id)"
+ },
+ {
+  "type": "index",
+  "name": "embeds_request",
+  "table": "embeds",
+  "sql": "CREATE INDEX embeds_request ON embeds (request_id)"
+ },
+ {
+  "type": "index",
+  "name": "embeds_task",
+  "table": "embeds",
+  "sql": "CREATE INDEX embeds_task ON embeds (task_id)"
+ },
+ {
+  "type": "index",
+  "name": "embeds_update",
+  "table": "embeds",
+  "sql": "CREATE INDEX embeds_update ON embeds (update_id)"
+ },
+ {
+  "type": "index",
+  "name": "media_message",
+  "table": "media",
+  "sql": "CREATE INDEX media_message ON media (message_id)"
+ },
+ {
+  "type": "index",
+  "name": "media_request",
+  "table": "media",
+  "sql": "CREATE INDEX media_request ON media (request_id)"
+ },
+ {
+  "type": "index",
+  "name": "media_sha256",
+  "table": "media",
+  "sql": "CREATE INDEX media_sha256 ON media (sha256)"
+ },
+ {
+  "type": "index",
+  "name": "media_status_created",
+  "table": "media",
+  "sql": "CREATE INDEX media_status_created ON media (status, created_at)"
+ },
+ {
+  "type": "index",
+  "name": "media_task",
+  "table": "media",
+  "sql": "CREATE INDEX media_task ON media (task_id)"
+ },
+ {
+  "type": "index",
+  "name": "media_update",
+  "table": "media",
+  "sql": "CREATE INDEX media_update ON media (update_id)"
+ },
+ {
+  "type": "index",
+  "name": "message_deliveries_agent_client",
+  "table": "message_deliveries",
+  "sql": "CREATE INDEX message_deliveries_agent_client\n\tON message_deliveries (agent_id, client_id, message_id)"
+ },
+ {
+  "type": "index",
+  "name": "message_deliveries_message",
+  "table": "message_deliveries",
+  "sql": "CREATE INDEX message_deliveries_message ON message_deliveries (message_id)"
+ },
+ {
+  "type": "index",
+  "name": "message_deliveries_message_agent_client",
+  "table": "message_deliveries",
+  "sql": "CREATE UNIQUE INDEX message_deliveries_message_agent_client\n\tON message_deliveries (message_id, agent_id, client_id)"
+ },
+ {
+  "type": "index",
+  "name": "message_mentions_agent",
+  "table": "message_mentions",
+  "sql": "CREATE INDEX message_mentions_agent ON message_mentions (agent_id, message_id)"
+ },
+ {
+  "type": "index",
+  "name": "message_mentions_message_agent",
+  "table": "message_mentions",
+  "sql": "CREATE UNIQUE INDEX message_mentions_message_agent ON message_mentions (message_id, agent_id)"
+ },
+ {
+  "type": "index",
+  "name": "messages_answers",
+  "table": "messages",
+  "sql": "CREATE INDEX messages_answers ON messages (answers)"
+ },
+ {
+  "type": "index",
+  "name": "messages_live_seq",
+  "table": "messages",
+  "sql": "CREATE INDEX messages_live_seq ON messages (seq) WHERE deleted_at IS NULL"
+ },
+ {
+  "type": "index",
+  "name": "messages_project_seq",
+  "table": "messages",
+  "sql": "CREATE INDEX messages_project_seq ON messages (project_id, seq)"
+ },
+ {
+  "type": "index",
+  "name": "messages_reply_to",
+  "table": "messages",
+  "sql": "CREATE INDEX messages_reply_to ON messages (reply_to)"
+ },
+ {
+  "type": "index",
+  "name": "messages_request",
+  "table": "messages",
+  "sql": "CREATE INDEX messages_request ON messages (request_id)"
+ },
+ {
+  "type": "index",
+  "name": "messages_status",
+  "table": "messages",
+  "sql": "CREATE INDEX messages_status ON messages (status) WHERE status IS NOT NULL"
+ },
+ {
+  "type": "index",
+  "name": "messages_task",
+  "table": "messages",
+  "sql": "CREATE INDEX messages_task ON messages (task_id)"
+ },
+ {
+  "type": "index",
+  "name": "messages_update",
+  "table": "messages",
+  "sql": "CREATE INDEX messages_update ON messages (update_id)"
+ },
+ {
+  "type": "index",
+  "name": "notifications_message",
+  "table": "notifications",
+  "sql": "CREATE UNIQUE INDEX notifications_message ON notifications (message_id) WHERE message_id IS NOT NULL"
+ },
+ {
+  "type": "index",
+  "name": "notifications_request",
+  "table": "notifications",
+  "sql": "CREATE UNIQUE INDEX notifications_request ON notifications (request_id) WHERE request_id IS NOT NULL"
+ },
+ {
+  "type": "index",
+  "name": "notifications_seq",
+  "table": "notifications",
+  "sql": "CREATE INDEX notifications_seq ON notifications (seq DESC)"
+ },
+ {
+  "type": "index",
+  "name": "notifications_unseen",
+  "table": "notifications",
+  "sql": "CREATE INDEX notifications_unseen ON notifications (seq DESC) WHERE seen_at IS NULL"
+ },
+ {
+  "type": "index",
+  "name": "notifications_update",
+  "table": "notifications",
+  "sql": "CREATE UNIQUE INDEX notifications_update ON notifications (update_id) WHERE update_id IS NOT NULL"
+ },
+ {
+  "type": "index",
+  "name": "owner_devices_id",
+  "table": "owner_devices",
+  "sql": "CREATE UNIQUE INDEX owner_devices_id ON owner_devices (id)"
+ },
+ {
+  "type": "index",
+  "name": "owner_devices_token_hash",
+  "table": "owner_devices",
+  "sql": "CREATE UNIQUE INDEX owner_devices_token_hash ON owner_devices (token_hash)"
+ },
+ {
+  "type": "index",
+  "name": "projects_status_pinned",
+  "table": "projects",
+  "sql": "CREATE INDEX projects_status_pinned ON projects (status, pinned DESC, seq DESC)"
+ },
+ {
+  "type": "index",
+  "name": "push_subscriptions_endpoint",
+  "table": "push_subscriptions",
+  "sql": "CREATE UNIQUE INDEX push_subscriptions_endpoint ON push_subscriptions (endpoint)"
+ },
+ {
+  "type": "index",
+  "name": "push_subscriptions_id",
+  "table": "push_subscriptions",
+  "sql": "CREATE UNIQUE INDEX push_subscriptions_id ON push_subscriptions (id)"
+ },
+ {
+  "type": "index",
+  "name": "reactions_message",
+  "table": "reactions",
+  "sql": "CREATE INDEX reactions_message ON reactions (message_id)"
+ },
+ {
+  "type": "index",
+  "name": "reactions_message_actor_emoji",
+  "table": "reactions",
+  "sql": "CREATE UNIQUE INDEX reactions_message_actor_emoji ON reactions (message_id, actor, emoji)\n\tWHERE message_id IS NOT NULL"
+ },
+ {
+  "type": "index",
+  "name": "reactions_request",
+  "table": "reactions",
+  "sql": "CREATE INDEX reactions_request ON reactions (request_id)"
+ },
+ {
+  "type": "index",
+  "name": "reactions_request_actor_emoji",
+  "table": "reactions",
+  "sql": "CREATE UNIQUE INDEX reactions_request_actor_emoji ON reactions (request_id, actor, emoji)\n\tWHERE request_id IS NOT NULL"
+ },
+ {
+  "type": "index",
+  "name": "reactions_task",
+  "table": "reactions",
+  "sql": "CREATE INDEX reactions_task ON reactions (task_id)"
+ },
+ {
+  "type": "index",
+  "name": "reactions_task_actor_emoji",
+  "table": "reactions",
+  "sql": "CREATE UNIQUE INDEX reactions_task_actor_emoji ON reactions (task_id, actor, emoji)\n\tWHERE task_id IS NOT NULL"
+ },
+ {
+  "type": "index",
+  "name": "reactions_update",
+  "table": "reactions",
+  "sql": "CREATE INDEX reactions_update ON reactions (update_id)"
+ },
+ {
+  "type": "index",
+  "name": "reactions_update_actor_emoji",
+  "table": "reactions",
+  "sql": "CREATE UNIQUE INDEX reactions_update_actor_emoji ON reactions (update_id, actor, emoji)\n\tWHERE update_id IS NOT NULL"
+ },
+ {
+  "type": "index",
+  "name": "read_cursors_agent",
+  "table": "read_cursors",
+  "sql": "CREATE INDEX read_cursors_agent ON read_cursors (agent_id, project_id)"
+ },
+ {
+  "type": "index",
+  "name": "sessions_agent_heartbeat",
+  "table": "sessions",
+  "sql": "CREATE INDEX sessions_agent_heartbeat ON sessions (agent_id, last_heartbeat_at DESC)"
+ },
+ {
+  "type": "index",
+  "name": "sessions_open_heartbeat",
+  "table": "sessions",
+  "sql": "CREATE INDEX sessions_open_heartbeat ON sessions (last_heartbeat_at) WHERE ended_at IS NULL"
+ },
+ {
+  "type": "index",
+  "name": "tags_project_slug",
+  "table": "tags",
+  "sql": "CREATE UNIQUE INDEX tags_project_slug ON tags (project_id, slug)"
+ },
+ {
+  "type": "index",
+  "name": "tasks_agent_state",
+  "table": "tasks",
+  "sql": "CREATE INDEX tasks_agent_state ON tasks (agent_id, state) WHERE agent_id IS NOT NULL"
+ },
+ {
+  "type": "index",
+  "name": "tasks_project_state",
+  "table": "tasks",
+  "sql": "CREATE INDEX tasks_project_state ON tasks (project_id, state, seq DESC)"
+ },
+ {
+  "type": "index",
+  "name": "update_shares_id",
+  "table": "update_shares",
+  "sql": "CREATE UNIQUE INDEX update_shares_id ON update_shares (id)"
+ },
+ {
+  "type": "index",
+  "name": "update_shares_live",
+  "table": "update_shares",
+  "sql": "CREATE UNIQUE INDEX update_shares_live ON update_shares (update_id)\n\tWHERE revoked_at IS NULL"
+ },
+ {
+  "type": "index",
+  "name": "update_shares_token_hash",
+  "table": "update_shares",
+  "sql": "CREATE UNIQUE INDEX update_shares_token_hash ON update_shares (token_hash)"
+ },
+ {
+  "type": "index",
+  "name": "updates_agent_seq",
+  "table": "updates",
+  "sql": "CREATE INDEX updates_agent_seq ON updates (agent_id, seq DESC)"
+ },
+ {
+  "type": "index",
+  "name": "updates_live_seq",
+  "table": "updates",
+  "sql": "CREATE INDEX updates_live_seq ON updates (seq DESC) WHERE deleted_at IS NULL"
+ },
+ {
+  "type": "index",
+  "name": "updates_project_seq",
+  "table": "updates",
+  "sql": "CREATE INDEX updates_project_seq ON updates (project_id, seq DESC)"
+ },
+ {
+  "type": "index",
+  "name": "updates_status",
+  "table": "updates",
+  "sql": "CREATE INDEX updates_status ON updates (status) WHERE status IS NOT NULL"
+ },
+ {
+  "type": "index",
+  "name": "updates_task_seq",
+  "table": "updates",
+  "sql": "CREATE INDEX updates_task_seq ON updates (task_id, seq DESC) WHERE task_id IS NOT NULL"
+ },
+ {
+  "type": "index",
+  "name": "upload_tokens_expires",
+  "table": "upload_tokens",
+  "sql": "CREATE INDEX upload_tokens_expires ON upload_tokens (expires_at) WHERE used_at IS NULL"
+ },
+ {
+  "type": "index",
+  "name": "upload_tokens_media",
+  "table": "upload_tokens",
+  "sql": "CREATE INDEX upload_tokens_media ON upload_tokens (media_id)"
+ },
+ {
+  "type": "table",
+  "name": "acknowledgements",
+  "table": "acknowledgements",
+  "sql": "CREATE TABLE acknowledgements (\n\tseq INTEGER PRIMARY KEY AUTOINCREMENT,\n\tid TEXT NOT NULL,\n\tagent_id TEXT NOT NULL REFERENCES agents (id),\n\tmessage_id TEXT REFERENCES messages (id),\n\ttask_id TEXT REFERENCES tasks (id),\n\tstate TEXT NOT NULL,\n\tcreated_at INTEGER NOT NULL,\n\tupdated_at INTEGER NOT NULL\n, update_id TEXT REFERENCES updates (id), request_id TEXT REFERENCES approvals (id)) STRICT"
+ },
+ {
+  "type": "table",
+  "name": "agents",
+  "table": "agents",
+  "sql": "CREATE TABLE agents (\n\tseq INTEGER PRIMARY KEY AUTOINCREMENT,\n\tid TEXT NOT NULL UNIQUE,\n\tname TEXT NOT NULL,\n\ttoken_hash TEXT NOT NULL UNIQUE,\n\tcreated_at INTEGER NOT NULL,\n\trevoked_at INTEGER,\n\tlast_seen_at INTEGER\n) STRICT"
+ },
+ {
+  "type": "table",
+  "name": "app_views",
+  "table": "app_views",
+  "sql": "CREATE TABLE app_views (\n\tseq INTEGER PRIMARY KEY AUTOINCREMENT,\n\tid TEXT NOT NULL UNIQUE,\n\tapp_id TEXT NOT NULL REFERENCES apps (id),\n\t-- Exactly one of these, the generic card anchor every card feature uses\n\t-- (migration 034).\n\tupdate_id TEXT REFERENCES updates (id),\n\tmessage_id TEXT REFERENCES messages (id),\n\trequest_id TEXT REFERENCES approvals (id),\n\tagent_id TEXT REFERENCES agents (id),\n\t-- 'human' or 'agent:<id>', the vocabulary every other card feature uses.\n\tauthor TEXT NOT NULL,\n\t-- What the agent handed this instance, as JSON. Delivered to the frame as the\n\t-- spec's ui/notifications/tool-result.\n\tdata TEXT NOT NULL,\n\t-- What the app itself saved, as JSON, or NULL if it never has.\n\tstate TEXT,\n\t-- A line of text above the frame, so a collapsed app still says what it is.\n\ttitle TEXT,\n\tcreated_at INTEGER NOT NULL,\n\tupdated_at INTEGER NOT NULL\n) STRICT"
+ },
+ {
+  "type": "table",
+  "name": "approvals",
+  "table": "approvals",
+  "sql": "CREATE TABLE \"approvals\" (\n\tseq INTEGER PRIMARY KEY AUTOINCREMENT,\n\tid TEXT NOT NULL UNIQUE,\n\tagent_id TEXT NOT NULL REFERENCES agents (id),\n\tproject_id TEXT REFERENCES projects (id),\n\tupdate_id TEXT REFERENCES updates (id),\n\tquestion TEXT NOT NULL,\n\toptions TEXT,\n\t-- 'withdrawn' is the new one: the asking agent took the question back.\n\tstate TEXT NOT NULL DEFAULT 'pending'\n\t\tCHECK (state IN ('pending', 'approved', 'rejected', 'timeout', 'cancelled', 'withdrawn')),\n\texpires_at INTEGER NOT NULL,\n\tdecided_at INTEGER,\n\tdecided_value TEXT,\n\tkind TEXT NOT NULL DEFAULT 'confirm',\n\tdetail TEXT,\n\tconfig TEXT,\n\tanswer TEXT,\n\tmessage_id TEXT REFERENCES messages (id)\n, edited_at INTEGER, pinned INTEGER NOT NULL DEFAULT 0) STRICT"
+ },
+ {
+  "type": "table",
+  "name": "apps",
+  "table": "apps",
+  "sql": "CREATE TABLE apps (\n\tseq INTEGER PRIMARY KEY AUTOINCREMENT,\n\tid TEXT NOT NULL UNIQUE,\n\t-- The spec's own handle, e.g. 'ui://review-board'. Unique, and what an agent\n\t-- names when it shows one.\n\turi TEXT NOT NULL UNIQUE,\n\tname TEXT NOT NULL,\n\tdescription TEXT,\n\t-- Who registered it. NULL would mean one this deployment ships; there are\n\t-- none yet, and the column is nullable so there can be.\n\tagent_id TEXT REFERENCES agents (id),\n\t-- The document itself: text/html;profile=mcp-app, served into a sandboxed\n\t-- iframe and never into this page.\n\thtml TEXT NOT NULL,\n\t-- The origins it declared, as JSON: { connect: [], resource: [], frame: [] }.\n\t-- Anything not named here is refused by the policy the route sends.\n\tcsp TEXT NOT NULL,\n\tcreated_at INTEGER NOT NULL,\n\tupdated_at INTEGER NOT NULL\n, url TEXT) STRICT"
+ },
+ {
+  "type": "table",
+  "name": "card_fields",
+  "table": "card_fields",
+  "sql": "CREATE TABLE card_fields (\n\tseq INTEGER PRIMARY KEY AUTOINCREMENT,\n\tid TEXT NOT NULL UNIQUE,\n\tupdate_id TEXT REFERENCES updates (id),\n\tmessage_id TEXT REFERENCES messages (id),\n\trequest_id TEXT REFERENCES approvals (id),\n\t-- What it is called, as it is shown.\n\tname TEXT NOT NULL,\n\t-- The same, normalised: what \"already set\" is judged on.\n\tslug TEXT NOT NULL,\n\t-- What it says. Text, always: this is a note, not a type system.\n\tvalue TEXT NOT NULL,\n\t-- Who set it last: the literal 'human', or 'agent:<id>'.\n\tauthor TEXT NOT NULL,\n\tcreated_at INTEGER NOT NULL,\n\tupdated_at INTEGER NOT NULL\n) STRICT"
+ },
+ {
+  "type": "table",
+  "name": "card_tags",
+  "table": "card_tags",
+  "sql": "CREATE TABLE card_tags (\n\tseq INTEGER PRIMARY KEY AUTOINCREMENT,\n\tid TEXT NOT NULL UNIQUE,\n\ttag_id TEXT NOT NULL REFERENCES tags (id),\n\tupdate_id TEXT REFERENCES updates (id),\n\tmessage_id TEXT REFERENCES messages (id),\n\trequest_id TEXT REFERENCES approvals (id),\n\t-- Who put it on: the literal 'human', or 'agent:<id>'. The vocabulary every\n\t-- other card feature uses.\n\tauthor TEXT NOT NULL,\n\tcreated_at INTEGER NOT NULL\n) STRICT"
+ },
+ {
+  "type": "table",
+  "name": "derivatives",
+  "table": "derivatives",
+  "sql": "CREATE TABLE derivatives (\n\tseq INTEGER PRIMARY KEY AUTOINCREMENT,\n\tid TEXT NOT NULL UNIQUE,\n\tmedia_id TEXT NOT NULL REFERENCES media (id) ON DELETE CASCADE,\n\tkind TEXT NOT NULL CHECK (kind IN ('thumb', 'poster', 'mp4')),\n\tpath TEXT NOT NULL,\n\tbytes INTEGER NOT NULL,\n\twidth INTEGER,\n\theight INTEGER\n) STRICT"
+ },
+ {
+  "type": "table",
+  "name": "embed_types",
+  "table": "embed_types",
+  "sql": "CREATE TABLE embed_types (\n\tseq INTEGER PRIMARY KEY AUTOINCREMENT,\n\tid TEXT NOT NULL UNIQUE,\n\t-- What an agent names in post_update: stable, lowercase, its own handle.\n\tslug TEXT NOT NULL UNIQUE,\n\tname TEXT NOT NULL,\n\t-- Who registered it. NULL for the ones this deployment ships, which is also\n\t-- what makes them unownable: no agent matches NULL.\n\tagent_id TEXT REFERENCES agents (id),\n\t-- The look, as JSON: blocks and a palette, never markup. See the note above.\n\tspec TEXT NOT NULL,\n\tcreated_at INTEGER NOT NULL,\n\tupdated_at INTEGER NOT NULL\n) STRICT"
+ },
+ {
+  "type": "table",
+  "name": "embeds",
+  "table": "embeds",
+  "sql": "CREATE TABLE embeds (\n\tseq INTEGER PRIMARY KEY AUTOINCREMENT,\n\tid TEXT NOT NULL UNIQUE,\n\ttype_id TEXT NOT NULL REFERENCES embed_types (id),\n\t-- Exactly one of these two, enforced in the domain as media's are.\n\tupdate_id TEXT REFERENCES updates (id),\n\tmessage_id TEXT REFERENCES messages (id),\n\tagent_id TEXT REFERENCES agents (id),\n\t-- \"human\" or \"agent:<id>\", the vocabulary messages already use (design \u00a73).\n\tauthor TEXT NOT NULL,\n\t-- The values this one shows, as a flat JSON object of strings.\n\tdata TEXT NOT NULL,\n\t-- Where it was copied from, if the agent said. Shown as the card's link.\n\tsource_url TEXT,\n\tcreated_at INTEGER NOT NULL\n, request_id TEXT REFERENCES approvals (id), task_id TEXT REFERENCES tasks (id)) STRICT"
+ },
+ {
+  "type": "table",
+  "name": "media",
+  "table": "media",
+  "sql": "CREATE TABLE \"media\" (\n\tseq INTEGER PRIMARY KEY AUTOINCREMENT,\n\tid TEXT NOT NULL UNIQUE,\n\tagent_id TEXT REFERENCES agents (id),\n\tauthor TEXT NOT NULL,\n\tupdate_id TEXT REFERENCES updates (id),\n\tmessage_id TEXT REFERENCES messages (id),\n\tkind TEXT NOT NULL CHECK (kind IN ('image', 'video', 'audio', 'file')),\n\tmime TEXT NOT NULL,\n\tbytes INTEGER NOT NULL,\n\tsha256 TEXT NOT NULL,\n\twidth INTEGER,\n\theight INTEGER,\n\tduration_ms INTEGER,\n\tfilename TEXT,\n\tstatus TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'ready', 'failed')),\n\tcreated_at INTEGER NOT NULL,\n\t-- Migration 030: an approval and a task carry attachments too. Carried\n\t-- through this rebuild rather than reinvented; a column quietly dropped here\n\t-- would take every question's screenshots with it.\n\trequest_id TEXT REFERENCES approvals (id),\n\ttask_id TEXT REFERENCES tasks (id)\n) STRICT"
+ },
+ {
+  "type": "table",
+  "name": "message_deliveries",
+  "table": "message_deliveries",
+  "sql": "CREATE TABLE message_deliveries (\n\tseq INTEGER PRIMARY KEY AUTOINCREMENT,\n\tid TEXT NOT NULL UNIQUE,\n\tmessage_id TEXT NOT NULL REFERENCES messages (id),\n\tagent_id TEXT NOT NULL REFERENCES agents (id),\n\tdelivered_at INTEGER NOT NULL\n, client_id TEXT) STRICT"
+ },
+ {
+  "type": "table",
+  "name": "message_mentions",
+  "table": "message_mentions",
+  "sql": "CREATE TABLE message_mentions (\n\tseq INTEGER PRIMARY KEY AUTOINCREMENT,\n\tid TEXT NOT NULL UNIQUE,\n\tmessage_id TEXT NOT NULL REFERENCES messages (id),\n\tagent_id TEXT NOT NULL REFERENCES agents (id)\n) STRICT"
+ },
+ {
+  "type": "table",
+  "name": "messages",
+  "table": "messages",
+  "sql": "CREATE TABLE messages (\n\tseq INTEGER PRIMARY KEY AUTOINCREMENT,\n\tid TEXT NOT NULL UNIQUE,\n\tproject_id TEXT REFERENCES projects (id),\n\tupdate_id TEXT REFERENCES updates (id),\n\ttask_id TEXT REFERENCES tasks (id),\n\tauthor TEXT NOT NULL,\n\tbody TEXT NOT NULL,\n\tcreated_at INTEGER NOT NULL\n, reply_to TEXT REFERENCES messages (id), deleted_at INTEGER, answers TEXT REFERENCES messages (id), request_id TEXT REFERENCES approvals (id), edited_at INTEGER, pinned INTEGER NOT NULL DEFAULT 0, status TEXT\n\tCHECK (status IN ('todo', 'in_progress', 'blocked', 'done', 'cancelled')), status_at INTEGER) STRICT"
+ },
+ {
+  "type": "table",
+  "name": "notifications",
+  "table": "notifications",
+  "sql": "CREATE TABLE notifications (\n\tseq INTEGER PRIMARY KEY AUTOINCREMENT,\n\tid TEXT NOT NULL UNIQUE,\n\tkind TEXT NOT NULL CHECK (kind IN ('update', 'reply', 'request')),\n\tproject_id TEXT REFERENCES projects (id),\n\tupdate_id TEXT REFERENCES updates (id),\n\tmessage_id TEXT REFERENCES messages (id),\n\trequest_id TEXT REFERENCES approvals (id),\n\tagent_id TEXT REFERENCES agents (id),\n\ttitle TEXT NOT NULL,\n\tbody TEXT NOT NULL,\n\tcreated_at INTEGER NOT NULL,\n\tseen_at INTEGER\n) STRICT"
+ },
+ {
+  "type": "table",
+  "name": "owner_devices",
+  "table": "owner_devices",
+  "sql": "CREATE TABLE owner_devices (\n\tseq INTEGER PRIMARY KEY AUTOINCREMENT,\n\tid TEXT NOT NULL,\n\tname TEXT NOT NULL,\n\ttoken_hash TEXT NOT NULL,\n\tapns_token TEXT,\n\tapns_environment TEXT CHECK (apns_environment IN ('sandbox', 'production')),\n\tlive_activity_token TEXT,\n\tpush_to_start_token TEXT,\n\tcreated_at INTEGER NOT NULL,\n\tlast_seen_at INTEGER,\n\tfailures INTEGER NOT NULL DEFAULT 0\n, alert_project_ids TEXT) STRICT"
+ },
+ {
+  "type": "table",
+  "name": "projects",
+  "table": "projects",
+  "sql": "CREATE TABLE projects (\n\tseq INTEGER PRIMARY KEY AUTOINCREMENT,\n\tid TEXT NOT NULL UNIQUE,\n\tslug TEXT NOT NULL UNIQUE,\n\tname TEXT NOT NULL,\n\tdescription TEXT,\n\tstatus TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'archived')),\n\tpinned INTEGER NOT NULL DEFAULT 0 CHECK (pinned IN (0, 1)),\n\tcreated_at INTEGER NOT NULL,\n\tupdated_at INTEGER NOT NULL\n, theme TEXT, board TEXT, owner_seen_at INTEGER) STRICT"
+ },
+ {
+  "type": "table",
+  "name": "push_subscriptions",
+  "table": "push_subscriptions",
+  "sql": "CREATE TABLE push_subscriptions (\n\tseq INTEGER PRIMARY KEY AUTOINCREMENT,\n\tid TEXT NOT NULL,\n\tendpoint TEXT NOT NULL,\n\tp256dh TEXT NOT NULL,\n\tauth TEXT NOT NULL,\n\tlabel TEXT,\n\tcreated_at INTEGER NOT NULL,\n\tlast_sent_at INTEGER,\n\tfailures INTEGER NOT NULL DEFAULT 0\n, prefs TEXT) STRICT"
+ },
+ {
+  "type": "table",
+  "name": "reactions",
+  "table": "reactions",
+  "sql": "CREATE TABLE \"reactions\" (\n\tseq INTEGER PRIMARY KEY AUTOINCREMENT,\n\tid TEXT NOT NULL UNIQUE,\n\tmessage_id TEXT REFERENCES messages (id),\n\tupdate_id TEXT REFERENCES updates (id),\n\trequest_id TEXT REFERENCES approvals (id),\n\ttask_id TEXT REFERENCES tasks (id),\n\tactor TEXT NOT NULL,\n\temoji TEXT NOT NULL,\n\tcreated_at INTEGER NOT NULL\n) STRICT"
+ },
+ {
+  "type": "table",
+  "name": "read_cursors",
+  "table": "read_cursors",
+  "sql": "CREATE TABLE read_cursors (\n\tseq INTEGER PRIMARY KEY AUTOINCREMENT,\n\tid TEXT NOT NULL UNIQUE,\n\tagent_id TEXT NOT NULL REFERENCES agents (id),\n\tproject_id TEXT NOT NULL DEFAULT '',\n\tlast_seen_message_seq INTEGER NOT NULL DEFAULT 0,\n\tUNIQUE (agent_id, project_id)\n) STRICT"
+ },
+ {
+  "type": "table",
+  "name": "schema_migrations",
+  "table": "schema_migrations",
+  "sql": "CREATE TABLE schema_migrations (\n\t\t\tversion INTEGER PRIMARY KEY,\n\t\t\tname TEXT NOT NULL,\n\t\t\tchecksum TEXT NOT NULL,\n\t\t\tapplied_at INTEGER NOT NULL\n\t\t) STRICT"
+ },
+ {
+  "type": "table",
+  "name": "sessions",
+  "table": "sessions",
+  "sql": "CREATE TABLE sessions (\n\tseq INTEGER PRIMARY KEY AUTOINCREMENT,\n\tid TEXT NOT NULL UNIQUE,\n\tagent_id TEXT NOT NULL REFERENCES agents (id),\n\tstarted_at INTEGER NOT NULL,\n\tlast_heartbeat_at INTEGER NOT NULL,\n\tended_at INTEGER,\n\tmeta TEXT\n) STRICT"
+ },
+ {
+  "type": "table",
+  "name": "tags",
+  "table": "tags",
+  "sql": "CREATE TABLE tags (\n\tseq INTEGER PRIMARY KEY AUTOINCREMENT,\n\tid TEXT NOT NULL UNIQUE,\n\tproject_id TEXT NOT NULL REFERENCES projects (id),\n\t-- The word as it is written on the card.\n\tname TEXT NOT NULL,\n\t-- The same word, normalised: what \"already defined\" is judged on, so \"Bug\",\n\t-- \"bug\" and \" bug \" are one tag rather than three that look identical.\n\tslug TEXT NOT NULL,\n\t-- One of the palette's names ('rose', 'amber', \u2026), or NULL for the default.\n\t-- A name rather than a colour value: the dashboard has two themes, and a\n\t-- stored hex would be legible in exactly one of them.\n\tcolour TEXT,\n\t-- Who defined it: an agent, or NULL for the owner. The same rule media keeps.\n\tagent_id TEXT REFERENCES agents (id),\n\tcreated_at INTEGER NOT NULL\n) STRICT"
+ },
+ {
+  "type": "table",
+  "name": "tasks",
+  "table": "tasks",
+  "sql": "CREATE TABLE tasks (\n\tseq INTEGER PRIMARY KEY AUTOINCREMENT,\n\tid TEXT NOT NULL UNIQUE,\n\tproject_id TEXT NOT NULL REFERENCES projects (id),\n\tagent_id TEXT REFERENCES agents (id),\n\ttitle TEXT NOT NULL,\n\tbody TEXT NOT NULL DEFAULT '',\n\tstate TEXT NOT NULL DEFAULT 'todo' CHECK (state IN ('todo', 'claimed', 'done', 'cancelled')),\n\tcreated_at INTEGER NOT NULL,\n\tclaimed_at INTEGER,\n\tdone_at INTEGER,\n\tresult TEXT\n, broadcast_at INTEGER, pinned INTEGER NOT NULL DEFAULT 0, edited_at INTEGER) STRICT"
+ },
+ {
+  "type": "table",
+  "name": "update_shares",
+  "table": "update_shares",
+  "sql": "CREATE TABLE update_shares (\n\tseq INTEGER PRIMARY KEY AUTOINCREMENT,\n\tid TEXT NOT NULL,\n\tupdate_id TEXT NOT NULL,\n\ttoken_hash TEXT NOT NULL,\n\tcreated_at INTEGER NOT NULL,\n\trevoked_at INTEGER,\n\tviews INTEGER NOT NULL DEFAULT 0,\n\tlast_viewed_at INTEGER\n) STRICT"
+ },
+ {
+  "type": "table",
+  "name": "updates",
+  "table": "updates",
+  "sql": "CREATE TABLE updates (\n\tseq INTEGER PRIMARY KEY AUTOINCREMENT,\n\tid TEXT NOT NULL UNIQUE,\n\tproject_id TEXT NOT NULL REFERENCES projects (id),\n\tagent_id TEXT NOT NULL REFERENCES agents (id),\n\tsession_id TEXT REFERENCES sessions (id),\n\ttitle TEXT,\n\tbody TEXT NOT NULL,\n\tlevel TEXT NOT NULL DEFAULT 'info' CHECK (level IN ('info', 'success', 'warn', 'error')),\n\tpinned INTEGER NOT NULL DEFAULT 0 CHECK (pinned IN (0, 1)),\n\tcreated_at INTEGER NOT NULL,\n\tdeleted_at INTEGER\n, edited_at INTEGER, priority TEXT NOT NULL DEFAULT 'medium', task_id TEXT REFERENCES tasks (id), replies_seen_at INTEGER, status TEXT\n\tCHECK (status IN ('todo', 'in_progress', 'blocked', 'done', 'cancelled')), status_at INTEGER) STRICT"
+ },
+ {
+  "type": "table",
+  "name": "upload_tokens",
+  "table": "upload_tokens",
+  "sql": "CREATE TABLE upload_tokens (\n\tseq INTEGER PRIMARY KEY AUTOINCREMENT,\n\tid TEXT NOT NULL UNIQUE,\n\tagent_id TEXT NOT NULL REFERENCES agents (id),\n\tmedia_id TEXT NOT NULL REFERENCES media (id) ON DELETE CASCADE,\n\tmax_bytes INTEGER NOT NULL,\n\tmime_allow TEXT NOT NULL,\n\texpires_at INTEGER NOT NULL,\n\tused_at INTEGER\n) STRICT"
+ }
+]

@@ -1,0 +1,3 @@
+
+ALTER TABLE updates ADD COLUMN status_at INTEGER;
+ALTER TABLE messages ADD COLUMN status_at INTEGER;

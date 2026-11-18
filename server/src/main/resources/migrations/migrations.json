@@ -1,0 +1,324 @@
+[
+ {
+  "version": 1,
+  "name": "initial-schema",
+  "file": "001-initial-schema.sql",
+  "rebuildsTables": false,
+  "checksum": "d3e404f27352fa1ed17f206bee219a0d51a5508ac623f196468a73dc4ad9d762"
+ },
+ {
+  "version": 2,
+  "name": "owner-requests",
+  "file": "002-owner-requests.sql",
+  "rebuildsTables": false,
+  "checksum": "0e344d13a0730e77a39c34595e263eb01adc6e8b944097b18aee0e9e0a524188"
+ },
+ {
+  "version": 3,
+  "name": "push-subscriptions",
+  "file": "003-push-subscriptions.sql",
+  "rebuildsTables": false,
+  "checksum": "3702be1e8b9f602812504f7deaf4973be3dbe4d8d348df7e58352f994dab75b7"
+ },
+ {
+  "version": 4,
+  "name": "update-edits",
+  "file": "004-update-edits.sql",
+  "rebuildsTables": false,
+  "checksum": "72a4050a7c4754848b1aca7e532d6e9e2cfee4e12b71c50fbffc85c6f41375eb"
+ },
+ {
+  "version": 5,
+  "name": "update-shares",
+  "file": "005-update-shares.sql",
+  "rebuildsTables": false,
+  "checksum": "b9857dea2bc5280a5a1f75c45b53c2df4d243cd6813d07b51281793b96ec7773"
+ },
+ {
+  "version": 6,
+  "name": "project-theme",
+  "file": "006-project-theme.sql",
+  "rebuildsTables": false,
+  "checksum": "92495f30277d13199a8eebb0b20259ce77728784e5b307adae6a8c5c2dadc3ed"
+ },
+ {
+  "version": 7,
+  "name": "priority-and-push-prefs",
+  "file": "007-priority-and-push-prefs.sql",
+  "rebuildsTables": false,
+  "checksum": "924f67c6df72bcd06b4357730b454852ca807e9429156d0dea98dd6cb3893afa"
+ },
+ {
+  "version": 8,
+  "name": "updates-on-tasks",
+  "file": "008-updates-on-tasks.sql",
+  "rebuildsTables": false,
+  "checksum": "c40c9a1805655b11b092eafbb442981a46c466eee43f0959d837ca7f591299d0"
+ },
+ {
+  "version": 9,
+  "name": "project-board",
+  "file": "009-project-board.sql",
+  "rebuildsTables": false,
+  "checksum": "8ccdecb48939c6155d4259f2c612983a7e2e1192a89471072bdde2a169d36050"
+ },
+ {
+  "version": 10,
+  "name": "task-broadcast",
+  "file": "010-task-broadcast.sql",
+  "rebuildsTables": false,
+  "checksum": "b65d7ed5cf8ae7216a21ff7339e19ca15c545dd88f1d454febd938904791267c"
+ },
+ {
+  "version": 11,
+  "name": "project-seen",
+  "file": "011-project-seen.sql",
+  "rebuildsTables": false,
+  "checksum": "78a8168a3c05a71c0b1d9f07636d30725f069431921134a9e3879f406d92315b"
+ },
+ {
+  "version": 12,
+  "name": "seen-what-is-already-read",
+  "file": "012-seen-what-is-already-read.sql",
+  "rebuildsTables": false,
+  "checksum": "22c1350cc746f3a290580ed9985a170127340b99f98c74eef67aa586830177ba"
+ },
+ {
+  "version": 13,
+  "name": "acknowledgements",
+  "file": "013-acknowledgements.sql",
+  "rebuildsTables": false,
+  "checksum": "bb7c6c42b0654453f6438ab5bb18edf06deb625fc13e18f02a3425c4a3cfb687"
+ },
+ {
+  "version": 14,
+  "name": "message-replies",
+  "file": "014-message-replies.sql",
+  "rebuildsTables": false,
+  "checksum": "172f8ebdba37aea7bfd0822d4c5adf5e0a7d02826ca9135ed2f1c56eec0b762e"
+ },
+ {
+  "version": 15,
+  "name": "replies-seen",
+  "file": "015-replies-seen.sql",
+  "rebuildsTables": false,
+  "checksum": "45636214f58b21e2483862440343f9952ea638e28e105fe03b9c5475c26ac742"
+ },
+ {
+  "version": 16,
+  "name": "owner-media",
+  "file": "016-owner-media.sql",
+  "rebuildsTables": true,
+  "checksum": "b794912e5ac6baa375db5b628676160e69be4177fd3455b6de4429ff4a68746e"
+ },
+ {
+  "version": 17,
+  "name": "message-deletes",
+  "file": "017-message-deletes.sql",
+  "rebuildsTables": false,
+  "checksum": "3a1ee58115f2c89bed42dfdb1dda585dc6c1b696d67850b3fa9832e1bd95bc98"
+ },
+ {
+  "version": 18,
+  "name": "message-deliveries",
+  "file": "018-message-deliveries.sql",
+  "rebuildsTables": false,
+  "checksum": "76dad6711dd8720215a4165a614c6dfda2ef122d7b7c7c30f542a5ad11535586"
+ },
+ {
+  "version": 19,
+  "name": "delivery-per-client",
+  "file": "019-delivery-per-client.sql",
+  "rebuildsTables": false,
+  "checksum": "0a187b86560c3a31d5ae4e5d219436596125ed634e60eb54b5365020e93af4b9"
+ },
+ {
+  "version": 20,
+  "name": "answering-a-comment",
+  "file": "020-answering-a-comment.sql",
+  "rebuildsTables": false,
+  "checksum": "b7f737252b4ea8433c0681594cabc763483cae0c71ec5fa857e595e3d0de95bf"
+ },
+ {
+  "version": 21,
+  "name": "notifications",
+  "file": "021-notifications.sql",
+  "rebuildsTables": false,
+  "checksum": "2011805ed3e8a12e23a5542dc2362e102b7ad36aed7cd5beba2ec7ebe9ecfc40"
+ },
+ {
+  "version": 22,
+  "name": "questions-in-threads",
+  "file": "022-questions-in-threads.sql",
+  "rebuildsTables": false,
+  "checksum": "d5286ff64dfb8540a7510fa6f7b974b349b6e655707a8d36aa31bd8f9b4d3eef"
+ },
+ {
+  "version": 23,
+  "name": "rescue-orphaned-replies",
+  "file": "023-rescue-orphaned-replies.sql",
+  "rebuildsTables": false,
+  "checksum": "bfb84b6dd6d81ebda0991adce4238b75e2f034e40b9f78cca51436663a3c381c"
+ },
+ {
+  "version": 24,
+  "name": "reactions",
+  "file": "024-reactions.sql",
+  "rebuildsTables": false,
+  "checksum": "22de9b670beb94b80e650b181b5defe748cf0cbe995d57431fc83a37a3bf869e"
+ },
+ {
+  "version": 25,
+  "name": "cursor-per-project",
+  "file": "025-cursor-per-project.sql",
+  "rebuildsTables": true,
+  "checksum": "e6ead86c991eccea0887982ee4310c6e63b20347c668f9da38badeba7302ea17"
+ },
+ {
+  "version": 26,
+  "name": "any-file",
+  "file": "026-any-file.sql",
+  "rebuildsTables": true,
+  "checksum": "4846c72a13fcf9917b65058137a3036c3c4b0332e633e20e4a6d2a144b41166f"
+ },
+ {
+  "version": 27,
+  "name": "embeds",
+  "file": "027-embeds.sql",
+  "rebuildsTables": false,
+  "checksum": "c283121648049aaad44c4e0dcb7e4f0fb204405f40f247d026054f2a00dfeff2"
+ },
+ {
+  "version": 28,
+  "name": "embeds-look-like-their-sources",
+  "file": "028-embeds-look-like-their-sources.sql",
+  "rebuildsTables": false,
+  "checksum": "9381e5c5f66e74030a3accb6b8edfa60d3e9d9d917f59cd31ef8db77e728d087"
+ },
+ {
+  "version": 29,
+  "name": "embeds-carry-their-mark",
+  "file": "029-embeds-carry-their-mark.sql",
+  "rebuildsTables": false,
+  "checksum": "326f7a66a6b680982bc1039573a7680f88c4b01ca3f7761f43dfccd67315c1f2"
+ },
+ {
+  "version": 30,
+  "name": "every-card-carries-the-same-things",
+  "file": "030-every-card-carries-the-same-things.sql",
+  "rebuildsTables": false,
+  "checksum": "0898f54499d0aa9ebe1159ea39f5786e2c64b6674e499321e4dc107d7bdef7f2"
+ },
+ {
+  "version": 31,
+  "name": "an-agent-withdraws-its-own-question",
+  "file": "031-an-agent-withdraws-its-own-question.sql",
+  "rebuildsTables": true,
+  "checksum": "e77576eda765e7c83f875401aae3fc5fc71cc02581720f2b600dedba77954d3e"
+ },
+ {
+  "version": 32,
+  "name": "talking-a-question-over-first",
+  "file": "032-talking-a-question-over-first.sql",
+  "rebuildsTables": false,
+  "checksum": "8a60af36098bd99c47393a076c3092433e666a0ac1e198ad88148078fa4757a1"
+ },
+ {
+  "version": 33,
+  "name": "second-thoughts",
+  "file": "033-second-thoughts.sql",
+  "rebuildsTables": false,
+  "checksum": "ff93b64f70c7b5a779943bddbdf9ba689a6a322856b705ba448b9356faafef20"
+ },
+ {
+  "version": 34,
+  "name": "one-kind-of-card",
+  "file": "034-one-kind-of-card.sql",
+  "rebuildsTables": true,
+  "checksum": "cf2ce9e8789e75e2287f395dfbd91d9cf928da18f43d2778fcaf4a55f965f2a6"
+ },
+ {
+  "version": 35,
+  "name": "work-lives-in-the-feed",
+  "file": "035-work-lives-in-the-feed.sql",
+  "rebuildsTables": false,
+  "checksum": "eab9adce021a9354c5c54bacaaad9a3cf20876dc85e21ac45ed8496d5339034a"
+ },
+ {
+  "version": 36,
+  "name": "old-tasks-are-not-news",
+  "file": "036-old-tasks-are-not-news.sql",
+  "rebuildsTables": false,
+  "checksum": "553e1bf41cefe321151ce7a940658788c911785b461b19fdf10e57740c976176"
+ },
+ {
+  "version": 37,
+  "name": "work-that-moves-comes-back",
+  "file": "037-work-that-moves-comes-back.sql",
+  "rebuildsTables": false,
+  "checksum": "d6d50310cf46bca3474eb03337da371a592afc097c5afd4f84fd7c4e9bc2ac02"
+ },
+ {
+  "version": 38,
+  "name": "sound-on-a-card",
+  "file": "038-sound-on-a-card.sql",
+  "rebuildsTables": true,
+  "checksum": "62803bd919497d2ae31cc367a1a51e8bb24e13a1cc15461d7aaa5826f84f31c2"
+ },
+ {
+  "version": 39,
+  "name": "tags-on-a-card",
+  "file": "039-tags-on-a-card.sql",
+  "rebuildsTables": false,
+  "checksum": "25803620b8c6b27399f9f57a5796af561fec79813588f2e47f4e08e11315f264"
+ },
+ {
+  "version": 40,
+  "name": "notes-on-a-card",
+  "file": "040-notes-on-a-card.sql",
+  "rebuildsTables": false,
+  "checksum": "23cac4f4cccefd3c15cb358f2dd5a56431a6c08c85d29cb57f1a1ab8ea56c1d6"
+ },
+ {
+  "version": 41,
+  "name": "an-app-on-a-card",
+  "file": "041-an-app-on-a-card.sql",
+  "rebuildsTables": false,
+  "checksum": "7e0d64de7fdfc7151f1232b8fd2e0726e264098a8cfbe11c259cc308a0346873"
+ },
+ {
+  "version": 42,
+  "name": "an-app-that-lives-somewhere-else",
+  "file": "042-an-app-that-lives-somewhere-else.sql",
+  "rebuildsTables": false,
+  "checksum": "0303325056000f18002007e41fe84dc7b843afd7f3c7ad03990417b5898ece32"
+ },
+ {
+  "version": 43,
+  "name": "owner-devices",
+  "file": "043-owner-devices.sql",
+  "rebuildsTables": false,
+  "checksum": "aa55018a705ad19c3103f7853cc3c25ce945f6b646b48e4199e8308234fc4ee2"
+ },
+ {
+  "version": 44,
+  "name": "mentions",
+  "file": "044-mentions.sql",
+  "rebuildsTables": false,
+  "checksum": "d88737723f6b8512b1e73e72032677a7cb903675a5afbfd1434362312d526cff"
+ },
+ {
+  "version": 45,
+  "name": "alert-projects",
+  "file": "045-alert-projects.sql",
+  "rebuildsTables": false,
+  "checksum": "7cbe2615fe2e5ff45b4604b98a5809431535d2fffae4741a11b19982991f386e"
+ },
+ {
+  "version": 46,
+  "name": "media-indexes-come-back",
+  "file": "046-media-indexes-come-back.sql",
+  "rebuildsTables": false,
+  "checksum": "357b4342fe37b91bddc580b48db9def109c73f62454ab94afcca05632ecbb683"
+ }
+]
