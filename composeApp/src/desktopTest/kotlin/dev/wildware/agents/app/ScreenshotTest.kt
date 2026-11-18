@@ -1,5 +1,7 @@
 package dev.wildware.agents.app
 
+import dev.wildware.agents.app.feed.Choice
+import dev.wildware.agents.app.feed.PickBounds
 import dev.wildware.agents.app.feed.Reply
 import dev.wildware.agents.app.feed.FormField
 import dev.wildware.agents.app.feed.QuestionKind
@@ -482,6 +484,29 @@ class ScreenshotTest {
             }
             shoot("phone-$mode-question-thread", Size.Phone, dark) {
                 AgentsPreview(dark = dark, state = state, safeArea = Size.Phone.safeArea, preview = ScreenPreview(threadOpen = true))
+            }
+        }
+    }
+
+
+
+    /** A multi-choice question with bounds: the hint above Send, one pick short (Send off) and then too many (hint in red). */
+    @Test
+    fun multiChoiceBounds() {
+        val base = FakeFeed.state.sections.flatMap { it.items }.filterIsInstance<FeedItem.Question>().first()
+        val q = base.copy(
+            prompt = "Which platforms should the beta go to first?", body = "Pick two or three; the rest wait a week.",
+            kind = QuestionKind.MultiChoice, choices = listOf("iPhone", "Android", "Mac", "Windows").map { Choice(it) },
+            picks = PickBounds(2, 3, bounded = true),
+        )
+        val state = FakeFeed.state.copy(sections = listOf(FakeFeed.state.sections.first().copy(items = listOf(q))))
+        for (dark in listOf(false, true)) {
+            val mode = if (dark) "dark" else "light"
+            shoot("phone-$mode-multi-bounds", Size.Phone, dark) {
+                AgentsPreview(dark = dark, state = state, safeArea = Size.Phone.safeArea, preview = ScreenPreview(picked = mapOf(q.id to setOf("iPhone"))))
+            }
+            shoot("desktop-$mode-multi-bounds", Size.Desktop, dark) {
+                AgentsPreview(dark = dark, state = state, safeArea = Size.Desktop.safeArea, preview = ScreenPreview(picked = mapOf(q.id to setOf("iPhone", "Android", "Mac", "Windows"))))
             }
         }
     }

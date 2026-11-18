@@ -1,5 +1,6 @@
 package dev.wildware.agents.app.feed
 
+import androidx.compose.ui.semantics.selected
 import dev.wildware.agents.app.ProductName
 import androidx.compose.runtime.key
 import androidx.compose.foundation.clickable
@@ -347,8 +348,10 @@ fun QuestionCard(
     // Buttons answer on the spot; choice and multi-choice gather picks, then send them.
     val gathers = item.kind == QuestionKind.Choice || item.kind == QuestionKind.MultiChoice
     val picks = ui?.picksFor(item.id) ?: emptySet()
+    // Only within the question's bounds: a disabled Send that says why beats a refusal after it.
+    val ready = item.picks.allows(picks.size)
     val send = {
-        if (picks.isNotEmpty()) ui?.emit(FeedEvent.Answer(item.id, item.choices.map { it.label }.filter { it in picks }))
+        if (ready) ui?.emit(FeedEvent.Answer(item.id, item.choices.map { it.label }.filter { it in picks }))
         Unit
     }
     val pick = { choice: Choice -> if (gathers) ui?.toggle(item, choice.label) else answer(choice); Unit }
@@ -367,7 +370,7 @@ fun QuestionCard(
         startAction = when {
             item.sending -> null
             !gathers && primary != null -> GestureAction(primary.label, Icons.Check, colors.success, Color.White) { answer(primary) }
-            picks.isNotEmpty() -> GestureAction(sendLabel, Icons.Send, colors.success, Color.White) { send() }
+            gathers && ready -> GestureAction(sendLabel, Icons.Send, colors.success, Color.White) { send() }
             else -> null
         },
         endAction = when {
@@ -467,24 +470,32 @@ fun QuestionCard(
                 if (image != null) AttachmentImage(image, m) else Box(m.background(colors.surfaceSunken))
             }
         }
-        if (gathers) {
-            if (item.hasPictures) Spacer(Modifier.height(14.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                AppButton(sendLabel, ButtonTone.Waiting, icon = Icons.Send, enabled = picks.isNotEmpty() && !item.sending, onClick = send)
-                AppButton("Not now", ButtonTone.Secondary, enabled = !item.sending, onClick = dismiss)
-            }
-        }
         if (!item.hasPictures) FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             item.choices.forEachIndexed { i, choice ->
                 // Number keys answer on desktop; phones have no keyboard to hint at.
                 val hint = if (density == Density.Comfortable) "${i + 1}" else null
+                // Gathered picks show as picked; a buttons question marks its first, suggested answer.
+                val picked = gathers && choice.label in picks
+                val marked = if (gathers) picked else choice.primary
                 AppButton(
                     choice.label,
-                    if (choice.primary) ButtonTone.Waiting else ButtonTone.Secondary,
-                    icon = if (choice.primary) Icons.Check else null,
+                    if (marked) ButtonTone.Waiting else ButtonTone.Secondary,
+                    modifier = if (gathers) Modifier.semantics { selected = picked } else Modifier,
+                    icon = if (marked) Icons.Check else null,
                     enabled = !item.sending,
                     trailing = hint,
                 ) { pick(choice) }
+            }
+        }
+        if (gathers) {
+            Spacer(Modifier.height(if (item.hasPictures) 14.dp else 10.dp))
+            item.picks.hint(item.choices.size)?.let { hint ->
+                // Red once there are too many: the one way the owner can be past the bound.
+                MetaText(hint, Modifier.padding(bottom = 8.dp), color = if (picks.size > item.picks.max) colors.error else muted)
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                AppButton(sendLabel, ButtonTone.Waiting, icon = Icons.Send, enabled = ready && !item.sending, onClick = send)
+                AppButton("Not now", ButtonTone.Secondary, enabled = !item.sending, onClick = dismiss)
             }
         }
         item.form?.let { form ->
@@ -510,6 +521,7 @@ fun QuestionCard(
                 when {
                     item.hasPictures && gathers -> "Tap to pick · hold to look closer · swipe right to send"
                     item.hasPictures -> "Tap a picture to answer · hold to look closer"
+                    gathers -> "Tap to pick · swipe right to send"
                     primary != null -> "Swipe right: ${primary.label} · left: ${decline?.label ?: "Dismiss"}"
                     else -> "Swipe left: Not now"
                 },

@@ -26,6 +26,7 @@ import dev.wildware.agents.app.feed.BellItem
 import dev.wildware.agents.app.feed.FileAttachment
 import dev.wildware.agents.app.feed.Sound
 import dev.wildware.agents.app.feed.FeedItem
+import dev.wildware.agents.app.feed.PickBounds
 import dev.wildware.agents.app.feed.Level
 import dev.wildware.agents.app.feed.LinkStatus
 import dev.wildware.agents.app.feed.FormField
@@ -142,6 +143,25 @@ class MappingTest {
             .sections.single().items.single() as FeedItem.Question
         assertEquals(FormField(actions = listOf("Go")), q.form)
         assertEquals(null, q.form!!.problem(""))
+    }
+
+    private fun multi(config: RequestConfig?, options: List<String> = listOf("A", "B", "C", "D")): FeedItem.Question {
+        val request = RequestCard(
+            RequestView(id = "r3", agentId = "a1", kind = "multi_choice", question = "Which?", options = options, config = config),
+            agentName = "lumen", projectName = null, discussion = emptyList(), unread = 0, sending = false, tags = emptyList(), fields = emptyList(),
+        )
+        return mapper.map(feed(emptyList(), listOf(request)), listOf(mega), emptyList(), emptyList(), null).sections.single().items.single() as FeedItem.Question
+    }
+
+    @Test
+    fun aMultiChoiceQuestionCarriesHowManyToPick() {
+        assertEquals(PickBounds(2, 3, bounded = true), multi(RequestConfig(min = 2, max = 3)).picks)
+        // No bounds: at least one, any number up to all of them, and nothing to say about it.
+        assertEquals(PickBounds(1, 4, bounded = false), multi(null).picks)
+        // An agent may let the owner pick none.
+        assertEquals(PickBounds(0, 2, bounded = true), multi(RequestConfig(min = 0, max = 2)).picks)
+        // A max past the options is the options.
+        assertEquals(PickBounds(1, 4, bounded = false), multi(RequestConfig(max = 9)).picks)
     }
 
     @Test

@@ -154,6 +154,25 @@ data class Reply(
     val acks: Acks = Acks(),
 )
 
+/**
+ * How many options a question that gathers picks takes, both ends included. [bounded] when the agent
+ * set a range worth telling the owner about, as "Choose between 2 and 3."
+ */
+@Immutable
+data class PickBounds(val min: Int = 1, val max: Int = Int.MAX_VALUE, val bounded: Boolean = false) {
+    fun allows(count: Int): Boolean = count in min..max
+
+    /** What to tell the owner, in plain words, for a question with [options] options; null when there are no bounds. */
+    fun hint(options: Int): String? = when {
+        !bounded -> null
+        min == max -> "Choose $min."
+        min == 0 && max >= options -> "Choose any, or none."
+        max >= options -> "Choose at least $min."
+        min <= 1 -> "Choose up to $max."
+        else -> "Choose between $min and $max."
+    }
+}
+
 @Immutable
 data class Choice(
     val label: String,
@@ -290,6 +309,8 @@ sealed interface FeedItem {
         val inReplyTo: String? = null,
         /** The card whose thread it was asked in, to jump there. */
         val threadId: String? = null,
+        /** How many picks a multi-choice question takes. */
+        val picks: PickBounds = PickBounds(),
         /** The talk about the question before it is answered: its own thread, oldest first. */
         override val replies: List<Reply> = emptyList(),
         override val unreadReplies: Int = 0,

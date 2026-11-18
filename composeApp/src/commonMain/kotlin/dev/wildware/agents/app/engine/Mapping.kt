@@ -1,6 +1,8 @@
 package dev.wildware.agents.app.engine
 
 import dev.wildware.agents.AckView
+import dev.wildware.agents.app.feed.PickBounds
+import dev.wildware.agents.RequestConfig
 import dev.wildware.agents.FeedCard
 import dev.wildware.agents.LiveAgentView
 import dev.wildware.agents.MediaView
@@ -260,6 +262,7 @@ internal class FeedMapper(
             threadId = request.messageId?.let { threads.find(it)?.first } ?: request.updateId,
             replies = replies(discussion, unread, agents, project, threads),
             unreadReplies = unread,
+            picks = if (kind == QuestionKind.MultiChoice) pickBounds(config, options.size) else PickBounds(),
         )
     }
 
@@ -461,6 +464,16 @@ internal fun heartbeatLabel(lastHeartbeatAt: Long, now: Long): String {
         seconds < 60 -> "${seconds}s ago"
         else -> "${seconds / 60}m ago"
     }
+}
+
+/**
+ * How many a multi-choice question takes, as the website enforces it: the agent's min (at least one
+ * when it set none) to its max (all of them when it set none), both kept within the options.
+ */
+internal fun pickBounds(config: RequestConfig?, options: Int): PickBounds {
+    val min = (config?.min ?: 1).coerceIn(0, options)
+    val max = (config?.max ?: options).coerceIn(min, options)
+    return PickBounds(min, max, bounded = min != 1 || max < options)
 }
 
 /** A colour slot that stays the same for the same id on every device. */
