@@ -3,6 +3,7 @@
 package dev.wildware.agents.app.feed
 
 import dev.wildware.agents.AlertPrefs
+import dev.wildware.agents.MediaRetention
 import androidx.compose.runtime.Immutable
 import kotlin.experimental.ExperimentalObjCName
 import kotlin.native.ObjCName
@@ -109,7 +110,11 @@ data class Attachment(
     val url: String? = null,
     /** Set when this tile is a video: [url] is then its poster, and a tap plays it. */
     val video: VideoSource? = null,
-)
+    /** The owner's media retention removed it this many days on: a quiet placeholder shows, and nothing loads. */
+    val removedAfterDays: Int? = null,
+) {
+    val isRemoved: Boolean get() = removedAfterDays != null
+}
 
 /** Pictures to look through full size, starting at [index]. */
 @Immutable
@@ -385,6 +390,8 @@ data class FeedState(
     val bell: Bell = Bell(),
     /** Which alerts this device gets. */
     val alerts: AlertSettings = AlertSettings(),
+    /** How long the dashboard keeps media. */
+    val retention: RetentionSettings = RetentionSettings(),
 ) {
     fun item(id: String): FeedItem? = sections.firstNotNullOfOrNull { s -> s.items.firstOrNull { it.id == id } }
 }
@@ -411,6 +418,25 @@ data class BellItem(
  */
 @Immutable
 data class AlertSettings(val prefs: AlertPrefs? = null, val loaded: Boolean = false, val problem: String? = null)
+
+/**
+ * How long the dashboard keeps media, as it has it. [loaded] is false until it has been read;
+ * [saving] while a change is on its way; [problem] says why it couldn't be read or saved, in the
+ * dashboard's own words when it gave some. [saves] counts the saves that landed.
+ *
+ * [allowed] is the one gate: whether this person may see and change it. Today that is the owner,
+ * which every signed-in device is, and the dashboard refusing the read turns it off. With teams it
+ * becomes admins only: decide it here and every way in (the account sheet, the command bar) follows.
+ */
+@Immutable
+data class RetentionSettings(
+    val setting: MediaRetention = MediaRetention(),
+    val loaded: Boolean = false,
+    val allowed: Boolean = false,
+    val saving: Boolean = false,
+    val problem: String? = null,
+    val saves: Int = 0,
+)
 
 /** The live connection, as the header says it. */
 enum class LinkStatus(val label: String) {

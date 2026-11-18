@@ -50,6 +50,11 @@ fun agentsImageLoader(context: PlatformContext, engine: () -> HttpClientEngine, 
  */
 @Composable
 fun AttachmentImage(attachment: Attachment, modifier: Modifier, contentScale: ContentScale = ContentScale.Crop) {
+    // Removed by the owner's media retention: say so where it was, and never ask for it.
+    attachment.removedAfterDays?.let { days ->
+        RemovedMediaTile(days, modifier)
+        return
+    }
     val url = attachment.url
     if (url == null) {
         SceneArt(attachment.scene, modifier)

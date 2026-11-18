@@ -67,6 +67,10 @@ class FakeServer {
     var notifications = listOf<NotificationView>()
     /** This device's alert choice, as `{"prefs":…}` JSON. */
     var alertPrefs = """{"prefs":null}"""
+    /** How long the dashboard keeps media, as `GET /api/settings/media-retention` answers; null refuses with a 403. */
+    var mediaRetention: String? = """{"days":null,"kinds":["image","video","audio","file"]}"""
+    /** When set, a retention save is refused with this message, as the dashboard words a 400. */
+    @Volatile var refuseRetention: String? = null
     var seq = 10L
 
     /** Make every write fail, as when the server is down: the outbox keeps them waiting. */
@@ -106,6 +110,8 @@ class FakeServer {
                     alertPrefs = body.replace("\"prefs\"", "\"ok\":true,\"prefs\"")
                     ok(alertPrefs)
                 }
+                path == "/api/settings/media-retention" -> refuseRetention?.let { ok("""{"error":"invalid_argument","message":"$it"}""", HttpStatusCode.BadRequest) }
+                    ?: ok(body.also { mediaRetention = it })
                 path == "/api/media" -> ok("""{"media":{"id":"md-up","kind":"image","mime":"image/png","status":"pending"}}""", HttpStatusCode.Created)
                 else -> ok("{}")
             }
@@ -131,6 +137,7 @@ class FakeServer {
             "/api/messages" -> ok(json.encodeToString(MessagesSnapshot.serializer(), MessagesSnapshot(seq = seq, messages = messages, reactions = reactions, media = messageMedia)))
             "/api/snapshot/requests" -> ok(json.encodeToString(RequestsSnapshot.serializer(), RequestsSnapshot(seq, requests = requests)))
             "/api/devices/current/alert-prefs" -> ok(alertPrefs)
+            "/api/settings/media-retention" -> mediaRetention?.let { ok(it) } ?: ok("""{"error":"forbidden","message":"Only the owner can change this."}""", HttpStatusCode.Forbidden)
             "/api/snapshot/agents" -> ok(json.encodeToString(AgentsSnapshot.serializer(), AgentsSnapshot(seq, agents = agents)))
             "/api/notifications" -> ok(json.encodeToString(NotificationsSnapshot.serializer(), NotificationsSnapshot(
                 seq, notifications = notifications, unseen = notifications.count { it.seenAt == null },

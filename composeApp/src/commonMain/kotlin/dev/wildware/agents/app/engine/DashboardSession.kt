@@ -30,6 +30,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import dev.wildware.agents.AlertPrefs
 import dev.wildware.agents.app.feed.AlertSettings
+import dev.wildware.agents.DashboardException
+import dev.wildware.agents.MediaRetention
+import dev.wildware.agents.app.feed.RetentionSettings
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -86,6 +89,11 @@ class DashboardSession(
     /** Which alerts this device gets, read from the dashboard when the session starts. */
     val alerts: StateFlow<AlertSettings> = mutableAlerts
 
+    private val mutableRetention = MutableStateFlow(RetentionSettings())
+
+    /** How long the dashboard keeps media, read when the session starts. */
+    val retention: StateFlow<RetentionSettings> = mutableRetention
+
     private val selected = MutableStateFlow<String?>(null)
     private var feed: Feed = dashboard.everything
     private val feeds = MutableStateFlow(feed)
@@ -107,13 +115,13 @@ class DashboardSession(
         dashboard.everything.state,
         dashboard.projects,
         dashboard.notifications,
-        mutableAlerts,
-    ) { shown, everything, projects, notifications, alerts ->
+        combine(mutableAlerts, mutableRetention, ::Pair),
+    ) { shown, everything, projects, notifications, (alerts, retention) ->
         // Search looks across every project's loaded cards, whichever feed is on screen.
         val all = if (shown.current.slug == null) shown else mapper.map(everything, projects, emptyList(), emptyList(), null)
         // Parse what the feed will draw before handing it over, here off the UI thread, so a card
         // that scrolls into view (or arrives) finds its markdown ready instead of parsing mid-frame.
-        shown.copy(searchIndex = searchEntriesOf(all.sections), bell = mapper.bell(notifications), alerts = alerts).also { MarkdownCache.warm(markdownIn(it).asIterable()) }
+        shown.copy(searchIndex = searchEntriesOf(all.sections), bell = mapper.bell(notifications), alerts = alerts, retention = retention).also { MarkdownCache.warm(markdownIn(it).asIterable()) }
     }.stateIn(scope, SharingStarted.Eagerly, mapper.map(feed.state.value, emptyList(), emptyList(), emptyList(), null))
 
     /** True once the dashboard has stopped taking this device's key. */
@@ -150,6 +158,45 @@ class DashboardSession(
         }
     }
 
+    /**
+     * Reads how long the dashboard keeps media. A dashboard that refuses (not this person's to see,
+     * or too old to have it) hides the setting rather than showing an error.
+     */
+    private suspend fun loadRetention() {
+        mutableRetention.value = try {
+            RetentionSettings(client.mediaRetention(), loaded = true, allowed = true)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (refused: DashboardException) {
+            if (refused.status in RetentionHidden) RetentionSettings() else RetentionSettings(allowed = true, problem = "Couldn't read how long media is kept. ${refused.message}")
+        } catch (failed: Throwable) {
+            RetentionSettings(allowed = true, problem = "Couldn't read how long media is kept. Check the connection and try again.")
+        }
+    }
+
+    /**
+     * Saves how long the dashboard keeps media. Not shown until the dashboard has it: this one
+     * deletes things, so the screen never claims a setting that isn't so. A refusal shows the
+     * dashboard's own words.
+     */
+    private fun saveRetention(setting: MediaRetention) {
+        val before = mutableRetention.value
+        if (!before.allowed || !before.loaded || before.saving) return
+        mutableRetention.value = before.copy(saving = true, problem = null)
+        scope.launch {
+            mutableRetention.value = try {
+                before.copy(setting = client.setMediaRetention(setting), saves = before.saves + 1, problem = null)
+            } catch (cancelled: CancellationException) {
+                mutableRetention.value = before
+                throw cancelled
+            } catch (refused: DashboardException) {
+                before.copy(problem = refused.message)
+            } catch (failed: Throwable) {
+                before.copy(problem = "Couldn't save that. Check the connection and try again.")
+            }
+        }
+    }
+
     /** Marks every card on the all-projects feed read, and every waiting question: the tray's "Mark all read". */
     fun markAllRead() {
         val everything = dashboard.everything.state.value
@@ -163,6 +210,7 @@ class DashboardSession(
         outbox.start()
         dashboard.start()
         scope.launch { loadAlerts() }
+        scope.launch { loadRetention() }
         // Another process queued, sent or dropped something: show it, and send what is new.
         scope.launch { outboxChanged.collect { outbox.reload() } }
         scope.launch { foreground.collect { resume() } }
@@ -235,6 +283,8 @@ class DashboardSession(
             is FeedEvent.OpenNotification -> dashboard.markNotificationsSeen(listOf(event.id))
             is FeedEvent.ClearNotifications -> dashboard.markNotificationsSeen(null)
             is FeedEvent.SetAlertPrefs -> saveAlerts(event.prefs)
+            is FeedEvent.ReadMediaRetention -> scope.launch { loadRetention() }
+            is FeedEvent.SetMediaRetention -> saveRetention(event.setting)
             is FeedEvent.SelectProject -> select(event.slug)
             is FeedEvent.Refresh -> {
                 dashboard.revive(reconnect = true)
@@ -293,3 +343,6 @@ class DashboardSession(
         else -> JsonPrimitive(choices.firstOrNull().orEmpty())
     }
 }
+
+/** Answers that mean "not for this person" or "this dashboard has no such setting": the setting stays hidden. */
+private val RetentionHidden = setOf(401, 403, 404)

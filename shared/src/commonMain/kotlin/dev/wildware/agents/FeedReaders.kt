@@ -223,7 +223,7 @@ internal class TimelineReader(
     private var loadingOlder = false
 
     override val watched = setOf(
-        "update.created", "update.updated", "update.deleted", "media.ready",
+        "update.created", "update.updated", "update.deleted", "media.ready", "media.removed",
         "project.created", "project.updated", "tags.changed", "fields.changed", "apps.changed",
         "agent.renamed", StreamEvent.Resync,
     )
@@ -257,7 +257,7 @@ internal class TimelineReader(
     override fun handle(event: StreamEvent) {
         // One stream carries every project; a page showing one drops what isn't its business.
         // A picture that isn't on an update (the server says so with a null updateId) isn't either.
-        if (elsewhere(event) || event.type == "media.ready" && notOnAnUpdate(event.payload)) {
+        if (elsewhere(event) || event.type in MediaEvents && notOnAnUpdate(event.payload)) {
             seq = maxOf(seq, event.seq)
             return
         }
@@ -400,7 +400,7 @@ internal class ThreadsReader(
 
     override val watched = setOf(
         "message.created", "message.updated", "message.delivered", "message.deleted",
-        "reaction.updated", "ack.updated", "media.ready", StreamEvent.Resync,
+        "reaction.updated", "ack.updated", "media.ready", "media.removed", StreamEvent.Resync,
     )
 
     // Whole reads and thread reads go through one queue, so an older whole read can never land
@@ -496,7 +496,7 @@ internal class ThreadsReader(
                 val id = payload.string("messageId") ?: return Target.Nothing
                 held(id) ?: alone(id)
             }
-            "media.ready" -> {
+            "media.ready", "media.removed" -> {
                 // Only a message's media: an update's or a question's is another reader's business.
                 // A message not loaded yet gets its media with the read its own event asks for.
                 val messageId = if (payload != null && "messageId" in payload) {
@@ -648,7 +648,7 @@ internal class RequestsReader(
 
     override fun alsoWatches(event: StreamEvent) =
         event.type == "reaction.updated" && event.payload.cardKind() == CardKinds.Request ||
-            event.type == "media.ready" && (
+            event.type in MediaEvents && (
                 event.payload.string("requestId")?.let { id -> items.any { it.id == id } }
                     ?: event.payload.string("mediaId").let { id -> items.any { request -> request.media.any { it.id == id } } }
                 )
@@ -742,3 +742,10 @@ internal class PresenceReader(
         const val WindowMillis = 90_000L
     }
 }
+
+/**
+ * A card's media changed under it: it finished processing (`media.ready`) or the owner's retention
+ * took its bytes away (`media.removed`). Either way the card is read again, so a thumbnail becomes
+ * the picture, or the "removed" placeholder, without a reload.
+ */
+internal val MediaEvents = setOf("media.ready", "media.removed")

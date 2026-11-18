@@ -222,6 +222,7 @@ fun FeedScreen(
             ui.statusPick?.let { StatusPicker(ui, it, if (phone) safeArea else SafeArea()) }
             ui.deleting?.let { DeleteConfirm(ui, it) }
             if (ui.alertsOpen) AlertSettingsSheet(ui, if (phone) safeArea else SafeArea())
+            if (ui.retentionOpen) RetentionSettingsSheet(ui, if (phone) safeArea else SafeArea())
         }
         FollowNavigation(ui, navigator)
         FollowSystemBack(ui, widthPx)

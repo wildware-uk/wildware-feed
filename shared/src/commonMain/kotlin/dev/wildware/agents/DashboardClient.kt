@@ -271,6 +271,24 @@ class DashboardClient(
             })
         }.decoded<AlertPrefsBody>().prefs
 
+    /** How long the dashboard keeps media. Only the owner may read it. */
+    @Throws(Exception::class)
+    suspend fun mediaRetention(): MediaRetention = http.get("api/settings/media-retention") { authorise() }.decoded()
+
+    /**
+     * Saves how long the dashboard keeps media and answers what it stored. A refusal comes back as a
+     * [DashboardException] whose message is the dashboard's own words, to show as they are.
+     */
+    @Throws(Exception::class)
+    suspend fun setMediaRetention(setting: MediaRetention): MediaRetention =
+        http.put("api/settings/media-retention") {
+            authorise()
+            jsonBody(buildJsonObject {
+                put("days", setting.days)
+                put("kinds", JsonArray(setting.kinds.map(::JsonPrimitive)))
+            })
+        }.decoded()
+
     /** Swaps the web view's login cookie for a long-lived device key. */
     @Throws(Exception::class)
     suspend fun registerDevice(name: String, sessionCookie: String): DeviceRegistration =

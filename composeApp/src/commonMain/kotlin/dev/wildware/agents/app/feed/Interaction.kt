@@ -1,6 +1,8 @@
 package dev.wildware.agents.app.feed
 
 import dev.wildware.agents.AlertPrefs
+import dev.wildware.agents.MediaRetention
+import dev.wildware.agents.RetentionForm
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.State
@@ -66,6 +68,10 @@ sealed interface FeedEvent {
     data class SetStatus(val targetId: String, val status: WorkStatus?) : FeedEvent
     /** Save which alerts this device gets; null is every alert. */
     data class SetAlertPrefs(val prefs: AlertPrefs?) : FeedEvent
+    /** Read how long the dashboard keeps media again, after a read that failed. */
+    data object ReadMediaRetention : FeedEvent
+    /** Save how long the dashboard keeps media. The screen has already asked when it deletes more. */
+    data class SetMediaRetention(val setting: MediaRetention) : FeedEvent
     data class DropUnsent(val outboxId: String) : FeedEvent
     data object MarkAllRead : FeedEvent
     data object ToggleTheme : FeedEvent
@@ -185,6 +191,9 @@ data class ScreenPreview(
     val filter: FeedFilter = FeedFilter.All,
     /** The alert settings, open. */
     val alertsOpen: Boolean = false,
+    /** The "Keep media" settings, open, with this draft in them (null starts from what is saved). */
+    val retentionOpen: Boolean = false,
+    val retentionDraft: RetentionForm? = null,
 )
 
 /**
@@ -243,6 +252,8 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
     var statusPick by mutableStateOf(preview.statusPick)
     /** The alert settings for this device. */
     var alertsOpen by mutableStateOf(preview.alertsOpen)
+    /** How long the dashboard keeps media. */
+    var retentionOpen by mutableStateOf(preview.retentionOpen)
     val composerFocus = FocusRequester()
 
     /** A message box has the cursor (on a phone, the keyboard is up). Back closes it first. */

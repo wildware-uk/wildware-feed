@@ -65,7 +65,7 @@ internal fun FollowSystemBack(ui: FeedUi, widthPx: Float) {
     val feels = system.ownsLeftEdge
 
     fun modeNow(): BackMode? = when {
-        ui.viewer != null || ui.playing != null || ui.commandOpen || ui.bellOpen || ui.alertsOpen || ui.statusPick != null || ui.menu != null || ui.selecting != null -> BackMode.Overlay
+        ui.viewer != null || ui.playing != null || ui.commandOpen || ui.bellOpen || ui.alertsOpen || ui.retentionOpen || ui.statusPick != null || ui.menu != null || ui.selecting != null -> BackMode.Overlay
         // The open message box closes before the screen under it moves; what was written stays.
         ui.composerOpen -> BackMode.Composer
         ui.drawer.value > 0f -> BackMode.CloseDrawer
@@ -90,6 +90,7 @@ internal fun FollowSystemBack(ui: FeedUi, widthPx: Float) {
                 ui.bellOpen -> ui.bellOpen = false
                 ui.statusPick != null -> ui.statusPick = null
                 ui.alertsOpen -> ui.alertsOpen = false
+                ui.retentionOpen -> ui.retentionOpen = false
                 ui.selecting != null -> ui.selecting = null
                 else -> ui.menu = null
             }

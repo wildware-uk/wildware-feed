@@ -192,6 +192,9 @@ private fun commandsFor(ui: FeedUi, query: String, extra: List<AppCommand>, clos
         }
         if (wanted("Refresh", "reload")) add(Command("Actions", "Refresh", "Read everything again", Icons.Refresh, done { ui.emit(FeedEvent.Refresh) }))
         if (wanted("Alerts on this device", "notifications", "settings")) add(Command("Actions", "Alerts on this device", "Which alerts this device gets", Icons.Sliders, done { ui.alertsOpen = true }))
+        if (state.retention.allowed && wanted("Keep media", "retention", "delete", "media", "settings")) {
+            add(Command("Actions", "Keep media", "How long the dashboard keeps pictures and files", Icons.Clock, done { ui.retentionOpen = true }))
+        }
         if (wanted("Switch theme", "dark", "light")) add(Command("Actions", "Switch light or dark", "", Icons.Moon, done { ui.emit(FeedEvent.ToggleTheme) }))
         extra.filter { wanted(it.title, *it.keywords.toTypedArray()) }.forEach { add(Command("Actions", it.title, it.detail, Icons.Download, done(it.run))) }
         if (wanted("Sign out")) add(Command("Actions", "Sign out", "Forget this device's key", Icons.SignOut, done { ui.emit(FeedEvent.SignOut) }))

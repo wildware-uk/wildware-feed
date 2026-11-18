@@ -354,14 +354,21 @@ fun AttachmentView(attachment: Attachment, modifier: Modifier = Modifier, onOpen
                 .aspectRatio(attachment.aspect)
                 .clip(shape)
                 .border(1.dp, colors.border, shape)
-                .pressable(
-                    if (attachment.video != null) tileLabel(attachment, 0, 1) else "Image: ${attachment.altText}. Open full size",
-                    shape,
-                    role = if (attachment.video != null) Role.Button else Role.Image,
-                    onClick = onOpen,
+                .then(
+                    // Removed media has nothing to open: the placeholder says what happened.
+                    if (attachment.isRemoved) {
+                        Modifier
+                    } else {
+                        Modifier.pressable(
+                            if (attachment.video != null) tileLabel(attachment, 0, 1) else "Image: ${attachment.altText}. Open full size",
+                            shape,
+                            role = if (attachment.video != null) Role.Button else Role.Image,
+                            onClick = onOpen,
+                        )
+                    },
                 ),
         ) {
-            if (attachment.video != null) VideoFace(attachment, Modifier.fillMaxSize()) else AttachmentImage(attachment, Modifier.fillMaxSize())
+            if (attachment.video != null && !attachment.isRemoved) VideoFace(attachment, Modifier.fillMaxSize()) else AttachmentImage(attachment, Modifier.fillMaxSize())
         }
         Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(if (attachment.video != null) Icons.Play else Icons.Image, null, tint = colors.textFaint, modifier = Modifier.size(14.dp))
@@ -468,8 +475,11 @@ fun MediaGrid(images: List<Attachment>, modifier: Modifier = Modifier, onOpen: (
 private fun GridTile(images: List<Attachment>, index: Int, modifier: Modifier, onOpen: (Int) -> Unit, more: Int = 0) {
     val image = images[index]
     val spoken = tileLabel(image, index, images.size) + if (more > 0) ", and $more more" else ""
-    Box(modifier.pressable(spoken, RectangleShape, role = if (image.video != null) Role.Button else Role.Image) { onOpen(index) }) {
-        if (image.video != null) VideoFace(image, Modifier.fillMaxSize(), small = true) else AttachmentImage(image, Modifier.fillMaxSize())
+    // A removed tile opens nothing, unless it is the "+N more" one, which still opens the rest.
+    val opens = !image.isRemoved || more > 0
+    val press = if (opens) Modifier.pressable(spoken, RectangleShape, role = if (image.video != null) Role.Button else Role.Image) { onOpen(index) } else Modifier
+    Box(modifier.then(press)) {
+        if (image.video != null && !image.isRemoved) VideoFace(image, Modifier.fillMaxSize(), small = true) else AttachmentImage(image, Modifier.fillMaxSize())
         if (more > 0) {
             Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.5f)), contentAlignment = Alignment.Center) {
                 Text("+$more", color = Color.White, style = AgentTheme.type.title)

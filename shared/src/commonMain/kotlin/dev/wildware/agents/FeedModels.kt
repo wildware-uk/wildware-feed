@@ -64,8 +64,17 @@ data class MediaView(
     val filename: String? = null,
     /** "original", "thumb-640", "thumb-1600", "poster", "video": the addresses that answer right now. */
     val variants: List<String> = emptyList(),
+    /** Set once the owner's media retention took the bytes away. Nothing is left to load: [variants] is empty. */
+    val removed: Removed? = null,
 ) {
     val isReady: Boolean get() = status == "ready"
+
+    /** Gone for good: show "Media removed after N days" in its place and never ask for a variant. */
+    val isRemoved: Boolean get() = removed != null
+
+    /** When the nightly job removed it ([at], an ISO time) and the setting it followed, in days. */
+    @Serializable
+    data class Removed(val at: String = "", val afterDays: Int)
 
     /** The path to one variant, to put after the server address. */
     fun path(variant: String = "original"): String = "media/$id/$variant"

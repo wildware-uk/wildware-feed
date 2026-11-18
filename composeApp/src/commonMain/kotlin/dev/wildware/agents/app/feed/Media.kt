@@ -32,6 +32,8 @@ data class Sound(
     override val url: String,
     val durationMs: Long?,
     val mime: String,
+    /** Removed by the owner's media retention after this many days: it shows a placeholder and never plays. */
+    val removedAfterDays: Int? = null,
 ) : Playable {
     override val fileName: String get() = "sound.${MediaLabels.extension(mime, "mp3")}"
 }
@@ -45,6 +47,8 @@ data class FileAttachment(
     /** "1.5 KB" */
     val size: String,
     val mime: String,
+    /** Removed by the owner's media retention after this many days: it shows a placeholder and never downloads. */
+    val removedAfterDays: Int? = null,
 )
 
 /** How long a sound or video is and how big a file is, said the way the website says it. */

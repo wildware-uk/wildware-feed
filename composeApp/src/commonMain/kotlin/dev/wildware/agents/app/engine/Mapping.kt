@@ -6,6 +6,7 @@ import dev.wildware.agents.RequestConfig
 import dev.wildware.agents.FeedCard
 import dev.wildware.agents.LiveAgentView
 import dev.wildware.agents.MediaView
+import dev.wildware.agents.removedMediaLabel
 import dev.wildware.agents.Outbox
 import dev.wildware.agents.OutboxItem
 import dev.wildware.agents.PlainText
@@ -214,7 +215,13 @@ internal class FeedMapper(
         val options = request.options.orEmpty()
         // A picture question carries one picture per option; the engine says which is which.
         fun choice(option: String, primary: Boolean = false) =
-            Choice(option, primary, image = request.pictureFor(option)?.takeIf { it.isReady }?.let { image(it).copy(altText = option) })
+            Choice(option, primary, image = request.pictureFor(option)?.let { media ->
+                when {
+                    media.isRemoved -> removedTile(media)
+                    media.isReady -> image(media).copy(altText = option)
+                    else -> null
+                }
+            })
         val (kind, choices) = when (request.requestKind) {
             RequestKind.Buttons -> QuestionKind.Buttons to options.mapIndexed { i, o -> choice(o, primary = i == 0) }
             RequestKind.Confirm -> QuestionKind.Buttons to listOf(Choice(Yes, primary = true), Choice(No))
@@ -332,12 +339,33 @@ internal class FeedMapper(
 
     private fun List<MediaView>.images() = filter { it.kind == "image" && it.isReady }
 
-    /** Pictures and videos share the grid, as on the website; what isn't ready yet stays hidden. */
-    private fun List<MediaView>.tiles() = filter { (it.kind == "image" || it.kind == "video") && it.isReady && it.variants.isNotEmpty() }
+    /**
+     * Pictures and videos share the grid, as on the website; what isn't ready yet stays hidden.
+     * Removed media keeps its place, as a placeholder.
+     */
+    private fun List<MediaView>.tiles() = filter { (it.kind == "image" || it.kind == "video") && (it.isRemoved || it.isReady && it.variants.isNotEmpty()) }
 
     private fun url(media: MediaView, variant: String) = serverUrl.trimEnd('/') + "/" + media.path(variant)
 
+    private fun aspectOf(media: MediaView): Float {
+        val w = media.width
+        val h = media.height
+        return if (w != null && h != null && w > 0 && h > 0) (w.toFloat() / h).coerceIn(0.5f, 3f) else 16f / 9f
+    }
+
+    /** Removed media, in the slot its picture took: no address at all, so nothing tries to load. */
+    private fun removedTile(media: MediaView): Attachment {
+        val days = media.removed?.afterDays ?: 0
+        return Attachment(
+            title = media.filename ?: if (media.kind == "video") "Video" else "Image",
+            altText = removedMediaLabel(days),
+            aspect = aspectOf(media),
+            removedAfterDays = days,
+        )
+    }
+
     private fun tile(media: MediaView): Attachment {
+        if (media.isRemoved) return removedTile(media)
         if (media.kind != "video") return image(media)
         val w = media.width
         val h = media.height
@@ -356,11 +384,25 @@ internal class FeedMapper(
         )
     }
 
-    private fun List<MediaView>.sounds() = filter { it.kind == "audio" && it.isReady && "original" in it.variants }
-        .map { Sound(it.id, url(it, "original"), it.durationMs, it.mime) }
+    private fun List<MediaView>.sounds() = filter { it.kind == "audio" && (it.isRemoved || it.isReady && "original" in it.variants) }
+        .map { media ->
+            val removed = media.removed
+            if (removed != null) Sound(media.id, "", media.durationMs, media.mime, removedAfterDays = removed.afterDays)
+            else Sound(media.id, url(media, "original"), media.durationMs, media.mime)
+        }
 
-    private fun List<MediaView>.files() = filter { it.kind == "file" && it.isReady && "original" in it.variants }
-        .map { FileAttachment(it.id, url(it, "original"), MediaLabels.fileName(it.filename), MediaLabels.size(it.bytes), it.mime) }
+    private fun List<MediaView>.files() = filter { it.kind == "file" && (it.isRemoved || it.isReady && "original" in it.variants) }
+        .map { media ->
+            val removed = media.removed
+            FileAttachment(
+                media.id,
+                if (removed != null) "" else url(media, "original"),
+                MediaLabels.fileName(media.filename),
+                MediaLabels.size(media.bytes),
+                media.mime,
+                removedAfterDays = removed?.afterDays,
+            )
+        }
 
     private fun image(media: MediaView): Attachment {
         val variant = if ("thumb-1600" in media.variants) "thumb-1600" else "original"

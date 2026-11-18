@@ -66,11 +66,11 @@ fun rememberTileOpener(attachments: List<Attachment>): (Int) -> Unit {
         { i ->
             val tile = attachments[i]
             val video = tile.video
+            // The viewer looks through pictures that are still there; removed ones have nothing to show.
+            val pictures = attachments.filter { it.video == null && !it.isRemoved }
             when {
-                video == null -> {
-                    val pictures = attachments.filter { it.video == null }
-                    ui?.viewer = Gallery(pictures, pictures.indexOf(tile))
-                }
+                tile.isRemoved -> if (pictures.isNotEmpty()) ui?.viewer = Gallery(pictures, 0)
+                video == null -> ui?.viewer = Gallery(pictures, pictures.indexOf(tile))
                 playsVideoInApp -> ui?.playing = video
                 handler != null -> scope.launch {
                     ui?.toast = "Opening the video…"
@@ -132,6 +132,7 @@ internal fun VideoFace(tile: Attachment, modifier: Modifier, small: Boolean = fa
 
 /** What a screen reader hears for one tile. */
 internal fun tileLabel(tile: Attachment, index: Int, total: Int): String {
+    if (tile.isRemoved) return "${tile.altText}, ${index + 1} of $total"
     val video = tile.video ?: return "Picture ${index + 1} of $total: ${tile.altText}"
     return "Play video ${index + 1} of $total" + (video.duration?.let { ", $it" } ?: "")
 }
@@ -143,8 +144,13 @@ fun Sounds(sounds: List<Sound>, modifier: Modifier = Modifier) {
     val auth = LocalMediaAuth.current
     Column(modifier.widthIn(max = 560.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         sounds.forEachIndexed { i, sound ->
-            val player = rememberSoundPlayer(sound, auth)
-            SoundRow(sound, i, sounds.size, player)
+            val removed = sound.removedAfterDays
+            if (removed != null) {
+                RemovedMediaRow(removed)
+            } else {
+                val player = rememberSoundPlayer(sound, auth)
+                SoundRow(sound, i, sounds.size, player)
+            }
         }
     }
 }
@@ -277,7 +283,10 @@ private const val BarCount = 48
 fun Files(files: List<FileAttachment>, modifier: Modifier = Modifier) {
     if (files.isEmpty()) return
     Column(modifier.widthIn(max = 560.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        files.forEach { FileChip(it) }
+        files.forEach { file ->
+            val removed = file.removedAfterDays
+            if (removed != null) RemovedMediaRow(removed) else FileChip(file)
+        }
     }
 }
 

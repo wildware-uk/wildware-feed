@@ -506,8 +506,8 @@ fun QuestionCard(
                 onPick = { i -> pick(item.choices[i]) },
                 onLookCloser = { i ->
                     // Look through every option's picture, starting at the one held.
-                    val pictures = item.choices.mapNotNull { it.image }
-                    item.choices[i].image?.let { ui?.viewer = Gallery(pictures, pictures.indexOf(it)) }
+                    val pictures = item.choices.mapNotNull { it.image }.filter { !it.isRemoved }
+                    item.choices[i].image?.takeIf { !it.isRemoved }?.let { ui?.viewer = Gallery(pictures, pictures.indexOf(it)) }
                 },
             ) { i, m ->
                 val image = item.choices[i].image

@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -78,17 +79,49 @@ private val priorities = listOf(
 @Composable
 fun AlertSettingsSheet(ui: FeedUi, safeArea: SafeArea) {
     val colors = AgentTheme.colors
-    val shape = AgentTheme.shapes.large
     val alerts = ui.state.alerts
     val push = LocalPushAlerts.current
-    val close = { ui.alertsOpen = false }
     val set = { choice: AlertChoice -> ui.emit(FeedEvent.SetAlertPrefs(AlertPrefs.toggle(alerts.prefs, choice.axis, choice.value))) }
+    SettingsSheet("Alerts on this device", safeArea, onClose = { ui.alertsOpen = false }) {
+        Column(Modifier.heightIn(max = 560.dp).verticalScroll(rememberScrollState()).padding(vertical = 8.dp)) {
+            val ready = alerts.loaded
+            Group("Tell me about", if (push) kinds else kinds.take(2), alerts.prefs, ready, set)
+            if (push) {
+                val updatesOn = AlertPrefs.isOn(alerts.prefs, AlertPrefs.Axis.Types, AlertPrefs.Update)
+                Group("Update levels", levels, alerts.prefs, ready && updatesOn, set)
+                Group("Update priority", priorities, alerts.prefs, ready && updatesOn, set)
+            }
+            val note = alerts.problem ?: when {
+                !alerts.loaded -> "Reading this device's settings…"
+                push -> "The dashboard sends these to this device, even when $ProductName is closed."
+                else -> "Shown while $ProductName is running on this device. Updates and comments stay in the feed and under the bell."
+            }
+            Text(
+                note,
+                Modifier.padding(horizontal = 16.dp, vertical = 10.dp).semantics { liveRegion = LiveRegionMode.Polite },
+                color = if (alerts.problem != null) colors.error else colors.textMuted,
+                style = AgentTheme.type.body,
+            )
+            // The dashboard's own settings, for whoever may change them.
+            KeepMediaEntry(ui)
+        }
+    }
+}
+
+/**
+ * The frame every settings sheet shares: a dimmed backdrop that closes it, a raised card near the
+ * top with a heading and "Done", and Escape to close.
+ */
+@Composable
+internal fun SettingsSheet(title: String, safeArea: SafeArea, onClose: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
+    val colors = AgentTheme.colors
+    val shape = AgentTheme.shapes.large
     Box(Modifier.fillMaxSize()) {
         Box(
             Modifier
                 .fillMaxSize()
                 .background(Color.Black.copy(alpha = 0.35f))
-                .clickable(remember { MutableInteractionSource() }, indication = null, onClickLabel = "Close", onClick = close),
+                .clickable(remember { MutableInteractionSource() }, indication = null, onClickLabel = "Close", onClick = onClose),
         )
         Column(
             Modifier
@@ -100,10 +133,10 @@ fun AlertSettingsSheet(ui: FeedUi, safeArea: SafeArea) {
                 .clip(shape)
                 .background(colors.surfaceRaised)
                 .border(1.dp, colors.borderStrong, shape)
-                .semantics { paneTitle = "Alerts on this device" }
+                .semantics { paneTitle = title }
                 .onPreviewKeyEvent { e ->
                     if (e.type == KeyEventType.KeyDown && e.key == Key.Escape) {
-                        close()
+                        onClose()
                         true
                     } else {
                         false
@@ -111,61 +144,53 @@ fun AlertSettingsSheet(ui: FeedUi, safeArea: SafeArea) {
                 },
         ) {
             Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("Alerts on this device", Modifier.weight(1f).semantics { heading() }, color = colors.text, style = AgentTheme.type.label)
-                AppButton("Done", ButtonTone.Quiet, onClick = close)
+                Text(title, Modifier.weight(1f).semantics { heading() }, color = colors.text, style = AgentTheme.type.label)
+                AppButton("Done", ButtonTone.Quiet, onClick = onClose)
             }
             Box(Modifier.fillMaxWidth().heightIn(max = 1.dp).background(colors.border))
-            Column(Modifier.heightIn(max = 560.dp).verticalScroll(rememberScrollState()).padding(vertical = 8.dp)) {
-                val ready = alerts.loaded
-                Group("Tell me about", if (push) kinds else kinds.take(2), alerts.prefs, ready, set)
-                if (push) {
-                    val updatesOn = AlertPrefs.isOn(alerts.prefs, AlertPrefs.Axis.Types, AlertPrefs.Update)
-                    Group("Update levels", levels, alerts.prefs, ready && updatesOn, set)
-                    Group("Update priority", priorities, alerts.prefs, ready && updatesOn, set)
-                }
-                val note = alerts.problem ?: when {
-                    !alerts.loaded -> "Reading this device's settings…"
-                    push -> "The dashboard sends these to this device, even when $ProductName is closed."
-                    else -> "Shown while $ProductName is running on this device. Updates and comments stay in the feed and under the bell."
-                }
-                Text(
-                    note,
-                    Modifier.padding(horizontal = 16.dp, vertical = 10.dp).semantics { liveRegion = LiveRegionMode.Polite },
-                    color = if (alerts.problem != null) colors.error else colors.textMuted,
-                    style = AgentTheme.type.body,
-                )
-            }
+            content()
         }
     }
 }
 
+/** A small heading over a group of settings. */
+@Composable
+internal fun SettingsHeading(title: String) {
+    MetaText(title.uppercase(), Modifier.padding(start = 16.dp, top = 10.dp, bottom = 2.dp).semantics { heading() }, color = AgentTheme.colors.textMuted)
+}
+
 @Composable
 private fun Group(title: String, choices: List<AlertChoice>, prefs: AlertPrefs?, enabled: Boolean, onToggle: (AlertChoice) -> Unit) {
-    val colors = AgentTheme.colors
-    MetaText(title.uppercase(), Modifier.padding(start = 16.dp, top = 10.dp, bottom = 2.dp).semantics { heading() }, color = colors.textMuted)
+    SettingsHeading(title)
     choices.forEach { choice ->
-        val on = AlertPrefs.isOn(prefs, choice.axis, choice.value)
-        Row(
+        CheckRow(choice.label, AlertPrefs.isOn(prefs, choice.axis, choice.value), enabled) { onToggle(choice) }
+    }
+}
+
+/** One setting that is on or off, with a tick box. */
+@Composable
+internal fun CheckRow(label: String, on: Boolean, enabled: Boolean, onToggle: () -> Unit) {
+    val colors = AgentTheme.colors
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .touchTarget()
+            .toggleable(value = on, enabled = enabled, role = Role.Checkbox) { onToggle() }
+            .alpha(if (enabled) 1f else 0.5f)
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
             Modifier
-                .fillMaxWidth()
-                .touchTarget()
-                .toggleable(value = on, enabled = enabled, role = Role.Checkbox) { onToggle(choice) }
-                .alpha(if (enabled) 1f else 0.5f)
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
+                .size(20.dp)
+                .clip(AgentTheme.shapes.small)
+                .background(if (on) colors.accent else Color.Transparent)
+                .border(1.5.dp, if (on) colors.accent else colors.borderStrong, AgentTheme.shapes.small),
+            contentAlignment = Alignment.Center,
         ) {
-            Box(
-                Modifier
-                    .size(20.dp)
-                    .clip(AgentTheme.shapes.small)
-                    .background(if (on) colors.accent else Color.Transparent)
-                    .border(1.5.dp, if (on) colors.accent else colors.borderStrong, AgentTheme.shapes.small),
-                contentAlignment = Alignment.Center,
-            ) {
-                if (on) Icon(Icons.Check, null, tint = colors.onAccent, modifier = Modifier.size(14.dp))
-            }
-            Spacer(Modifier.width(12.dp))
-            Text(choice.label, color = colors.text, style = AgentTheme.type.body)
+            if (on) Icon(Icons.Check, null, tint = colors.onAccent, modifier = Modifier.size(14.dp))
         }
+        Spacer(Modifier.width(12.dp))
+        Text(label, color = colors.text, style = AgentTheme.type.body)
     }
 }

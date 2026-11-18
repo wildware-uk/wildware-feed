@@ -41,6 +41,11 @@ import dev.wildware.agents.app.feed.FileAttachment
 import dev.wildware.agents.app.feed.Sound
 import dev.wildware.agents.app.feed.VideoSource
 import dev.wildware.agents.AlertPrefs
+import dev.wildware.agents.MediaRetention
+import dev.wildware.agents.RetentionForm
+import dev.wildware.agents.RetentionPeriod
+import dev.wildware.agents.removedMediaLabel
+import dev.wildware.agents.app.feed.RetentionSettings
 import dev.wildware.agents.app.feed.AlertSettings
 import dev.wildware.agents.app.feed.LocalPushAlerts
 import dev.wildware.agents.app.feed.FeedItem
@@ -425,6 +430,54 @@ class ScreenshotTest {
             for (dark in listOf(false, true)) {
                 shoot("${size.label}-${if (dark) "dark" else "light"}-media", size, dark, startAt = update.id) {
                     AgentsPreview(dark = dark, state = state, safeArea = size.safeArea, startAt = update.id)
+                }
+            }
+        }
+    }
+
+    /** Media the owner's retention removed: two of three tiles, a sound and a file, each a quiet placeholder. */
+    @Test
+    fun removedMedia() {
+        val update = FakeFeed.state.sections.flatMap { it.items }.filterIsInstance<FeedItem.Update>().first { it.attachments.isNotEmpty() }
+        val gone = update.copy(
+            attachments = listOf(
+                update.attachments[0].copy(altText = removedMediaLabel(30), removedAfterDays = 30),
+                update.attachments[1],
+                update.attachments[2].copy(title = "Walkthrough", altText = removedMediaLabel(30), removedAfterDays = 30),
+            ),
+            sounds = listOf(Sound("s1", "", 9_000, "audio/mpeg", removedAfterDays = 30)),
+            files = listOf(FileAttachment("f1", "", "crash-report.log", "48 KB", "text/plain", removedAfterDays = 30)),
+        )
+        val state = FakeFeed.state.let { s -> s.copy(owner = Author.Owner("Alex"), sections = s.sections.map { section -> section.copy(items = section.items.map { if (it.id == update.id) gone else it }) }) }
+        for (size in listOf(Size.Phone, Size.Desktop)) {
+            for (dark in listOf(false, true)) {
+                shoot("${size.label}-${if (dark) "dark" else "light"}-removed-media", size, dark) {
+                    AgentsPreview(dark = dark, state = state, safeArea = size.safeArea, startAt = update.id)
+                }
+            }
+        }
+    }
+
+    /** "Keep media": the way in from the account sheet, the setting, and its confirm step, on a phone and a desktop. */
+    @Test
+    fun keepMedia() {
+        val state = FakeFeed.state.copy(
+            owner = Author.Owner("Alex"),
+            alerts = AlertSettings(loaded = true),
+            retention = RetentionSettings(MediaRetention(), loaded = true, allowed = true),
+        )
+        val draft = RetentionForm.of(MediaRetention()).choose(RetentionPeriod.Preset(30)).toggle(MediaRetention.Audio)
+        for (size in listOf(Size.Phone, Size.Desktop)) {
+            for (dark in listOf(false, true)) {
+                val mode = "${size.label}-${if (dark) "dark" else "light"}"
+                shoot("$mode-keep-media-entry", size, dark) {
+                    AgentsPreview(dark = dark, state = state, safeArea = size.safeArea, preview = ScreenPreview(alertsOpen = true))
+                }
+                shoot("$mode-keep-media", size, dark) {
+                    AgentsPreview(dark = dark, state = state, safeArea = size.safeArea, preview = ScreenPreview(retentionOpen = true, retentionDraft = draft))
+                }
+                shoot("$mode-keep-media-confirm", size, dark) {
+                    AgentsPreview(dark = dark, state = state, safeArea = size.safeArea, preview = ScreenPreview(retentionOpen = true, retentionDraft = draft.copy(confirming = true)))
                 }
             }
         }
