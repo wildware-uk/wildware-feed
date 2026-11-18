@@ -16,7 +16,7 @@ import dev.wildware.agents.app.design.gesture.EdgeProgress
  * key or a screen reader action). The data layer handles these; the screen only raises them.
  */
 sealed interface FeedEvent {
-    data class Answer(val questionId: String, val choice: String) : FeedEvent
+    data class Answer(val questionId: String, val choices: List<String>) : FeedEvent
     data class DismissQuestion(val questionId: String) : FeedEvent
     data class React(val targetId: String, val emoji: String) : FeedEvent
     data class Reply(val targetId: String) : FeedEvent
@@ -52,6 +52,8 @@ data class ScreenPreview(
     val questionSwipe: Float = 0f,
     /** A reply to show swiped right, part-way to "Reply". */
     val replySwipe: String? = null,
+    /** Options already picked on picture or choice questions, by question id. */
+    val picked: Map<String, Set<String>> = emptyMap(),
     val menu: MenuTarget? = null,
     val viewer: Attachment? = null,
     val drawerOpen: Boolean = false,
@@ -73,6 +75,21 @@ class FeedUi(preview: ScreenPreview, val state: FeedState, val onEvent: (FeedEve
     val threadBack = EdgeProgress(0f)
     val projects = mutableStateListOf<Project>().apply { addAll(state.projects) }
 
+    /** What the owner has picked on choice questions but not sent yet, by question id. */
+    val picks = mutableStateMapOf<String, Set<String>>().apply { putAll(preview.picked) }
+
+    fun picksFor(questionId: String): Set<String> = picks[questionId] ?: emptySet()
+
+    /** Pick or unpick an option: any number for multi-choice, one at a time otherwise. */
+    fun toggle(question: FeedItem.Question, label: String) {
+        val now = picksFor(question.id)
+        picks[question.id] = when {
+            label in now -> now - label
+            question.kind == QuestionKind.MultiChoice -> now + label
+            else -> setOf(label)
+        }
+    }
+
     /** Reactions added here and not yet confirmed by the server, by target id. */
     val added = mutableStateMapOf<String, String>()
 
@@ -80,6 +97,7 @@ class FeedUi(preview: ScreenPreview, val state: FeedState, val onEvent: (FeedEve
         when (event) {
             is FeedEvent.React -> added[event.targetId] = event.emoji
             is FeedEvent.MoveProject -> projects.add(event.to, projects.removeAt(event.from))
+            is FeedEvent.Answer -> picks.remove(event.questionId)
             is FeedEvent.Reply -> replyingTo = state.openThread?.replies?.firstOrNull { it.id == event.targetId }
             else -> Unit
         }

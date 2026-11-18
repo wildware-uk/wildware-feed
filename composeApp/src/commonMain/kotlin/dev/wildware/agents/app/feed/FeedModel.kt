@@ -52,7 +52,10 @@ data class Reaction(val emoji: String, val count: Int, val mine: Boolean, val sp
 data class Acks(val read: List<Agent> = emptyList(), val thinking: List<Agent> = emptyList())
 
 @Immutable
-data class Attachment(val title: String, val altText: String, val aspect: Float)
+data class Attachment(val title: String, val altText: String, val aspect: Float, val scene: Scene = Scene.Dusk)
+
+/** Which stand-in picture to paint until real images load. */
+enum class Scene { Dusk, Dawn, Night }
 
 @Immutable
 data class Reply(
@@ -65,7 +68,27 @@ data class Reply(
 )
 
 @Immutable
-data class Choice(val label: String, val primary: Boolean = false)
+data class Choice(
+    val label: String,
+    val primary: Boolean = false,
+    /**
+     * A picture to choose by. When the options have pictures the card shows them as a grid of
+     * tiles, and only there: they are never repeated in a media grid.
+     */
+    val image: Attachment? = null,
+)
+
+/** How a question is answered, matching the dashboard's request kinds. */
+enum class QuestionKind {
+    /** Each option answers at once. */
+    Buttons,
+
+    /** Pick one, then send. */
+    Choice,
+
+    /** Pick any number, then send. */
+    MultiChoice,
+}
 
 sealed interface FeedItem {
     val id: String
@@ -100,7 +123,10 @@ sealed interface FeedItem {
         val choices: List<Choice>,
         val allowsText: Boolean,
         val expiresIn: String,
-    ) : FeedItem
+        val kind: QuestionKind = QuestionKind.Buttons,
+    ) : FeedItem {
+        val hasPictures: Boolean get() = choices.any { it.image != null }
+    }
 
     @Immutable
     data class OwnerPost(

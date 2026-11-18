@@ -335,7 +335,7 @@ fun ImageViewer(attachment: Attachment, safeArea: SafeArea) {
                         translationY = zoom.pan.y
                     }
                     .semantics { contentDescription = attachment.altText },
-            ) { DuskScene(Modifier.fillMaxSize()) }
+            ) { SceneArt(attachment.scene, Modifier.fillMaxSize()) }
         }
         Row(
             Modifier.fillMaxWidth().padding(top = safeArea.top + 4.dp, start = 8.dp, end = 8.dp),

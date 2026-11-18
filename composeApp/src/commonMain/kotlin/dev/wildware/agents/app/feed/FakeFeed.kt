@@ -90,6 +90,25 @@ object FakeFeed {
         expiresIn = "42 min",
     )
 
+    private fun art(scene: Scene, alt: String) = Attachment("empty-state-${scene.name.lowercase()}.png", alt, aspect = 4f / 3f, scene = scene)
+
+    private val pictureQuestion = FeedItem.Question(
+        id = "q2",
+        time = "10:02",
+        agent = lumen,
+        project = dashboard,
+        prompt = "Which empty states should ship?",
+        body = "Pick any. The ones you leave out stay in the drawer for later.",
+        choices = listOf(
+            Choice("Dusk", image = art(Scene.Dusk, "Dusk: hills under a low sun")),
+            Choice("Dawn", image = art(Scene.Dawn, "Dawn: green hills, pale morning sky")),
+            Choice("Night", image = art(Scene.Night, "Night: dark hills, a crescent moon and stars")),
+        ),
+        allowsText = false,
+        expiresIn = "3 h",
+        kind = QuestionKind.MultiChoice,
+    )
+
     private val illustration = FeedItem.Update(
         id = "u2",
         time = "9:18",
@@ -147,7 +166,7 @@ object FakeFeed {
         agents = listOf(forge, scout, relay, lumen, quill),
         current = dashboard,
         sections = listOf(
-            FeedSection("Waiting on you", listOf(question)),
+            FeedSection("Waiting on you", listOf(question, pictureQuestion)),
             FeedSection("Today", listOf(fix, illustration, ask, disk)),
             FeedSection("Yesterday", listOf(push)),
         ),

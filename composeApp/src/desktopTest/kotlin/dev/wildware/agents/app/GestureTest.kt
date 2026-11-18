@@ -16,6 +16,9 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.v2.runComposeUiTest
 import androidx.compose.ui.test.swipe
 import androidx.compose.ui.unit.dp
@@ -59,7 +62,7 @@ class GestureTest {
         phone()
         onNodeWithContentDescription(question).performTouchInput { swipe(center, center + Offset(260f, 0f), 200) }
         waitForIdle()
-        assertEquals(listOf<FeedEvent>(FeedEvent.Answer("q1", "Ship it")), events)
+        assertEquals(listOf<FeedEvent>(FeedEvent.Answer("q1", listOf("Ship it"))), events)
     }
 
     @Test
@@ -67,7 +70,7 @@ class GestureTest {
         phone()
         onNodeWithContentDescription(question).performTouchInput { swipe(center, center - Offset(260f, 0f), 200) }
         waitForIdle()
-        assertEquals(listOf<FeedEvent>(FeedEvent.Answer("q1", "Not now")), events)
+        assertEquals(listOf<FeedEvent>(FeedEvent.Answer("q1", listOf("Not now"))), events)
     }
 
     @Test
@@ -82,7 +85,7 @@ class GestureTest {
     fun theSwipeIsAlsoAScreenReaderAction() = runComposeUiTest {
         phone()
         runCustomAction("Ship it")
-        assertEquals(listOf<FeedEvent>(FeedEvent.Answer("q1", "Ship it")), events)
+        assertEquals(listOf<FeedEvent>(FeedEvent.Answer("q1", listOf("Ship it"))), events)
     }
 
     @Test
@@ -135,5 +138,38 @@ class GestureTest {
         onNodeWithContentDescription(image.altText).performTouchInput { swipe(center, center + Offset(0f, 400f), 200) }
         waitForIdle()
         onNodeWithContentDescription("Close image").assertDoesNotExist()
+    }
+
+    @Test
+    fun tappingPicturesPicksThemAndSendSendsThem() = runComposeUiTest {
+        phone(startAt = "q2")
+        onNodeWithContentDescription("Dusk").performClick()
+        onNodeWithContentDescription("Night").performClick()
+        onNodeWithText("Send 2 picks").performClick()
+        waitForIdle()
+        assertEquals(listOf<FeedEvent>(FeedEvent.Answer("q2", listOf("Dusk", "Night"))), events)
+    }
+
+    @Test
+    fun longPressingAPictureOpensItFullSize() = runComposeUiTest {
+        phone(startAt = "q2")
+        onNodeWithContentDescription("Dawn").performTouchInput { longClick() }
+        onNodeWithContentDescription("Close image").assertExists()
+        assertTrue(events.isEmpty(), "a long press must not pick: $events")
+    }
+
+    @Test
+    fun eachPictureIsShownOnceNotAlsoInAMediaGrid() = runComposeUiTest {
+        phone(startAt = "q2")
+        onAllNodes(hasContentDescription("Dawn")).assertCountEquals(1)
+        onAllNodes(hasContentDescription("Look closer at Dawn")).assertCountEquals(1)
+    }
+
+    @Test
+    fun aPictureCardStillSwipesRightToSend() = runComposeUiTest {
+        phone(ScreenPreview(picked = mapOf("q2" to setOf("Dawn"))), startAt = "q2")
+        onNodeWithText("Which empty states should ship?").performTouchInput { swipe(center, center + Offset(260f, 0f), 200) }
+        waitForIdle()
+        assertEquals(listOf<FeedEvent>(FeedEvent.Answer("q2", listOf("Dawn"))), events)
     }
 }

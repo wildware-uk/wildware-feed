@@ -58,6 +58,17 @@ class ScreenshotTest {
         shoot("phone-dark-gesture-viewer", Size.Phone, dark = true, preview = ScreenPreview(viewer = image))
     }
 
+    /** A question answered by picture, with two pictures picked. */
+    @Test
+    fun pictureQuestion() {
+        val preview = ScreenPreview(picked = mapOf("q2" to setOf("Dusk", "Night")))
+        for (size in Size.entries) {
+            for (dark in listOf(false, true)) {
+                shoot("${size.label}-${if (dark) "dark" else "light"}-pictures", size, dark, startAt = "q2", preview = preview)
+            }
+        }
+    }
+
     /** Increase Contrast on, in both themes, and the largest common text size. */
     @Test
     fun accessibilityVariants() {

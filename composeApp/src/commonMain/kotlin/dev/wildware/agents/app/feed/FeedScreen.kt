@@ -222,7 +222,7 @@ private fun PhoneFeed(ui: FeedUi, safeArea: SafeArea, startAt: String?, widthPx:
                 .pointerInput(Unit) { detectTapGestures { toTop() } }
                 .clearAndSetSemantics { },
         )
-        val scrolled by remember { derivedStateOf { list.firstVisibleItemIndex > 2 } }
+        val scrolled by remember { derivedStateOf { list.firstVisibleItemIndex > 4 } }
         if (scrolled) BackToTop(Modifier.align(Alignment.TopCenter).padding(top = safeArea.top + 8.dp), toTop)
         Column(
             Modifier

@@ -17,6 +17,7 @@ the updates. There is a matching light theme and a high contrast version of each
 
 - `design/`: colours (light, dark, high contrast), type, spacing, shapes, elevation, motion, icons.
 - `design/gesture/`: the gesture layer every screen shares.
+- `design/PictureGrid.kt`: options you choose by picture, for questions whose options carry images.
 - `feed/`: the feed screen. Wide windows get sidebar + feed + thread; phones get one column.
 - `FakeFeed.kt`: the made-up data. The live feed from `:shared` will replace it.
 
@@ -35,6 +36,7 @@ the only way to do a thing.
 | Gesture | Where | Also by |
 |---|---|---|
 | Swipe a question right / left | Question cards | The choice buttons; Y / N / 1-3 keys; screen reader actions |
+| Tap a picture to pick it; long-press to look closer | Picture questions | Corner zoom button; number keys pick, Enter sends; screen reader "Look closer" |
 | Swipe a reply right to reply | Thread replies | Menu "Reply"; screen reader action |
 | Long-press (touch) or right-click (mouse) | Any card or reply | Shift+F10 or the Menu key; screen reader "Show actions" |
 | Double-tap to react 👍 | Any card or reply | Menu reactions; screen reader action |

@@ -35,6 +35,9 @@ import androidx.compose.ui.unit.dp
 import dev.wildware.agents.app.design.AgentTheme
 import dev.wildware.agents.app.design.Icons
 import dev.wildware.agents.app.design.pressable
+import dev.wildware.agents.app.design.PickMode
+import dev.wildware.agents.app.design.PictureGrid
+import dev.wildware.agents.app.design.PictureOption
 import dev.wildware.agents.app.design.gesture.GestureAction
 import dev.wildware.agents.app.design.gesture.SwipeActions
 import dev.wildware.agents.app.design.gesture.SwipeActionsState
@@ -271,8 +274,21 @@ fun QuestionCard(item: FeedItem.Question, modifier: Modifier = Modifier, density
     val ui = LocalFeedUi.current
     val primary = item.choices.firstOrNull { it.primary } ?: item.choices.first()
     val decline = item.choices.lastOrNull { !it.primary }
-    val answer = { choice: Choice -> ui?.emit(FeedEvent.Answer(item.id, choice.label)); Unit }
+    val answer = { choice: Choice -> ui?.emit(FeedEvent.Answer(item.id, listOf(choice.label))); Unit }
     val dismiss = { ui?.emit(FeedEvent.DismissQuestion(item.id)); Unit }
+    // Buttons answer on the spot; choice and multi-choice gather picks, then send them.
+    val gathers = item.kind != QuestionKind.Buttons
+    val picks = ui?.picksFor(item.id) ?: emptySet()
+    val send = {
+        if (picks.isNotEmpty()) ui?.emit(FeedEvent.Answer(item.id, item.choices.map { it.label }.filter { it in picks }))
+        Unit
+    }
+    val pick = { choice: Choice -> if (gathers) ui?.toggle(item, choice.label) else answer(choice); Unit }
+    val sendLabel = when (picks.size) {
+        0 -> "Send"
+        1 -> "Send 1 pick"
+        else -> "Send ${picks.size} picks"
+    }
     val preview = LocalPreview.current
     val commitPx = with(androidx.compose.ui.platform.LocalDensity.current) { SwipeCommitDistance.toPx() }
     val swipe = remember { SwipeActionsState(preview.questionSwipe * commitPx) }
@@ -280,9 +296,14 @@ fun QuestionCard(item: FeedItem.Question, modifier: Modifier = Modifier, density
         shape = shape,
         modifier = modifier,
         state = swipe,
-        startAction = GestureAction(primary.label, Icons.Check, colors.success, Color.White) { answer(primary) },
-        endAction = GestureAction(decline?.label ?: "Dismiss", Icons.Close, colors.textMuted, colors.background) {
-            if (decline != null) answer(decline) else dismiss()
+        startAction = when {
+            !gathers -> GestureAction(primary.label, Icons.Check, colors.success, Color.White) { answer(primary) }
+            picks.isNotEmpty() -> GestureAction(sendLabel, Icons.Send, colors.success, Color.White) { send() }
+            else -> null
+        },
+        endAction = when {
+            !gathers && decline != null -> GestureAction(decline.label, Icons.Close, colors.textMuted, colors.background) { answer(decline) }
+            else -> GestureAction("Not now", Icons.Close, colors.textMuted, colors.background) { dismiss() }
         },
     ) {
     Column(
@@ -294,9 +315,11 @@ fun QuestionCard(item: FeedItem.Question, modifier: Modifier = Modifier, density
                 if (e.type != KeyEventType.KeyUp) return@onKeyEvent false
                 val number = listOf(Key.One, Key.Two, Key.Three, Key.Four, Key.Five).indexOf(e.key)
                 when {
+                    gathers && (e.key == Key.Enter || e.key == Key.Y) -> { send(); true }
                     e.key == Key.Y -> { answer(primary); true }
-                    e.key == Key.N && decline != null -> { answer(decline); true }
-                    number in item.choices.indices -> { answer(item.choices[number]); true }
+                    e.key == Key.N && decline != null && !gathers -> { answer(decline); true }
+                    e.key == Key.N -> { dismiss(); true }
+                    number in item.choices.indices -> { pick(item.choices[number]); true }
                     else -> false
                 }
             }
@@ -327,7 +350,29 @@ fun QuestionCard(item: FeedItem.Question, modifier: Modifier = Modifier, density
         Spacer(Modifier.height(6.dp))
         MarkdownBody(item.body)
         Spacer(Modifier.height(16.dp))
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (item.hasPictures) {
+            PictureGrid(
+                options = item.choices.map { PictureOption(it.label, picked = it.label in picks) },
+                mode = when (item.kind) {
+                    QuestionKind.Buttons -> PickMode.Instant
+                    QuestionKind.Choice -> PickMode.One
+                    QuestionKind.MultiChoice -> PickMode.Many
+                },
+                onPick = { i -> pick(item.choices[i]) },
+                onLookCloser = { i -> item.choices[i].image?.let { ui?.viewer = it } },
+            ) { i, m ->
+                val image = item.choices[i].image
+                if (image != null) SceneArt(image.scene, m) else Box(m.background(colors.surfaceSunken))
+            }
+        }
+        if (gathers) {
+            if (item.hasPictures) Spacer(Modifier.height(14.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                AppButton(sendLabel, ButtonTone.Waiting, icon = Icons.Send, enabled = picks.isNotEmpty(), onClick = send)
+                AppButton("Not now", ButtonTone.Secondary, onClick = dismiss)
+            }
+        }
+        if (!item.hasPictures) FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             item.choices.forEachIndexed { i, choice ->
                 // Number keys answer on desktop; phones have no keyboard to hint at.
                 val hint = if (density == Density.Comfortable) "${i + 1}" else null
@@ -336,7 +381,7 @@ fun QuestionCard(item: FeedItem.Question, modifier: Modifier = Modifier, density
                     if (choice.primary) ButtonTone.Waiting else ButtonTone.Secondary,
                     icon = if (choice.primary) Icons.Check else null,
                     trailing = hint,
-                ) { answer(choice) }
+                ) { pick(choice) }
             }
         }
         if (item.allowsText) {
@@ -345,7 +390,11 @@ fun QuestionCard(item: FeedItem.Question, modifier: Modifier = Modifier, density
         }
         if (LocalIsPhone.current) {
             Text(
-                "Swipe right: ${primary.label} · left: ${decline?.label ?: "Dismiss"}",
+                when {
+                    item.hasPictures && gathers -> "Tap to pick · hold to look closer · swipe right to send"
+                    item.hasPictures -> "Tap a picture to answer · hold to look closer"
+                    else -> "Swipe right: ${primary.label} · left: ${decline?.label ?: "Dismiss"}"
+                },
                 Modifier.padding(top = 10.dp).clearAndSetSemantics { },
                 color = muted.copy(alpha = 0.8f),
                 style = type.meta,

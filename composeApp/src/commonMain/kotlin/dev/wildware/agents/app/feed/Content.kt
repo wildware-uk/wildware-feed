@@ -29,6 +29,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathOperation
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -268,7 +270,7 @@ fun AttachmentView(attachment: Attachment, modifier: Modifier = Modifier, onOpen
                 .border(1.dp, colors.border, shape)
                 .pressable("Image: ${attachment.altText}. Open full size", shape, role = Role.Image, onClick = onOpen),
         ) {
-            DuskScene(Modifier.fillMaxSize())
+            SceneArt(attachment.scene, Modifier.fillMaxSize())
         }
         Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Image, null, tint = colors.textFaint, modifier = Modifier.size(14.dp))
@@ -277,20 +279,75 @@ fun AttachmentView(attachment: Attachment, modifier: Modifier = Modifier, onOpen
     }
 }
 
+/** The colours of one stand-in picture. */
+private data class ScenePalette(
+    val sky: List<Color>,
+    val glow: Color,
+    val body: Color,
+    val hills: List<Color>,
+    /** Where the sun or moon sits, as fractions of the picture. */
+    val bodyX: Float,
+    val bodyY: Float,
+    val stars: Boolean = false,
+)
+
+private fun Scene.palette() = when (this) {
+    Scene.Dusk -> ScenePalette(
+        sky = listOf(Color(0xFF2B2250), Color(0xFF7A4C8C), Color(0xFFF29A76), Color(0xFFFCD9A8)),
+        glow = Color(0xFFFFF1D6), body = Color(0xFFFFF4DF),
+        hills = listOf(Color(0xFF6B3F6E), Color(0xFF4A2B57), Color(0xFF2B1B3B)),
+        bodyX = 0.68f, bodyY = 0.62f,
+    )
+    Scene.Dawn -> ScenePalette(
+        sky = listOf(Color(0xFF8FB8DE), Color(0xFFC9DCEB), Color(0xFFF7D9B9), Color(0xFFFBE7C6)),
+        glow = Color(0xFFFFF6E0), body = Color(0xFFFFE9A8),
+        hills = listOf(Color(0xFF8DB58A), Color(0xFF5E8F66), Color(0xFF3B6B4B)),
+        bodyX = 0.28f, bodyY = 0.66f,
+    )
+    Scene.Night -> ScenePalette(
+        sky = listOf(Color(0xFF070B1E), Color(0xFF111A3A), Color(0xFF1F2B57), Color(0xFF2E3B6B)),
+        glow = Color(0xFF9FB4FF), body = Color(0xFFE8EDFF),
+        hills = listOf(Color(0xFF1B2448), Color(0xFF131A36), Color(0xFF0B1026)),
+        bodyX = 0.72f, bodyY = 0.30f,
+        stars = true,
+    )
+}
+
+/**
+ * A painted stand-in for an attached picture, until the image loader lands. Each [Scene] looks
+ * clearly different, so a grid of them can be told apart.
+ */
 @Composable
-internal fun DuskScene(modifier: Modifier) {
+internal fun SceneArt(scene: Scene, modifier: Modifier) {
+    val p = scene.palette()
     Canvas(modifier.clipToBounds().semantics { role = Role.Image }) {
         val w = size.width
         val h = size.height
-        drawRect(Brush.verticalGradient(listOf(Color(0xFF2B2250), Color(0xFF7A4C8C), Color(0xFFF29A76), Color(0xFFFCD9A8))))
+        drawRect(Brush.verticalGradient(p.sky))
+        val center = Offset(w * p.bodyX, h * p.bodyY)
+        if (p.stars) {
+            for (i in 0 until 40) {
+                val x = ((i * 73) % 97) / 97f * w
+                val y = ((i * 41) % 59) / 59f * h * 0.6f
+                drawCircle(Color.White.copy(alpha = 0.35f + (i % 3) * 0.2f), radius = h * (0.004f + (i % 2) * 0.003f), center = Offset(x, y))
+            }
+        }
         drawCircle(
-            Brush.radialGradient(listOf(Color(0xFFFFF1D6), Color(0x00FFF1D6)), center = Offset(w * 0.68f, h * 0.62f), radius = h * 0.55f),
+            Brush.radialGradient(listOf(p.glow.copy(alpha = if (p.stars) 0.35f else 1f), p.glow.copy(alpha = 0f)), center = center, radius = h * 0.55f),
             radius = h * 0.55f,
-            center = Offset(w * 0.68f, h * 0.62f),
+            center = center,
         )
-        drawCircle(Color(0xFFFFF4DF), radius = h * 0.11f, center = Offset(w * 0.68f, h * 0.62f))
+        val r = h * 0.11f
+        if (p.stars) {
+            // The moon is a disc with a bite cut out of it, so the sky shows through the bite.
+            val disc = Path().apply { addOval(Rect(center, r)) }
+            val bite = Path().apply { addOval(Rect(center + Offset(r * 0.45f, -r * 0.3f), r * 0.9f)) }
+            drawPath(Path.combine(PathOperation.Difference, disc, bite), p.body)
+        } else {
+            drawCircle(p.body, radius = r, center = center)
+        }
         fun hill(base: Float, amp: Float, phase: Float, color: Color) {
-            val p = Path().apply {
+            val path = Path().apply {
                 moveTo(0f, h)
                 lineTo(0f, h * base)
                 val steps = 48
@@ -302,10 +359,10 @@ internal fun DuskScene(modifier: Modifier) {
                 lineTo(w, h)
                 close()
             }
-            drawPath(p, color)
+            drawPath(path, color)
         }
-        hill(0.72f, 0.06f, 0.4f, Color(0xFF6B3F6E))
-        hill(0.80f, 0.07f, 2.1f, Color(0xFF4A2B57))
-        hill(0.90f, 0.05f, 4.0f, Color(0xFF2B1B3B))
+        hill(0.72f, 0.06f, 0.4f, p.hills[0])
+        hill(0.80f, 0.07f, 2.1f, p.hills[1])
+        hill(0.90f, 0.05f, 4.0f, p.hills[2])
     }
 }

@@ -30,7 +30,10 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.draw.alpha
+import dev.wildware.agents.app.design.touchTarget
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -256,6 +259,7 @@ fun AppButton(
     modifier: Modifier = Modifier,
     icon: ImageVector? = null,
     trailing: String? = null,
+    enabled: Boolean = true,
     onClick: () -> Unit = {},
 ) {
     val colors = AgentTheme.colors
@@ -271,7 +275,10 @@ fun AppButton(
             .clip(shape)
             .background(bg)
             .border(1.dp, border, shape)
-            .pressable(text, shape, labelIsShown = true, onClick = onClick)
+            .then(
+                if (enabled) Modifier.pressable(text, shape, labelIsShown = true, onClick = onClick)
+                else Modifier.touchTarget().semantics { disabled() }.alpha(0.45f),
+            )
             .padding(horizontal = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center,
