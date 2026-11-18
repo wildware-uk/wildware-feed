@@ -111,12 +111,11 @@ private suspend fun guardRefused(call: ApplicationCall, app: App): Boolean {
 }
 
 /** The socket peer, or ADDRESS_HEADER per adapter-node's rules: the login limiter's key. */
-fun ApplicationCall.clientAddress(): String {
-    val header = System.getenv("ADDRESS_HEADER")?.takeIf { it.isNotBlank() }?.lowercase()
-        ?: return request.origin.remoteAddress
+fun ApplicationCall.clientAddress(config: dev.wildware.feed.server.Config): String {
+    val header = config.addressHeader ?: return request.origin.remoteAddress
     val value = request.headers[header] ?: error("Address header was specified with ADDRESS_HEADER=$header but is absent from request")
     if (header != "x-forwarded-for") return value
-    val depth = System.getenv("XFF_DEPTH")?.toIntOrNull() ?: 1
+    val depth = config.xffDepth
     val addresses = value.split(',')
     require(depth in 1..addresses.size) { "XFF_DEPTH must be between 1 and ${addresses.size}" }
     return addresses[addresses.size - depth].trim()

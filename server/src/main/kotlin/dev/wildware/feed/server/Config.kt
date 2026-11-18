@@ -20,6 +20,14 @@ data class Config(
     val host: String,
     /** The origin requests are taken to come from, for the CSRF check and redirects. */
     val origin: String,
+    /** adapter-node's ADDRESS_HEADER and XFF_DEPTH: where the client address comes from (null: the socket). */
+    val addressHeader: String? = null,
+    val xffDepth: Int = 1,
+    /**
+     * Exempt loopback clients (127.0.0.0/8, ::1) from the sign-in lockout. Only a desktop app hosting
+     * the server sets it: there every client is 127.0.0.1, so one bad script would lock the owner out.
+     */
+    val trustLoopback: Boolean = false,
 ) {
     data class Apns(val keyId: String, val teamId: String, val keyPath: String, val bundleId: String)
 
@@ -105,6 +113,8 @@ data class Config(
                 port = port,
                 host = host,
                 origin = origin,
+                addressHeader = env["ADDRESS_HEADER"]?.takeIf { it.isNotBlank() }?.lowercase(),
+                xffDepth = env["XFF_DEPTH"]?.toIntOrNull() ?: 1,
             )
         }
 

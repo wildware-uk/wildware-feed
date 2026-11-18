@@ -1,6 +1,7 @@
 package dev.wildware.feed.server
 
 import dev.wildware.feed.server.db.Database
+import dev.wildware.feed.server.http.checkPassword
 import kotlinx.serialization.json.JsonObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -27,5 +28,23 @@ class AppTest {
             app.bus.publish("project.created", none)
             assertEquals(1, app.bus.lastSeq)
         }
+    }
+
+    @Test
+    fun `a desktop host does not lock its own loopback clients out, a normal server does`() {
+        val hash = dev.wildware.feed.server.auth.Passwords.hash("right")
+        fun attempts(trust: Boolean, address: String): List<Int> =
+            App(config.copy(adminPasswordHash = hash, trustLoopback = trust), Database.memory()).use { app ->
+                (1..7).map { i ->
+                    when (val r = app.checkPassword(if (i == 7) "right" else "wrong", address)) {
+                        is dev.wildware.feed.server.http.PasswordCheck.Refused -> r.status
+                        else -> 200
+                    }
+                }
+            }
+        assertEquals(listOf(400, 400, 400, 400, 400, 400, 200), attempts(true, "127.0.0.1"))
+        assertEquals(listOf(400, 400, 400, 400, 400, 400, 200), attempts(true, "::1"))
+        assertEquals(listOf(400, 400, 400, 400, 400, 429, 429), attempts(false, "127.0.0.1"))
+        assertEquals(listOf(400, 400, 400, 400, 400, 429, 429), attempts(true, "192.0.2.7"), "only loopback is exempt")
     }
 }

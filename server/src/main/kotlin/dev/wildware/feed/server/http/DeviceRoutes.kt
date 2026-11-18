@@ -36,7 +36,7 @@ fun Route.deviceRoutes(app: App) {
             val name = nameOf(body)
             dev.wildware.feed.server.domain.requiredText(name, "name", 100)
             val password = (body["password"] as? JsonPrimitive)?.takeIf { it.isString }?.content
-            when (val result = app.checkPassword(password, call.clientAddress())) {
+            when (val result = app.checkPassword(password, call.clientAddress(app.config))) {
                 is PasswordCheck.Refused -> {
                     val code = if (result.status == 429) "rate_limited" else "wrong_password"
                     val headers = result.retryAfterS?.let { arrayOf("Retry-After" to it.toString()) } ?: emptyArray()
