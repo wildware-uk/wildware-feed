@@ -127,7 +127,7 @@ fun FeedScreen(
             if (ui.commandOpen) CommandBar(ui, if (phone) safeArea else SafeArea())
         }
         FollowNavigation(ui, navigator)
-        FollowSystemBack(ui)
+        FollowSystemBack(ui, widthPx)
     }
 }
 
@@ -235,7 +235,7 @@ private fun PhoneFeed(ui: FeedUi, safeArea: SafeArea, startAt: String?, widthPx:
     val scope = rememberCoroutineScope()
     val list = rememberLazyListState(startIndex(state, startAt, itemsBefore = 2))
     val toTop: () -> Unit = { scope.launch { if (motion.reduced) list.scrollToItem(0) else list.animateScrollToItem(0) } }
-    val drawerWidthPx = widthPx * 0.84f
+    val drawerWidthPx = widthPx * DrawerWidthFraction
     val openDrawer: () -> Unit = { scope.launch { ui.drawer.settle(true, motion.normal()) } }
     val refresh: () -> Unit = {
         ui.refreshing = true
@@ -258,7 +258,9 @@ private fun PhoneFeed(ui: FeedUi, safeArea: SafeArea, startAt: String?, widthPx:
                 ui.drawer,
                 width = { drawerWidthPx },
                 // Only on the feed itself: not under a thread, a menu, the drawer or the picture viewer.
-                enabled = ui.phoneThread == null && ui.drawer.value == 0f && ui.viewer == null && ui.menu == null,
+                // Where the platform owns the left edge (the iPhone), its swipe opens the drawer instead.
+                enabled = !LocalSystemBack.current.ownsLeftEdge &&
+                    ui.phoneThread == null && ui.drawer.value == 0f && ui.viewer == null && ui.menu == null,
                 onCommit = {},
             ),
     ) {

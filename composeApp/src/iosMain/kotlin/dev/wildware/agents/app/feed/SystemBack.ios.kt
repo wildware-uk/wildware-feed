@@ -1,7 +1,8 @@
 package dev.wildware.agents.app.feed
 
-import androidx.compose.runtime.Composable
-
-/** No system back here: the app's own edge swipe and Escape do it. */
-@Composable
-internal actual fun SystemBackHandler(enabled: Boolean, onProgress: (Float) -> Unit, onCancel: () -> Unit, onBack: () -> Unit) = Unit
+/**
+ * The iPhone's back swipe: UIKit's screen-edge pan from the left, through Compose's navigation
+ * events. It gets a swipe that starts at the very edge of the screen, which iOS holds back from
+ * the app's own touch handling. So it owns the left edge, and the feed opens its drawer from it too.
+ */
+internal actual val PlatformSystemBack: SystemBack = NavigationSystemBack(ownsLeftEdge = true)

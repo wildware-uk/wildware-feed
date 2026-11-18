@@ -596,7 +596,7 @@ fun PhoneThreadScreen(ui: FeedUi, item: Threaded, widthPx: Float, safeArea: Safe
                 .offset { IntOffset((ui.threadBack.value * widthPx).roundToInt(), 0) }
                 .lift(AgentTheme.elevation.overlay, androidx.compose.ui.graphics.RectangleShape)
                 .windowBackground(colors)
-                .edgeSwipe(ui.threadBack, width = { widthPx }, onCommit = {
+                .edgeSwipe(ui.threadBack, width = { widthPx }, enabled = !LocalSystemBack.current.ownsLeftEdge, onCommit = {
                     ui.phoneThreadOpen = false
                     ui.threadBack.snap(false)
                 })

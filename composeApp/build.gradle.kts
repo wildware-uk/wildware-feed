@@ -67,6 +67,8 @@ kotlin {
             implementation(libs.compose.foundation)
             implementation(libs.compose.ui)
             implementation(libs.compose.material3)
+            // Back handlers on the platform's own back input: UIKit's screen-edge pan on the iPhone.
+            implementation(libs.navigationevent.compose)
             implementation(libs.compose.resources)
             implementation(libs.markdown.renderer.m3)
             implementation(libs.markdown.renderer.code)
