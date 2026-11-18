@@ -282,13 +282,15 @@ struct CardButtonStyle: ButtonStyle {
 }
 
 extension View {
-    /// The answer button's look, for a `Link` as well as a `Button`.
+    /// The answer button's look, for a `Link` as well as a `Button`. An answer is never cut short:
+    /// a long one wraps onto more lines rather than ending in an ellipsis.
     func cardButtonChrome(prominent: Bool, compact: Bool = false, stretch: Bool = false) -> some View {
         font(compact ? Theme.Font.label : Theme.Font.bodyStrong)
-            .lineLimit(1)
+            .multilineTextAlignment(.center)
             .padding(.horizontal, compact ? 10 : 14)
+            .padding(.vertical, 5)
             .frame(maxWidth: stretch ? .infinity : nil)
-            .frame(height: compact ? 28 : 34)
+            .frame(minHeight: compact ? 28 : 34)
             .foregroundStyle(prominent ? Theme.onWaiting : Theme.text)
             .background {
                 let shape = RoundedRectangle(cornerRadius: compact ? 6 : Theme.Radius.medium, style: .continuous)
@@ -319,8 +321,7 @@ struct FlowLayout: Layout {
         var y = bounds.minY
         for row in rows(width: bounds.width, subviews: subviews) {
             var x = bounds.minX
-            for index in row.indices {
-                let size = subviews[index].sizeThatFits(.unspecified)
+            for (index, size) in zip(row.indices, row.sizes) {
                 subviews[index].place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
                 x += size.width + spacing
             }
@@ -328,22 +329,34 @@ struct FlowLayout: Layout {
         }
     }
 
-    private struct Row { var indices: [Int] = []; var width: CGFloat = 0; var height: CGFloat = 0 }
+    private struct Row {
+        var indices: [Int] = []
+        var sizes: [CGSize] = []
+        var width: CGFloat = 0
+        var height: CGFloat = 0
+    }
+
+    /// Each item at its natural width, or the row's width if it is wider, where it wraps its own text.
+    private func size(of subview: LayoutSubview, within width: CGFloat) -> CGSize {
+        let natural = subview.sizeThatFits(.unspecified)
+        guard natural.width > width else { return natural }
+        return subview.sizeThatFits(ProposedViewSize(width: width, height: nil))
+    }
 
     private func rows(width: CGFloat, subviews: Subviews) -> [Row] {
         var rows: [Row] = [Row()]
         for index in subviews.indices {
-            let size = subviews[index].sizeThatFits(.unspecified)
-            let extra = rows[rows.count - 1].indices.isEmpty ? size.width : size.width + spacing
-            if rows[rows.count - 1].width + extra > width, !rows[rows.count - 1].indices.isEmpty {
+            let size = size(of: subviews[index], within: width)
+            let isFirst = rows[rows.count - 1].indices.isEmpty
+            if !isFirst, rows[rows.count - 1].width + spacing + size.width > width {
                 rows.append(Row())
             }
-            let isFirst = rows[rows.count - 1].indices.isEmpty
+            let startsRow = rows[rows.count - 1].indices.isEmpty
             rows[rows.count - 1].indices.append(index)
-            rows[rows.count - 1].width += isFirst ? size.width : size.width + spacing
+            rows[rows.count - 1].sizes.append(size)
+            rows[rows.count - 1].width += startsRow ? size.width : size.width + spacing
             rows[rows.count - 1].height = max(rows[rows.count - 1].height, size.height)
         }
         return rows.filter { !$0.indices.isEmpty }
     }
 }
-

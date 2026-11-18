@@ -266,7 +266,7 @@ private struct PictureTiles: View {
                             .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.medium, style: .continuous))
                         HStack(spacing: 4) {
                             if isSuggested { Image(systemName: "checkmark").font(.system(size: 11, weight: .bold)).foregroundStyle(Theme.waiting) }
-                            Text(action.title).lineLimit(1)
+                            Text(action.title).fixedSize(horizontal: false, vertical: true)
                         }
                         .font(Theme.Font.label)
                         .foregroundStyle(Theme.text)

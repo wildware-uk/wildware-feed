@@ -71,10 +71,15 @@ struct RequestRow: View {
                 Text(request.agentName).lineLimit(1)
                 Spacer(minLength: 0)
                 if let expiry = request.expiry, expiry > .now {
-                    Text(timerInterval: Date.now...expiry, countsDown: true, showsHours: true)
-                        .foregroundStyle(Theme.waiting)
-                        .monospacedDigit()
-                        .frame(maxWidth: 60, alignment: .trailing)
+                    HStack(spacing: 3) {
+                        Text(timerInterval: Date.now...expiry, countsDown: true, showsHours: true)
+                            .monospacedDigit()
+                            .multilineTextAlignment(.trailing)
+                            .frame(maxWidth: 56, alignment: .trailing)
+                        Text("left")
+                    }
+                    .fixedSize()
+                    .foregroundStyle(Theme.waiting)
                 }
             }
             .font(Theme.Font.meta)

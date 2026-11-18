@@ -78,23 +78,12 @@ private struct QuestionCard: View {
                 agentId: state.topAgentId,
                 project: state.topProject,
                 expiry: state.topExpiry,
-                now: .now,
-                live: true
+                now: .now
             )
-            Text(request.question)
-                .font(Theme.Font.title)
-                .foregroundStyle(Theme.text)
-                .lineLimit(2)
-                .minimumScaleFactor(0.85)
-                .fixedSize(horizontal: false, vertical: true)
-            HStack(spacing: Theme.Space.s) {
-                AnswerRow(request: request)
-                Spacer(minLength: 0)
-                if let others = state.othersWaiting {
-                    Text(others).font(Theme.Font.meta).foregroundStyle(Theme.textMuted).fixedSize()
-                }
-            }
+            QuestionAndAnswers(request: request, trailing: state.othersWaiting)
         }
+        // Apple's 160pt, less the card's padding: the question and its buttons fit themselves to this.
+        .frame(maxHeight: 132, alignment: .top)
         .accessibilityElement(children: .contain)
     }
 }
@@ -186,17 +175,25 @@ private struct WorkingRow: View {
                 .lineLimit(1)
             Spacer(minLength: Theme.Space.xs)
             if let since = item.since {
-                // Counts up on its own, so the server needn't push every minute.
-                Text(Date(timeIntervalSince1970: TimeInterval(since)), style: .timer)
+                // "12 minutes", kept current by iOS itself, so the server needn't push every minute.
+                Text(.currentDate, format: .offset(to: Date(timeIntervalSince1970: TimeInterval(since)), allowedFields: [.hour, .minute], maxFieldCount: 1, sign: .never))
                     .font(Theme.Font.meta)
                     .foregroundStyle(Theme.textFaint)
-                    .monospacedDigit()
-                    .multilineTextAlignment(.trailing)
-                    .frame(maxWidth: 56, alignment: .trailing)
+                    .lineLimit(1)
+                    .fixedSize()
             }
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(item.agent): \(item.task)")
+        .accessibilityLabel(spoken)
+    }
+
+    private var spoken: String {
+        guard let since = item.since else { return "\(item.agent): \(item.task)" }
+        let minutes = max(0, Int(Date.now.timeIntervalSince1970) - since) / 60
+        let span = minutes < 60
+            ? (minutes == 1 ? "1 minute" : "\(minutes) minutes")
+            : (minutes / 60 == 1 ? "1 hour" : "\(minutes / 60) hours")
+        return "\(item.agent): \(item.task), working for \(span)"
     }
 }
 
@@ -314,18 +311,15 @@ struct IslandTrailing: View {
 
     var body: some View {
         if state.showsQuestion {
-            VStack(alignment: .trailing, spacing: 0) {
+            VStack(alignment: .trailing, spacing: 2) {
                 if let expiry = state.topExpiry, expiry > .now {
-                    Text(timerInterval: Date.now...expiry, countsDown: true, showsHours: true)
-                        .font(Theme.Font.mono(17, .medium, relativeTo: .headline))
+                    TimeLeftText(expiry: expiry, now: .now, showsClock: false)
+                        .font(Theme.Font.mono(15, .medium, relativeTo: .headline))
                         .foregroundStyle(Theme.waiting)
-                        .monospacedDigit()
-                        .multilineTextAlignment(.trailing)
                 }
-                Text(state.waiting > 1 ? "left · +\(state.waiting - 1) waiting" : "left")
-                    .font(Theme.Font.meta)
-                    .textCase(.uppercase)
-                    .foregroundStyle(Theme.textMuted)
+                if let others = state.othersWaiting {
+                    Text(others).font(Theme.Font.meta).foregroundStyle(Theme.textMuted)
+                }
             }
             .padding(.trailing, 4)
         } else {
@@ -345,14 +339,7 @@ struct IslandBottom: View {
                     .foregroundStyle(Theme.success)
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else if state.showsQuestion, let request = state.topRequest {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text(request.question)
-                        .font(Theme.Font.title)
-                        .foregroundStyle(Theme.text)
-                        .lineLimit(2)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    AnswerRow(request: request, stretch: true)
-                }
+                QuestionAndAnswers(request: request, stretch: true, spacing: 10)
             } else if let working = state.working, !working.isEmpty {
                 VStack(spacing: 6) {
                     ForEach(Array(working.prefix(2).enumerated()), id: \.offset) { _, item in

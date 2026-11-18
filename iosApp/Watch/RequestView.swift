@@ -25,6 +25,7 @@ struct RequestView: View {
                     HStack(spacing: 4) {
                         Image(systemName: "clock")
                         Text(timerInterval: Date.now...expiry, countsDown: true, showsHours: true).monospacedDigit()
+                        Text("left")
                     }
                     .font(Theme.Font.meta)
                     .foregroundStyle(Theme.waiting)

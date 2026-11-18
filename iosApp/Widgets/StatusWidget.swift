@@ -190,13 +190,9 @@ private struct StatusMedium: View {
                 }
                 AskerRow(agent: top.agentName, project: top.projectName, expiry: top.expiry, now: now, chipSize: 18)
                     .padding(.top, Theme.Space.s)
-                Text(top.question)
-                    .font(Theme.Font.title)
-                    .foregroundStyle(Theme.text)
-                    .lineLimit(2)
+                QuestionAndAnswers(request: top, fullSizeButtons: false, spacing: Theme.Space.s)
                     .padding(.top, 6)
-                Spacer(minLength: Theme.Space.s)
-                AnswerRow(request: top, compact: true)
+                Spacer(minLength: 0)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         } else {
@@ -239,11 +235,7 @@ private struct StatusLarge: View {
                     if index > 0 { Rectangle().fill(Theme.waitingLine).frame(height: 1) }
                     VStack(alignment: .leading, spacing: 5) {
                         AskerRow(agent: request.agentName, project: request.projectName, expiry: request.expiry, now: now, chipSize: 18)
-                        Text(request.question)
-                            .font(Theme.Font.title)
-                            .foregroundStyle(Theme.text)
-                            .lineLimit(2)
-                        AnswerRow(request: request, compact: true)
+                        QuestionAndAnswers(request: request, fullSizeButtons: false, spacing: 5)
                     }
                     .padding(.vertical, Theme.Space.s)
                 }
@@ -321,9 +313,14 @@ private struct StatusRectangular: View {
             if let top = snapshot.top {
                 HStack(spacing: 4) {
                     RobotMark(color: .primary).frame(height: 12)
-                    Text([top.agentName, timeLeft(until: top.expiry, from: now)].compactMap { $0 }.joined(separator: " · "))
+                    Text(top.agentName)
                         .font(Theme.Font.sans(13, .semibold, relativeTo: .headline))
                         .lineLimit(1)
+                    if let expiry = top.expiry, expiry > now {
+                        Text("·")
+                        TimeLeftText(expiry: expiry, now: now, showsClock: false)
+                            .font(Theme.Font.sans(13, .semibold, relativeTo: .headline))
+                    }
                 }
                 .widgetAccentable()
                 Text(top.question).font(Theme.Font.sans(14, .medium, relativeTo: .body)).lineLimit(2)
