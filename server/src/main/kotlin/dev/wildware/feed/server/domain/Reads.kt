@@ -10,6 +10,7 @@ import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
+import dev.wildware.feed.server.http.Wire
 import kotlinx.serialization.json.put
 
 /**
@@ -196,8 +197,10 @@ class Reads(private val db: Database, private val clock: () -> Long = System::cu
     fun mediaForMany(anchorColumn: String, cardIds: List<String>): Map<String, List<JsonObject>> {
         if (cardIds.isEmpty()) return emptyMap()
         val rows = inChunks(cardIds.distinct()) { chunk ->
-            db.query("SELECT ${Rows.MEDIA} FROM media WHERE $anchorColumn IN (${marks(chunk)})", *chunk.toTypedArray()) { rs ->
+            db.query("SELECT ${Rows.MEDIA}, removed_at, removed_after_days FROM media WHERE $anchorColumn IN (${marks(chunk)})", *chunk.toTypedArray()) { rs ->
                 rs.getLong("seq") to MediaRow(
+                    removedAt = rs.longOrNull("removed_at"),
+                    removedAfterDays = rs.longOrNull("removed_after_days"),
                     card = rs.getString(anchorColumn),
                     id = rs.getString("id"),
                     kind = rs.getString("kind"),
@@ -222,10 +225,18 @@ class Reads(private val db: Database, private val clock: () -> Long = System::cu
                 )
             }
         }.sortedBy { it.first }.map { it.second }
-        val derivatives = derivativesOf(rows.map { it.id })
+        val derivatives = derivativesOf(rows.filter { it.removedAt == null }.map { it.id })
         val out = LinkedHashMap<String, MutableList<JsonObject>>()
         for (row in rows) {
-            out.getOrPut(row.card) { mutableListOf() } += row.json.plus("variants" to JsonArray(variantsOf(row, derivatives[row.id].orEmpty()).map(::JsonPrimitive)))
+            val removedAt = row.removedAt
+            out.getOrPut(row.card) { mutableListOf() } += if (removedAt == null) {
+                row.json.plus("variants" to JsonArray(variantsOf(row, derivatives[row.id].orEmpty()).map(::JsonPrimitive)))
+            } else {
+                // Removed for its age (migration 050): no addresses, and a note the apps show instead.
+                row.json.plus("variants" to JsonArray(emptyList())).plus(
+                    "removed" to buildJsonObject { put("at", Wire.isoOf(removedAt)); put("afterDays", row.removedAfterDays) },
+                )
+            }
         }
         return out
     }
@@ -240,7 +251,10 @@ class Reads(private val db: Database, private val clock: () -> Long = System::cu
         }.sortedWith(compareBy({ it.second.first }, { it.second.second ?: Long.MIN_VALUE }, { it.third }))
             .groupBy({ it.first }, { it.second })
 
-    private class MediaRow(val id: String, val kind: String, val mime: String, val status: String, val sha256: String, val json: JsonObject, val card: String)
+    private class MediaRow(
+        val id: String, val kind: String, val mime: String, val status: String, val sha256: String, val json: JsonObject, val card: String,
+        val removedAt: Long? = null, val removedAfterDays: Long? = null,
+    )
 
     /** `derivativesFor` (TS `src/media/serve.ts`): the addresses that answer right now, from rows alone. */
     private fun variantsOf(media: MediaRow, derivatives: List<Pair<String, Long?>>): List<String> {

@@ -196,11 +196,11 @@ class Database private constructor(
             return sqliteMemory()
         }
 
-        /** An in-memory SQLite database, migrated, whatever `PG_TEST_URL` says. */
-        fun sqliteMemory(): Database {
+        /** An in-memory SQLite database, migrated (up to [upTo]), whatever `PG_TEST_URL` says. */
+        fun sqliteMemory(upTo: Int = Int.MAX_VALUE): Database {
             val connection = DriverManager.getConnection("jdbc:sqlite::memory:")
             connection.createStatement().use { it.execute("PRAGMA foreign_keys = ON") }
-            return Database(connection, Dialect.SQLITE).also { Migrations.run(it) }
+            return Database(connection, Dialect.SQLITE).also { Migrations.run(it, upTo) }
         }
     }
 }
@@ -244,7 +244,7 @@ object Migrations {
     fun checksum(sql: String): String =
         MessageDigest.getInstance("SHA-256").digest(sql.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
 
-    fun run(db: Database) {
+    fun run(db: Database, upTo: Int = Int.MAX_VALUE) {
         db.withConnection { c ->
             c.createStatement().use {
                 // Whitespace as the TS server writes it, so sqlite_master reads the same either way.
@@ -267,7 +267,7 @@ object Migrations {
                 "Migrations are append-only: migration $version (${migration.name}) has changed since it was applied."
             }
         }
-        for (migration in all.filter { it.version !in applied }) apply(db, migration)
+        for (migration in all.filter { it.version !in applied && it.version <= upTo }) apply(db, migration)
     }
 
     private fun apply(db: Database, migration: Migration) = db.withConnection { c ->

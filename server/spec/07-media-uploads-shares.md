@@ -283,6 +283,48 @@ Mount `src/http/routes/api/updates/[id]/share/+server.ts:11-15`; handlers `src/h
 
 ---
 
+## 12. Media retention (Kotlin server only, migration 050)
+
+The owner chooses how long media is kept. Off by default; nothing is removed until it is turned on.
+
+**Setting** (owner only, session or device key):
+- `GET /api/settings/media-retention` → 200 `{"days": <int> | null, "kinds": ["image", "video", "audio", "file"]}`.
+  `days: null` means never. `kinds` defaults to all four, in that order.
+- `PUT /api/settings/media-retention` with `{"days": 1..3650 | null, "kinds"?: [...]}` → 200, the stored setting.
+  Omitted `kinds` keeps the current ones. Errors (400 `invalid_argument`):
+  - `days must be a whole number of days from 1 to 3650, or null for never`
+  - `kinds must be a list of: image, video, audio, file`
+  - `choose at least one kind of media`
+  Kinds are deduped and put in the order above. The apps offer 7, 14, 30 and 90 days, or a custom number.
+
+**Removal:** once a night, 02:00–05:00 UTC; it catches up if it hasn't run for 36 hours, and the last run
+is kept in the database (`server_settings`), so restarts neither skip nor repeat it. Media is removed when
+it is older than `days`, its kind is chosen, and it has bytes (`sha256 <> ''`, status `ready` or `failed`).
+Kept whatever its age:
+- media on a pinned card (update, message, task or request);
+- media on a request that is still pending, or on an update or message with a pending request about it;
+- project logos.
+
+A removal deletes the media's folder from the store (original and derivatives), then, in one
+transaction, deletes its `derivatives` rows and sets `media.removed_at` and `media.removed_after_days`.
+A run cut short between the two is finished by the next one. It then publishes:
+
+```
+event: media.removed
+data: {..., "payload": {"mediaId", "updateId", "messageId", "requestId", "taskId", "kind", "afterDays"}}
+```
+
+**Reading removed media:**
+- In a card's `media` list it keeps its place and fields, with `variants: []` and one more key, last:
+  `"removed": {"at": "<ISO time>", "afterDays": <int>}`. Media that is kept has no `removed` key, so
+  everything reads exactly as before until something is removed. The apps show "Media removed after
+  N days" in its place.
+- `/media/<id>/<variant>` and `/api/agent/media/<id>` answer the usual 404.
+- `get_messages` leaves it out with the note `<id> (<kind>, removed after N days)` and, in its
+  attachment view, `included: false`, `reason: "removed after N days: the owner keeps media for N days"`
+  and no `download_url`.
+- A new upload with the same bytes is stored again, never linked to the removed one.
+
 ## Surprises
 
 1. **Shard is always `01`.** `id[0:2]` of a ULID is the timestamp's top bits; every id minted between 2005 and 2039 starts `01`, so all media sits in `media/01/` (`src/media/paths.ts:51`).

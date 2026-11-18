@@ -11,21 +11,22 @@ import kotlin.test.assertTrue
 
 class DatabaseTest {
     @Test
-    fun `the migrations are the TS server's, byte for byte`() {
-        assertEquals((1..47).toList(), Migrations.all.map { it.version })
+    fun `the migrations are the TS server's, byte for byte, then this server's own`() {
+        // 1 to 47 are the TS server's; 48 and 49 are reserved for teams; 50 is media retention.
+        assertEquals((1..47).toList() + 50, Migrations.all.map { it.version })
         for (m in Migrations.all) assertEquals(m.checksum, Migrations.checksum(m.sql), "migration ${m.version}")
         assertEquals(listOf(16, 25, 26, 31, 34, 38), Migrations.all.filter { it.rebuildsTables }.map { it.version })
     }
 
     @Test
-    fun `a fresh database ends with exactly the TS server's schema`() {
+    fun `a fresh database at migration 47 has exactly the TS server's schema`() {
         val expected = Json.parseToJsonElement(javaClass.getResource("/ts-schema.json")!!.readText()).let { root ->
             (root as kotlinx.serialization.json.JsonArray).map {
                 val o = it.jsonObject
                 listOf("type", "name", "table", "sql").map { k -> o[k]?.jsonPrimitive?.content }
             }
         }
-        Database.sqliteMemory().use { db ->
+        Database.sqliteMemory(upTo = 47).use { db ->
             val actual = db.query(
                 "SELECT type, name, tbl_name, sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY type, name",
             ) { listOf(it.getString(1), it.getString(2), it.getString(3), it.getString(4)) }
@@ -39,10 +40,10 @@ class DatabaseTest {
         val dir = Files.createTempDirectory("feed-db").toFile()
         try {
             Database.open(dir.path).use { db ->
-                assertEquals(47, db.one("SELECT count(*) FROM schema_migrations") { it.getInt(1) })
+                assertEquals(Migrations.all.size, db.one("SELECT count(*) FROM schema_migrations") { it.getInt(1) })
             }
             Database.open(dir.path).use { db ->
-                assertEquals(47, db.one("SELECT count(*) FROM schema_migrations") { it.getInt(1) })
+                assertEquals(Migrations.all.size, db.one("SELECT count(*) FROM schema_migrations") { it.getInt(1) })
                 assertEquals("wal", db.one("PRAGMA journal_mode") { it.getString(1) })
                 db.update("UPDATE schema_migrations SET checksum = 'x' WHERE version = 3")
             }

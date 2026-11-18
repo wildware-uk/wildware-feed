@@ -4,5 +4,11 @@
   "name": "baseline",
   "file": "047-baseline.sql",
   "checksum": "a9da4b1375bbd6b4a37379e805d8e2b5872443551316b25cdc3c2bbee4c38fb7"
+ },
+ {
+  "version": 50,
+  "name": "media-retention",
+  "file": "050-media-retention.sql",
+  "checksum": "a6926122cd3b0639aa896017c5cb67a6864625401c338db30246aa5c8a56b307"
  }
 ]

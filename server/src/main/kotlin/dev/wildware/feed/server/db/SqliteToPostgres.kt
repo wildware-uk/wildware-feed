@@ -25,10 +25,12 @@ class SqliteToPostgres(private val log: (String) -> Unit = {}) {
                 buildList { while (rs.next()) add(rs.getInt(1) to rs.getString(2)) }
             }
         }
-        val known = Migrations.all.map { it.version to Migrations.checksum(it.sql) }
-        check(applied == known) {
-            "The SQLite database is at migration ${applied.lastOrNull()?.first}; this build copies only a database at " +
-                "exactly migration ${known.last().first} with the same checksums. Start this build on the file once first."
+        // Any database this build knows: an older one (the TS server's, at 047) copies into the newer
+        // Postgres schema with the newer columns left empty.
+        val known = Migrations.all.associate { it.version to Migrations.checksum(it.sql) }
+        check(applied.isNotEmpty() && applied.all { (v, sum) -> known[v] == sum }) {
+            "The SQLite database has migrations this build does not know, or that changed (it is at " +
+                "${applied.lastOrNull()?.first}); copy it with the build that last ran on it."
         }
         return c
     }

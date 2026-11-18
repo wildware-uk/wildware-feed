@@ -240,7 +240,7 @@ class Uploads(
     /** Move the temp file into the store, or link a twin with the same bytes and type (a hard link, or a copy in the bucket). */
     private fun place(id: String, temp: Path, mime: String, sha256: String): Boolean {
         val key = paths.originalKey(id, mime)
-        val twin = db.one("SELECT id, mime FROM media WHERE sha256 = ? ORDER BY seq DESC LIMIT 1", sha256) { it.getString(1) to it.getString(2) }
+        val twin = db.one("SELECT id, mime FROM media WHERE sha256 = ? AND removed_at IS NULL ORDER BY seq DESC LIMIT 1", sha256) { it.getString(1) to it.getString(2) }
         if (twin != null && twin.first != id && twin.second == mime && paths.store.link(paths.originalKey(twin.first, twin.second), key)) {
             Files.deleteIfExists(temp)
             return true

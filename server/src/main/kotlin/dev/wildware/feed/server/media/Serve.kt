@@ -9,10 +9,11 @@ class Serve(private val db: Database, private val paths: MediaPaths) {
     /** The file, or null for every kind of miss (all of them answer the same 404). */
     fun open(id: String, variant: String): MediaFile? {
         if (variant !in VARIANTS || !ULID.matches(id)) return null
-        class Row(val kind: String, val mime: String, val sha256: String, val filename: String?, val status: String)
-        val row = db.one("SELECT kind, mime, sha256, filename, status FROM media WHERE id = ?", id) {
-            Row(it.getString(1), it.getString(2), it.getString(3), it.getString(4), it.getString(5))
+        class Row(val kind: String, val mime: String, val sha256: String, val filename: String?, val status: String, val removed: Boolean)
+        val row = db.one("SELECT kind, mime, sha256, filename, status, removed_at FROM media WHERE id = ?", id) {
+            Row(it.getString(1), it.getString(2), it.getString(3), it.getString(4), it.getString(5), it.getObject(6) != null)
         } ?: return null
+        if (row.removed) return null
         if (row.status == "failed") return null
         val download = row.kind == "file"
         if (!download && !Mime.isAllowed(row.mime)) return null

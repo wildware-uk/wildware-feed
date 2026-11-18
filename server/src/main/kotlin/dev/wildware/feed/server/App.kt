@@ -67,6 +67,9 @@ class App(val config: Config, val db: Database, val clock: () -> Long = System::
         db, bus, mediaPaths, dev.wildware.feed.server.media.FfmpegTools(threads = config.ffmpegThreads), clock, config.deriveWorkers,
     )
 
+    /** How long media is kept (migration 050), and the nightly removal. */
+    val retention = dev.wildware.feed.server.media.Retention(db, bus, mediaPaths, clock)
+
     /** Which file answers a media URL. */
     val serve = dev.wildware.feed.server.media.Serve(db, mediaPaths)
 
@@ -107,6 +110,7 @@ class App(val config: Config, val db: Database, val clock: () -> Long = System::
         every(dev.wildware.feed.server.domain.Requests.SWEEP_INTERVAL_MS, "request sweep") { requests.expireDue() }
         every(dev.wildware.feed.server.media.Derive.WORKER_INTERVAL_MS, "media derive") { derive.tick() }
         every(15 * 60_000L, "media sweep") { uploads.sweep() }
+        every(dev.wildware.feed.server.media.Retention.CHECK_INTERVAL_MS, "media retention") { retention.tick() }
         stopApplePush = startApplePush()
     }
 

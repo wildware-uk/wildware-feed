@@ -73,10 +73,11 @@ class PostgresSchemaTest {
 
     @Test
     fun `the Postgres baseline is the SQLite migration count, and every SQLite migration after it has a Postgres twin`() {
-        val lastSqlite = Migrations.all.maxOf { it.version }
         val pg = PostgresMigrations.all.map { it.version }
         assertEquals(47, pg.first())
-        assertEquals((47..lastSqlite).toList(), pg)
+        assertEquals(Migrations.all.map { it.version }.filter { it >= 47 }, pg)
+        val sqliteNames = Migrations.all.associate { it.version to it.name }
+        for (m in PostgresMigrations.all.drop(1)) assertEquals(sqliteNames[m.version], m.name, "migration ${m.version} has the same name on both")
     }
 }
 

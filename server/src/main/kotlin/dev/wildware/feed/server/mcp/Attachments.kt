@@ -33,7 +33,11 @@ object Attachments {
 
     class Result(val blocks: List<JsonElement>, val notes: List<String>, val views: Map<String, List<JsonObject>>)
 
-    private class Item(val id: String, val kind: String, val mime: String, val bytes: Long, val filename: String?, val status: String, val variants: List<String>)
+    private class Item(
+        val id: String, val kind: String, val mime: String, val bytes: Long, val filename: String?, val status: String, val variants: List<String>,
+        /** Removed for its age (media retention), after this many days; null while it is kept. */
+        val removedAfterDays: Long? = null,
+    )
 
     fun downloadUrl(app: App, mediaId: String): String? {
         val base = app.config.publicBaseUrl.trimEnd('/')
@@ -50,7 +54,8 @@ object Attachments {
             val attached = app.reads.mediaFor("message_id", messageId).map { m ->
                 fun s(k: String) = (m[k] as? JsonPrimitive)?.takeIf { it.isString }?.content
                 Item(s("id")!!, s("kind")!!, s("mime")!!, (m["bytes"] as? JsonPrimitive)?.longOrNull ?: 0, s("filename"), s("status")!!,
-                    m["variants"]!!.jsonArray.map { it.jsonPrimitive.content })
+                    m["variants"]!!.jsonArray.map { it.jsonPrimitive.content },
+                    (m["removed"] as? JsonObject)?.let { (it["afterDays"] as? JsonPrimitive)?.longOrNull ?: 0L })
             }
             if (attached.isEmpty()) continue
             val sent = mutableListOf<String>()
@@ -58,6 +63,11 @@ object Attachments {
             val seen = mutableListOf<JsonObject>()
             views[messageId] = seen
             for (item in attached) {
+                item.removedAfterDays?.let { days ->
+                    skipped += "${item.id} (${item.kind}, removed after $days days)"
+                    seen += view(app, item, false, "removed after $days days: the owner keeps media for $days days")
+                    continue
+                }
                 val hint = hint(app, item.id)
                 if (item.kind == "video") {
                     skipped += "${item.id} (video$hint)"
@@ -135,7 +145,7 @@ object Attachments {
         put("filename", item.filename?.let(::JsonPrimitive) ?: kotlinx.serialization.json.JsonNull)
         put("status", JsonPrimitive(item.status))
         put("included", JsonPrimitive(included))
-        downloadUrl(app, item.id)?.let { put("download_url", JsonPrimitive(it)) }
+        if (item.removedAfterDays == null) downloadUrl(app, item.id)?.let { put("download_url", JsonPrimitive(it)) }
         reason?.let { put("reason", JsonPrimitive(it)) }
     }
 
