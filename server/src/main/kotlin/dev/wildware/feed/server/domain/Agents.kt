@@ -66,7 +66,7 @@ class Agents(private val db: Database, private val tokenSecret: String, private 
         if (row == null || !Tokens.same(row.first, hash)) return null to Refusal("unknown_token", "unknown bearer token: no agent holds it")
         val agent = row.second
         if (agent.revokedAt != null) return null to Refusal("revoked_token", "revoked bearer token: ask the dashboard owner to mint a new one")
-        db.update("UPDATE agents SET last_seen_at = max(coalesce(last_seen_at, 0), ?) WHERE id = ?", clock(), agent.id)
+        db.update("UPDATE agents SET last_seen_at = ${db.greatest("coalesce(last_seen_at, 0)", "?")} WHERE id = ?", clock(), agent.id)
         return agent to null
     }
 

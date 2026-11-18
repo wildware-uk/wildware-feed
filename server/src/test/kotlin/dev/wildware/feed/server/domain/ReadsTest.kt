@@ -165,7 +165,7 @@ class ReadsTest {
         project("P6", "pin", "Pinned", pinned = 1)
         project("P7", "old", "Old", status = "archived")
         db.update("INSERT INTO approvals (id, agent_id, question, expires_at, kind, options) VALUES ('R1', 'A1', 'Q?', ?, 'choice', '[]')", now + 1)
-        db.update("UPDATE agents SET id = id WHERE 0")
+        db.update("UPDATE agents SET id = id WHERE 1 = 0")
         val summary = reads.summary(Wire::isoOf)
         assertEquals(
             listOf("pin", "a-b", "ab", "alpha", "web", "zeta"),

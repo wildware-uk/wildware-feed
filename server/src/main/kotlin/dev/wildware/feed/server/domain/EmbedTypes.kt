@@ -53,7 +53,7 @@ class EmbedTypes(private val feed: Feed) {
 
     /** `listEmbedTypeViews`: built-ins first, then by name; a spec that cannot be read is left out. */
     fun list(): List<TypeView> = db.query(
-        "SELECT slug, name, agent_id, spec, updated_at FROM embed_types ORDER BY agent_id IS NOT NULL, name COLLATE NOCASE, slug",
+        "SELECT slug, name, agent_id, spec, updated_at FROM embed_types ORDER BY agent_id IS NOT NULL, ${db.asciiFold("name")}, slug",
     ) { rs ->
         Embeds.specOf(rs.getString(4))?.let { TypeView(rs.getString(1), rs.getString(2), rs.getString(3) == null, it, rs.getLong(5)) }
     }.filterNotNull()

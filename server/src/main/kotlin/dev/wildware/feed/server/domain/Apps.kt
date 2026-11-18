@@ -103,7 +103,7 @@ class Apps(private val feed: Feed) {
 
     /** `listAppSummaries`: every app, by name. */
     fun list(agentId: String?): List<Summary> =
-        db.query("SELECT $columns FROM apps ORDER BY name COLLATE NOCASE, uri", row = ::row).map { summary(it, agentId) }
+        db.query("SELECT $columns FROM apps ORDER BY ${db.asciiFold("name")}, uri", row = ::row).map { summary(it, agentId) }
 
     private fun summary(row: Row, agentId: String?) = Summary(
         uri = row.uri,

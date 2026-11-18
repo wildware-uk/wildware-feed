@@ -307,7 +307,8 @@ class Messages(private val feed: Feed) {
             if (to <= 0) continue
             db.update(
                 "INSERT INTO read_cursors (id, agent_id, project_id, last_seen_message_seq) VALUES (?, ?, ?, ?) " +
-                    "ON CONFLICT (agent_id, project_id) DO UPDATE SET last_seen_message_seq = max(last_seen_message_seq, excluded.last_seen_message_seq)",
+                    "ON CONFLICT (agent_id, project_id) DO UPDATE SET last_seen_message_seq = " +
+                    db.greatest("read_cursors.last_seen_message_seq", "excluded.last_seen_message_seq"),
                 Ulid.next(), agentId, projectId, to,
             )
             val cursor = db.one("SELECT last_seen_message_seq FROM read_cursors WHERE agent_id = ? AND project_id = ?", agentId, projectId) { it.getLong(1) }!!

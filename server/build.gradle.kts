@@ -22,6 +22,7 @@ dependencies {
     implementation(libs.serialization.json)
     implementation(libs.coroutines.core)
     implementation(libs.sqlite.jdbc)
+    implementation(libs.postgresql)
     implementation(libs.bouncycastle)
     implementation(libs.commonmark)
     implementation(libs.commonmark.tables)

@@ -11,6 +11,7 @@ coil = "3.6.3"
 datetime = "0.8.0"
 junit = "5.13.4"
 sqlite-jdbc = "3.50.3.0"
+postgresql = "42.7.5"
 agp = "9.2.1"
 android-compileSdk = "37"
 android-targetSdk = "37"
@@ -56,6 +57,7 @@ highlights = { module = "dev.snipme:highlights", version.ref = "highlights" }
 coil-compose = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil" }
 coil-network-ktor = { module = "io.coil-kt.coil3:coil-network-ktor3", version.ref = "coil" }
 sqlite-jdbc = { module = "org.xerial:sqlite-jdbc", version.ref = "sqlite-jdbc" }
+postgresql = { module = "org.postgresql:postgresql", version.ref = "postgresql" }
 junit-jupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junit" }
 junit-launcher = { module = "org.junit.platform:junit-platform-launcher" }
 datetime = { module = "org.jetbrains.kotlinx:kotlinx-datetime", version.ref = "datetime" }

@@ -262,9 +262,8 @@ class Uploads(
                 WHERE update_id IS NULL AND message_id IS NULL AND request_id IS NULL AND task_id IS NULL
                   AND status IN ('ready', 'pending', 'failed')
                   AND created_at < ?
-                  AND id NOT IN (SELECT json_extract(theme, '$.logoMediaId') FROM projects
-                                  WHERE theme IS NOT NULL AND json_extract(theme, '$.logoMediaId') IS NOT NULL)
-                  AND id NOT IN (SELECT value FROM embeds, json_tree(embeds.data) WHERE json_tree.type = 'text')
+                  AND id NOT IN (${logoIds()})
+                  AND id NOT IN (${embedStrings()})
                 ORDER BY seq LIMIT 200""",
             now - 3_600_000,
         ) { it.getString(1) }
@@ -274,6 +273,18 @@ class Uploads(
         }
         db.update("DELETE FROM upload_tokens WHERE used_at IS NULL AND expires_at <= ?", now)
     }
+
+    /** Every project's logo media id (TS: `json_extract(theme, '$.logoMediaId')`). */
+    private fun logoIds() = if (db.dialect == dev.wildware.feed.server.db.Dialect.SQLITE)
+        "SELECT json_extract(theme, '$.logoMediaId') FROM projects WHERE theme IS NOT NULL AND json_extract(theme, '$.logoMediaId') IS NOT NULL"
+    else
+        "SELECT theme::jsonb ->> 'logoMediaId' FROM projects WHERE theme IS NOT NULL AND theme::jsonb ->> 'logoMediaId' IS NOT NULL"
+
+    /** Every string anywhere in any embed's data (TS: `json_tree` values of type text). */
+    private fun embedStrings() = if (db.dialect == dev.wildware.feed.server.db.Dialect.SQLITE)
+        "SELECT value FROM embeds, json_tree(embeds.data) WHERE json_tree.type = 'text'"
+    else
+        "SELECT v #>> '{}' FROM embeds, jsonb_path_query(embeds.data::jsonb, 'strict $.**') AS v WHERE jsonb_typeof(v) = 'string'"
 
     /** `Media` as the owner API answers it (`src/db/media.ts`), or null. */
     fun mediaView(id: String): JsonObject? = db.one(

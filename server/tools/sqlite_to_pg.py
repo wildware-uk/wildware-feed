@@ -13,10 +13,14 @@ columns, defaults, checks, keys and indexes:
   table exists (some tables point at each other; deferrable lets a bulk copy load in any order)
 - STRICT and SQL comments dropped; schema_migrations is left to the migration runner.
 
-  sqlite_to_pg.py ts-schema.json > 047-baseline.sql
+Seed rows (the built-in embed types) come from a fresh database the TS server made, copied as
+INSERTs with each identity moved past them.
+
+  sqlite_to_pg.py ts-schema.json fresh.db > 047-baseline.sql
 """
 import json
 import re
+import sqlite3
 import sys
 
 
@@ -83,7 +87,33 @@ def translate(name, sql):
     return table, fks
 
 
-def main(path):
+def literal(v):
+    if v is None:
+        return "NULL"
+    if isinstance(v, int):
+        return str(v)
+    if isinstance(v, str):
+        return "'" + v.replace("'", "''") + "'"
+    raise SystemExit(f"value not handled: {type(v)}")
+
+
+def seeds(db_path, tables):
+    c = sqlite3.connect(db_path)
+    out = []
+    for t in tables:
+        name = t["name"]
+        cols = [r[1] for r in c.execute(f'PRAGMA table_info("{name}")')]
+        rows = c.execute(f'SELECT * FROM "{name}" ORDER BY rowid').fetchall()
+        if not rows:
+            continue
+        for r in rows:
+            out.append(f'INSERT INTO "{name}" ({", ".join(cols)}) VALUES ({", ".join(literal(v) for v in r)});')
+        if "seq" in cols:
+            out.append(f"SELECT setval(pg_get_serial_sequence('\"{name}\"', 'seq'), (SELECT max(seq) FROM \"{name}\"));")
+    return out
+
+
+def main(path, db_path):
     rows = json.load(open(path))
     tables = [r for r in rows if r["type"] == "table" and r["name"] != "schema_migrations"]
     indexes = [r for r in rows if r["type"] == "index" and r["sql"]]
@@ -96,8 +126,9 @@ def main(path):
     out += all_fks + [""]
     for i in sorted(indexes, key=lambda r: r["name"]):
         out += [" ".join(strip_comments(i["sql"]).split()) + ";", ""]
+    out += seeds(db_path, tables) + [""]
     sys.stdout.write("\n".join(out))
 
 
 if __name__ == "__main__":
-    main(sys.argv[1])
+    main(sys.argv[1], sys.argv[2])

@@ -11,36 +11,63 @@ import java.sql.ResultSet
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 
+/** Which database engine a [Database] talks to. */
+enum class Dialect { SQLITE, POSTGRES }
+
 /**
- * The one SQLite connection, used by one caller at a time, as the TS server does
+ * The one database connection, used by one caller at a time, as the TS server does
  * (spec/06-database.md §1). Opening runs every pending migration.
+ *
+ * SQLite is the TS server's file and the desktop app's store; Postgres is for hosts with no lasting
+ * disk (Heroku). The SQL is shared: the few things SQLite spells differently go through [dialect]
+ * ([greatest], [asciiFold], [jsonText]), and on Postgres an untyped `? IS NULL` is given a type.
  */
-class Database private constructor(private val connection: Connection) : AutoCloseable {
+class Database private constructor(
+    private var connection: Connection,
+    val dialect: Dialect,
+    private val reconnect: (() -> Connection)? = null,
+    private val onClose: () -> Unit = {},
+) : AutoCloseable {
     private val lock = ReentrantLock()
 
     /** Whether this thread is inside [withConnection] or [transaction] right now. */
     val heldByCurrentThread: Boolean get() = lock.isHeldByCurrentThread
 
+    /** The connection, opened again first if the server dropped it (Postgres only). */
+    private fun live(): Connection {
+        val again = reconnect ?: return connection
+        if (connection.autoCommit && (connection.isClosed || !connection.isValid(5))) {
+            runCatching { connection.close() }
+            connection = again()
+        }
+        return connection
+    }
+
     /** Run [block] with the connection, alone. */
-    fun <T> withConnection(block: (Connection) -> T): T = lock.withLock { block(connection) }
+    fun <T> withConnection(block: (Connection) -> T): T = lock.withLock { block(live()) }
 
     /** Run [block] in one transaction: all of it or none. */
     fun <T> transaction(block: (Connection) -> T): T = lock.withLock {
-        connection.autoCommit = false
+        val c = live()
+        c.autoCommit = false
         try {
-            val result = block(connection)
-            connection.commit()
+            val result = block(c)
+            c.commit()
             result
         } catch (e: Throwable) {
-            connection.rollback()
+            c.rollback()
             throw e
         } finally {
-            connection.autoCommit = true
+            c.autoCommit = true
         }
     }
 
+    /** SQL as this engine needs it: on Postgres, `? IS NULL` gets a type it can't infer itself. */
+    fun sql(text: String): String =
+        if (dialect == Dialect.SQLITE) text else UNTYPED_NULL_TEST.replace(text) { "CAST(? AS TEXT) IS ${it.groupValues[1]}NULL" }
+
     fun <T> query(sql: String, vararg args: Any?, row: (ResultSet) -> T): List<T> = withConnection { c ->
-        c.prepareStatement(sql).use { st ->
+        c.prepareStatement(sql(sql)).use { st ->
             st.bind(args)
             st.executeQuery().use { rs -> buildList { while (rs.next()) add(row(rs)) } }
         }
@@ -49,14 +76,29 @@ class Database private constructor(private val connection: Connection) : AutoClo
     fun <T> one(sql: String, vararg args: Any?, row: (ResultSet) -> T): T? = query(sql, *args, row = row).firstOrNull()
 
     fun update(sql: String, vararg args: Any?): Int = withConnection { c ->
-        c.prepareStatement(sql).use { st -> st.bind(args); st.executeUpdate() }
+        c.prepareStatement(sql(sql)).use { st -> st.bind(args); st.executeUpdate() }
     }
 
-    override fun close() = lock.withLock { connection.close() }
+    /** SQLite's two-argument `max(a, b)`. */
+    fun greatest(a: String, b: String) = if (dialect == Dialect.SQLITE) "max($a, $b)" else "GREATEST($a, $b)"
+
+    /** SQLite's `COLLATE NOCASE` for ordering: ASCII letters folded, everything else by byte. */
+    fun asciiFold(expr: String) =
+        if (dialect == Dialect.SQLITE) "$expr COLLATE NOCASE"
+        else "translate($expr, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz') COLLATE \"C\""
+
+    override fun close() = lock.withLock {
+        try {
+            connection.close()
+        } finally {
+            onClose()
+        }
+    }
 
     companion object {
         const val FILE_NAME = "agent-dashboard.db"
         const val MIGRATIONS_TABLE = "schema_migrations"
+        private val UNTYPED_NULL_TEST = Regex("""\?\s+IS\s+(NOT\s+)?NULL""", RegexOption.IGNORE_CASE)
 
         /** `<dataDir>/agent-dashboard.db`, created with its folder if missing, then migrated. */
         fun open(dataDir: String, migrate: Boolean = true): Database {
@@ -69,16 +111,65 @@ class Database private constructor(private val connection: Connection) : AutoClo
                 st.execute("PRAGMA foreign_keys = ON")
                 st.execute("PRAGMA busy_timeout = 5000")
             }
-            val db = Database(connection)
+            val db = Database(connection, Dialect.SQLITE)
             if (migrate) Migrations.run(db)
             return db
         }
 
-        /** An in-memory database, migrated, for tests. */
+        /**
+         * Postgres at [url]: Heroku's `postgres://user:password@host:port/name` (SSL required unless
+         * the host is local) or a `jdbc:postgresql:` URL. [schema] picks a schema other than `public`.
+         */
+        fun openPostgres(url: String, migrate: Boolean = true, schema: String? = null, onClose: () -> Unit = {}): Database {
+            val connect = { postgresConnection(url, schema) }
+            val db = Database(connect(), Dialect.POSTGRES, connect, onClose)
+            if (migrate) PostgresMigrations.run(db)
+            return db
+        }
+
+        internal fun postgresConnection(url: String, schema: String?): Connection {
+            val (jdbc, props) = postgresJdbc(url)
+            val c = DriverManager.getConnection(jdbc, props)
+            if (schema != null) c.createStatement().use { it.execute("SET search_path TO \"$schema\"") }
+            return c
+        }
+
+        /** A JDBC URL and properties from Heroku's DATABASE_URL form. */
+        fun postgresJdbc(url: String): Pair<String, java.util.Properties> {
+            val props = java.util.Properties()
+            if (url.startsWith("jdbc:")) return url to props
+            val uri = java.net.URI(url.replaceFirst(Regex("^postgres(ql)?://"), "http://"))
+            uri.userInfo?.split(":", limit = 2)?.let { parts ->
+                props["user"] = java.net.URLDecoder.decode(parts[0], Charsets.UTF_8)
+                if (parts.size > 1) props["password"] = java.net.URLDecoder.decode(parts[1], Charsets.UTF_8)
+            }
+            val local = uri.host in setOf("localhost", "127.0.0.1", "::1")
+            props["sslmode"] = if (local) "disable" else "require"
+            val port = if (uri.port > 0) uri.port else 5432
+            return "jdbc:postgresql://${uri.host}:$port${uri.path}" to props
+        }
+
+        /**
+         * A fresh database for tests: SQLite in memory, or, when `PG_TEST_URL` is set, a new schema on
+         * that Postgres server (dropped again on close), so the whole suite can run on either engine.
+         */
         fun memory(): Database {
+            val pg = System.getenv("PG_TEST_URL")
+            if (!pg.isNullOrBlank()) {
+                val schema = "t_" + java.util.UUID.randomUUID().toString().replace("-", "")
+                postgresConnection(pg, null).use { c -> c.createStatement().use { it.execute("CREATE SCHEMA \"$schema\"") } }
+                return openPostgres(pg, schema = schema, onClose = {
+                    postgresConnection(pg, null).use { c -> c.createStatement().use { it.execute("DROP SCHEMA \"$schema\" CASCADE") } }
+                })
+            }
+            return sqliteMemory()
+        }
+
+        /** An in-memory SQLite database, migrated, whatever `PG_TEST_URL` says. */
+        fun sqliteMemory(): Database {
             val connection = DriverManager.getConnection("jdbc:sqlite::memory:")
             connection.createStatement().use { it.execute("PRAGMA foreign_keys = ON") }
-            return Database(connection).also { Migrations.run(it) }
+            return Database(connection, Dialect.SQLITE).also { Migrations.run(it) }
         }
     }
 }
@@ -171,6 +262,56 @@ object Migrations {
             }
         } finally {
             if (migration.rebuildsTables) c.createStatement().use { it.execute("PRAGMA foreign_keys = ON") }
+        }
+    }
+}
+
+/**
+ * Postgres's migrations (`/migrations-pg/`). The first is a baseline: SQLite's schema after its
+ * migration 047, translated table by table (server/tools/sqlite_to_pg.py), recorded as version 47.
+ * Every later migration ships as a pair, SQLite's and Postgres's, under one version number.
+ */
+object PostgresMigrations {
+    @Serializable
+    data class Migration(val version: Int, val name: String, val file: String, val checksum: String) {
+        val sql: String by lazy {
+            PostgresMigrations::class.java.getResource("/migrations-pg/$file")!!.readBytes().toString(Charsets.UTF_8)
+        }
+    }
+
+    val all: List<Migration> by lazy {
+        val text = PostgresMigrations::class.java.getResource("/migrations-pg/migrations.json")!!.readText()
+        Json.decodeFromString<List<Migration>>(text).sortedBy { it.version }
+    }
+
+    fun run(db: Database) {
+        db.withConnection { c ->
+            c.createStatement().use {
+                it.execute(
+                    "CREATE TABLE IF NOT EXISTS ${Database.MIGRATIONS_TABLE} (version bigint PRIMARY KEY, name text NOT NULL, " +
+                        "checksum text NOT NULL, applied_at bigint NOT NULL)",
+                )
+            }
+        }
+        val applied = db.query("SELECT version, checksum FROM ${Database.MIGRATIONS_TABLE}") { it.getInt(1) to it.getString(2) }.toMap()
+        val known = all.associateBy { it.version }
+        val unknown = applied.keys.filter { it !in known }
+        check(unknown.isEmpty()) {
+            "Refusing to run against a newer database: it has migrations ${unknown.sorted()} that this build does not know."
+        }
+        for ((version, stored) in applied) {
+            check(Migrations.checksum(known.getValue(version).sql) == stored) {
+                "Migrations are append-only: migration $version has changed since it was applied."
+            }
+        }
+        for (migration in all.filter { it.version !in applied }) {
+            db.transaction { c ->
+                c.createStatement().use { st -> SqlScript.split(migration.sql).forEach { st.execute(it) } }
+                c.prepareStatement("INSERT INTO ${Database.MIGRATIONS_TABLE} (version, name, checksum, applied_at) VALUES (?, ?, ?, ?)").use {
+                    it.bind(arrayOf<Any?>(migration.version, migration.name, Migrations.checksum(migration.sql), System.currentTimeMillis()))
+                    it.executeUpdate()
+                }
+            }
         }
     }
 }

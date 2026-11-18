@@ -25,7 +25,7 @@ class DatabaseTest {
                 listOf("type", "name", "table", "sql").map { k -> o[k]?.jsonPrimitive?.content }
             }
         }
-        Database.memory().use { db ->
+        Database.sqliteMemory().use { db ->
             val actual = db.query(
                 "SELECT type, name, tbl_name, sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY type, name",
             ) { listOf(it.getString(1), it.getString(2), it.getString(3), it.getString(4)) }
