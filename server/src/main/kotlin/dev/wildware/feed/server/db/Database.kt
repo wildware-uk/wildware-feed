@@ -66,7 +66,18 @@ class Database private constructor(
     fun sql(text: String): String =
         if (dialect == Dialect.SQLITE) text else UNTYPED_NULL_TEST.replace(text) { "CAST(? AS TEXT) IS ${it.groupValues[1]}NULL" }
 
+    /**
+     * Postgres can't hold U+0000 in text; SQLite can. On Postgres such a write is refused as a bad
+     * argument (400) before it reaches the database, rather than failing as a server error.
+     */
+    private fun checkText(args: Array<out Any?>) {
+        if (dialect == Dialect.POSTGRES && args.any { it is String && it.indexOf('\u0000') >= 0 }) {
+            throw dev.wildware.feed.server.domain.invalid("Text can't contain the NUL character (U+0000).")
+        }
+    }
+
     fun <T> query(sql: String, vararg args: Any?, row: (ResultSet) -> T): List<T> = withConnection { c ->
+        checkText(args)
         c.prepareStatement(sql(sql)).use { st ->
             st.bind(args)
             st.executeQuery().use { rs -> buildList { while (rs.next()) add(row(rs)) } }
@@ -76,6 +87,7 @@ class Database private constructor(
     fun <T> one(sql: String, vararg args: Any?, row: (ResultSet) -> T): T? = query(sql, *args, row = row).firstOrNull()
 
     fun update(sql: String, vararg args: Any?): Int = withConnection { c ->
+        checkText(args)
         c.prepareStatement(sql(sql)).use { st -> st.bind(args); st.executeUpdate() }
     }
 
@@ -99,6 +111,10 @@ class Database private constructor(
         const val FILE_NAME = "agent-dashboard.db"
         const val MIGRATIONS_TABLE = "schema_migrations"
         private val UNTYPED_NULL_TEST = Regex("""\?\s+IS\s+(NOT\s+)?NULL""", RegexOption.IGNORE_CASE)
+
+        /** Postgres when [Config.databaseUrl] is set, else the SQLite file in [Config.dataDir]. */
+        fun open(config: dev.wildware.feed.server.Config): Database =
+            config.databaseUrl?.let { openPostgres(it) } ?: open(config.dataDir)
 
         /** `<dataDir>/agent-dashboard.db`, created with its folder if missing, then migrated. */
         fun open(dataDir: String, migrate: Boolean = true): Database {

@@ -28,6 +28,8 @@ data class Config(
      * the server sets it: there every client is 127.0.0.1, so one bad script would lock the owner out.
      */
     val trustLoopback: Boolean = false,
+    /** DATABASE_URL: Postgres (Heroku's `postgres://` form or a JDBC URL). Unset: SQLite in [dataDir]. */
+    val databaseUrl: String? = null,
 ) {
     data class Apns(val keyId: String, val teamId: String, val keyPath: String, val bundleId: String)
 
@@ -115,6 +117,7 @@ data class Config(
                 origin = origin,
                 addressHeader = env["ADDRESS_HEADER"]?.takeIf { it.isNotBlank() }?.lowercase(),
                 xffDepth = env["XFF_DEPTH"]?.toIntOrNull() ?: 1,
+                databaseUrl = env["DATABASE_URL"]?.takeIf { it.isNotBlank() },
             )
         }
 

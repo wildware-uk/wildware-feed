@@ -79,3 +79,27 @@ class PostgresSchemaTest {
         assertEquals((47..lastSqlite).toList(), pg)
     }
 }
+
+class PostgresTextTest {
+    @Test
+    fun `Postgres refuses text with a NUL character as a bad argument`() {
+        assumeTrue(!System.getenv("PG_TEST_URL").isNullOrBlank(), "PG_TEST_URL not set")
+        Database.memory().use { db ->
+            val error = kotlin.test.assertFailsWith<dev.wildware.feed.server.domain.DomainError> {
+                db.update("INSERT INTO agents (id, name, token_hash, created_at) VALUES ('a', ?, 'h', 1)", "bad\u0000name")
+            }
+            assertEquals(400, error.status)
+            assertEquals("Text can't contain the NUL character (U+0000).", error.message)
+        }
+    }
+
+    @Test
+    fun `Heroku's DATABASE_URL becomes a JDBC URL with SSL, and local hosts skip SSL`() {
+        val (jdbc, props) = Database.postgresJdbc("postgres://u%40x:p%3Aw@db.example.com:5433/feed")
+        assertEquals("jdbc:postgresql://db.example.com:5433/feed", jdbc)
+        assertEquals("u@x", props["user"])
+        assertEquals("p:w", props["password"])
+        assertEquals("require", props["sslmode"])
+        assertEquals("disable", Database.postgresJdbc("postgres://u:p@localhost/feed").second["sslmode"])
+    }
+}

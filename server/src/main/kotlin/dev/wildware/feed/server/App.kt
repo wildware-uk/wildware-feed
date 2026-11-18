@@ -117,6 +117,6 @@ class App(val config: Config, val db: Database, val clock: () -> Long = System::
     }
 
     companion object {
-        fun open(config: Config) = App(config, Database.open(config.dataDir))
+        fun open(config: Config) = App(config, Database.open(config))
     }
 }

@@ -22,6 +22,7 @@ fun main(args: Array<String>) {
         dev.wildware.feed.server.http.FeedServer(app).start(wait = true)
         return
     }
+    if (args[0] == "migrate") exitProcess(Migrate.run(args.drop(1), System.getenv(), ::println, System.err::println))
     exitProcess(Cli(System.getenv(), ::println, System.err::println).run(args.toList()))
 }
 
@@ -52,7 +53,7 @@ class Cli(private val env: Map<String, String>, private val out: (String) -> Uni
 
     private fun <T> agents(block: (Agents) -> T): T {
         val config = Config.load(env)
-        return Database.open(config.dataDir).use { db -> block(Agents(db, config.tokenSecret)) }
+        return Database.open(config).use { db -> block(Agents(db, config.tokenSecret)) }
     }
 
     fun run(args: List<String>): Int {
