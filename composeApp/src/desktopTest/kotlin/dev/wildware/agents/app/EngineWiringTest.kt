@@ -357,7 +357,13 @@ class EngineWiringTest {
     fun deletingYourOwnPostDeletesItOnTheServer() = runDesktopComposeUiTest(width = 1440, height = 900) {
         app()
         waitFor("Why is the Mac build slow?")
-        runCustomAction("Delete")
+        val ownPost = SemanticsMatcher("the owner's post") { node ->
+            node.config.getOrNull(SemanticsActions.CustomActions)?.any { it.label == "Actions for You's message" } == true
+        }
+        runCustomAction("Delete", on = ownPost)
+        // It asks first; nothing is deleted until the owner says yes.
+        waitForNode(hasText("Delete this post?"))
+        onNode(hasText("Delete") and hasClickAction()).performClick()
         waitForWrite("DELETE", "/api/messages/m-post")
     }
 

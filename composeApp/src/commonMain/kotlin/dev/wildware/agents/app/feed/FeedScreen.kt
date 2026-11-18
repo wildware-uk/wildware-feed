@@ -220,6 +220,7 @@ fun FeedScreen(
             Toast(ui, if (phone) safeArea else SafeArea())
             if (ui.bellOpen) NotificationPanel(ui, if (phone) safeArea else SafeArea()) { path -> scope.launch { ui.goTo(OpenCard.fromPath(path)) } }
             ui.statusPick?.let { StatusPicker(ui, it, if (phone) safeArea else SafeArea()) }
+            ui.deleting?.let { DeleteConfirm(ui, it) }
         }
         FollowNavigation(ui, navigator)
         FollowSystemBack(ui, widthPx)

@@ -121,11 +121,17 @@ data class MenuTarget(
     val status: WorkStatus? = null,
     /** Whether it is pinned now; null for what can't be pinned, such as a reply. */
     val pinned: Boolean? = null,
+    /** Whether the owner may delete it: their own lines, and any update. */
+    val deletable: Boolean = own,
 )
 
 /** The work-state choice, open on card [id], whose state is [current]. */
 @Immutable
 data class StatusPick(val id: String, val current: WorkStatus?)
+
+/** "Delete this update?": what a delete would take, asked before it goes. */
+@Immutable
+data class DeleteAsk(val targetId: String, val question: String)
 
 /** The emoji a double-tap adds. */
 const val QuickReaction = "👍"
@@ -397,9 +403,40 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
     /** Whether card [id] shows as pinned: the owner's latest tap here, else what the server says. */
     fun isPinned(id: String, server: Boolean): Boolean = pinnedHere[id] ?: server
 
+    /** The delete waiting for the owner to say yes. Nothing is deleted until they do. */
+    var deleting by mutableStateOf<DeleteAsk?>(null)
+
+    /** The owner said yes: delete what [deleting] asked about. */
+    fun confirmDelete() {
+        val ask = deleting ?: return
+        deleting = null
+        onEvent(FeedEvent.Delete(ask.targetId))
+    }
+
+    /** What deleting [id] would take, in a question. */
+    private fun askFor(id: String): DeleteAsk {
+        val items = state.sections.flatMap { it.items } + listOfNotNull(state.openThread)
+        val question = when (val item = items.firstOrNull { it.id == id }) {
+            is FeedItem.Update -> "Delete this update?"
+            is FeedItem.Post -> when (val n = item.replies.size) {
+                0 -> "Delete this post?"
+                1 -> "Delete this post and its reply?"
+                else -> "Delete this post and its $n replies?"
+            }
+            else -> "Delete this reply?"
+        }
+        return DeleteAsk(id, question)
+    }
+
     fun emit(event: FeedEvent) {
         if (event is FeedEvent.EditTags) {
             tagging = event.targetId
+            menu = null
+            return
+        }
+        // Deleting can't be undone, so every way of asking for it (menu, sheet, screen reader) asks first.
+        if (event is FeedEvent.Delete) {
+            deleting = askFor(event.targetId)
             menu = null
             return
         }

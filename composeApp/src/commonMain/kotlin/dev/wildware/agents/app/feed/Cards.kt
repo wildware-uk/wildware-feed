@@ -212,7 +212,7 @@ fun UpdateCard(
     val ui = LocalFeedUi.current
     val indent = if (density == Density.Compact) 0.dp else BodyIndent
     val pinned = ui?.isPinned(item.id, item.pinned) ?: item.pinned
-    val target = MenuTarget(item.id, item.agent.name, item.title, own = false, taggable = true, work = true, status = item.status, pinned = pinned)
+    val target = MenuTarget(item.id, item.agent.name, item.title, own = false, taggable = true, work = true, status = item.status, pinned = pinned, deletable = true)
     val tags = ui?.tagsFor(item.id, item.tags) ?: item.tags
     val reactions = ui?.reactionsFor(item.id, item.reactions) ?: item.reactions
     val chooseStatus = { ui?.emit(FeedEvent.ChooseStatus(item.id, item.status)); Unit }

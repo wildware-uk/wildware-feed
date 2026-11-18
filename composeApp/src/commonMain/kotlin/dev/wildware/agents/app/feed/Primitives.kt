@@ -270,7 +270,8 @@ fun IconAction(
     }
 }
 
-enum class ButtonTone { Primary, Secondary, Quiet, Waiting }
+/** [Destructive] is for what can't be undone, such as Delete. */
+enum class ButtonTone { Primary, Secondary, Quiet, Waiting, Destructive }
 
 @Composable
 fun AppButton(
@@ -289,6 +290,7 @@ fun AppButton(
         ButtonTone.Waiting -> Triple(colors.waiting, colors.onWaiting, Color.Transparent)
         ButtonTone.Secondary -> Triple(Color.Transparent, colors.text, colors.borderStrong)
         ButtonTone.Quiet -> Triple(Color.Transparent, colors.textMuted, Color.Transparent)
+        ButtonTone.Destructive -> Triple(colors.error, Color.White, Color.Transparent)
     }
     Row(
         modifier

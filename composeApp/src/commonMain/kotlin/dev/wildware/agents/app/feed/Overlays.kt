@@ -116,7 +116,7 @@ private fun menuRows(target: MenuTarget, phone: Boolean = false): List<MenuRow> 
     target.pinned?.let { pinned ->
         add(MenuRow(if (pinned) "Unpin" else "Pin", Icons.Pin, false, FeedEvent.Pin(target.id, pinned = !pinned)))
     }
-    if (target.own) add(MenuRow("Delete", Icons.Trash, true, FeedEvent.Delete(target.id)))
+    if (target.deletable) add(MenuRow("Delete", Icons.Trash, true, FeedEvent.Delete(target.id)))
 }
 
 /** The menu's actions as gesture-free equivalents, for [dev.wildware.agents.app.design.gesture.contextGestures]. */
@@ -805,4 +805,21 @@ fun BackToTop(modifier: Modifier = Modifier, onClick: () -> Unit) {
         Icon(Icons.ArrowUp, null, tint = fg, modifier = Modifier.size(16.dp))
         Text("Back to top", Modifier.padding(start = 6.dp), color = fg, style = AgentTheme.type.label)
     }
+}
+
+/** "Delete this update?" with Cancel and Delete. Escape, Back or a tap outside cancel. */
+@Composable
+fun DeleteConfirm(ui: FeedUi, ask: DeleteAsk) {
+    val colors = AgentTheme.colors
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = { ui.deleting = null },
+        containerColor = colors.surfaceRaised,
+        titleContentColor = colors.text,
+        textContentColor = colors.textMuted,
+        shape = AgentTheme.shapes.large,
+        title = { Text(ask.question, style = AgentTheme.type.title) },
+        text = { Text("It goes for everyone, and it can't be undone.", style = AgentTheme.type.body) },
+        dismissButton = { AppButton("Cancel", ButtonTone.Secondary) { ui.deleting = null } },
+        confirmButton = { AppButton("Delete", ButtonTone.Destructive) { ui.confirmDelete() } },
+    )
 }
