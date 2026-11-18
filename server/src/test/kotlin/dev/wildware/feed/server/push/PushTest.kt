@@ -90,6 +90,23 @@ class PushTest {
     }
 
     @Test
+    fun `APNS_KEY carries the key itself where there is no file, with escaped newlines allowed`() {
+        val pair = KeyPairGenerator.getInstance("EC").apply { initialize(ECGenParameterSpec("secp256r1")) }.generateKeyPair()
+        val pem = "-----BEGIN PRIVATE KEY-----\n" + Base64.getEncoder().encodeToString(pair.private.encoded) + "\n-----END PRIVATE KEY-----\n"
+        val env = mapOf(
+            "ADMIN_PASSWORD_HASH" to "\$argon2id\$v=19\$m=65536,t=3,p=4\$c2FsdA\$aGFzaA", "SESSION_SECRET" to "s".repeat(32), "TOKEN_SECRET" to "t".repeat(32),
+            "APNS_KEY_ID" to "KEY123", "APNS_TEAM_ID" to "TEAM456", "APNS_BUNDLE_ID" to "dev.example.feed",
+            "APNS_KEY" to pem.replace("\n", "\\n"),
+        )
+        val apns = Config.load(env).apns!!
+        assertTrue(!apns.toString().contains("PRIVATE"), "the key never shows in logs")
+        val token = ProviderToken(apns) { error("no file to read") }.token(1_700_000_000_500)
+        val (header, claims, signature) = token.split('.')
+        val verifier = Signature.getInstance("SHA256withECDSAinP1363Format").apply { initVerify(pair.public); update("$header.$claims".toByteArray()) }
+        assertTrue(verifier.verify(Base64.getUrlDecoder().decode(signature)))
+    }
+
+    @Test
     fun `delivery clears a dead token, counts failures and resets them on success`() {
         app.db.update("INSERT INTO owner_devices (id, name, token_hash, created_at, apns_token, failures) VALUES ('D1', 'Phone', 'h', 1, 'abc', 3)")
         var answer = ApnsResponse(200, null)

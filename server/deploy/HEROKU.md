@@ -56,8 +56,9 @@ heroku config:set -a APP \
   S3_BUCKET=<bucket> S3_ACCESS_KEY_ID=<key id> S3_SECRET_ACCESS_KEY=<secret> S3_REGION=auto
 ```
 
-Add `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_KEY_PATH` and `APNS_BUNDLE_ID` for iOS alerts. The key file
-has to be in the image or written at start; until then, leave all four unset.
+For iOS alerts and Live Activities add `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_BUNDLE_ID` and, since a
+dyno has no key file, `APNS_KEY` with the .p8 file's contents in place of `APNS_KEY_PATH`:
+`heroku config:set APNS_KEY="$(cat AuthKey_XXXX.p8)" -a APP`.
 
 `TOKEN_SECRET` must be the old server's, or every agent token stops working. `PORT` is set by
 Heroku. The server prints `Database: Postgres` and `Media: bucket <name>` when it starts; check

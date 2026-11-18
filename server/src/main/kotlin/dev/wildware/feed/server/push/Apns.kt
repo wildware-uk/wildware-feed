@@ -45,7 +45,7 @@ class ProviderToken(private val settings: Config.Apns, private val readKey: (Str
     @Synchronized
     fun token(now: Long): String {
         cached?.let { (token, at) -> if (now - at < TTL_MS) return token }
-        val k = key ?: loadKey(readKey(settings.keyPath)).also { key = it }
+        val k = key ?: loadKey(settings.keyText ?: readKey(settings.keyPath)).also { key = it }
         val header = b64(Wire.encode(buildJsonObject { put("alg", JsonPrimitive("ES256")); put("kid", JsonPrimitive(settings.keyId)) }))
         val claims = b64(Wire.encode(buildJsonObject { put("iss", JsonPrimitive(settings.teamId)); put("iat", JsonPrimitive(now / 1000)) }))
         val signature = Signature.getInstance("SHA256withECDSAinP1363Format").run {

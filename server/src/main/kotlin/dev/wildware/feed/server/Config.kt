@@ -41,7 +41,10 @@ data class Config(
         override fun toString() = "S3(endpoint=$endpoint, bucket=$bucket)"
     }
 
-    data class Apns(val keyId: String, val teamId: String, val keyPath: String, val bundleId: String)
+    /** [keyPath] is APNS_KEY_PATH; on a host with no lasting files, [keyText] (APNS_KEY, the .p8 contents) instead. */
+    data class Apns(val keyId: String, val teamId: String, val keyPath: String, val bundleId: String, val keyText: String? = null) {
+        override fun toString() = "Apns(keyId=$keyId, teamId=$teamId, keyPath=$keyPath, bundleId=$bundleId)"
+    }
 
     class Invalid(val issues: List<String>) :
         IllegalArgumentException("Invalid configuration:\n  " + issues.joinToString("\n  "))
@@ -100,7 +103,10 @@ data class Config(
             }
 
             val fieldsOk = issues.isEmpty()
+            // APNS_KEY (the key itself, for hosts like Heroku) stands in for APNS_KEY_PATH.
+            val apnsKey = get("APNS_KEY")?.replace("\\n", "\n")
             val apnsParts = listOf("APNS_KEY_ID", "APNS_TEAM_ID", "APNS_KEY_PATH", "APNS_BUNDLE_ID").map(get)
+                .let { if (apnsKey != null && it[2] == null) it.toMutableList().apply { this[2] = "APNS_KEY" } else it }
             if (fieldsOk && apnsParts.any { it == null } && apnsParts.any { it != null }) {
                 issues += "APNS_KEY_ID, APNS_TEAM_ID, APNS_KEY_PATH and APNS_BUNDLE_ID must be set together, or none"
             }
@@ -137,7 +143,7 @@ data class Config(
                 maxVideoBytes = maxVideo,
                 maxFileBytes = maxFile,
                 holdSeconds = hold,
-                apns = if (apnsParts.all { it != null }) Apns(apnsParts[0]!!, apnsParts[1]!!, apnsParts[2]!!, apnsParts[3]!!) else null,
+                apns = if (apnsParts.all { it != null }) Apns(apnsParts[0]!!, apnsParts[1]!!, apnsParts[2]!!, apnsParts[3]!!, apnsKey.takeIf { apnsParts[2] == "APNS_KEY" }) else null,
                 port = port,
                 host = host,
                 origin = origin,
