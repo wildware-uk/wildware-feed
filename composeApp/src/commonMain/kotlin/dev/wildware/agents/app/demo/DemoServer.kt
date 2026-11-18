@@ -11,6 +11,7 @@ import dev.wildware.agents.LiveAgentView
 import dev.wildware.agents.MessageView
 import dev.wildware.agents.MessagesSnapshot
 import dev.wildware.agents.NotificationsSnapshot
+import dev.wildware.agents.ProjectTheme
 import dev.wildware.agents.ProjectView
 import dev.wildware.agents.ReactionView
 import dev.wildware.agents.RequestView
@@ -65,6 +66,7 @@ class DemoServer(private val now: () -> Long = { Clock.System.now().toEpochMilli
     private var ids = 0
 
     private val data = DemoData(now())
+    private var projects = data.projects
     private var updates = data.updates
     private var messages = data.messages
     private var reactions = data.messageReactions
@@ -110,12 +112,12 @@ class DemoServer(private val now: () -> Long = { Clock.System.now().toEpochMilli
             }
             "api/snapshot" -> {
                 val slug = request.url.parameters["project"]
-                val projectId = data.projects.firstOrNull { it.slug == slug }?.id
+                val projectId = projects.firstOrNull { it.slug == slug }?.id
                 ok(
                     json.encodeToString(
                         FeedSnapshot(
                             seq = seq,
-                            projects = data.projects,
+                            projects = projects,
                             tags = tags,
                             cardTags = cardTags,
                             cardFields = fields,
@@ -169,6 +171,35 @@ class DemoServer(private val now: () -> Long = { Clock.System.now().toEpochMilli
                 alertPrefs = input["prefs"] ?: JsonNull
                 ok("""{"prefs":$alertPrefs}""")
             }
+            path == "api/projects" && method == HttpMethod.Post -> {
+                val name = input.text("name")?.trim().orEmpty()
+                if (name.isEmpty()) return bad("A project needs a name.")
+                val slug = name.lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-').ifEmpty { "project-${ids + 1}" }
+                val existing = projects.firstOrNull { it.slug == slug }
+                val project = existing ?: ProjectView(
+                    id = "demo-p-${++ids}", slug = slug, name = name,
+                    description = input.text("description"), createdAt = now(), updatedAt = now(),
+                ).also { projects = projects + it }
+                ok("""{"project":${json.encodeToString(project)},"created":${existing == null}}""", if (existing == null) HttpStatusCode.Created else HttpStatusCode.OK)
+            }
+            path.startsWith("api/projects/") && method == HttpMethod.Patch -> {
+                val slug = parts[2]
+                val before = projects.firstOrNull { it.slug == slug } ?: return ok("""{"error":"not_found","message":"No such project."}""", HttpStatusCode.NotFound)
+                var after = before.copy(updatedAt = now())
+                input.text("name")?.let { after = after.copy(name = it) }
+                if ("description" in input) after = after.copy(description = input.text("description"))
+                input.text("status")?.let { after = after.copy(status = it) }
+                (input["theme"] as? JsonObject)?.let { theme ->
+                    val was = after.theme ?: ProjectTheme()
+                    val next = was.copy(
+                        background = if ("background" in theme) theme.text("background") else was.background,
+                        accent = if ("accent" in theme) theme.text("accent") else was.accent,
+                    )
+                    after = after.copy(theme = next.takeIf { it != ProjectTheme() })
+                }
+                projects = projects.map { if (it.slug == slug) after else it }
+                ok("""{"project":${json.encodeToString(after)}}""")
+            }
             path == "api/media" -> ok(
                 """{"media":{"id":"demo-media-${++ids}","kind":"file","mime":"application/octet-stream","status":"pending"}}""",
                 HttpStatusCode.Created,
@@ -203,7 +234,7 @@ class DemoServer(private val now: () -> Long = { Clock.System.now().toEpochMilli
             val create = input["create"]?.jsonPrimitive?.booleanOrNull == true
             var tag = tags.firstOrNull { it.id == word || it.name.equals(word, ignoreCase = true) }
             if (tag == null && create) {
-                val project = projectOf(card) ?: data.projects.first().id
+                val project = projectOf(card) ?: projects.first().id
                 tag = TagView("demo-tag-${++ids}", project, word, word.lowercase().replace(' ', '-'), "grey")
                 tags = tags + tag
             }
@@ -228,7 +259,7 @@ class DemoServer(private val now: () -> Long = { Clock.System.now().toEpochMilli
         val update = input.text("update")
         val replyTo = input.text("replyTo")
         val parent = replyTo?.let { id -> messages.firstOrNull { it.id == id } }
-        val project = input.text("project")?.let { slug -> data.projects.firstOrNull { it.slug == slug }?.id }
+        val project = input.text("project")?.let { slug -> projects.firstOrNull { it.slug == slug }?.id }
             ?: update?.let { id -> updates.firstOrNull { it.id == id }?.projectId }
             ?: parent?.projectId
         return MessageView(

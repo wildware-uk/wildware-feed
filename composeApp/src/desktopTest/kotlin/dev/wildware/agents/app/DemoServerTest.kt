@@ -54,4 +54,18 @@ class DemoServerTest {
         assertEquals(prefs, client.alertPrefs())
         assertEquals(0, client.notifications().notifications.size)
     }
+
+    @Test
+    fun projectsCanBeMadeRenamedArchivedAndColoured() = runTest {
+        val made = client.createProject("Lighthouse", "Beam timings")
+        client.renameProject(made.slug, "lighthouse-app", "")
+        client.setProjectColours(made.slug, "#0f3d3e", null)
+        client.setProjectArchived("harbor-app", true)
+        val projects = client.snapshot().projects.orEmpty()
+        val lighthouse = projects.single { it.slug == "lighthouse" }
+        assertEquals("lighthouse-app", lighthouse.name)
+        assertEquals(null, lighthouse.description)
+        assertEquals("#0f3d3e", lighthouse.theme?.background)
+        assertTrue(projects.single { it.slug == "harbor-app" }.isArchived)
+    }
 }
