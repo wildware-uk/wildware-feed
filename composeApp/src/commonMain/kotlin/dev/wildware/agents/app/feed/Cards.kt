@@ -481,7 +481,7 @@ fun PostCard(item: FeedItem.Post, modifier: Modifier = Modifier, density: Densit
                 compact = density == Density.Compact,
             )
             Column(Modifier.padding(start = indent, top = 8.dp)) {
-                if (own) Text(item.body, color = colors.text, style = AgentTheme.type.body) else MarkdownBody(item.body)
+                if (own) PlainBody(item.body) else MarkdownBody(item.body)
                 val showThread = item.replies.isNotEmpty() && !inThread
                 if (reactions.isNotEmpty() || showThread) {
                     Spacer(Modifier.height(12.dp))
