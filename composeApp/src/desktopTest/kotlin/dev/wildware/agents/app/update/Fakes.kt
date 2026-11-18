@@ -6,7 +6,18 @@ import java.io.File
 fun release(version: String = "1.0.2", vararg assets: ReleaseAsset = allAssets(version)) =
     Release(version = version, tag = "v$version", publishedAt = "2026-11-18T10:00:00Z", notes = "### What's new\n\n- Updates itself\n- Faster feed", assets = assets.toList())
 
+/** A release's files as named from 1.0.2 on, as Wildware Feed. */
 fun allAssets(version: String) = arrayOf(
+    asset("Wildware-Feed-$version-mac-arm64.dmg", "mac-dmg", version),
+    asset("Wildware-Feed-$version-windows-x64.msi", "windows-msi", version),
+    asset("Wildware-Feed-$version-windows-x64-portable.zip", "windows-zip", version),
+    asset("Wildware-Feed-$version-x86_64.AppImage", "linux-appimage", version),
+    asset("wildware-feed_${version}_amd64.deb", "linux-deb", version),
+    asset("wildware-feed-$version.x86_64.rpm", "linux-rpm", version),
+)
+
+/** The same files as named up to 1.0.1, as Agents. */
+fun oldAssets(version: String) = arrayOf(
     asset("Agents-$version-mac-arm64.dmg", "mac-dmg", version),
     asset("Agents-$version-windows-x64.msi", "windows-msi", version),
     asset("Agents-$version-windows-x64-portable.zip", "windows-zip", version),
@@ -16,7 +27,7 @@ fun allAssets(version: String) = arrayOf(
 )
 
 fun asset(name: String, kind: String, version: String = "1.0.2", bytes: ByteArray = name.toByteArray(), sha256: String? = sha256Of(bytes.inputStream())) =
-    ReleaseAsset(name, kind, bytes.size.toLong(), sha256, "https://github.com/wildware-uk/agent-dashboard-ios/releases/download/v$version/$name")
+    ReleaseAsset(name, kind, bytes.size.toLong(), sha256, "https://github.com/wildware-uk/wildware-feed/releases/download/v$version/$name")
 
 /** Releases from memory. [failWith] makes every call fail, as offline or a 503 would. */
 class FakeReleaseSource(

@@ -74,19 +74,19 @@ class ReleaseTest {
     @Test
     fun eachInstallGetsItsOwnKindOfFile() {
         val r = release()
-        assertEquals("Agents-1.0.2-mac-arm64.dmg", chooseAsset(r, Installation.MacBundle("/Applications/Agents.app"), "aarch64")?.name)
-        assertEquals("Agents-1.0.2-windows-x64.msi", chooseAsset(r, Installation.WindowsMsi("C:\\a\\Agents.exe"), "amd64")?.name)
-        assertEquals("Agents-1.0.2-windows-x64-portable.zip", chooseAsset(r, Installation.WindowsPortable("D:\\Agents", "D:\\Agents\\Agents.exe"), "amd64")?.name)
-        assertEquals("Agents-1.0.2-x86_64.AppImage", chooseAsset(r, Installation.LinuxAppImage("/a/Agents.AppImage"), "amd64")?.name)
-        assertEquals("agents_1.0.2_amd64.deb", chooseAsset(r, Installation.LinuxPackage("/opt/agents/bin/Agents", AssetKind.LinuxDeb), "amd64")?.name)
-        assertEquals("agents-1.0.2.x86_64.rpm", chooseAsset(r, Installation.LinuxPackage("/opt/agents/bin/Agents", AssetKind.LinuxRpm), "amd64")?.name)
+        assertEquals("Wildware-Feed-1.0.2-mac-arm64.dmg", chooseAsset(r, Installation.MacBundle("/Applications/Agents.app"), "aarch64")?.name)
+        assertEquals("Wildware-Feed-1.0.2-windows-x64.msi", chooseAsset(r, Installation.WindowsMsi("C:\\a\\Agents.exe"), "amd64")?.name)
+        assertEquals("Wildware-Feed-1.0.2-windows-x64-portable.zip", chooseAsset(r, Installation.WindowsPortable("D:\\Agents", "D:\\Agents\\Agents.exe"), "amd64")?.name)
+        assertEquals("Wildware-Feed-1.0.2-x86_64.AppImage", chooseAsset(r, Installation.LinuxAppImage("/a/Agents.AppImage"), "amd64")?.name)
+        assertEquals("wildware-feed_1.0.2_amd64.deb", chooseAsset(r, Installation.LinuxPackage("/opt/agents/bin/Agents", AssetKind.LinuxDeb), "amd64")?.name)
+        assertEquals("wildware-feed-1.0.2.x86_64.rpm", chooseAsset(r, Installation.LinuxPackage("/opt/agents/bin/Agents", AssetKind.LinuxRpm), "amd64")?.name)
     }
 
     @Test
     fun noFileForTheWrongProcessorOrAMissingKind() {
         assertNull(chooseAsset(release(), Installation.MacBundle("/Applications/Agents.app"), "x86_64"), "an Intel Mac can't run the Apple silicon build")
         assertNull(chooseAsset(release(), Installation.LinuxAppImage("/a/Agents.AppImage"), "aarch64"))
-        val macOnly = release("1.0.2", asset("Agents-1.0.2-mac-arm64.dmg", "mac-dmg"))
+        val macOnly = release("1.0.2", asset("Wildware-Feed-1.0.2-mac-arm64.dmg", "mac-dmg"))
         assertNull(chooseAsset(macOnly, Installation.WindowsMsi("C:\\a\\Agents.exe"), "amd64"))
     }
 }

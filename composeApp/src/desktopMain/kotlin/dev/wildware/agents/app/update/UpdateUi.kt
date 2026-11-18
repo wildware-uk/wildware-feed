@@ -52,6 +52,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import dev.wildware.agents.app.ProductName
 import dev.wildware.agents.app.design.AgentTheme
 import dev.wildware.agents.app.design.Icons
 import dev.wildware.agents.app.design.pressable
@@ -181,7 +182,7 @@ fun UpdateDialog(
                     null,
                     if (asksForPassword) "Your computer may ask for your password to install it." else null,
                 )
-                InstallState.Restarting -> Progress("Restarting…", 1f, "Agents will open again in a moment.")
+                InstallState.Restarting -> Progress("Restarting…", 1f, "$ProductName will open again in a moment.")
                 is InstallState.Failed -> Message("The update didn't install", install.message) {
                     AppButton("Close", ButtonTone.Secondary, onClick = actions.dismiss)
                     AppButton("Retry", ButtonTone.Primary, icon = Icons.Refresh, onClick = actions.install)
@@ -200,7 +201,7 @@ private fun PromptBody(prompt: UpdatePrompt, current: String, cannotInstall: Str
     val colors = AgentTheme.colors
     when (prompt) {
         is UpdatePrompt.Offer -> {
-            Title("Agents ${prompt.release.version} is available")
+            Title("$ProductName ${prompt.release.version} is available")
             MetaText("You have $current.", Modifier.padding(top = 4.dp), color = colors.textMuted)
             if (prompt.release.notes.isNotBlank()) {
                 Box(
@@ -226,7 +227,7 @@ private fun PromptBody(prompt: UpdatePrompt, current: String, cannotInstall: Str
             }
         }
         UpdatePrompt.Checking -> Progress("Checking for updates…", null, null)
-        UpdatePrompt.UpToDate -> Message("Agents is up to date", "You have $current, the newest version.") {
+        UpdatePrompt.UpToDate -> Message("$ProductName is up to date", "You have $current, the newest version.") {
             AppButton("OK", ButtonTone.Primary, onClick = actions.dismiss)
         }
         is UpdatePrompt.CheckFailed -> Message("Couldn't check for updates", prompt.message) {

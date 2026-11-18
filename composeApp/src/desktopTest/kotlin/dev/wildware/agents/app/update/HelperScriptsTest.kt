@@ -27,19 +27,19 @@ class HelperScriptsTest {
         val script = HelperScripts.mac(
             pid = 4242,
             app = "/Applications/Agents.app",
-            newApp = "/Users/alex/Library/Application Support/Agents/updates/1.0.2/mount/Agents.app",
+            newApp = "/Users/alex/Library/Application Support/Agents/updates/1.0.2/mount/Wildware Feed.app",
             mountPoint = "/Users/alex/Library/Application Support/Agents/updates/1.0.2/mount",
             log = "/Users/alex/Library/Application Support/Agents/updates/1.0.2/update.log",
         )
         assertEquals(
             """
             |#!/bin/sh
-            |# Agents updater: swaps in the new app once the old one has quit, then opens it again.
+            |# Wildware Feed updater: swaps in the new app once the old one has quit, then opens it again.
             |exec >>'/Users/alex/Library/Application Support/Agents/updates/1.0.2/update.log' 2>&1
             |echo "update started ${'$'}(date)"
             |$wait
             |app='/Applications/Agents.app'
-            |new='/Users/alex/Library/Application Support/Agents/updates/1.0.2/mount/Agents.app'
+            |new='/Users/alex/Library/Application Support/Agents/updates/1.0.2/mount/Wildware Feed.app'
             |mount='/Users/alex/Library/Application Support/Agents/updates/1.0.2/mount'
             |staged="${'$'}app.updating"
             |old="${'$'}app.old"
@@ -49,6 +49,12 @@ class HelperScriptsTest {
             |    if mv "${'$'}staged" "${'$'}app"; then
             |      rm -rf "${'$'}old"
             |      echo "updated"
+            |      # Take the new version's name ("Agents.app" becomes "Wildware Feed.app"): a rename, so the Dock keeps it.
+            |      renamed="${'$'}(dirname "${'$'}app")/${'$'}(basename "${'$'}new")"
+            |      if [ "${'$'}renamed" != "${'$'}app" ] && [ ! -e "${'$'}renamed" ] && mv "${'$'}app" "${'$'}renamed"; then
+            |        app="${'$'}renamed"
+            |        echo "renamed to ${'$'}app"
+            |      fi
             |    else
             |      mv "${'$'}old" "${'$'}app"
             |      echo "could not move the new app in; kept the old one"
@@ -73,19 +79,23 @@ class HelperScriptsTest {
         val script = HelperScripts.windowsMsi(
             pid = 4242,
             msi = "$dir\\Agents-1.0.2-windows-x64.msi",
-            exe = "C:\\Users\\alex\\AppData\\Local\\Agents\\Agents.exe",
+            exes = listOf(
+                "C:\\Users\\alex\\AppData\\Local\\Wildware Feed\\Wildware Feed.exe",
+                "C:\\Users\\alex\\AppData\\Local\\Agents\\Agents.exe",
+            ),
             log = "$dir\\update.log",
             msiLog = "$dir\\msiexec.log",
         )
         assertEquals(
             """
-            |# Agents updater: installs the new version once the app has quit, then opens it again.
+            |# Wildware Feed updater: installs the new version once the app has quit, then opens it again.
             |Start-Transcript -Path 'C:\Users\alex\AppData\Roaming\Agents\updates\1.0.2\update.log' -Append | Out-Null
             |Wait-Process -Id 4242 -Timeout 120 -ErrorAction SilentlyContinue
             |Stop-Process -Id 4242 -Force -ErrorAction SilentlyContinue
             |${'$'}install = Start-Process -FilePath 'msiexec.exe' -ArgumentList '/i "C:\Users\alex\AppData\Roaming\Agents\updates\1.0.2\Agents-1.0.2-windows-x64.msi" /passive /norestart /l*v "C:\Users\alex\AppData\Roaming\Agents\updates\1.0.2\msiexec.log"' -Wait -PassThru
             |"msiexec finished with ${'$'}(${'$'}install.ExitCode)"
-            |Start-Process -FilePath 'C:\Users\alex\AppData\Local\Agents\Agents.exe'
+            |${'$'}exe = @('C:\Users\alex\AppData\Local\Wildware Feed\Wildware Feed.exe', 'C:\Users\alex\AppData\Local\Agents\Agents.exe') | Where-Object { Test-Path -LiteralPath ${'$'}_ } | Select-Object -First 1
+            |if (${'$'}exe) { Start-Process -FilePath ${'$'}exe }
             |Stop-Transcript | Out-Null
             |
             """.trimMargin(),
@@ -104,7 +114,7 @@ class HelperScriptsTest {
         )
         assertEquals(
             """
-            |# Agents updater: swaps in the new folder once the app has quit, then opens it again.
+            |# Wildware Feed updater: swaps in the new folder once the app has quit, then opens it again.
             |Start-Transcript -Path 'C:\Temp\update.log' -Append | Out-Null
             |Wait-Process -Id 4242 -Timeout 120 -ErrorAction SilentlyContinue
             |Stop-Process -Id 4242 -Force -ErrorAction SilentlyContinue
@@ -147,7 +157,7 @@ class HelperScriptsTest {
         assertEquals(
             """
             |#!/bin/sh
-            |# Agents updater: opens the new version once the old one has quit.
+            |# Wildware Feed updater: opens the new version once the old one has quit.
             |exec >>'/home/alex/.config/agents/updates/1.0.2/update.log' 2>&1
             |echo "relaunch started ${'$'}(date)"
             |$wait

@@ -1,5 +1,7 @@
 package dev.wildware.agents.app.desktop
 
+import dev.wildware.agents.app.ProductName
+
 import java.awt.BasicStroke
 import java.awt.Color
 import java.awt.Font
@@ -14,11 +16,11 @@ data class TrayLook(val badge: String?, val tooltip: String) {
     companion object {
         /** [waiting] questions, or null while signed out. */
         fun of(waiting: Int?, offline: Boolean = false): TrayLook = when {
-            waiting == null -> TrayLook(null, "Agents — signed out")
-            waiting == 0 -> TrayLook(null, if (offline) "Agents — offline" else "Agents — nothing waiting")
+            waiting == null -> TrayLook(null, "$ProductName — signed out")
+            waiting == 0 -> TrayLook(null, if (offline) "$ProductName — offline" else "$ProductName — nothing waiting")
             else -> TrayLook(
                 if (waiting > 9) "9+" else waiting.toString(),
-                "Agents — $waiting ${if (waiting == 1) "question" else "questions"} waiting" + if (offline) " (offline)" else "",
+                "$ProductName — $waiting ${if (waiting == 1) "question" else "questions"} waiting" + if (offline) " (offline)" else "",
             )
         }
     }

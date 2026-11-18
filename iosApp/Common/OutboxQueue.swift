@@ -11,7 +11,7 @@ enum OutboxError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .refused: "The dashboard refused it. Open Agents to see why."
+        case .refused: "The dashboard refused it. Open Wildware Feed to see why."
         }
     }
 }
@@ -200,7 +200,7 @@ enum OutboxQueue {
     private static func tellGaveUp(_ item: OutboxItem, reason: String?) async {
         let content = UNMutableNotificationContent()
         content.title = "Couldn't send: \(item.label)"
-        content.body = [reason, "Open Agents to try again or delete it."].compactMap { $0 }.joined(separator: " ")
+        content.body = [reason, "Open Wildware Feed to try again or delete it."].compactMap { $0 }.joined(separator: " ")
         let request = UNNotificationRequest(identifier: "outbox-\(item.id)", content: content, trigger: nil)
         try? await UNUserNotificationCenter.current().add(request)
     }

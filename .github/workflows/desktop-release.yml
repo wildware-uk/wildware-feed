@@ -61,7 +61,7 @@ jobs:
             exit 1
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "Building Agents $version"
+          echo "Building Wildware Feed $version"
 
   mac:
     needs: version
@@ -137,7 +137,7 @@ jobs:
           fi
           ./gradlew "${args[@]}" :composeApp:packageDmg
           mkdir -p dist
-          cp composeApp/build/compose/binaries/main/dmg/*.dmg "dist/Agents-$VERSION-mac-arm64.dmg"
+          cp composeApp/build/compose/binaries/main/dmg/*.dmg "dist/Wildware-Feed-$VERSION-mac-arm64.dmg"
 
       - name: Sign the .dmg itself
         if: steps.signing.outputs.signed == 'true'
@@ -146,7 +146,7 @@ jobs:
           IDENTITY: ${{ steps.signing.outputs.identity }}
           KEYCHAIN: ${{ steps.signing.outputs.keychain }}
         run: |
-          codesign --force --timestamp --keychain "$KEYCHAIN" --sign "Developer ID Application: $IDENTITY" "dist/Agents-$VERSION-mac-arm64.dmg"
+          codesign --force --timestamp --keychain "$KEYCHAIN" --sign "Developer ID Application: $IDENTITY" "dist/Wildware-Feed-$VERSION-mac-arm64.dmg"
 
       - name: Notarise and staple
         id: notarize
@@ -165,7 +165,7 @@ jobs:
           fi
           key="$RUNNER_TEMP/asc-key.p8"
           printf '%s' "$ASC_KEY_P8" | base64 --decode > "$key"
-          dmg="dist/Agents-$VERSION-mac-arm64.dmg"
+          dmg="dist/Wildware-Feed-$VERSION-mac-arm64.dmg"
           xcrun notarytool submit "$dmg" --key "$key" --key-id "$ASC_KEY_ID" --issuer "$ASC_ISSUER_ID" --wait --timeout 30m
           rm -f "$key"
           xcrun stapler staple "$dmg"
@@ -182,7 +182,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         timeout-minutes: 5
         with:
-          name: Agents-${{ needs.version.outputs.version }}-mac
+          name: Wildware-Feed-${{ needs.version.outputs.version }}-mac
           path: dist/*
           if-no-files-found: error
 
@@ -212,10 +212,10 @@ jobs:
           set -euo pipefail
           ./gradlew --no-daemon "-Pagents.version=$VERSION" :composeApp:packageMsi :composeApp:createDistributable
           mkdir -p dist
-          cp composeApp/build/compose/binaries/main/msi/*.msi "dist/Agents-$VERSION-windows-x64.msi"
+          cp composeApp/build/compose/binaries/main/msi/*.msi "dist/Wildware-Feed-$VERSION-windows-x64.msi"
 
       # OPTIONAL SIGNING HOOK. Runs only when WINDOWS_CERT_PFX_BASE64 and WINDOWS_CERT_PASSWORD
-      # are set: signs Agents.exe in the portable folder and the .msi. Without them, unsigned.
+      # are set: signs Wildware Feed.exe in the portable folder and the .msi. Without them, unsigned.
       - name: Sign (optional)
         id: sign
         timeout-minutes: 10
@@ -233,7 +233,7 @@ jobs:
           try {
             [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:CERT_PFX))
             $signtool = Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe' | Sort-Object FullName -Descending | Select-Object -First 1
-            $files = @('composeApp\build\compose\binaries\main\app\Agents\Agents.exe', "dist\Agents-$env:VERSION-windows-x64.msi")
+            $files = @('composeApp\build\compose\binaries\main\app\Wildware Feed\Wildware Feed.exe', "dist\Wildware-Feed-$env:VERSION-windows-x64.msi")
             foreach ($file in $files) {
               & $signtool.FullName sign /f $pfx /p $env:CERT_PASSWORD /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 $file
               if ($LASTEXITCODE -ne 0) { throw "signtool failed on $file" }
@@ -245,11 +245,11 @@ jobs:
 
       - name: Zip the portable folder
         timeout-minutes: 5
-        run: 7z a -tzip "dist/Agents-$VERSION-windows-x64-portable.zip" ./composeApp/build/compose/binaries/main/app/Agents
+        run: 7z a -tzip "dist/Wildware-Feed-$VERSION-windows-x64-portable.zip" "./composeApp/build/compose/binaries/main/app/Wildware Feed"
       - uses: actions/upload-artifact@v4
         timeout-minutes: 5
         with:
-          name: Agents-${{ needs.version.outputs.version }}-windows
+          name: Wildware-Feed-${{ needs.version.outputs.version }}-windows
           path: dist/*
           if-no-files-found: error
 
@@ -275,15 +275,15 @@ jobs:
           set -euo pipefail
           ./gradlew --no-daemon "-Pagents.version=$VERSION" :composeApp:packageDeb :composeApp:packageRpm :composeApp:packageAppImage
           mkdir -p dist
-          cp composeApp/build/compose/binaries/main/deb/*.deb "dist/agents_${VERSION}_amd64.deb"
-          cp composeApp/build/compose/binaries/main/rpm/*.rpm "dist/agents-${VERSION}.x86_64.rpm"
+          cp composeApp/build/compose/binaries/main/deb/*.deb "dist/wildware-feed_${VERSION}_amd64.deb"
+          cp composeApp/build/compose/binaries/main/rpm/*.rpm "dist/wildware-feed-${VERSION}.x86_64.rpm"
       - name: Pack the app folder into an AppImage
         timeout-minutes: 5
-        run: composeApp/packaging/linux/make-appimage.sh composeApp/build/compose/binaries/main/app/Agents "$VERSION" dist
+        run: composeApp/packaging/linux/make-appimage.sh "composeApp/build/compose/binaries/main/app/Wildware Feed" "$VERSION" dist
       - uses: actions/upload-artifact@v4
         timeout-minutes: 5
         with:
-          name: Agents-${{ needs.version.outputs.version }}-linux
+          name: Wildware-Feed-${{ needs.version.outputs.version }}-linux
           path: dist/*
           if-no-files-found: error
 
@@ -317,4 +317,4 @@ jobs:
           cat notes.md
       - name: Publish the release
         timeout-minutes: 10
-        run: gh release create "$GITHUB_REF_NAME" dist/* --title "Agents $VERSION" --notes-file notes.md --verify-tag
+        run: gh release create "$GITHUB_REF_NAME" dist/* --title "Wildware Feed $VERSION" --notes-file notes.md --verify-tag

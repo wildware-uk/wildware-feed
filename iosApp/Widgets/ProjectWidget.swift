@@ -100,7 +100,7 @@ struct ProjectWidgetContent: View {
     var body: some View {
         switch entry.state {
         case .notLinked:
-            message("Open Agents to sign in")
+            message("Open Wildware Feed to sign in")
         case .unreachable:
             Label("Dashboard unreachable", systemImage: "wifi.exclamationmark").font(.caption)
         case .unchosen:

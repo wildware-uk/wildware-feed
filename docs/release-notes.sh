@@ -9,25 +9,25 @@ cat <<NOTES
 
 | Computer | File |
 | --- | --- |
-| Mac with Apple silicon | \`Agents-$version-mac-arm64.dmg\` |
-| Windows | \`Agents-$version-windows-x64.msi\` (or \`-portable.zip\`, no install) |
-| Ubuntu, Debian | \`agents_${version}_amd64.deb\` |
-| Fedora, openSUSE | \`agents-$version.x86_64.rpm\` |
-| Any other Linux | \`Agents-$version-x86_64.AppImage\` |
+| Mac with Apple silicon | \`Wildware-Feed-$version-mac-arm64.dmg\` |
+| Windows | \`Wildware-Feed-$version-windows-x64.msi\` (or \`-portable.zip\`, no install) |
+| Ubuntu, Debian | \`wildware-feed_${version}_amd64.deb\` |
+| Fedora, openSUSE | \`wildware-feed-$version.x86_64.rpm\` |
+| Any other Linux | \`Wildware-Feed-$version-x86_64.AppImage\` |
 
 \`SHA256SUMS.txt\` has each file's checksum.
 
 ## How to install
 
-**Mac**: open the .dmg and drag Agents into Applications, then open it.
+**Mac**: open the .dmg and drag Wildware Feed into Applications, then open it.
 NOTES
 
 if [ "$mac_notarized" = "true" ]; then
   echo "This build is signed and notarised by Apple, so it opens straight away."
 elif [ "$mac_signed" = "true" ]; then
-  echo "This build is signed but **not notarised**. The first time, open **System Settings › Privacy & Security** and click **Open Anyway** next to Agents."
+  echo "This build is signed but **not notarised**. The first time, open **System Settings › Privacy & Security** and click **Open Anyway** next to Wildware Feed."
 else
-  echo "This build is **not signed**. The first time it is refused: open **System Settings › Privacy & Security**, click **Open Anyway** next to Agents, then confirm. (macOS 14 or older: Control-click Agents in Applications, choose Open, then Open.)"
+  echo "This build is **not signed**. The first time it is refused: open **System Settings › Privacy & Security**, click **Open Anyway** next to Wildware Feed, then confirm. (macOS 14 or older: Control-click Wildware Feed in Applications, choose Open, then Open.)"
 fi
 
 cat <<NOTES
@@ -44,9 +44,9 @@ fi
 cat <<NOTES
 
 **Linux**:
-- Ubuntu, Debian: \`sudo apt install ./agents_${version}_amd64.deb\`
-- Fedora, openSUSE: \`sudo dnf install ./agents-$version.x86_64.rpm\`
-- Anything else: \`chmod +x Agents-$version-x86_64.AppImage\` and run it.
+- Ubuntu, Debian: \`sudo apt install ./wildware-feed_${version}_amd64.deb\`
+- Fedora, openSUSE: \`sudo dnf install ./wildware-feed-$version.x86_64.rpm\`
+- Anything else: \`chmod +x Wildware-Feed-$version-x86_64.AppImage\` and run it.
 - On GNOME, the tray icon needs the "AppIndicator and KStatusNotifierItem Support" extension.
 
 Then sign in with your dashboard's address and owner password. More detail: [docs/INSTALL.md](https://github.com/wildware-uk/wildware-feed/blob/master/docs/INSTALL.md).

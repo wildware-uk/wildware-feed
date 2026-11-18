@@ -1,5 +1,7 @@
 package dev.wildware.agents.app.desktop
 
+import dev.wildware.agents.app.ProductName
+
 import java.io.File
 import javax.imageio.ImageIO
 import kotlin.concurrent.thread
@@ -50,7 +52,7 @@ class NotifySendNotifier(
 
         fun command(notice: DesktopNotice, icon: String?): List<String> = buildList {
             add("notify-send")
-            add("--app-name=Agents")
+            add("--app-name=$ProductName")
             if (icon != null) add("--icon=$icon")
             // "default" is what most notification servers run on a click on the notification itself.
             add("--action=$ActionKey=Open")

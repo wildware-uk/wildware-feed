@@ -161,7 +161,7 @@ class RecentActivityTest {
 
         assertEquals(listOf("/projects/garden-game", "/projects/harbor-app", "/projects/garden-game?focus=u1"), entries.map { it.id })
         assertEquals("Builder: Merged", entries[0].text)
-        assertEquals("A project on your Agents dashboard", entries[1].text)
+        assertEquals("A project in Wildware Feed", entries[1].text)
         assertEquals("Builder in Garden Game: Merged All tests pass.", entries[2].text)
         assertEquals(now, entries[2].createdAt)
         assertEquals(

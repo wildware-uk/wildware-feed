@@ -6,6 +6,12 @@ import java.io.InputStream
 import java.security.MessageDigest
 
 /**
+ * What the installed program is called: the new name first, then the one releases up to 1.0.1
+ * used. An update can find either, and replaces the old one in place.
+ */
+val LauncherNames = listOf("Wildware Feed", "Agents")
+
+/**
  * How this copy of the app was installed, which decides which file an update needs and how it
  * goes in. Paths are kept as text so Windows paths read the same when tested on Linux.
  */
@@ -13,17 +19,17 @@ sealed interface Installation {
     /** The installer kind that updates this copy, or null when it can't update itself. */
     val kind: AssetKind?
 
-    /** The app bundle, e.g. `/Applications/Agents.app`. */
+    /** The app bundle, e.g. `/Applications/Wildware Feed.app` (or `Agents.app` from before the rename). */
     data class MacBundle(val app: String) : Installation {
         override val kind = AssetKind.MacDmg
     }
 
-    /** Installed from the .msi, per user, into `%LOCALAPPDATA%\Agents`. */
+    /** Installed from the .msi, per user, into `%LOCALAPPDATA%\Wildware Feed` (`%LOCALAPPDATA%\Agents` before the rename). */
     data class WindowsMsi(val exe: String) : Installation {
         override val kind = AssetKind.WindowsMsi
     }
 
-    /** Unzipped from the portable .zip into [folder] (the one holding Agents.exe). */
+    /** Unzipped from the portable .zip into [folder] (the one holding the .exe). */
     data class WindowsPortable(val folder: String, val exe: String) : Installation {
         override val kind = AssetKind.WindowsZip
     }
@@ -65,7 +71,8 @@ sealed interface Installation {
                     val exe = appPath?.takeIf { it.isNotBlank() } ?: return notInstalled
                     val folder = parentOf(exe) ?: return notInstalled
                     val local = env["LOCALAPPDATA"]?.takeIf { it.isNotBlank() }
-                    if (local != null && samePath(folder, joinWindows(local, "Agents"))) WindowsMsi(exe) else WindowsPortable(folder, exe)
+                    val msiFolder = local != null && LauncherNames.any { samePath(folder, joinWindows(local, it)) }
+                    if (msiFolder) WindowsMsi(exe) else WindowsPortable(folder, exe)
                 }
                 DesktopOs.Linux -> {
                     env["APPIMAGE"]?.takeIf { it.isNotBlank() }?.let { return LinuxAppImage(it) }
@@ -80,7 +87,7 @@ sealed interface Installation {
             }
         }
 
-        /** `/Applications/Agents.app/Contents/MacOS/Agents` → `/Applications/Agents.app`. */
+        /** `/Applications/Wildware Feed.app/Contents/MacOS/Wildware Feed` → `/Applications/Wildware Feed.app`. */
         private fun macBundleOf(path: String): String? {
             val at = path.indexOf(".app/")
             return when {
@@ -90,7 +97,7 @@ sealed interface Installation {
             }
         }
 
-        private fun parentOf(path: String): String? {
+        internal fun parentOf(path: String): String? {
             val at = path.trimEnd('/', '\\').lastIndexOfAny(charArrayOf('/', '\\'))
             return if (at <= 0) null else path.substring(0, at)
         }

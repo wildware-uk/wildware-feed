@@ -37,7 +37,7 @@ object HelperScripts {
      */
     fun mac(pid: Long, app: String, newApp: String, mountPoint: String, log: String) = """
         |#!/bin/sh
-        |# Agents updater: swaps in the new app once the old one has quit, then opens it again.
+        |# Wildware Feed updater: swaps in the new app once the old one has quit, then opens it again.
         |exec >>${sh(log)} 2>&1
         |echo "update started ${'$'}(date)"
         |${shWait(pid)}
@@ -52,6 +52,12 @@ object HelperScripts {
         |    if mv "${'$'}staged" "${'$'}app"; then
         |      rm -rf "${'$'}old"
         |      echo "updated"
+        |      # Take the new version's name ("Agents.app" becomes "Wildware Feed.app"): a rename, so the Dock keeps it.
+        |      renamed="${'$'}(dirname "${'$'}app")/${'$'}(basename "${'$'}new")"
+        |      if [ "${'$'}renamed" != "${'$'}app" ] && [ ! -e "${'$'}renamed" ] && mv "${'$'}app" "${'$'}renamed"; then
+        |        app="${'$'}renamed"
+        |        echo "renamed to ${'$'}app"
+        |      fi
         |    else
         |      mv "${'$'}old" "${'$'}app"
         |      echo "could not move the new app in; kept the old one"
@@ -67,14 +73,18 @@ object HelperScripts {
         |
     """.trimMargin()
 
-    /** Windows, installed from the .msi: runs the new one (it upgrades in place), then opens the app. */
-    fun windowsMsi(pid: Long, msi: String, exe: String, log: String, msiLog: String) = """
-        |# Agents updater: installs the new version once the app has quit, then opens it again.
+    /**
+     * Windows, installed from the .msi: runs the new one (it upgrades in place), then opens the
+     * first of [exes] that is there (the program may have moved with a rename).
+     */
+    fun windowsMsi(pid: Long, msi: String, exes: List<String>, log: String, msiLog: String) = """
+        |# Wildware Feed updater: installs the new version once the app has quit, then opens it again.
         |Start-Transcript -Path ${ps(log)} -Append | Out-Null
         |${psWait(pid)}
         |${'$'}install = Start-Process -FilePath 'msiexec.exe' -ArgumentList ${ps("/i \"$msi\" /passive /norestart /l*v \"$msiLog\"")} -Wait -PassThru
         |"msiexec finished with ${'$'}(${'$'}install.ExitCode)"
-        |Start-Process -FilePath ${ps(exe)}
+        |${'$'}exe = @(${exes.joinToString(", ") { ps(it) }}) | Where-Object { Test-Path -LiteralPath ${'$'}_ } | Select-Object -First 1
+        |if (${'$'}exe) { Start-Process -FilePath ${'$'}exe }
         |Stop-Transcript | Out-Null
         |
     """.trimMargin()
@@ -84,7 +94,7 @@ object HelperScripts {
      * one as [staged]; this swaps the two with renames and opens the app.
      */
     fun windowsPortable(pid: Long, folder: String, staged: String, exe: String, log: String) = """
-        |# Agents updater: swaps in the new folder once the app has quit, then opens it again.
+        |# Wildware Feed updater: swaps in the new folder once the app has quit, then opens it again.
         |Start-Transcript -Path ${ps(log)} -Append | Out-Null
         |${psWait(pid)}
         |${'$'}app = ${ps(folder)}
@@ -128,7 +138,7 @@ object HelperScripts {
      */
     fun linuxRelaunch(pid: Long, launcher: String, log: String) = """
         |#!/bin/sh
-        |# Agents updater: opens the new version once the old one has quit.
+        |# Wildware Feed updater: opens the new version once the old one has quit.
         |exec >>${sh(log)} 2>&1
         |echo "relaunch started ${'$'}(date)"
         |${shWait(pid)}

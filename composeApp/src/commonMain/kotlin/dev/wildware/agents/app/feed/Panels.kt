@@ -147,7 +147,7 @@ fun Sidebar(ui: FeedUi, modifier: Modifier = Modifier) {
             Row(Modifier.padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 AppMark(30.dp)
                 Text(
-                    "Agents",
+                    dev.wildware.agents.app.ProductName,
                     Modifier.padding(start = 10.dp).weight(1f),
                     color = colors.text,
                     style = AgentTheme.type.title.copy(fontSize = 17.sp, lineHeight = 22.sp),

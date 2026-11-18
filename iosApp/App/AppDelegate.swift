@@ -96,7 +96,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
     /// The answer was tapped on the lock screen, so say what went wrong there too.
     private func tell(_ message: String) async {
         let content = UNMutableNotificationContent()
-        content.title = "Agents"
+        content.title = "Wildware Feed"
         content.body = message
         let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
         try? await UNUserNotificationCenter.current().add(request)

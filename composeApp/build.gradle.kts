@@ -106,22 +106,22 @@ compose.desktop {
         nativeDistributions {
             // AppImage here is jpackage's plain app folder; CI packs it into a real .AppImage.
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb, TargetFormat.Rpm, TargetFormat.AppImage)
-            packageName = "Agents"
+            packageName = "Wildware Feed"
             packageVersion = agentsVersion
-            description = "Agent Dashboard: questions and updates from your agents"
+            description = "Wildware Feed: questions and updates from your agents"
             vendor = "Wildware"
             copyright = "© 2026 Wildware"
             // What `suggestRuntimeModules` found, plus the TLS curves OkHttp needs that it can't see.
             modules("java.instrument", "java.management", "jdk.unsupported", "java.naming", "jdk.crypto.ec")
             macOS {
                 bundleID = "dev.wildware.agents.desktop"
-                dockName = "Agents"
+                dockName = "Wildware Feed"
                 appCategory = "public.app-category.productivity"
                 iconFile.set(project.file("packaging/icons/agents.icns"))
             }
             windows {
                 iconFile.set(project.file("packaging/icons/agents.ico"))
-                menuGroup = "Agents"
+                menuGroup = "Wildware Feed"
                 shortcut = true
                 perUserInstall = true
                 // Fixed for good: it is how Windows knows a new .msi upgrades the old one.
@@ -129,6 +129,7 @@ compose.desktop {
             }
             linux {
                 iconFile.set(project.file("packaging/icons/agents.png"))
+                // The Debian/RPM package keeps its old name, so a new one upgrades the installed "agents" in place.
                 packageName = "agents"
                 debMaintainer = "noreply@wildware.dev"
                 menuGroup = "Network"

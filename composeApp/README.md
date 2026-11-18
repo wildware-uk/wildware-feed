@@ -9,7 +9,7 @@ the updates. There is a matching light theme and a high contrast version of each
 ## Run it
 
 ```sh
-./gradlew --no-daemon :composeApp:run           # the desktop app, "Agents"
+./gradlew --no-daemon :composeApp:run           # the desktop app, "Wildware Feed"
 ./gradlew --no-daemon :composeApp:desktopTest   # tests, and PNGs in composeApp/build/screenshots/
 ```
 

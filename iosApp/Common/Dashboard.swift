@@ -20,7 +20,7 @@ enum DashboardError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .notLinked: "Open the Agents app and sign in to your dashboard first."
+        case .notLinked: "Open Wildware Feed and sign in to your dashboard first."
         }
     }
 }

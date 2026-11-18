@@ -61,12 +61,12 @@ class UpdateUiTest {
             AgentTheme(false) { Box(Modifier.fillMaxSize()) { UpdateLayer(updates) {} } }
         }
         onNodeWithContentDescription("Update to 1.0.2 available").performClick()
-        onNodeWithText("Agents 1.0.2 is available").assertExists()
+        onNodeWithText("Wildware Feed 1.0.2 is available").assertExists()
         onNodeWithText("You have 1.0.1.").assertExists()
         onNodeWithText("Not now").assertExists()
         onNodeWithText("Install and restart").performClick()
         waitUntil(timeoutMillis = 5_000) { quit }
-        assertEquals(listOf("prepare agents_1.0.2_amd64.deb", "launch"), installer.calls)
+        assertEquals(listOf("prepare wildware-feed_1.0.2_amd64.deb", "launch"), installer.calls)
         onNodeWithText("Restarting…").assertExists()
         scope.cancel()
     }
@@ -74,7 +74,7 @@ class UpdateUiTest {
     @Test
     fun aFailureShowsPlainlyWithRetry() = runComposeUiTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-        val fake = FakeReleaseSource(release("1.0.2"), bytes = mutableMapOf("agents_1.0.2_amd64.deb" to "tampered".toByteArray()))
+        val fake = FakeReleaseSource(release("1.0.2"), bytes = mutableMapOf("wildware-feed_1.0.2_amd64.deb" to "tampered".toByteArray()))
         val updates = controller("1.0.1", fake, scope)
         setContent {
             AgentTheme(true) { Box(Modifier.fillMaxSize()) { UpdateLayer(updates) {} } }
@@ -96,7 +96,7 @@ class UpdateUiTest {
         }
         updates.checkByHand()
         waitUntil(timeoutMillis = 5_000) { updates.prompt.value == UpdatePrompt.UpToDate }
-        onNodeWithText("Agents is up to date").assertExists()
+        onNodeWithText("Wildware Feed is up to date").assertExists()
         scope.cancel()
     }
 }

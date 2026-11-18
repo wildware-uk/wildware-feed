@@ -21,7 +21,7 @@ object Spotlight {
             SpotlightEntry(
                 id = projectPath(project.slug),
                 title = project.name,
-                text = latest?.let { "${it.agentName}: ${it.headline}" } ?: "A project on your Agents dashboard",
+                text = latest?.let { "${it.agentName}: ${it.headline}" } ?: "A project in Wildware Feed",
                 keywords = listOf(project.name, project.slug, "agents"),
                 createdAt = null,
             )

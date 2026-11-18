@@ -47,5 +47,5 @@ final class VoiceNoteInput: NSObject, VoiceInput {
         Task { @MainActor in VoiceNotes.shared.cancel() }
     }
 
-    private static let microphoneOff = "Agents can't use the microphone. Turn it on in Settings, under Agents."
+    private static let microphoneOff = "Wildware Feed can't use the microphone. Turn it on in Settings, under Feed."
 }

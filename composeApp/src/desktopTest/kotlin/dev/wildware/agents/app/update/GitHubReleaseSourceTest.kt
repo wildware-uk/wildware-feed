@@ -18,8 +18,8 @@ import kotlin.test.assertTrue
 
 /** GitHub's releases API, against a fake GitHub. Nothing reaches the network. */
 class GitHubReleaseSourceTest {
-    private val latestUrl = "https://api.github.com/repos/wildware-uk/agent-dashboard-ios/releases/latest"
-    private val dl = "https://github.com/wildware-uk/agent-dashboard-ios/releases/download/v1.0.2"
+    private val latestUrl = "https://api.github.com/repos/wildware-uk/wildware-feed/releases/latest"
+    private val dl = "https://github.com/wildware-uk/wildware-feed/releases/download/v1.0.2"
     private val hashA = "a".repeat(64)
     private val hashB = "b".repeat(64)
     private val json = headersOf(HttpHeaders.ContentType, "application/json")

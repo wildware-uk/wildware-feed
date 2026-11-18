@@ -24,7 +24,7 @@ import kotlinx.serialization.json.Json
 import java.io.File
 
 /** The GitHub repo whose releases update the app. A fork points this at its own. */
-const val ReleasesRepo = "wildware-uk/agent-dashboard-ios"
+const val ReleasesRepo = "wildware-uk/wildware-feed"
 
 /**
  * Releases straight from GitHub's public API, no sign-in: the newest published release, its
@@ -36,7 +36,7 @@ const val ReleasesRepo = "wildware-uk/agent-dashboard-ios"
 class GitHubReleaseSource(
     engine: HttpClientEngine,
     private val repo: String = ReleasesRepo,
-    private val userAgent: String = "Agents-desktop/$AppVersion",
+    private val userAgent: String = "WildwareFeed-desktop/$AppVersion",
     private val now: () -> Long = System::currentTimeMillis,
 ) : ReleaseSource, AutoCloseable {
     private val json = Json { ignoreUnknownKeys = true; explicitNulls = false }

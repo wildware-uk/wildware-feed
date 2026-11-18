@@ -38,7 +38,13 @@ class DesktopShell(
     /** The updater, when there is one; created once the settings say whether it checks by itself. */
     updatesFor: (StateFlow<DesktopSettings>) -> UpdateController? = { null },
 ) : TrayActions {
-    private val mutableSettings = MutableStateFlow(settingsStore.load().let { it.copy(startAtLogin = startAtLogin.available && startAtLogin.isEnabled()) })
+    private val mutableSettings = MutableStateFlow(
+        settingsStore.load().let {
+            // After an update the program may have moved; the login start follows it.
+            runCatching { startAtLogin.refresh() }
+            it.copy(startAtLogin = startAtLogin.available && startAtLogin.isEnabled())
+        },
+    )
     val settings: StateFlow<DesktopSettings> = mutableSettings.asStateFlow()
 
     val tray = DesktopTray(this, mutableSettings.value, startAtLogin.available)

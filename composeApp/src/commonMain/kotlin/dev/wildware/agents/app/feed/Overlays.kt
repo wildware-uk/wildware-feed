@@ -455,7 +455,7 @@ fun ProjectsDrawer(ui: FeedUi, progress: EdgeProgress, widthPx: Float, safeArea:
             Row(Modifier.padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 AppMark(30.dp)
                 Text(
-                    "Agents",
+                    dev.wildware.agents.app.ProductName,
                     Modifier.padding(start = 10.dp).weight(1f).semantics { heading() },
                     color = colors.text,
                     style = AgentTheme.type.title.copy(fontSize = 18.sp, lineHeight = 22.sp),

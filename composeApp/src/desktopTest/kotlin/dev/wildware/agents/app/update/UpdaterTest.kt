@@ -41,7 +41,7 @@ class UpdaterTest {
         val installer = FakeInstaller()
         val up = updater(installer, events)
         up.install(release(), FakeReleaseSource())
-        assertEquals(listOf("prepare agents_1.0.2_amd64.deb", "launch"), installer.calls)
+        assertEquals(listOf("prepare wildware-feed_1.0.2_amd64.deb", "launch"), installer.calls)
         assertEquals(listOf("flush", "quit"), events)
         assertEquals(InstallState.Restarting, up.state.value)
     }
@@ -51,7 +51,7 @@ class UpdaterTest {
         val events = mutableListOf<String>()
         val installer = FakeInstaller()
         val up = updater(installer, events)
-        val source = FakeReleaseSource(bytes = mutableMapOf("agents_1.0.2_amd64.deb" to "tampered".toByteArray()))
+        val source = FakeReleaseSource(bytes = mutableMapOf("wildware-feed_1.0.2_amd64.deb" to "tampered".toByteArray()))
         up.install(release(), source)
         val state = up.state.value
         assertIs<InstallState.Failed>(state)
@@ -66,7 +66,7 @@ class UpdaterTest {
     fun aReleaseWithNoChecksumIsNotInstalled() = runTest {
         val installer = FakeInstaller()
         val up = updater(installer, mutableListOf())
-        up.install(release("1.0.2", asset("agents_1.0.2_amd64.deb", "linux-deb", sha256 = null)), FakeReleaseSource())
+        up.install(release("1.0.2", asset("wildware-feed_1.0.2_amd64.deb", "linux-deb", sha256 = null)), FakeReleaseSource())
         assertIs<InstallState.Failed>(up.state.value)
         assertEquals(emptyList(), installer.calls)
     }

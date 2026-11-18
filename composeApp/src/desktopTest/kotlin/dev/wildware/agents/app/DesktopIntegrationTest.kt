@@ -156,10 +156,10 @@ class DesktopIntegrationTest {
 
     @Test
     fun `the tray shows the waiting count, capped at 9+`() {
-        assertEquals(TrayLook(null, "Agents — signed out"), TrayLook.of(null))
-        assertEquals(TrayLook(null, "Agents — nothing waiting"), TrayLook.of(0))
-        assertEquals(TrayLook("1", "Agents — 1 question waiting"), TrayLook.of(1))
-        assertEquals(TrayLook("9+", "Agents — 12 questions waiting (offline)"), TrayLook.of(12, offline = true))
+        assertEquals(TrayLook(null, "Wildware Feed — signed out"), TrayLook.of(null))
+        assertEquals(TrayLook(null, "Wildware Feed — nothing waiting"), TrayLook.of(0))
+        assertEquals(TrayLook("1", "Wildware Feed — 1 question waiting"), TrayLook.of(1))
+        assertEquals(TrayLook("9+", "Wildware Feed — 12 questions waiting (offline)"), TrayLook.of(12, offline = true))
     }
 
     @Test
@@ -195,6 +195,19 @@ class DesktopIntegrationTest {
         assertTrue(login.isEnabled())
         assertTrue(login.setEnabled(false))
         assertFalse(login.isEnabled())
+    }
+
+    @Test
+    fun anUpdateThatRenamedTheProgramMovesTheLoginStartToo() {
+        val home = tempHome()
+        StartAtLogin(DesktopOs.Mac, home, launcher = "/Applications/Agents.app/Contents/MacOS/Agents").setEnabled(true)
+        StartAtLogin(DesktopOs.Mac, home, launcher = "/Applications/Wildware Feed.app/Contents/MacOS/Wildware Feed").refresh()
+        val plist = File(home, "Library/LaunchAgents/dev.wildware.agents.desktop.plist").readText()
+        assertTrue("<string>/Applications/Wildware Feed.app/Contents/MacOS/Wildware Feed</string>" in plist, plist)
+
+        val off = tempHome()
+        StartAtLogin(DesktopOs.Linux, off, launcher = "/opt/agents/bin/Wildware Feed").refresh()
+        assertTrue(!File(off, ".config/autostart/dev.wildware.agents.desktop.desktop").exists(), "refresh never turns it on")
     }
 
     @Test
@@ -234,7 +247,7 @@ class DesktopIntegrationTest {
     fun `notify-send is asked to wait for a click on the notification`() {
         val notice = DesktopNotice("request-r1", "Builder · Mega", "-rf everything?", "r1")
         assertEquals(
-            listOf("notify-send", "--app-name=Agents", "--icon=/tmp/i.png", "--action=default=Open", "--wait", "--", "Builder · Mega", "-rf everything?"),
+            listOf("notify-send", "--app-name=Wildware Feed", "--icon=/tmp/i.png", "--action=default=Open", "--wait", "--", "Builder · Mega", "-rf everything?"),
             NotifySendNotifier.command(notice, "/tmp/i.png"),
         )
     }

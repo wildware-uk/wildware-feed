@@ -3,7 +3,7 @@ import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
 
-/// "Share to Agents" from any app: pick a project, add a note, and it lands in that project's feed.
+/// "Share to Wildware Feed" from any app: pick a project, add a note, and it lands in that project's feed.
 final class ShareViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -43,7 +43,7 @@ private struct ShareView: View {
                     Text(message).foregroundStyle(.red)
                 }
                 if status == .queued {
-                    Text("No connection. It's saved, and Agents will send it when you're back online.")
+                    Text("No connection. It's saved, and Wildware Feed will send it when you're back online.")
                         .foregroundStyle(.orange)
                 }
                 Picker("Project", selection: $selected) {
@@ -59,7 +59,7 @@ private struct ShareView: View {
                     }
                 }
             }
-            .navigationTitle("Share to Agents")
+            .navigationTitle("Share to Wildware Feed")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel", action: cancel) }

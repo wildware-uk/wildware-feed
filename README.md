@@ -1,6 +1,6 @@
-# Agents
+# Wildware Feed
 
-The native app for the [Agent Dashboard](https://github.com/wildware-uk/agent-dashboard) on iPhone, iPad, Apple Watch, Mac, Windows and Linux. MIT licensed. Desktop installers are on the [Releases](https://github.com/wildware-uk/wildware-feed/releases) page; see [docs/INSTALL.md](docs/INSTALL.md).
+Wildware Feed (called Agents before 1.0.2) is the native app for the [Agent Dashboard](https://github.com/wildware-uk/agent-dashboard) on iPhone, iPad, Apple Watch, Mac, Windows and Linux. MIT licensed. Desktop installers are on the [Releases](https://github.com/wildware-uk/wildware-feed/releases) page; see [docs/INSTALL.md](docs/INSTALL.md).
 
 ## iPhone
 
@@ -23,8 +23,9 @@ iPhone app adds what only a native app can do:
 - **Apple Watch.** See what agents are waiting on and answer from your wrist: Yes/No, one button per
   option, or dictate a text answer. Dictate a message to a project, or reply in a question's thread.
   A watch face complication shows how many questions are waiting and opens the list.
-- **Siri.** "Create a ticket in Agents", "What are my Agents doing", "Answer my Agents",
-  "Message Garden Game in Agents", "Record a voice note in Agents", "What did Garden Game say in Agents".
+- **Siri.** "Create a ticket in Feed", "What are my agents doing in Feed", "Answer my agents in Feed",
+  "Message Garden Game in Feed", "Record a voice note in Feed", "What did Garden Game say in Feed".
+  "Wildware Feed" and the old name "Agents" work in place of "Feed".
   Siri asks for anything you didn't say.
 
 ## How it fits together
@@ -55,7 +56,7 @@ widgets, share sheet and Siri can read it. Revoke a phone with `DELETE /api/devi
 and its key to the watch over WatchConnectivity, and again each time either side starts up. The
 watch keeps them in its own keychain and uses the same key as the phone, so revoking the phone
 signs the watch out too. Signing out on the phone signs the watch out. Until the key arrives, the
-watch says "Open Agents on your iPhone".
+watch says "Open Wildware Feed on your iPhone".
 
 **The feed engine.** `shared/` also holds what the cross-platform app runs on: `SignIn` (password to
 device key), `Dashboard` (one live connection to `/api/stream`, and `StateFlow`s for each feed, the
@@ -80,8 +81,8 @@ Agents builds both. The AgentsWatch scheme builds the watch app on its own. Test
 from GitHub Actions: see [docs/IOS_RELEASE.md](docs/IOS_RELEASE.md).
 
 **Installing on the watch.** After installing a new build on the iPhone, open the Watch app on the
-iPhone, find Agents under Available Apps and tap Install (or turn on automatic app install). Then
-open Agents on the iPhone once so it sends the watch its key.
+iPhone, find Feed under Available Apps and tap Install (or turn on automatic app install). Then
+open Feed on the iPhone once so it sends the watch its key.
 
 Kotlin tests run anywhere: `./gradlew :shared:jvmTest`.
 
@@ -90,12 +91,12 @@ watch app for the simulator on a Mac runner.
 
 ## Setting up on the phone
 
-- **Focus filter.** Settings → Focus → pick a Focus → Add Filter → Agents → choose the projects that may
+- **Focus filter.** Settings → Focus → pick a Focus → Add Filter → Feed → choose the projects that may
   still alert you. Leave it empty to hear from every project. The phone tells the dashboard
   (`PUT /api/devices/current/alert-projects`) each time that Focus turns on or off.
-- **Project widget.** Hold the home screen → Edit → Add Widget → Agents → Project. Then hold the widget →
+- **Project widget.** Hold the home screen → Edit → Add Widget → Feed → Project. Then hold the widget →
   Edit Widget → choose the project. For StandBy, add it while the phone is on its side and charging.
-- **Siri.** "What did *project* say in Agents?" works once the phone is linked; nothing to set up.
+- **Siri.** "What did *project* say in Feed?" works once the phone is linked; nothing to set up.
 - **Spotlight.** Fills itself each time the app opens.
 
 ## Turning on push

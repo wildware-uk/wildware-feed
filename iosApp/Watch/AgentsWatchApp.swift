@@ -44,7 +44,7 @@ struct NotLinkedView: View {
             Image(systemName: "iphone")
                 .font(.title)
                 .foregroundStyle(.orange)
-            Text("Open Agents on your iPhone")
+            Text("Open Wildware Feed on your iPhone")
                 .font(.headline)
                 .multilineTextAlignment(.center)
             Text("Sign in there and your watch picks it up.")

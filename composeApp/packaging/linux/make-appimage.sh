@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Packs the app folder jpackage made (./gradlew :composeApp:packageAppImage) into one
-# Agents-<version>-x86_64.AppImage file.
+# Wildware-Feed-<version>-x86_64.AppImage file.
 #
 #   make-appimage.sh <app folder> <version> <out dir> [appimagetool]
 #
@@ -19,16 +19,16 @@ if [ -z "$tool" ]; then
   chmod +x "$tool"
 fi
 
-dir="$work/Agents.AppDir"
+dir="$work/WildwareFeed.AppDir"
 mkdir -p "$dir/usr/lib"
 cp -a "$app" "$dir/usr/lib/agents"
 cp "$here/../icons/agents.png" "$dir/agents.png"
 cat > "$dir/agents.desktop" <<DESKTOP
 [Desktop Entry]
 Type=Application
-Name=Agents
-Comment=Agent Dashboard: questions and updates from your agents
-Exec=Agents
+Name=Wildware Feed
+Comment=Questions and updates from your agents
+Exec=wildware-feed
 Icon=agents
 Categories=Network;
 Terminal=false
@@ -36,10 +36,10 @@ DESKTOP
 cat > "$dir/AppRun" <<'RUN'
 #!/bin/sh
 here="$(dirname "$(readlink -f "$0")")"
-exec "$here/usr/lib/agents/bin/Agents" "$@"
+exec "$here/usr/lib/agents/bin/Wildware Feed" "$@"
 RUN
 chmod +x "$dir/AppRun"
 
 mkdir -p "$out"
 # --appimage-extract-and-run: CI machines have no FUSE to mount the tool itself.
-ARCH=x86_64 "$tool" --appimage-extract-and-run --no-appstream "$dir" "$out/Agents-$version-x86_64.AppImage"
+ARCH=x86_64 "$tool" --appimage-extract-and-run --no-appstream "$dir" "$out/Wildware-Feed-$version-x86_64.AppImage"

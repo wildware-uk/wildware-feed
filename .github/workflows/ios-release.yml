@@ -291,7 +291,7 @@ jobs:
         uses: actions/upload-artifact@v4
         timeout-minutes: 5
         with:
-          name: Agents-${{ needs.check.outputs.version }}-${{ needs.check.outputs.build }}-ipa
+          name: Wildware-Feed-${{ needs.check.outputs.version }}-${{ needs.check.outputs.build }}-ipa
           path: ${{ runner.temp }}/export/*.ipa
           retention-days: 7
           if-no-files-found: error

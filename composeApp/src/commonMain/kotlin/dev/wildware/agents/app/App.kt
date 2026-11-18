@@ -41,6 +41,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 
+/** The app's name, wherever people see it. Hidden identifiers (bundle ids, folders) keep "agents". */
+const val ProductName = "Wildware Feed"
+
 /**
  * The whole app: sign-in until there is a device key, then the live feed. The engine runs on its
  * own scope off the main thread; the screens only collect what it publishes.

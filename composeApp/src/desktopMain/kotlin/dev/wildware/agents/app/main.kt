@@ -183,7 +183,7 @@ fun main(args: Array<String>) {
                 if (shell.keepRunningOnClose) visible = false else quitting?.invoke()
             },
             visible = visible,
-            title = "Agents",
+            title = ProductName,
             icon = appIconBitmap()?.let(::BitmapPainter),
             state = state,
         ) {
@@ -227,7 +227,7 @@ private fun updateController(
 /** "Check for updates", and "Update to …" while there is one, for the command bar. */
 private fun updateCommands(updates: UpdateController, available: Release?): List<AppCommand> = listOfNotNull(
     available?.let { AppCommand("Update to ${it.version}", "Install it and restart", listOf("update", "upgrade", "install")) { updates.showOffer() } },
-    AppCommand("Check for updates", "You have ${updates.current}", listOf("update", "upgrade", "version")) { updates.checkByHand() },
+    AppCommand("Check for updates", "You have $ProductName ${updates.current}", listOf("update", "upgrade", "version")) { updates.checkByHand() },
 )
 
 /** Opens [path] in Finder, Explorer or the file manager. */

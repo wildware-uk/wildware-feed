@@ -65,7 +65,7 @@ targets:
     info:
       path: App/Info.plist
       properties:
-        CFBundleDisplayName: Agents
+        CFBundleDisplayName: Feed
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         AppIdentifierPrefix: $(AppIdentifierPrefix)
@@ -89,7 +89,11 @@ targets:
         CFBundleURLTypes:
           - CFBundleURLName: dev.wildware.agents
             CFBundleURLSchemes: [agents]
+        # The home screen says "Feed" ("Wildware Feed" is cut short under the icon); Siri answers to
+        # the full name, and to "Agents", the app's name before 1.0.2.
         INAlternativeAppNames:
+          - INAlternativeAppName: Wildware Feed
+          - INAlternativeAppName: Agents
           - INAlternativeAppName: Agent Dashboard
           - INAlternativeAppName: Dashboard
     entitlements:
@@ -129,7 +133,7 @@ targets:
     info:
       path: Watch/Info.plist
       properties:
-        CFBundleDisplayName: Agents
+        CFBundleDisplayName: Feed
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         AppIdentifierPrefix: $(AppIdentifierPrefix)
@@ -159,7 +163,7 @@ targets:
     info:
       path: WatchWidgets/Info.plist
       properties:
-        CFBundleDisplayName: Agents
+        CFBundleDisplayName: Feed
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         AppIdentifierPrefix: $(AppIdentifierPrefix)
@@ -185,7 +189,7 @@ targets:
     info:
       path: Widgets/Info.plist
       properties:
-        CFBundleDisplayName: Agents
+        CFBundleDisplayName: "Wildware Feed"
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         AppIdentifierPrefix: $(AppIdentifierPrefix)
@@ -210,7 +214,7 @@ targets:
     info:
       path: Share/Info.plist
       properties:
-        CFBundleDisplayName: Agents
+        CFBundleDisplayName: "Wildware Feed"
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         AppIdentifierPrefix: $(AppIdentifierPrefix)
@@ -241,7 +245,7 @@ targets:
     info:
       path: NotificationService/Info.plist
       properties:
-        CFBundleDisplayName: Agents
+        CFBundleDisplayName: "Wildware Feed"
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         AppIdentifierPrefix: $(AppIdentifierPrefix)
@@ -270,7 +274,7 @@ targets:
     info:
       path: NotificationContent/Info.plist
       properties:
-        CFBundleDisplayName: Agents
+        CFBundleDisplayName: "Wildware Feed"
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         NSExtension:

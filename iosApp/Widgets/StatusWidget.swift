@@ -46,7 +46,7 @@ struct StatusWidget: Widget {
             StatusWidgetView(entry: entry)
                 .containerBackground(for: .widget) { Color.dashboardBackground }
         }
-        .configurationDisplayName("Agents")
+        .configurationDisplayName("Wildware Feed")
         .description("Who is online, and what is waiting on you.")
         .supportedFamilies([.systemSmall, .systemMedium, .accessoryCircular, .accessoryRectangular, .accessoryInline])
     }
@@ -69,7 +69,7 @@ struct StatusWidgetContent: View {
     var body: some View {
         switch entry.state {
         case .notLinked:
-            Text("Open Agents to sign in").font(.caption)
+            Text("Open Wildware Feed to sign in").font(.caption)
         case .unreachable:
             Label("Dashboard unreachable", systemImage: "wifi.exclamationmark").font(.caption)
         case let .ready(state, top):

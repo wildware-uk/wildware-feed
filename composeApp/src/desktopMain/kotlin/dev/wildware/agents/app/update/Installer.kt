@@ -1,5 +1,6 @@
 package dev.wildware.agents.app.update
 
+import dev.wildware.agents.app.ProductName
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
@@ -95,8 +96,8 @@ class SystemInstaller(
         val parent = app.absoluteFile.parentFile
         if (parent == null || !canWriteIn(parent) || !app.canWrite()) {
             return Prepared.Manual(
-                "Agents is in a folder this account can't change, so it can't update itself. " +
-                    "Open the downloaded disk image and drag Agents into Applications.",
+                "$ProductName is in a folder this account can't change, so it can't update itself. " +
+                    "Open the downloaded disk image and drag $ProductName into Applications.",
                 dmg.parentFile,
             )
         }
@@ -119,7 +120,7 @@ class SystemInstaller(
     private fun prepareMsi(installation: Installation.WindowsMsi, msi: File, workDir: File, pid: Long): Prepared {
         val script = File(workDir, "update.ps1")
         script.writeText(
-            HelperScripts.windowsMsi(pid, msi.absolutePath, installation.exe, File(workDir, "update.log").absolutePath, File(workDir, "msiexec.log").absolutePath),
+            HelperScripts.windowsMsi(pid, msi.absolutePath, msiLaunchers(installation.exe), File(workDir, "update.log").absolutePath, File(workDir, "msiexec.log").absolutePath),
         )
         return Prepared.Restart(Helper(script, powershell(script)))
     }
@@ -129,7 +130,7 @@ class SystemInstaller(
         val parent = folder.absoluteFile.parentFile
         if (parent == null || !canWriteIn(parent)) {
             return Prepared.Manual(
-                "Agents is in a folder this account can't change, so it can't update itself. Unzip the download over it by hand.",
+                "$ProductName is in a folder this account can't change, so it can't update itself. Unzip the download over it by hand.",
                 zip.parentFile,
             )
         }
@@ -141,14 +142,16 @@ class SystemInstaller(
             staged.deleteRecursively()
             throw InstallException("Couldn't unpack the download. Nothing was installed.", e)
         }
-        val exeName = installation.exe.substringAfterLast('\\').substringAfterLast('/')
-        if (!File(staged, exeName).isFile) {
+        // The new release may call the program by its new name; the folder keeps the owner's.
+        val exeName = LauncherNames.map { "$it.exe" }.firstOrNull { File(staged, it).isFile }
+        if (exeName == null) {
             staged.deleteRecursively()
-            throw InstallException("The download has no $exeName in it. Nothing was installed.")
+            throw InstallException("The download has no $ProductName.exe in it. Nothing was installed.")
         }
+        val exe = (Installation.parentOf(installation.exe) ?: folder.absolutePath) + "\\" + exeName
         val script = File(workDir, "update.ps1")
         script.writeText(
-            HelperScripts.windowsPortable(pid, folder.absolutePath, staged.absolutePath, installation.exe, File(workDir, "update.log").absolutePath),
+            HelperScripts.windowsPortable(pid, folder.absolutePath, staged.absolutePath, exe, File(workDir, "update.log").absolutePath),
         )
         return Prepared.Restart(Helper(script, powershell(script)))
     }
@@ -158,7 +161,7 @@ class SystemInstaller(
         val dir = target.parentFile
         if (dir == null || !canWriteIn(dir)) {
             return Prepared.Manual(
-                "Agents is in a folder this account can't change, so it can't update itself. The new AppImage is in this folder.",
+                "$ProductName is in a folder this account can't change, so it can't update itself. The new AppImage is in this folder.",
                 download.parentFile,
             )
         }
@@ -186,7 +189,7 @@ class SystemInstaller(
             else -> throw InstallException("The package manager couldn't install the update. ${lastLine(output)}".trim())
         }
         val script = File(workDir, "relaunch.sh")
-        script.writeText(HelperScripts.linuxRelaunch(pid, installation.launcher, File(workDir, "update.log").absolutePath))
+        script.writeText(HelperScripts.linuxRelaunch(pid, packageLauncher(installation.launcher), File(workDir, "update.log").absolutePath))
         return Prepared.Restart(Helper(script, detached(script)))
     }
 
@@ -226,6 +229,21 @@ class SystemInstaller(
     private fun nullFile() = File(if (File.separatorChar == '\\') "NUL" else "/dev/null")
 
     companion object {
+        /**
+         * Where the .msi puts the program, newest name first: an upgrade from before the rename
+         * moves it from `%LOCALAPPDATA%\Agents` to `%LOCALAPPDATA%\Wildware Feed`.
+         */
+        fun msiLaunchers(currentExe: String): List<String> {
+            val localAppData = Installation.parentOf(currentExe)?.let(Installation::parentOf) ?: return listOf(currentExe)
+            return (LauncherNames.map { "$localAppData\\$it\\$it.exe" } + currentExe).distinct()
+        }
+
+        /** The package's program after an upgrade: same folder, maybe a new name. */
+        fun packageLauncher(current: String, exists: (File) -> Boolean = File::exists): String {
+            val bin = File(current).parentFile ?: return current
+            return LauncherNames.map { File(bin, it) }.firstOrNull(exists)?.path ?: current
+        }
+
         /** What an AppImage sets for itself; the new one sets its own. */
         val AppImageEnv = listOf("APPIMAGE", "APPDIR", "ARGV0", "OWD")
 
@@ -262,7 +280,7 @@ class SystemInstaller(
             }
         }
 
-        /** Unpacks [zip] into [into], dropping its single top folder ("Agents/…"). Refuses paths that climb out. */
+        /** Unpacks [zip] into [into], dropping its single top folder ("Wildware Feed/…"). Refuses paths that climb out. */
         fun unzipStrippingTop(zip: File, into: File) {
             into.mkdirs()
             val root = into.canonicalFile

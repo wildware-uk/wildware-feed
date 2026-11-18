@@ -1,5 +1,6 @@
 package dev.wildware.agents.app.desktop
 
+import dev.wildware.agents.app.ProductName
 import java.awt.CheckboxMenuItem
 import java.awt.EventQueue
 import java.awt.MenuItem
@@ -67,7 +68,7 @@ class DesktopTray(private val actions: TrayActions, settings: DesktopSettings, p
                     add(updateItem)
                     addSeparator()
                 }
-                add(MenuItem("Open Agents").apply { addActionListener { actions.open(null) } })
+                add(MenuItem("Open $ProductName").apply { addActionListener { actions.open(null) } })
                 add(MenuItem("Mark all read").apply { addActionListener { actions.markAllRead() } })
                 addSeparator()
                 add(keepRunning.apply { addItemListener { actions.setKeepRunning(it.stateChange == ItemEvent.SELECTED) } })
@@ -83,7 +84,7 @@ class DesktopTray(private val actions: TrayActions, settings: DesktopSettings, p
                 add(checkAutomatically.apply { addItemListener { actions.setCheckForUpdates(it.stateChange == ItemEvent.SELECTED) } })
                 add(MenuItem("Check for updates…").apply { addActionListener { actions.checkForUpdates() } })
                 addSeparator()
-                add(MenuItem("Quit Agents").apply { addActionListener { actions.quit() } })
+                add(MenuItem("Quit $ProductName").apply { addActionListener { actions.quit() } })
             }
             this.menu = menu
             val tray = SystemTray.getSystemTray()

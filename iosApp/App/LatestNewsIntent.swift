@@ -6,7 +6,7 @@ import Shared
 #endif
 import SwiftUI
 
-/// "What did Garden Game say in Agents?" Reads the project's latest update out, and shows it.
+/// "What did Garden Game say in Wildware Feed?" Reads the project's latest update out, and shows it.
 struct LatestNewsIntent: AppIntent {
     static let title: LocalizedStringResource = "What Did a Project Say"
     static let description = IntentDescription("Reads out the latest update from a project: who posted it, when, and how it starts.")

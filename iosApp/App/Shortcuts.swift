@@ -17,9 +17,9 @@ struct AgentsShortcuts: AppShortcutsProvider {
         AppShortcut(
             intent: AgentStatusIntent(),
             phrases: [
-                "What are my \(.applicationName) doing",
+                "What are my agents doing in \(.applicationName)",
                 "\(.applicationName) status",
-                "Check my \(.applicationName)",
+                "Check \(.applicationName)",
             ],
             shortTitle: "Agent Status",
             systemImageName: "waveform"
@@ -27,9 +27,9 @@ struct AgentsShortcuts: AppShortcutsProvider {
         AppShortcut(
             intent: AnswerLatestRequestIntent(),
             phrases: [
-                "Answer my \(.applicationName)",
-                "Reply to my \(.applicationName)",
-                "What do my \(.applicationName) need",
+                "Answer my agents in \(.applicationName)",
+                "Reply in \(.applicationName)",
+                "What do my agents need in \(.applicationName)",
             ],
             shortTitle: "Answer Agents",
             systemImageName: "questionmark.bubble"
@@ -40,7 +40,7 @@ struct AgentsShortcuts: AppShortcutsProvider {
                 "What did \(\.$project) say in \(.applicationName)",
                 "What's new on \(\.$project) in \(.applicationName)",
                 "Latest from \(\.$project) in \(.applicationName)",
-                "What did my \(.applicationName) say",
+                "What did my agents say in \(.applicationName)",
             ],
             shortTitle: "Latest News",
             systemImageName: "text.bubble"
