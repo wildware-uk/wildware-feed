@@ -1,0 +1,151 @@
+package dev.wildware.agents.android
+
+import android.app.Application
+import android.content.Context
+import android.os.Build
+import android.provider.Settings
+import android.speech.SpeechRecognizer
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.ProcessLifecycleOwner
+import dev.wildware.agents.app.design.AndroidAppIcon
+import dev.wildware.agents.app.engine.AppModel
+import dev.wildware.agents.app.engine.AppScreen
+import dev.wildware.agents.app.engine.DashboardSession
+import dev.wildware.agents.app.feed.AppNavigator
+import dev.wildware.agents.app.session.AppPlatform
+import io.ktor.client.engine.okhttp.OkHttp
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import java.io.File
+
+/**
+ * The app's life outside any one screen. The engine (signed-in session, live connection,
+ * outbox) lives here rather than in the activity, so turning the phone, or the activity closing
+ * and coming back, never reconnects or re-reads the dashboard; notifications keep coming while
+ * the app is in the background, for as long as Android keeps it running.
+ */
+class AgentsApplication : Application() {
+    val hooks = ActivityHooks()
+    val navigator = AppNavigator()
+    val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    lateinit var platform: AppPlatform
+        private set
+    lateinit var model: AppModel
+        private set
+    lateinit var notifier: AndroidNotifier
+        private set
+
+    private val mutableWaiting = MutableStateFlow<Int?>(null)
+
+    /** Questions waiting on the owner; null when signed out. */
+    val waiting: StateFlow<Int?> = mutableWaiting.asStateFlow()
+
+    private lateinit var stayConnectedStore: FileTextStore
+    private val mutableStayConnected = MutableStateFlow(false)
+
+    /** Whether "Stay connected" is on: a foreground service keeps the app running in the background. */
+    val stayConnected: StateFlow<Boolean> = mutableStayConnected.asStateFlow()
+
+    /** Whether the owner has been asked about notifications yet. */
+    lateinit var askedNotifications: FileTextStore
+        private set
+
+    private var watchingProjects: Job? = null
+
+    override fun onCreate() {
+        super.onCreate()
+        Channels.create(this)
+        AndroidAppIcon.bitmap = drawAppIcon(this)
+        platform = androidPlatform(this, hooks, scope)
+        stayConnectedStore = FileTextStore(File(filesDir, "stay-connected.txt"))
+        askedNotifications = FileTextStore(File(filesDir, "asked-notifications.txt"))
+        mutableStayConnected.value = stayConnectedStore.read()?.trim() == "on"
+        notifier = AndroidNotifier(this)
+        model = AppModel(platform, scope)
+        Alerts(
+            model = model,
+            scope = scope,
+            notifier = notifier,
+            onScreen = { ProcessLifecycleOwner.get().lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) },
+            onWaiting = { count ->
+                if (mutableWaiting.value != count) {
+                    mutableWaiting.value = count
+                    ConnectionService.update(this, count)
+                }
+            },
+            onSession = ::followSession,
+        ).start()
+    }
+
+    private fun followSession(session: DashboardSession?) {
+        watchingProjects?.cancel()
+        if (session == null) {
+            ConnectionService.stop(this)
+            Shortcuts.clear(this)
+            return
+        }
+        watchingProjects = scope.launch {
+            var last: List<String>? = null
+            session.dashboard.projects.collect { projects ->
+                val ids = projects.take(4).map { it.project.id + it.project.name }
+                if (ids != last) {
+                    last = ids
+                    Shortcuts.update(this@AgentsApplication, projects)
+                }
+            }
+        }
+    }
+
+    /** Turns "Stay connected" on or off. Call it from the screen: Android only starts the service then. */
+    fun setStayConnected(context: Context, on: Boolean) {
+        mutableStayConnected.value = on
+        runCatching { stayConnectedStore.write(if (on) "on" else "off") }
+        if (on && signedIn) ConnectionService.start(context) else ConnectionService.stop(context)
+    }
+
+    val signedIn: Boolean get() = model.screen.value is AppScreen.Signed
+
+    /** Opens card [cardId], in its own project's feed when that is known (else every project's). */
+    fun openCard(cardId: String) {
+        val dashboard = (model.screen.value as? AppScreen.Signed)?.session?.dashboard ?: return navigator.open(null, cardId)
+        val projectId = dashboard.everything.state.value.card(cardId)?.projectId
+            ?: dashboard.waiting.value.firstOrNull { it.id == cardId }?.request?.projectId
+        val slug = projectId?.let { id -> dashboard.projects.value.firstOrNull { it.project.id == id }?.project?.slug }
+        navigator.open(slug, cardId)
+    }
+}
+
+/** Everything the Android app keeps, in its private storage. */
+fun androidPlatform(context: Context, hooks: ActivityHooks, scope: CoroutineScope): AppPlatform {
+    val dir = context.filesDir
+    val outbox = FileOutboxStorage(File(dir, "outbox"))
+    val readMarks = File(dir, "read-marks.json")
+    return AppPlatform(
+        sessions = SealedSessionStore(File(dir, "session.bin"), KeystoreSecretBox()),
+        readMarks = FileTextStore(readMarks),
+        outbox = outbox,
+        httpEngine = { OkHttp.create() },
+        deviceName = deviceName(context),
+        imageCacheDir = File(context.cacheDir, "images").absolutePath,
+        clearLocalData = {
+            outbox.clear()
+            readMarks.delete()
+        },
+        settings = FileTextStore(File(dir, "settings.txt")),
+        filePicker = AndroidPhotoPicker(hooks, context.contentResolver, scope),
+        // No recogniser on the phone (some builds without Google's apps): no mic, rather than one that can't work.
+        voiceInput = if (SpeechRecognizer.isRecognitionAvailable(context)) SpeechVoiceInput(context, hooks) else null,
+    )
+}
+
+/** The phone's own name (Settings › About phone), else its model: what the sign-in screen offers. */
+private fun deviceName(context: Context): String =
+    runCatching { Settings.Global.getString(context.contentResolver, Settings.Global.DEVICE_NAME) }.getOrNull()
+        ?.takeIf { it.isNotBlank() }
+        ?: Build.MODEL
