@@ -216,6 +216,8 @@ fun FeedScreen(
                 ))
             }
             ui.tagging?.let { TagPicker(ui, it) }
+            ui.playing?.let { VideoOverlay(ui, it, if (phone) safeArea else SafeArea()) }
+            Toast(ui, if (phone) safeArea else SafeArea())
             if (ui.bellOpen) NotificationPanel(ui, if (phone) safeArea else SafeArea()) { path -> scope.launch { ui.goTo(OpenCard.fromPath(path)) } }
             ui.statusPick?.let { StatusPicker(ui, it, if (phone) safeArea else SafeArea()) }
         }

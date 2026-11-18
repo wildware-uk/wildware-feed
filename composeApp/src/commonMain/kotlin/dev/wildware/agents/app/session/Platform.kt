@@ -8,6 +8,7 @@ import io.ktor.client.engine.HttpClientEngine
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 import dev.wildware.agents.app.feed.FilePicker
+import dev.wildware.agents.app.feed.MediaHandler
 import dev.wildware.agents.app.feed.VoiceInput
 
 /**
@@ -40,6 +41,8 @@ class AppPlatform(
     val foreground: Flow<Unit> = emptyFlow(),
     /** The feed as it last was, so the app opens onto it at once. Removed by [clearLocalData]. */
     val feedCache: TextStore = MemoryTextStore(),
+    /** Hands media to the system. Null uses the platform's own; tests pass a fake. */
+    val media: MediaHandler? = null,
 ) {
     companion object {
         /** Everything in memory: for tests and previews. */
@@ -48,7 +51,8 @@ class AppPlatform(
             sessions: SessionStore = MemorySessionStore(),
             deviceName: String = "Test device",
             filePicker: FilePicker? = null,
-        ) = AppPlatform(sessions, MemoryTextStore(), MemoryOutboxStorage(), engine, deviceName, imageCacheDir = null, filePicker = filePicker)
+            media: MediaHandler? = null,
+        ) = AppPlatform(sessions, MemoryTextStore(), MemoryOutboxStorage(), engine, deviceName, imageCacheDir = null, filePicker = filePicker, media = media)
     }
 }
 

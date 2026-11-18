@@ -382,12 +382,17 @@ fun AttachmentView(attachment: Attachment, modifier: Modifier = Modifier, onOpen
                 .aspectRatio(attachment.aspect)
                 .clip(shape)
                 .border(1.dp, colors.border, shape)
-                .pressable("Image: ${attachment.altText}. Open full size", shape, role = Role.Image, onClick = onOpen),
+                .pressable(
+                    if (attachment.video != null) tileLabel(attachment, 0, 1) else "Image: ${attachment.altText}. Open full size",
+                    shape,
+                    role = if (attachment.video != null) Role.Button else Role.Image,
+                    onClick = onOpen,
+                ),
         ) {
-            AttachmentImage(attachment, Modifier.fillMaxSize())
+            if (attachment.video != null) VideoFace(attachment, Modifier.fillMaxSize()) else AttachmentImage(attachment, Modifier.fillMaxSize())
         }
         Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Image, null, tint = colors.textFaint, modifier = Modifier.size(14.dp))
+            Icon(if (attachment.video != null) Icons.Play else Icons.Image, null, tint = colors.textFaint, modifier = Modifier.size(14.dp))
             MetaText(attachment.title, Modifier.padding(start = 6.dp))
         }
     }
@@ -472,7 +477,17 @@ fun MediaGrid(images: List<Attachment>, modifier: Modifier = Modifier, onOpen: (
         }
         Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Image, null, tint = AgentTheme.colors.textFaint, modifier = Modifier.size(14.dp))
-            MetaText("${images.size} pictures", Modifier.padding(start = 6.dp))
+            val videos = images.count { it.video != null }
+            MetaText(
+                when (videos) {
+                    0 -> "${images.size} pictures"
+                    images.size -> "${images.size} videos"
+                    else -> (images.size - videos).let { pictures ->
+                        "$pictures ${if (pictures == 1) "picture" else "pictures"}, $videos ${if (videos == 1) "video" else "videos"}"
+                    }
+                },
+                Modifier.padding(start = 6.dp),
+            )
         }
     }
 }
@@ -480,9 +495,9 @@ fun MediaGrid(images: List<Attachment>, modifier: Modifier = Modifier, onOpen: (
 @Composable
 private fun GridTile(images: List<Attachment>, index: Int, modifier: Modifier, onOpen: (Int) -> Unit, more: Int = 0) {
     val image = images[index]
-    val spoken = "Picture ${index + 1} of ${images.size}: ${image.altText}" + if (more > 0) ", and $more more" else ""
-    Box(modifier.pressable(spoken, RectangleShape, role = Role.Image) { onOpen(index) }) {
-        AttachmentImage(image, Modifier.fillMaxSize())
+    val spoken = tileLabel(image, index, images.size) + if (more > 0) ", and $more more" else ""
+    Box(modifier.pressable(spoken, RectangleShape, role = if (image.video != null) Role.Button else Role.Image) { onOpen(index) }) {
+        if (image.video != null) VideoFace(image, Modifier.fillMaxSize(), small = true) else AttachmentImage(image, Modifier.fillMaxSize())
         if (more > 0) {
             Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.5f)), contentAlignment = Alignment.Center) {
                 Text("+$more", color = Color.White, style = AgentTheme.type.title)

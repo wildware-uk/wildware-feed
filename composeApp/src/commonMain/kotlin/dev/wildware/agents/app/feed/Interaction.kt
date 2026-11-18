@@ -171,6 +171,12 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
     var menu by mutableStateOf(preview.menu)
     var viewer by mutableStateOf(preview.viewer)
 
+    /** A video playing full screen in the app (phones). */
+    var playing by mutableStateOf<VideoSource?>(null)
+
+    /** A short line at the bottom of the screen, gone by itself. */
+    var toast by mutableStateOf<String?>(null)
+
     /** The thread open beside the feed (desktop) or over it (phone). */
     var threadId by mutableStateOf(initial.openThread?.id)
     var phoneThreadOpen by mutableStateOf(preview.threadOpen)

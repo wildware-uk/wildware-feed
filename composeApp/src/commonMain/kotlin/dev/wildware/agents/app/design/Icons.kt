@@ -77,6 +77,9 @@ object Icons {
         "M9 10.76A2 2 0 0 1 7.89 12.55L6.11 13.45A2 2 0 0 0 5 15.24V16A1 1 0 0 0 6 17H18A1 1 0 0 0 19 16V15.24A2 2 0 0 0 17.89 13.45L16.11 12.55A2 2 0 0 1 15 10.76V7A1 1 0 0 1 16 6A2 2 0 0 0 16 2H8A2 2 0 0 0 8 6A1 1 0 0 1 9 7Z",
     )
     val ArrowUp = icon("arrow-up", "M12 19V5", "M5 12 12 5 19 12")
+    val Play = icon("play", "M7 4 19 12 7 20Z")
+    val Pause = icon("pause", "M8 5V19", "M16 5V19")
+    val File = icon("file", "M14 2H6A2 2 0 0 0 4 4V20A2 2 0 0 0 6 22H18A2 2 0 0 0 20 20V8Z", "M14 2V8H20")
 }
 
 private fun icon(name: String, vararg paths: String): ImageVector =

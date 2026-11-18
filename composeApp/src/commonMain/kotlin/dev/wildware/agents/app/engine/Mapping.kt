@@ -18,6 +18,10 @@ import dev.wildware.agents.app.feed.AgentDetails
 import dev.wildware.agents.NotificationList
 import dev.wildware.agents.app.feed.Bell
 import dev.wildware.agents.app.feed.BellItem
+import dev.wildware.agents.app.feed.VideoSource
+import dev.wildware.agents.app.feed.Sound
+import dev.wildware.agents.app.feed.MediaLabels
+import dev.wildware.agents.app.feed.FileAttachment
 import dev.wildware.agents.app.feed.Acks
 import dev.wildware.agents.app.feed.Agent
 import dev.wildware.agents.app.feed.Attachment
@@ -163,7 +167,9 @@ internal class FeedMapper(
                 title = title,
                 body = body,
                 status = workStatus(update.status),
-                attachments = update.media.images().map { image(it) },
+                attachments = update.media.tiles().map { tile(it) },
+                sounds = update.media.sounds(),
+                files = update.media.files(),
                 reactions = reactions(reactions),
                 replies = replies(replies, unread, agents, project, threads),
                 unreadReplies = unread,
@@ -219,7 +225,9 @@ internal class FeedMapper(
             kind = kind,
             sending = sending,
             // Only the question's own pictures: those on options show in the option grid instead.
-            attachments = request.cardMedia.images().map { image(it) },
+            attachments = request.cardMedia.tiles().map { tile(it) },
+            sounds = request.cardMedia.sounds(),
+            files = request.cardMedia.files(),
             form = if (kind == QuestionKind.Form) {
                 FormField(
                     label = config?.label?.takeIf { it.isNotBlank() },
@@ -279,6 +287,36 @@ internal class FeedMapper(
         views.groupBy { it.emoji }.map { (emoji, all) -> Reaction(emoji, all.size, mine = all.any { it.isOwner }, spoken = emoji) }
 
     private fun List<MediaView>.images() = filter { it.kind == "image" && it.isReady }
+
+    /** Pictures and videos share the grid, as on the website; what isn't ready yet stays hidden. */
+    private fun List<MediaView>.tiles() = filter { (it.kind == "image" || it.kind == "video") && it.isReady && it.variants.isNotEmpty() }
+
+    private fun url(media: MediaView, variant: String) = serverUrl.trimEnd('/') + "/" + media.path(variant)
+
+    private fun tile(media: MediaView): Attachment {
+        if (media.kind != "video") return image(media)
+        val w = media.width
+        val h = media.height
+        val aspect = if (w != null && h != null && w > 0 && h > 0) (w.toFloat() / h).coerceIn(0.5f, 3f) else 16f / 9f
+        val transcoded = "video" in media.variants
+        return Attachment(
+            title = media.filename ?: "Video",
+            altText = media.filename ?: "Attached video",
+            aspect = aspect,
+            url = if ("poster" in media.variants) url(media, "poster") else null,
+            video = VideoSource(
+                url = url(media, if (transcoded) "video" else "original"),
+                duration = MediaLabels.duration(media.durationMs),
+                mime = if (transcoded) "video/mp4" else media.mime,
+            ),
+        )
+    }
+
+    private fun List<MediaView>.sounds() = filter { it.kind == "audio" && it.isReady && "original" in it.variants }
+        .map { Sound(it.id, url(it, "original"), it.durationMs, it.mime) }
+
+    private fun List<MediaView>.files() = filter { it.kind == "file" && it.isReady && "original" in it.variants }
+        .map { FileAttachment(it.id, url(it, "original"), MediaLabels.fileName(it.filename), MediaLabels.size(it.bytes), it.mime) }
 
     private fun image(media: MediaView): Attachment {
         val variant = if ("thumb-1600" in media.variants) "thumb-1600" else "original"

@@ -25,6 +25,7 @@ import androidx.compose.ui.test.printToString
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.v2.runDesktopComposeUiTest
@@ -37,6 +38,11 @@ import dev.wildware.agents.app.session.SavedSession
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import dev.wildware.agents.NotificationView
+import dev.wildware.agents.MediaView
+import dev.wildware.agents.app.feed.FileAttachment
+import dev.wildware.agents.app.feed.MediaAuth
+import dev.wildware.agents.app.feed.MediaHandler
+import dev.wildware.agents.app.feed.Playable
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
@@ -56,8 +62,24 @@ class EngineWiringTest {
 
     private val picked = PendingFile("shot.png", "image/png", byteArrayOf(1, 2, 3))
 
+    /** Media handed to the system, recorded instead of opening real players. */
+    private val media = object : MediaHandler {
+        val opened = mutableListOf<String>()
+        val saved = mutableListOf<String>()
+
+        override suspend fun open(item: Playable, auth: MediaAuth?): String {
+            opened += item.url
+            return "Opened in your player"
+        }
+
+        override suspend fun save(file: FileAttachment, auth: MediaAuth?): String {
+            saved += file.url
+            return "Saved to Downloads"
+        }
+    }
+
     private fun ComposeUiTest.app(sessions: MemorySessionStore = MemorySessionStore(signedIn)) {
-        val platform = AppPlatform.inMemory(engine = { server.engine() }, sessions = sessions, filePicker = { it(listOf(picked)) })
+        val platform = AppPlatform.inMemory(engine = { server.engine() }, sessions = sessions, filePicker = { it(listOf(picked)) }, media = media)
         setContent {
             Box(Modifier.size(1440.dp, 900.dp)) {
                 AgentsApp(platform, dark = true, accessibility = AccessibilityPrefs())
@@ -258,6 +280,45 @@ class EngineWiringTest {
         waitForNode(hasText("Blocked", substring = true) and hasClickAction()).performClick()
         waitUntil(timeoutMillis = 10_000) { onAllNodes(hasText("Fixed the unread counts")).fetchSemanticsNodes().isEmpty() }
         waitFor("Why is the Mac build slow?")
+    }
+
+    private fun withMedia() {
+        fun item(id: String, kind: String, variants: List<String>, durationMs: Long? = null, filename: String? = null, bytes: Long = 0) =
+            MediaView(id = id, kind = kind, status = "ready", variants = variants, durationMs = durationMs, filename = filename, bytes = bytes, width = 1280, height = 720)
+        server.updates = server.updates.map {
+            it.copy(media = listOf(
+                item("vid", "video", listOf("original", "poster", "video"), durationMs = 42_000),
+                item("snd", "audio", listOf("original"), durationMs = 9_000),
+                item("doc", "file", listOf("original"), filename = "build.log", bytes = 1536),
+            ))
+        }
+    }
+
+    @Test
+    fun aFileIsSavedWhenTapped() = runDesktopComposeUiTest(width = 1440, height = 900) {
+        withMedia()
+        app()
+        waitForNode(hasContentDescription("Download build.log, 1.5 KB")).performScrollTo().performClick()
+        waitFor("Saved to Downloads")
+        assertEquals(listOf("https://dash.test/media/doc/original"), media.saved)
+    }
+
+    @Test
+    fun aVideoPlaysItsTranscodeWhenTapped() = runDesktopComposeUiTest(width = 1440, height = 900) {
+        withMedia()
+        app()
+        waitForNode(hasContentDescription("Play video 1 of 1, 0:42")).performScrollTo().performClick()
+        waitUntil(timeoutMillis = 10_000) { media.opened.isNotEmpty() }
+        assertEquals(listOf("https://dash.test/media/vid/video"), media.opened)
+    }
+
+    @Test
+    fun onDesktopASoundPlaysInTheSystemPlayer() = runDesktopComposeUiTest(width = 1440, height = 900) {
+        withMedia()
+        app()
+        waitForNode(hasContentDescription("Play sound 1 of 1, 0:09")).performScrollTo().performClick()
+        waitUntil(timeoutMillis = 10_000) { media.opened.isNotEmpty() }
+        assertEquals(listOf("https://dash.test/media/snd/original"), media.opened)
     }
 
     @Test

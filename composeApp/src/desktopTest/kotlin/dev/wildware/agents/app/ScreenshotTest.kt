@@ -20,6 +20,9 @@ import dev.wildware.agents.app.feed.Presence
 import dev.wildware.agents.app.feed.FeedFilter
 import dev.wildware.agents.app.feed.StatusPick
 import dev.wildware.agents.app.feed.WorkStatus
+import dev.wildware.agents.app.feed.FileAttachment
+import dev.wildware.agents.app.feed.Sound
+import dev.wildware.agents.app.feed.VideoSource
 import dev.wildware.agents.app.feed.FeedItem
 import dev.wildware.agents.app.feed.Gallery
 import dev.wildware.agents.app.feed.MenuTarget
@@ -279,6 +282,28 @@ class ScreenshotTest {
             for (dark in listOf(false, true)) {
                 shoot("${size.label}-${if (dark) "dark" else "light"}-bell", size, dark) {
                     AgentsPreview(dark = dark, state = state, safeArea = size.safeArea, preview = ScreenPreview(bellOpen = true))
+                }
+            }
+        }
+    }
+
+    /** A card with a picture and a video side by side, a sound and a file. */
+    @Test
+    fun media() {
+        val update = FakeFeed.state.sections.flatMap { it.items }.filterIsInstance<FeedItem.Update>().first { it.attachments.isNotEmpty() }
+        val withMedia = update.copy(
+            attachments = listOf(
+                update.attachments.first(),
+                update.attachments[1].copy(title = "Walkthrough", video = VideoSource("https://example.com/v.mp4", "1:24")),
+            ),
+            sounds = listOf(Sound("s1", "https://example.com/s.mp3", 9_000, "audio/mpeg")),
+            files = listOf(FileAttachment("f1", "https://example.com/f", "crash-report.log", "48 KB", "text/plain")),
+        )
+        val state = FakeFeed.state.let { s -> s.copy(sections = s.sections.map { section -> section.copy(items = section.items.map { if (it.id == update.id) withMedia else it }) }) }
+        for (size in Size.entries) {
+            for (dark in listOf(false, true)) {
+                shoot("${size.label}-${if (dark) "dark" else "light"}-media", size, dark, startAt = update.id) {
+                    AgentsPreview(dark = dark, state = state, safeArea = size.safeArea, startAt = update.id)
                 }
             }
         }

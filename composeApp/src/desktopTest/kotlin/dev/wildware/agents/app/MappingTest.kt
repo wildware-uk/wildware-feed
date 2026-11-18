@@ -20,6 +20,8 @@ import dev.wildware.agents.app.feed.AgentDetails
 import dev.wildware.agents.NotificationList
 import dev.wildware.agents.NotificationView
 import dev.wildware.agents.app.feed.BellItem
+import dev.wildware.agents.app.feed.FileAttachment
+import dev.wildware.agents.app.feed.Sound
 import dev.wildware.agents.app.feed.FeedItem
 import dev.wildware.agents.app.feed.Level
 import dev.wildware.agents.app.feed.LinkStatus
@@ -199,6 +201,31 @@ class MappingTest {
         assertEquals(BellItem("n2", "scout replied", "Looks good", "Mega", mapper.timeLabel(noon), unread = true, path = "/projects/mega?focus=u1"), first)
         assertEquals(false, bell.items.last().unread)
         assertEquals("Yesterday", bell.items.last().time)
+    }
+
+    @Test
+    fun videosJoinThePicturesWhileSoundsAndFilesGetTheirOwnRows() {
+        fun media(id: String, kind: String, variants: List<String>, status: String = "ready", durationMs: Long? = null, filename: String? = null, bytes: Long = 0, mime: String = "") =
+            MediaView(id = id, kind = kind, status = status, variants = variants, durationMs = durationMs, filename = filename, bytes = bytes, mime = mime, width = 1280, height = 720)
+        val card = update("u1", noon, "T", "B").let {
+            it.copy(update = it.update.copy(media = listOf(
+                media("img", "image", listOf("original", "thumb-1600")),
+                media("vid", "video", listOf("original", "poster", "video"), durationMs = 42_000),
+                media("raw", "video", listOf("original")),
+                media("snd", "audio", listOf("original"), durationMs = 9_000, mime = "audio/mpeg"),
+                media("doc", "file", listOf("original"), filename = "build.log", bytes = 1536, mime = "text/plain"),
+                media("wip", "video", emptyList(), status = "pending"),
+            )))
+        }
+        val item = mapper.map(feed(listOf(card)), listOf(mega), emptyList(), emptyList(), null)
+            .sections.single().items.single() as FeedItem.Update
+
+        assertEquals(listOf(null, "https://dash.test/media/vid/video", "https://dash.test/media/raw/original"), item.attachments.map { it.video?.url })
+        assertEquals("https://dash.test/media/vid/poster", item.attachments[1].url)
+        assertEquals(null, item.attachments[2].url, "no poster yet: the tile draws its own")
+        assertEquals("0:42", item.attachments[1].video?.duration)
+        assertEquals(listOf(Sound("snd", "https://dash.test/media/snd/original", 9_000, "audio/mpeg")), item.sounds)
+        assertEquals(listOf(FileAttachment("doc", "https://dash.test/media/doc/original", "build.log", "1.5 KB", "text/plain")), item.files)
     }
 
     @Test

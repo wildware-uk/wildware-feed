@@ -104,8 +104,10 @@ data class Attachment(
     val aspect: Float,
     /** The stand-in picture when there is no [url]: previews and screenshots. */
     val scene: Scene = Scene.Dusk,
-    /** Where the real image is. Loaded with the device key. */
+    /** Where the real image is (a video's poster frame). Loaded with the device key. */
     val url: String? = null,
+    /** Set when this tile is a video: [url] is then its poster, and a tap plays it. */
+    val video: VideoSource? = null,
 )
 
 /** Pictures to look through full size, starting at [index]. */
@@ -231,6 +233,10 @@ sealed interface FeedItem {
         val body: String,
         val status: WorkStatus? = null,
         val attachments: List<Attachment> = emptyList(),
+        /** Sounds, played where they sit. */
+        val sounds: List<Sound> = emptyList(),
+        /** Files, to download. */
+        val files: List<FileAttachment> = emptyList(),
         val reactions: List<Reaction> = emptyList(),
         val acks: Acks = Acks(),
         override val replies: List<Reply> = emptyList(),
@@ -260,6 +266,8 @@ sealed interface FeedItem {
         val sending: Boolean = false,
         /** Pictures on the question itself, not on its options. */
         val attachments: List<Attachment> = emptyList(),
+        val sounds: List<Sound> = emptyList(),
+        val files: List<FileAttachment> = emptyList(),
         /** A form question's field and actions; null for every other kind. */
         val form: FormField? = null,
         /** When it times out, in epoch milliseconds, for a live countdown. Null shows [expiresIn] as it is. */

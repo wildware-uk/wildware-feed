@@ -244,8 +244,10 @@ fun UpdateCard(
                 MarkdownBody(item.body)
                 if (item.attachments.isNotEmpty()) {
                     Spacer(Modifier.height(10.dp))
-                    MediaGrid(item.attachments) { i -> ui?.viewer = Gallery(item.attachments, i) }
+                    MediaGrid(item.attachments, onOpen = rememberTileOpener(item.attachments))
                 }
+                if (item.sounds.isNotEmpty()) Sounds(item.sounds, Modifier.padding(top = 10.dp))
+                if (item.files.isNotEmpty()) Files(item.files, Modifier.padding(top = 10.dp))
                 TagChips(tags, Modifier.padding(top = 10.dp))
                 val inline = LocalInlineThreads.current && !inThread
                 val showThread = item.replies.isNotEmpty() && !inThread && !inline
@@ -435,8 +437,10 @@ fun QuestionCard(
         MarkdownBody(item.body)
         if (item.attachments.isNotEmpty()) {
             Spacer(Modifier.height(10.dp))
-            MediaGrid(item.attachments) { i -> ui?.viewer = Gallery(item.attachments, i) }
+            MediaGrid(item.attachments, onOpen = rememberTileOpener(item.attachments))
         }
+        if (item.sounds.isNotEmpty()) Sounds(item.sounds, Modifier.padding(top = 10.dp))
+        if (item.files.isNotEmpty()) Files(item.files, Modifier.padding(top = 10.dp))
         Spacer(Modifier.height(16.dp))
         if (item.hasPictures) {
             PictureGrid(
