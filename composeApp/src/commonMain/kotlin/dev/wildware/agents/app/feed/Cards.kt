@@ -239,7 +239,7 @@ fun UpdateCard(
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                         verticalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
-                        ReactionRow(reactions)
+                        ReactionRow(reactions, item.id)
                         if (showThread) ThreadButton(item)
                     }
                 }
@@ -595,7 +595,7 @@ fun PostCard(item: FeedItem.Post, modifier: Modifier = Modifier, density: Densit
                 if (reactions.isNotEmpty() || showThread) {
                     Spacer(Modifier.height(12.dp))
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        ReactionRow(reactions)
+                        ReactionRow(reactions, item.id)
                         if (showThread) ThreadButton(item)
                     }
                 }

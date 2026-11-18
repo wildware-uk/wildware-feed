@@ -216,8 +216,11 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
         }
     }
 
-    /** Reactions added here and not yet back from the server, by target id. */
-    val added = mutableStateMapOf<String, String>()
+    /**
+     * The owner's own reactions as they last set them here, by target id then emoji: true for on.
+     * Drawn straight away, before the server echoes them back.
+     */
+    private val wanted = mutableStateMapOf<String, Map<String, Boolean>>()
 
     fun openThread(id: String, phone: Boolean) {
         threadId = id
@@ -227,7 +230,11 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
 
     fun emit(event: FeedEvent) {
         when (event) {
-            is FeedEvent.React -> added[event.targetId] = event.emoji
+            // Reacting is a toggle: the same emoji again takes it back, as the server does.
+            is FeedEvent.React -> {
+                val mineNow = reactionsFor(event.targetId, reactionsOn(event.targetId)).any { it.emoji == event.emoji && it.mine }
+                wanted[event.targetId] = wanted[event.targetId].orEmpty() + (event.emoji to !mineNow)
+            }
             // Moves count among the active projects; archived ones keep their place at the end.
             is FeedEvent.MoveProject -> {
                 val (active, archived) = projects.partition { !it.archived }
@@ -261,15 +268,26 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
         else -> null
     }
 
-    /** The reactions to draw: the item's own, plus any the owner just added that the server hasn't echoed yet. */
-    fun reactionsFor(id: String, base: List<Reaction>): List<Reaction> {
-        val mine = added[id] ?: return base
-        val existing = base.firstOrNull { it.emoji == mine }
-        return when {
-            existing == null -> base + Reaction(mine, 1, mine = true, spoken = mine)
-            existing.mine -> base
-            else -> base.map { if (it.emoji == mine) it.copy(count = it.count + 1, mine = true) else it }
+    /** The reactions to draw: the item's own, with the owner's latest taps on top until the server catches up. */
+    fun reactionsFor(id: String, base: List<Reaction>): List<Reaction> =
+        wanted[id].orEmpty().entries.fold(base) { list, (emoji, on) -> list.withMine(emoji, on) }
+
+    /** The reactions on a card or a reply, as the server last sent them. */
+    private fun reactionsOn(id: String): List<Reaction> {
+        state.sections.forEach { section ->
+            section.items.forEach { item ->
+                if (item.id == id) return reactionsOf(item)
+                if (item is Threaded) item.replies.firstOrNull { it.id == id }?.let { return it.reactions }
+            }
         }
+        state.openThread?.replies?.firstOrNull { it.id == id }?.let { return it.reactions }
+        return emptyList()
+    }
+
+    private fun reactionsOf(item: FeedItem): List<Reaction> = when (item) {
+        is FeedItem.Update -> item.reactions
+        is FeedItem.Post -> item.reactions
+        is FeedItem.Question -> emptyList()
     }
 }
 
@@ -279,3 +297,15 @@ val LocalFeedUi = staticCompositionLocalOf<FeedUi?> { null }
 val LocalIsPhone = staticCompositionLocalOf { false }
 
 internal val LocalPreview = staticCompositionLocalOf { ScreenPreview() }
+
+/** [this] with the owner's [emoji] reaction on or off. */
+internal fun List<Reaction>.withMine(emoji: String, on: Boolean): List<Reaction> {
+    val existing = firstOrNull { it.emoji == emoji }
+    return when {
+        existing == null -> if (on) this + Reaction(emoji, 1, mine = true, spoken = emoji) else this
+        existing.mine == on -> this
+        on -> map { if (it.emoji == emoji) it.copy(count = it.count + 1, mine = true) else it }
+        existing.count <= 1 -> filter { it.emoji != emoji }
+        else -> map { if (it.emoji == emoji) it.copy(count = it.count - 1, mine = false) else it }
+    }
+}

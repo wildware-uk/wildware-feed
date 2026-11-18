@@ -24,6 +24,16 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
+import androidx.compose.material3.DropdownMenu
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -231,19 +241,24 @@ private fun Modifier.trimVertical(amount: Dp) = layout { measurable, constraints
     layout(placeable.width, (placeable.height - 2 * trim).coerceAtLeast(0)) { placeable.place(0, -trim) }
 }
 
-/** Emoji reactions, plus a button to add one. Each says who reacted when read aloud. */
+/**
+ * Emoji reactions, plus a button to add one. Tapping a reaction adds the owner's own, or takes it
+ * back if they already reacted with it. Each says who reacted when read aloud.
+ */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun ReactionRow(reactions: List<Reaction>, modifier: Modifier = Modifier, showAdd: Boolean = true) {
+fun ReactionRow(reactions: List<Reaction>, targetId: String?, modifier: Modifier = Modifier, showAdd: Boolean = true) {
     val colors = AgentTheme.colors
     val shape = AgentTheme.shapes.pill
+    val ui = LocalFeedUi.current
+    val react = { emoji: String -> if (targetId != null) ui?.emit(FeedEvent.React(targetId, emoji)); Unit }
     FlowRow(modifier, horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         reactions.forEach { r ->
             val bg = if (r.mine) colors.accent.copy(alpha = if (colors.isDark) 0.18f else 0.10f) else Color.Transparent
             val border = if (r.mine) colors.accent.copy(alpha = 0.45f) else colors.border
             val spoken = "${r.spoken}, ${r.count}" + if (r.mine) ", including you. Double tap to remove yours." else ". Double tap to add yours."
             Box(
-                Modifier.clip(shape).pressable(spoken, shape, role = Role.Button) {},
+                Modifier.clip(shape).pressable(spoken, shape, role = Role.Button) { react(r.emoji) },
                 contentAlignment = Alignment.Center,
             ) {
                 Row(
@@ -260,12 +275,50 @@ fun ReactionRow(reactions: List<Reaction>, modifier: Modifier = Modifier, showAd
                 }
             }
         }
-        if (showAdd) {
-            Box(Modifier.clip(shape).pressable("Add a reaction", shape) {}, contentAlignment = Alignment.Center) {
-                Box(
-                    Modifier.clip(shape).border(1.dp, colors.border, shape).padding(horizontal = 9.dp, vertical = 4.dp),
-                ) {
-                    Icon(Icons.Smile, null, tint = colors.textFaint, modifier = Modifier.size(18.dp))
+        if (showAdd) AddReaction(react)
+    }
+}
+
+/** The smile button: opens a row of emoji to react with. Escape or a tap outside closes it. */
+@Composable
+private fun AddReaction(react: (String) -> Unit) {
+    val colors = AgentTheme.colors
+    val shape = AgentTheme.shapes.pill
+    var open by remember { mutableStateOf(false) }
+    Box {
+        Box(Modifier.clip(shape).pressable("Add a reaction", shape) { open = true }, contentAlignment = Alignment.Center) {
+            Box(
+                Modifier.clip(shape).border(1.dp, if (open) colors.borderStrong else colors.border, shape).padding(horizontal = 9.dp, vertical = 4.dp),
+            ) {
+                Icon(Icons.Smile, null, tint = if (open) colors.text else colors.textFaint, modifier = Modifier.size(18.dp))
+            }
+        }
+        DropdownMenu(
+            expanded = open,
+            onDismissRequest = { open = false },
+            shape = AgentTheme.shapes.pill,
+            containerColor = colors.surfaceRaised,
+            border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
+        ) {
+            // The first emoji takes focus, so arrow keys, Enter and Escape work from the keyboard.
+            val first = remember { FocusRequester() }
+            LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
+            Row(
+                Modifier
+                    .onKeyEvent { e -> if (e.key == Key.Escape) { open = false; true } else false }
+                    .padding(horizontal = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                MenuReactions.forEachIndexed { i, emoji ->
+                    Box(
+                        Modifier
+                            .then(if (i == 0) Modifier.focusRequester(first) else Modifier)
+                            .clip(CircleShape).pressable("React with $emoji", CircleShape) {
+                            open = false
+                            react(emoji)
+                        },
+                        contentAlignment = Alignment.Center,
+                    ) { Text(emoji, fontSize = 20.sp) }
                 }
             }
         }

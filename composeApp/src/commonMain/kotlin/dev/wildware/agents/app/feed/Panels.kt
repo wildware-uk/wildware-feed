@@ -570,7 +570,7 @@ fun ReplyView(reply: Reply, modifier: Modifier = Modifier) {
             MarkdownBody(reply.body)
             if (reply.reactions.isNotEmpty()) {
                 Spacer(Modifier.height(6.dp))
-                ReactionRow(reply.reactions, showAdd = false)
+                ReactionRow(reply.reactions, reply.id, showAdd = false)
             }
         }
     }
