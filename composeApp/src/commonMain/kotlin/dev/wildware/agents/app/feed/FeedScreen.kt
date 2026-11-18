@@ -75,6 +75,8 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -189,7 +191,7 @@ private fun DesktopColumns(ui: FeedUi, showRail: Boolean, startAt: String?) {
                 item(key = "header") {
                     FeedHeader(ui, compact = false, Modifier.widthIn(max = FeedMaxWidth).fillMaxWidth().padding(bottom = 20.dp))
                 }
-                feedItems(ui, Density.Comfortable)
+                feedItems(ui, Density.Comfortable, list)
             }
             LoadOlderWhenNearEnd(ui, list)
             ScrollToRevealed(ui, list, itemsBefore = 1)
@@ -287,7 +289,7 @@ private fun PhoneFeed(ui: FeedUi, safeArea: SafeArea, startAt: String?, widthPx:
             ) {
                 item(key = "bar") { PhoneTopBar(state, onProjects = openDrawer, onTapBar = toTop, onSearch = { ui.commandOpen = true }) }
                 item(key = "header") { FeedHeader(ui, compact = true, Modifier.padding(top = 12.dp, bottom = 16.dp)) }
-                feedItems(ui, Density.Compact)
+                feedItems(ui, Density.Compact, list)
             }
             LoadOlderWhenNearEnd(ui, list)
             ScrollToRevealed(ui, list, itemsBefore = 2)
@@ -460,14 +462,21 @@ private fun LoadOlderWhenNearEnd(ui: FeedUi, list: LazyListState) {
     }
 }
 
-private fun LazyListScope.feedItems(ui: FeedUi, density: Density) {
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+private fun LazyListScope.feedItems(ui: FeedUi, density: Density, list: LazyListState) {
     val state = ui.state
     val sections = ui.sections
     if (sections.isEmpty()) {
         item(key = "empty") { EmptyFeed(state, ui.filter, Modifier.widthIn(max = FeedMaxWidth).fillMaxWidth()) }
     }
     sections.forEachIndexed { s, section ->
-        item(key = "section-$s", contentType = "section") {
+        val key = "section-$s"
+        if (section.items.any { it is FeedItem.Question }) {
+            // Questions stay in sight: their heading holds the top while they scroll under it.
+            stickyHeader(key = key, contentType = "waiting") {
+                StickyHeading(section, first = s == 0, list, key)
+            }
+        } else item(key = key, contentType = "section") {
             SectionHeading(section, first = s == 0, Modifier.widthIn(max = FeedMaxWidth).fillMaxWidth())
         }
         section.items.forEachIndexed { i, item ->
@@ -487,6 +496,33 @@ private fun LazyListScope.feedItems(ui: FeedUi, density: Density) {
     }
 }
 
+/**
+ * The "Waiting on you" heading, held at the top of the list. The list holds it at its very top,
+ * under its top padding (the status bar on a phone), so it moves itself down past that and paints
+ * the background behind, so what scrolls under it doesn't show through. It moves by drawing, not
+ * by growing, so the cards around it never shift.
+ */
+@Composable
+private fun StickyHeading(section: FeedSection, first: Boolean, list: LazyListState, key: String) {
+    val colors = AgentTheme.colors
+    val gap = with(LocalDensity.current) { 6.dp.toPx() }
+    // How far above its natural place the list holds it: 0 until it is held.
+    val held by remember(list, key) {
+        derivedStateOf { -(list.layoutInfo.visibleItemsInfo.firstOrNull { it.key == key }?.offset ?: 0).coerceAtMost(0) }
+    }
+    SectionHeading(
+        section,
+        first = first,
+        Modifier
+            .widthIn(max = FeedMaxWidth)
+            .fillMaxWidth()
+            .graphicsLayer { translationY = if (held > 0) held + gap else 0f }
+            .drawBehind {
+                if (held > 0) drawRect(colors.background, topLeft = Offset(0f, -held - gap), size = Size(size.width, size.height + held + gap))
+            },
+    )
+}
+
 @Composable
 private fun SectionHeading(section: FeedSection, first: Boolean, modifier: Modifier) {
     val colors = AgentTheme.colors
@@ -498,7 +534,11 @@ private fun SectionHeading(section: FeedSection, first: Boolean, modifier: Modif
         if (waiting) {
             Box(Modifier.padding(end = 8.dp).size(7.dp).clip(CircleShape).background(colors.waiting))
         }
-        SectionLabel(section.label, color = if (waiting) colors.waiting else colors.textFaint)
+        val count = section.items.size
+        SectionLabel(
+            if (waiting && count > 1) "${section.label} ($count)" else section.label,
+            color = if (waiting) colors.waiting else colors.textFaint,
+        )
         Box(Modifier.padding(start = 12.dp).weight(1f).height(1.dp).background(colors.border))
     }
 }
