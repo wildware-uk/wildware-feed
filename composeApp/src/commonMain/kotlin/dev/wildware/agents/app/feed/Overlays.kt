@@ -652,7 +652,7 @@ fun PhoneThreadScreen(ui: FeedUi, item: Threaded, widthPx: Float, safeArea: Safe
 
 /** The reply box, with "Replying to …" above it after a swipe or a menu Reply. */
 @Composable
-fun ThreadComposer(ui: FeedUi?, threadId: String, modifier: Modifier = Modifier) {
+fun ThreadComposer(ui: FeedUi?, threadId: String, modifier: Modifier = Modifier, focus: FocusRequester? = null) {
     val colors = AgentTheme.colors
     Column(modifier) {
         val replying = ui?.replyingTo
@@ -679,6 +679,7 @@ fun ThreadComposer(ui: FeedUi?, threadId: String, modifier: Modifier = Modifier)
             label = "Reply",
             compact = true,
             onSend = { text, files -> ui?.emit(FeedEvent.SendReply(threadId, text, replying?.id, files)) },
+            focus = focus,
         )
     }
 }

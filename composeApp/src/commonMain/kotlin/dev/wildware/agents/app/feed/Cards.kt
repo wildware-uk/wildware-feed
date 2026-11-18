@@ -229,7 +229,8 @@ fun UpdateCard(
                         item.tags.forEach { Tag(it) }
                     }
                 }
-                val showThread = item.replies.isNotEmpty() && !inThread
+                val inline = LocalInlineThreads.current && !inThread
+                val showThread = item.replies.isNotEmpty() && !inThread && !inline
                 val hasFooter = reactions.isNotEmpty() || showThread
                 if (hasFooter) {
                     Spacer(Modifier.height(12.dp))
@@ -246,6 +247,7 @@ fun UpdateCard(
                     Spacer(Modifier.height(if (hasFooter) 4.dp else 12.dp))
                     AckLine(item.acks)
                 }
+                if (inline) InlineThread(item)
             }
         }
     }
@@ -588,7 +590,8 @@ fun PostCard(item: FeedItem.Post, modifier: Modifier = Modifier, density: Densit
             )
             Column(Modifier.padding(start = indent, top = 8.dp)) {
                 if (own) PlainBody(item.body) else MarkdownBody(item.body)
-                val showThread = item.replies.isNotEmpty() && !inThread
+                val inline = LocalInlineThreads.current && !inThread
+                val showThread = item.replies.isNotEmpty() && !inThread && !inline
                 if (reactions.isNotEmpty() || showThread) {
                     Spacer(Modifier.height(12.dp))
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -600,6 +603,7 @@ fun PostCard(item: FeedItem.Post, modifier: Modifier = Modifier, density: Densit
                     Spacer(Modifier.height(10.dp))
                     AckLine(item.acks)
                 }
+                if (inline) InlineThread(item)
             }
         }
     }

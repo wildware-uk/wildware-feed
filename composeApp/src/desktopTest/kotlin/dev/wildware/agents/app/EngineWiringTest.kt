@@ -103,7 +103,9 @@ class EngineWiringTest {
         }
         val target = if (on != null) matcher and on else matcher
         waitForNode(target)
-        val node = onAllNodes(target).fetchSemanticsNodes().first()
+        // With [on], the innermost match: a reply's own node, not the card it sits in.
+        val nodes = onAllNodes(target).fetchSemanticsNodes()
+        val node = if (on != null) nodes.last() else nodes.first()
         runOnIdle { node.config[SemanticsActions.CustomActions].first { it.label == label }.action() }
     }
 
@@ -191,8 +193,7 @@ class EngineWiringTest {
         server.messagesDelayMs = 400
         app()
         waitFor("Fixed the unread counts")
-        // The reply can arrive after the card, and then also counts as new (", 1 new"), so match the start.
-        waitForNode(hasContentDescription("Open thread, 1 reply", substring = true)).performClick()
+        // The thread is under the card; the reply can arrive after the card.
         waitFor("Confirmed on my side.")
         runCustomAction("Reply", on = hasAnyDescendant(hasText("Confirmed on my side.")))
         waitFor("Replying to scout")

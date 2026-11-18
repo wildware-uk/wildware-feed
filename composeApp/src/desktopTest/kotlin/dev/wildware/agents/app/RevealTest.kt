@@ -37,7 +37,7 @@ class RevealTest {
         }
     }
 
-    /** Waits until [times] nodes showing [text] are on screen (the thread pane repeats a card's title). */
+    /** Waits until [times] nodes showing [text] are on screen. */
     private fun ComposeUiTest.assertOnScreen(text: String, times: Int = 1) {
         waitUntil(timeoutMillis = 5_000) {
             val nodes = onAllNodes(hasText(text))
@@ -52,8 +52,9 @@ class RevealTest {
         onNodeWithContentDescription("Search everything. Shortcut Command K").performClick()
         onNodeWithContentDescription("Search or run a command").performTextInput("push alerts")
         onNodeWithContentDescription("Search or run a command").performKeyInput { pressKey(Key.Enter) }
-        // Once in the feed, once at the top of the thread pane it opened.
-        assertOnScreen(oldest, times = 2)
+        // Scrolled to, with its reply box open under it.
+        assertOnScreen(oldest)
+        onNodeWithContentDescription("Reply").assertExists()
         assertTrue(FeedEvent.OpenThread("u4") in events, "got $events")
     }
 
@@ -64,7 +65,7 @@ class RevealTest {
         onNodeWithContentDescription("Search everything. Shortcut Command K").performClick()
         onNodeWithContentDescription("Search or run a command").performTextInput("push alerts")
         onNodeWithContentDescription("Search or run a command").performKeyInput { pressKey(Key.Enter) }
-        assertOnScreen(oldest, times = 2)
+        assertOnScreen(oldest)
     }
 
     @Test

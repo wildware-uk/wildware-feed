@@ -122,7 +122,7 @@ fun FeedScreen(
         ui.isPhone = phone
         val widthPx = constraints.maxWidth.toFloat()
         CompositionLocalProvider(LocalFeedUi provides ui, LocalIsPhone provides phone, LocalPreview provides preview) {
-            if (phone) PhoneFeed(ui, safeArea, startAt, widthPx) else DesktopFeed(ui, showThread = maxWidth >= 1100.dp, startAt)
+            if (phone) PhoneFeed(ui, safeArea, startAt, widthPx) else DesktopFeed(ui, showRail = maxWidth >= RailBreakpoint, startAt)
             ui.viewer?.let { ImageViewer(it, if (phone) safeArea else SafeArea()) }
             if (ui.commandOpen) CommandBar(ui, if (phone) safeArea else SafeArea())
         }
@@ -141,7 +141,17 @@ private fun Modifier.listActions(refresh: () -> Unit, toTop: () -> Unit, openPro
 }
 
 @Composable
-private fun DesktopFeed(ui: FeedUi, showThread: Boolean, startAt: String?) {
+private fun DesktopFeed(ui: FeedUi, showRail: Boolean, startAt: String?) = CompositionLocalProvider(LocalInlineThreads provides true) {
+    DesktopColumns(ui, showRail, startAt)
+}
+
+/**
+ * The wide layout, laid out as the website lays it out: projects on the left, the feed in a column
+ * that grows with the window (to [FeedMaxWidth]), and who is working on the right once there is
+ * room. Threads sit under their cards, so there is no thread pane.
+ */
+@Composable
+private fun DesktopColumns(ui: FeedUi, showRail: Boolean, startAt: String?) {
     val state = ui.state
     val colors = AgentTheme.colors
     val motion = AgentTheme.motion
@@ -166,7 +176,7 @@ private fun DesktopFeed(ui: FeedUi, showThread: Boolean, startAt: String?) {
             if (e.type == KeyEventType.KeyDown && e.key == Key.MoveHome) { toTop(); true } else false
         },
     ) {
-        Sidebar(ui, Modifier.width(272.dp))
+        Sidebar(ui, Modifier.width(SidebarWidth), showAgents = !showRail)
         VerticalRule()
         Box(Modifier.weight(1f).fillMaxHeight()) {
             LazyColumn(
@@ -201,15 +211,20 @@ private fun DesktopFeed(ui: FeedUi, showThread: Boolean, startAt: String?) {
                 )
             }
         }
-        val thread = ui.thread
-        if (showThread && thread != null) {
+        if (showRail) {
             VerticalRule()
-            ThreadPane(thread, Modifier.width(392.dp))
+            AgentsRail(ui, Modifier.width(RailWidth))
         }
     }
 }
 
-private val FeedMaxWidth = 720.dp
+/** As wide as the website's feed column (80rem): room for threads, tables and pictures beside the words. */
+private val FeedMaxWidth = 1280.dp
+private val SidebarWidth = 240.dp
+private val RailWidth = 272.dp
+
+/** From this width the agents rail shows on the right, as the website's does. */
+val RailBreakpoint = 1280.dp
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

@@ -103,6 +103,9 @@ object MarkdownCache {
  * after it appears makes the feed jump. The parse is kept in [MarkdownCache], and the renderer's
  * styles are kept across redraws, so a card that redraws with the same text skips its body.
  */
+/** The widest a run of prose is set, so a wide window widens the card, not the lines. */
+val ProseMaxWidth = 820.dp
+
 @Composable
 fun MarkdownBody(markdown: String, modifier: Modifier = Modifier, color: Color = AgentTheme.colors.text) {
     val colors = AgentTheme.colors
@@ -117,7 +120,8 @@ fun MarkdownBody(markdown: String, modifier: Modifier = Modifier, color: Color =
     SelectableText(modifier, copy) {
     Markdown(
         state = state,
-        modifier = Modifier.fillMaxWidth(),
+        // Lines past about 90 characters are hard to read, however wide the window.
+        modifier = Modifier.widthIn(max = ProseMaxWidth).fillMaxWidth(),
         colors = markdownColor(
             text = color,
             codeBackground = code.background,

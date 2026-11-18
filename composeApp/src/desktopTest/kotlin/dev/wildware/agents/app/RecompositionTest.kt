@@ -88,9 +88,10 @@ class RecompositionTest {
         waitForIdle()
         val cardsDrawn = (calls["UpdateCard"] ?: 0) + (calls["PostCard"] ?: 0)
         assertEquals(1, cardsDrawn, "only the card with the new reply: $calls")
-        assertEquals(1, calls["DesktopFeed"], "one pass, in the frame the state arrived")
-        // The rest is the header and sidebar counting cards again. Measured at about 220.
-        assertTrue(calls.values.sum() < 320, "one reply redrew ${calls.values.sum()} composables")
+        assertEquals(1, calls["DesktopColumns"], "one pass, in the frame the state arrived")
+        // That card's replies show under it, so they redraw with it; the rest is the header and
+        // sidebar counting cards again. Measured at about 330.
+        assertTrue(calls.values.sum() < 420, "one reply redrew ${calls.values.sum()} composables")
     }
 
     @Test

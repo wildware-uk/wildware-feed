@@ -136,7 +136,12 @@ private fun NavRow(
 
 /** Projects, people and the way in to everything else. Desktop only; phones use the top bar. */
 @Composable
-fun Sidebar(ui: FeedUi, modifier: Modifier = Modifier) {
+fun Sidebar(
+    ui: FeedUi,
+    modifier: Modifier = Modifier,
+    /** Off when the agents rail is on screen: one list of who is working, not two. */
+    showAgents: Boolean = true,
+) {
     val state = ui.state
     val colors = AgentTheme.colors
     Column(
@@ -203,14 +208,16 @@ fun Sidebar(ui: FeedUi, modifier: Modifier = Modifier) {
                 )
             }
             ArchivedProjects(ui)
-            Spacer(Modifier.height(22.dp))
-            Row(Modifier.padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                SectionLabel("Agents", Modifier.weight(1f))
-                MetaText("${state.agents.count { it.presence == Presence.Online }} online")
+            if (showAgents) {
+                Spacer(Modifier.height(22.dp))
+                Row(Modifier.padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    SectionLabel("Agents", Modifier.weight(1f))
+                    MetaText("${state.agents.count { it.presence == Presence.Online }} online")
+                }
+                Spacer(Modifier.height(8.dp))
+                state.agents.forEach { a -> AgentRow(a) }
+                if (state.agents.isEmpty()) MetaText("No agents online right now", Modifier.padding(horizontal = 10.dp))
             }
-            Spacer(Modifier.height(8.dp))
-            state.agents.forEach { a -> AgentRow(a) }
-            if (state.agents.isEmpty()) MetaText("No agents online right now", Modifier.padding(horizontal = 10.dp))
             Spacer(Modifier.height(18.dp))
         }
         OwnerRow(state.owner, onToggleTheme = { ui.emit(FeedEvent.ToggleTheme) }) { ui.emit(FeedEvent.SignOut) }
@@ -562,51 +569,6 @@ fun ReplyView(reply: Reply, modifier: Modifier = Modifier) {
                 ReactionRow(reply.reactions, showAdd = false)
             }
         }
-    }
-}
-
-/** A thread opened beside the feed: the card it hangs off, its replies, and a reply box. */
-@Composable
-fun ThreadPane(item: Threaded, modifier: Modifier = Modifier) {
-    val ui = LocalFeedUi.current
-    val colors = AgentTheme.colors
-    Column(
-        modifier
-            .fillMaxHeight()
-            .background(colors.surface),
-    ) {
-        Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 10.dp, top = 14.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                SectionLabel("Thread")
-                Spacer(Modifier.height(3.dp))
-                Text(
-                    item.title,
-                    Modifier.semantics { heading() },
-                    color = colors.text,
-                    style = AgentTheme.type.bodyStrong,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            IconAction(Icons.More, "More thread actions")
-            IconAction(Icons.Close, "Close thread") { ui?.threadId = null }
-        }
-        Box(Modifier.fillMaxWidth().height(1.dp).background(colors.border))
-        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Avatar(item.starter, 22.dp)
-                val who = if (item.starter is Author.Owner) "You" else item.starter.name
-                MetaText("$who started this · ${item.time}", Modifier.padding(start = 8.dp), color = colors.textMuted)
-            }
-            Spacer(Modifier.height(12.dp))
-            val firstUnread = item.replies.indexOfFirst { it.unread }
-            item.replies.forEachIndexed { i, reply ->
-                if (i == firstUnread) NewDivider(item.unreadReplies)
-                InteractiveReply(reply)
-            }
-            if (item.replies.isEmpty()) MetaText("No replies yet. Start the thread below.", color = colors.textMuted)
-        }
-        ThreadComposer(ui, item.id, Modifier.padding(14.dp))
     }
 }
 

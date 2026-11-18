@@ -7,6 +7,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableStateSetOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.geometry.Offset
@@ -117,6 +118,9 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
     /** The thread open beside the feed (desktop) or over it (phone). */
     var threadId by mutableStateOf(initial.openThread?.id)
     var phoneThreadOpen by mutableStateOf(preview.threadOpen)
+
+    /** Cards whose whole thread the owner asked to see inline, not just its newest replies. */
+    val expandedThreads = mutableStateSetOf<String>()
     var replyingTo by mutableStateOf<Reply?>(null)
     var refreshing by mutableStateOf(false)
     var filter by mutableStateOf(FeedFilter.All)
@@ -234,7 +238,12 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
             is FeedEvent.Reply -> if (state.item(event.targetId) is Threaded) {
                 openThread(event.targetId, phone = isPhone)
             } else {
-                replyingTo = thread?.replies?.firstOrNull { it.id == event.targetId }
+                // A line in a thread: open that card's reply box (it may be inline, not yet open) to answer it.
+                val card = thread?.takeIf { t -> t.replies.any { it.id == event.targetId } }
+                    ?: state.sections.asSequence().flatMap { it.items }.filterIsInstance<Threaded>()
+                        .firstOrNull { t -> t.replies.any { it.id == event.targetId } }
+                if (card != null && card.id != threadId) openThread(card.id, phone = isPhone)
+                replyingTo = card?.replies?.firstOrNull { it.id == event.targetId }
             }
             is FeedEvent.SendReply -> replyingTo = null
             is FeedEvent.SelectProject -> threadId = null

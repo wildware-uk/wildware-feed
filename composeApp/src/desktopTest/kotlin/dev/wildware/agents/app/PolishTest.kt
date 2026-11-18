@@ -100,7 +100,8 @@ class PolishTest {
         onNode(hasText("Yes. The watch reads the same counter", substring = true)).assertExists()
         onNodeWithContentDescription("Search or run a command").performKeyInput { pressKey(Key.Enter) }
         waitForIdle()
-        onNodeWithText("THREAD").assertExists()
+        // The thread is under its card: opening it opens the card's reply box there.
+        onNodeWithContentDescription("Reply").assertExists()
         assertTrue(FeedEvent.OpenThread("u1") in events, "got $events")
     }
 

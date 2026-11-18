@@ -33,6 +33,7 @@ class ScreenshotTest {
 
     private enum class Size(val label: String, val width: Int, val height: Int, val scale: Float, val safeArea: SafeArea) {
         Desktop("desktop", 1440, 900, 2f, SafeArea()),
+        Wide("desktop-1920", 1920, 1080, 1f, SafeArea()),
         Phone("phone", 390, 844, 3f, SafeArea(top = 54.dp, bottom = 34.dp)),
     }
 
