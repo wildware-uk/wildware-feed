@@ -378,15 +378,23 @@ fun QuestionCard(item: FeedItem.Question, modifier: Modifier = Modifier, density
         Row(verticalAlignment = Alignment.CenterVertically) {
             Avatar(Author.AgentAuthor(item.agent), 22.dp)
             Spacer(Modifier.width(10.dp))
-            Text(
-                "WAITING ON YOU",
-                color = colors.waiting,
-                style = type.overline,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Box(Modifier.weight(1f).padding(start = 8.dp, end = 8.dp)) {
-                if (showsProject()) ProjectLabel(item.project)
+            // On a phone the section above already says "Waiting on you", so the room goes to the
+            // project instead; an amber dot keeps the cue. Screen readers still hear "waiting on you".
+            val project = showsProject()
+            if (project && LocalIsPhone.current) {
+                Box(Modifier.size(7.dp).clip(CircleShape).background(colors.waiting))
+                Box(Modifier.weight(1f).padding(start = 6.dp, end = 8.dp)) { ProjectLabel(item.project) }
+            } else {
+                Text(
+                    "WAITING ON YOU",
+                    color = colors.waiting,
+                    style = type.overline,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Box(Modifier.weight(1f).padding(start = 8.dp, end = 8.dp)) {
+                    if (project) ProjectLabel(item.project)
+                }
             }
             Icon(Icons.Clock, null, tint = muted, modifier = Modifier.size(14.dp))
             MetaText("${item.expiresIn} left", Modifier.padding(start = 5.dp), color = muted)

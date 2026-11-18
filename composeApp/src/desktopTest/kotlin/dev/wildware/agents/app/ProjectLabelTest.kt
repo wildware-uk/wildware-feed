@@ -16,6 +16,11 @@ import dev.wildware.agents.app.feed.FakeFeed
 import dev.wildware.agents.app.feed.FeedEvent
 import dev.wildware.agents.app.feed.FeedScreen
 import dev.wildware.agents.app.feed.FeedState
+import androidx.compose.ui.test.onFirst
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.hasScrollToNodeAction
+import androidx.compose.ui.test.performScrollToNode
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -71,5 +76,19 @@ class ProjectLabelTest {
     fun insideOneProjectTheLabelIsLeftOut() = runComposeUiTest {
         phone(FakeFeed.state)
         assertEquals(0, onAllNodes(hasContentDescription("In project", substring = true)).fetchSemanticsNodes().size)
+    }
+
+    @Test
+    fun onAPhoneAQuestionShowsTheWholeProjectNameInsteadOfRepeatingWaitingOnYou() = runComposeUiTest {
+        phone(FakeFeed.allProjects)
+        // Only the section heading says it; the cards under it don't repeat it.
+        onAllNodes(hasText("WAITING ON YOU")).assertCountEquals(1)
+        onAllNodes(hasContentDescription("waiting on you", substring = true, ignoreCase = true)).onFirst().assertExists()
+        // The question's label is as wide as the same label on a post, where nothing squeezes it.
+        val onQuestion = onAllNodes(hasContentDescription("In project agent-dashboard")).onFirst().fetchSemanticsNode().size.width
+        onAllNodes(hasScrollToNodeAction()).onFirst().performScrollToNode(hasText("Can someone find out", substring = true))
+        val all = onAllNodes(hasContentDescription("In project agent-dashboard")).fetchSemanticsNodes()
+        val onPost = all.last().size.width
+        assertEquals(onPost, onQuestion, "the project name on the question is cut short")
     }
 }
