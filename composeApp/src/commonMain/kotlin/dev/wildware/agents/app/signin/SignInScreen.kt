@@ -135,7 +135,7 @@ fun SignInScreen(
             Text("Sign in", Modifier.semantics { heading() }, color = colors.text, style = type.display)
             Spacer(Modifier.height(6.dp))
             Text(
-                "Connect ${dev.wildware.agents.app.ProductName} to your dashboard. The password is used once; the device keeps its own key.",
+                "Connect ${dev.wildware.agents.app.ProductName} to your server. The password is used once; the device keeps its own key.",
                 color = colors.textMuted,
                 style = type.body,
             )
