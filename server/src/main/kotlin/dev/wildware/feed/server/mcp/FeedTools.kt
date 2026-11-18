@@ -214,11 +214,13 @@ fun ToolRegistry.registerFeedTools(app: App) {
         val messages = app.feed.messages
         val page = messages.read(call.agent.id, call.text("since"), call.text("project"), call.args["mark_read"].jsBoolean)
         val count = page.messages.size
-        val summary = when {
+        val attachments = Attachments.forMessages(app, page.messages.map { it.id })
+        val read = when {
             count == 0 -> "No new messages. Carry on."
             page.unread == 0L -> "$count new message${plural(count)}, oldest first."
             else -> "$count new message${plural(count)}, oldest first. ${page.unread} still unread; call again for the rest."
         }
+        val summary = if (count == 0 || attachments.notes.isEmpty()) read else read + "\n" + attachments.notes.joinToString("\n")
         ToolResult.ok(summary, buildJsonObject {
             put("messages", JsonArray(page.messages.map { message ->
                 val parent = messages.quoted(message)
@@ -231,13 +233,14 @@ fun ToolRegistry.registerFeedTools(app: App) {
                             put("id", parent.id); put("author", parent.author); put("body", parent.body); put("truncated", parent.truncated)
                         })
                     }
+                    attachments.views[message.id]?.let { put("attachments", JsonArray(it)) }
                 }
             }))
             put("count", count)
             put("cursor", page.cursor)
             put("unread", page.unread)
             put("marked_read", page.markedRead)
-        })
+        }, attachments.blocks)
     }
 
     register("acknowledge") { call ->

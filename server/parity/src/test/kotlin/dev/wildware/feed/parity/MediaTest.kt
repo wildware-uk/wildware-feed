@@ -300,6 +300,54 @@ class MediaTest : ParityTest() {
     }
 
     @Test
+    fun `an agent's get_messages carries the owner's attachments inline`() = parity {
+        val here = Fixtures.project()
+        Fixtures.update(here) // alpha works here, so the owner's message reaches it
+        suspend fun ownerUpload(name: String, type: ContentType, bytes: ByteArray): String =
+            owner.send(HttpMethod.Post, "/api/media?filename=$name") { setBody(ByteArrayContent(bytes, type)) }.obj()["media"]["id"].s
+        val png = Media.png(300, 150)
+        val json = "{\"a\": 1}\n".toByteArray()
+        val pdf = "%PDF-1.4\n%\u00e2\u00e3\n1 0 obj\n<<>>\nendobj\n".toByteArray(Charsets.ISO_8859_1)
+        val image = ownerUpload("chart.png", ContentType.Image.PNG, png)
+        val notes = ownerUpload("notes.json", ContentType.Application.Json, json)
+        val report = ownerUpload("report.pdf", ContentType.Application.Pdf, pdf)
+        val message = owner.post("/api/messages", obj("project" to here.slug, "body" to "see these", "mediaIds" to arr(image, notes, report)))
+            .obj()["message"]["id"].s
+
+        val read = eventually(timeout = 60.seconds, what = "the picture to be ready") {
+            alpha.tool("get_messages", obj("project" to here.slug, "mark_read" to false))
+                .takeIf { r -> r.structured["messages"].arr.single { it["id"].s == message }["attachments"].arr.all { it["status"].s == "ready" } }
+        }
+        val base = Parity.baseUrl.trimEnd('/')
+        fun view(id: String, kind: String, mime: String, bytes: Int, filename: String?) = obj(
+            "media_id" to id, "kind" to kind, "mime" to mime, "bytes" to bytes, "filename" to filename, "status" to "ready",
+            "included" to true, "download_url" to "$base/api/agent/media/$id",
+        )
+        assertEquals(
+            arr(view(image, "image", "image/png", png.size, null), view(notes, "file", "application/json", json.size, "notes.json"), view(report, "file", "application/pdf", pdf.size, "report.pdf")),
+            read.structured["messages"].arr.single { it["id"].s == message }["attachments"],
+        )
+        val content = read.raw["content"].arr
+        assertEquals(4, content.size, "the text, then one block per attachment")
+        assertTrue(
+            content[0]["text"].s.contains("\nmessage $message: 3 attachments are included below ($image, notes.json (application/json), report.pdf (application/pdf)).\n"),
+            content[0]["text"].s,
+        )
+        assertEquals("image", content[1]["type"].s)
+        assertEquals("image/webp", content[1]["mimeType"].s, "the largest thumbnail that fits")
+        val webp = java.util.Base64.getDecoder().decode(content[1]["data"].s)
+        assertEquals("WEBP", String(webp, 8, 4, Charsets.ISO_8859_1))
+        assertEquals(
+            obj("type" to "text", "text" to "Attached file \"notes.json\" (application/json, ${json.size} bytes):\n<<<FILE\n{\"a\": 1}\n\nFILE>>>"),
+            content[2],
+        )
+        assertEquals(
+            obj("type" to "resource", "resource" to obj("uri" to "attachment:$report/report.pdf", "mimeType" to "application/pdf", "blob" to java.util.Base64.getEncoder().encodeToString(pdf))),
+            content[3],
+        )
+    }
+
+    @Test
     fun `18 the owner uploads straight from the browser`() = parity {
         val bytes = Media.png(60, 40)
         val response = owner.send(HttpMethod.Post, "/api/media?filename=a.png") {

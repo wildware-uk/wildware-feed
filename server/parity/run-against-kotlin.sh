@@ -18,11 +18,11 @@ ref="${TS_SERVER_REF:-bef26e7be05aa0d2feb6e1eae9282e751d100abe}"
 remote="${TS_SERVER_REPO:-https://github.com/wildware-uk/agent-dashboard.git}"
 password="parity-$(openssl rand -hex 12)"
 # Phase 1: boot, auth and reads.
-# Phases 1-3: boot, auth, reads, writes, streams, every MCP tool but the upload ones.
-kotlin_tests="${KOTLIN_TESTS:-SmokeTest AuthTest DatabaseTest McpToolsListTest ReadParityTest FeedApiTest RequestsTest DevicesTest StreamTest McpTransportTest McpToolsTest McpEdgeTest RateLimitTest}"
+# Every phase: boot, auth, reads, writes, streams, every MCP tool, media.
+kotlin_tests="${KOTLIN_TESTS:-SmokeTest AuthTest DatabaseTest McpToolsListTest ReadParityTest FeedApiTest RequestsTest DevicesTest StreamTest McpTransportTest McpToolsTest McpEdgeTest MediaTest RateLimitTest}"
 # Tests inside those classes that need a later phase.
-# tsOnly: the deprecated website (pages, login form, cookie, CSRF), which the Kotlin server does not have.
-exclude_tags="${KOTLIN_EXCLUDE_TAGS:-media,tsOnly}"
+# tsOnly: what the Kotlin server deliberately leaves out (the website, share links, Web Push).
+exclude_tags="${KOTLIN_EXCLUDE_TAGS:-tsOnly}"
 
 work="$(mktemp -d "${TMPDIR:-/tmp}/parity-kt.XXXXXX")"
 server_pid=""
