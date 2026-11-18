@@ -28,11 +28,34 @@ iPhone app adds what only a native app can do:
   "Wildware Feed" and the old name "Agents" work in place of "Feed".
   Siri asks for anything you didn't say.
 
+## Android
+
+The same Compose app on Android 8.0 and newer, edge to edge in the Obsidian look, with predictive
+back. Install the signed `.apk` from a release ([docs/INSTALL.md](docs/INSTALL.md#android)). It adds:
+
+- **Share sheet**: text, links and pictures from any app into a project's composer.
+- **Hold-to-talk** with Android's speech recogniser (on the phone itself where it can).
+- **Photo picker** for the paperclip; no storage permission needed.
+- **Notifications** for new questions and mentions while the app runs, by the desktop's rules, and an
+  optional **Stay connected in the background** (command bar). Push with the app closed needs
+  Firebase, which isn't set up yet.
+- **Links** (`agents://open?path=…`) and app-icon shortcuts to your top projects.
+
+The device key is sealed with a key held in the Android Keystore; read marks and the outbox live in
+the app's private storage. `androidApp/` holds the Android shell (activity, manifest, icons,
+notifications, share and links); `composeApp/src/androidMain` holds the few Android pieces the
+screens need. Build with `./gradlew :androidApp:assembleDebug` (needs the Android SDK; set
+`sdk.dir` in `local.properties` or `ANDROID_HOME`), test with `./gradlew :androidApp:testDebugUnitTest`.
+A debug build installs beside a release one as `dev.wildware.agents.debug`; start it with
+`adb shell am start -n dev.wildware.agents.debug/dev.wildware.agents.android.MainActivity --ez sample true`
+to see the feed on made-up data.
+
 ## How it fits together
 
 | Folder | What it is |
 | --- | --- |
 | `shared/` | Kotlin Multiplatform: the dashboard client, the data shapes, and the logic for notification buttons, the Inbox's order and time left, where the composer sends, spoken answers, Siri replies and project-name matching. Tested on the JVM. |
+| `androidApp/` | The Android app around the Compose screens: activity, storage, notifications, share sheet, links. |
 | `composeApp/` | The Compose Multiplatform screens. On iPhone the app links them as one `ComposeApp` framework that also exports `shared`. |
 | `iosApp/App` | The SwiftUI shell around the Compose screens: Keychain sign-in store, deep links into the feed, push, Live Activity control, Siri. |
 | `iosApp/Widgets` | Widgets and the Live Activity screens. |
