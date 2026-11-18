@@ -249,6 +249,8 @@ data class RequestConfig(
     val min: Int? = null,
     val max: Int? = null,
     val label: String? = null,
+    /** Picture questions (buttons, choice, multi_choice): the media id of each option's picture, by option. */
+    val optionMedia: Map<String, String>? = null,
 )
 
 /** A question an agent is stopped on. [seq] is queue order: the longest blocked first. */
@@ -281,6 +283,18 @@ data class RequestView(
 ) {
     /** Null for a kind this app doesn't know yet: show it, and send the owner to the website to answer it. */
     val requestKind: RequestKind? get() = RequestKind.fromWire(kind)
+
+    /** The picture on [option], for a picture question. Null when it has none, or its media isn't on this request. */
+    fun pictureFor(option: String): MediaView? {
+        val mediaId = config?.optionMedia?.get(option) ?: return null
+        return media.firstOrNull { it.id == mediaId }
+    }
+
+    /** Whether [media] belongs to an option rather than to the question itself. */
+    fun isOnOption(media: MediaView): Boolean = config?.optionMedia?.containsValue(media.id) == true
+
+    /** The pictures for the card's own grid: everything not shown on an option. The answer is still the option's text. */
+    val cardMedia: List<MediaView> get() = media.filter { !isOnOption(it) }
 }
 
 /** An agent beating right now. */

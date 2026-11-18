@@ -52,6 +52,33 @@ class WireTest {
     }
 
     @Test
+    fun `a picture question puts each picture on its option and out of the card's grid`() {
+        val request = json.decodeFromString(RequestView.serializer(), """
+            {"id":"r1","seq":3,"agentId":"a1","projectId":"p1","kind":"choice","question":"Which logo?","options":["Blue","Red","Plain"],
+             "config":{"optionMedia":{"Blue":"md-blue","Red":"md-red"}},"state":"pending","expiresAt":9,
+             "media":[
+               {"id":"md-blue","requestId":"r1","kind":"image","mime":"image/png","status":"ready","variants":["original"]},
+               {"id":"md-red","requestId":"r1","kind":"image","mime":"image/png","status":"ready","variants":["original"]},
+               {"id":"md-context","requestId":"r1","kind":"image","mime":"image/png","status":"ready","variants":["original"]}]}
+        """)
+
+        assertEquals("md-blue", request.pictureFor("Blue")?.id)
+        assertEquals("md-red", request.pictureFor("Red")?.id)
+        assertNull(request.pictureFor("Plain"))
+        assertNull(request.pictureFor("Green"))
+        assertTrue(request.isOnOption(request.media[0]))
+        assertEquals(listOf("md-context"), request.cardMedia.map { it.id })
+        assertEquals(mapOf("Blue" to "md-blue", "Red" to "md-red"), request.config?.optionMedia)
+    }
+
+    @Test
+    fun `a question without pictures keeps all its media on the card`() {
+        val request = FakeDashboard.request("r1", 1).copy(media = listOf(MediaView("md1", kind = "image", mime = "image/png", status = "ready")))
+        assertNull(request.pictureFor("Yes"))
+        assertEquals(listOf("md1"), request.cardMedia.map { it.id })
+    }
+
+    @Test
     fun `a kind of question the app doesn't know still reads`() {
         val request = json.decodeFromString(RequestView.serializer(), """{"id":"r","agentId":"a","kind":"sketch","question":"Draw?","state":"pending","expiresAt":1}""")
         assertNull(request.requestKind)
