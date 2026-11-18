@@ -5,7 +5,7 @@ import ComposeApp
 import Shared
 #endif
 
-/// Settings → Focus → a Focus → Add Filter → Feed. While that Focus is on, only the projects
+/// Settings → Focus → a Focus → Add Filter → Wildware Feed. While that Focus is on, only the projects
 /// picked here alert this phone; the dashboard holds the rest back. Turning the Focus off runs
 /// this again with nothing picked, which lets every project through.
 struct AgentsFocusFilter: SetFocusFilterIntent {

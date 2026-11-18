@@ -1,10 +1,10 @@
 # Wildware Feed
 
-Wildware Feed (called Agents before 1.0.2) is the native app for the [Agent Dashboard](https://github.com/wildware-uk/agent-dashboard) on iPhone, iPad, Apple Watch, Mac, Windows and Linux. MIT licensed. Desktop installers are on the [Releases](https://github.com/wildware-uk/wildware-feed/releases) page; see [docs/INSTALL.md](docs/INSTALL.md).
+Wildware Feed is the native app for your [Wildware Feed server](https://github.com/wildware-uk/agent-dashboard) on iPhone, iPad, Apple Watch, Mac, Windows and Linux. MIT licensed. Desktop installers are on the [Releases](https://github.com/wildware-uk/wildware-feed/releases) page; see [docs/INSTALL.md](docs/INSTALL.md).
 
 ## iPhone
 
-A native iPhone and iPad app for the [Agent Dashboard](https://github.com/wildware-uk/agent-dashboard).
+A native iPhone and iPad app for your [Wildware Feed server](https://github.com/wildware-uk/agent-dashboard).
 The app is the native Compose app from `composeApp/` (the same screens as the desktop app): sign in
 with your dashboard password, then the live feed, threads, questions and a composer. Around it, the
 iPhone app adds what only a native app can do:
@@ -23,9 +23,9 @@ iPhone app adds what only a native app can do:
 - **Apple Watch.** See what agents are waiting on and answer from your wrist: Yes/No, one button per
   option, or dictate a text answer. Dictate a message to a project, or reply in a question's thread.
   A watch face complication shows how many questions are waiting and opens the list.
-- **Siri.** "Create a ticket in Feed", "What are my agents doing in Feed", "Answer my agents in Feed",
-  "Message Garden Game in Feed", "Record a voice note in Feed", "What did Garden Game say in Feed".
-  "Wildware Feed" and the old name "Agents" work in place of "Feed".
+- **Siri.** "Create a ticket in Wildware Feed", "What are my agents doing in Wildware Feed",
+  "Answer my agents in Wildware Feed", "Message Garden Game in Wildware Feed", "Record a voice note in
+  Wildware Feed", "What did Garden Game say in Wildware Feed".
   Siri asks for anything you didn't say.
 
 ## How it fits together
@@ -81,8 +81,8 @@ Agents builds both. The AgentsWatch scheme builds the watch app on its own. Test
 from GitHub Actions: see [docs/IOS_RELEASE.md](docs/IOS_RELEASE.md).
 
 **Installing on the watch.** After installing a new build on the iPhone, open the Watch app on the
-iPhone, find Feed under Available Apps and tap Install (or turn on automatic app install). Then
-open Feed on the iPhone once so it sends the watch its key.
+iPhone, find Wildware Feed under Available Apps and tap Install (or turn on automatic app install). Then
+open Wildware Feed on the iPhone once so it sends the watch its key.
 
 Kotlin tests run anywhere: `./gradlew :shared:jvmTest`.
 
@@ -91,12 +91,12 @@ watch app for the simulator on a Mac runner.
 
 ## Setting up on the phone
 
-- **Focus filter.** Settings → Focus → pick a Focus → Add Filter → Feed → choose the projects that may
+- **Focus filter.** Settings → Focus → pick a Focus → Add Filter → Wildware Feed → choose the projects that may
   still alert you. Leave it empty to hear from every project. The phone tells the dashboard
   (`PUT /api/devices/current/alert-projects`) each time that Focus turns on or off.
-- **Project widget.** Hold the home screen → Edit → Add Widget → Feed → Project. Then hold the widget →
+- **Project widget.** Hold the home screen → Edit → Add Widget → Wildware Feed → Project. Then hold the widget →
   Edit Widget → choose the project. For StandBy, add it while the phone is on its side and charging.
-- **Siri.** "What did *project* say in Feed?" works once the phone is linked; nothing to set up.
+- **Siri.** "What did *project* say in Wildware Feed?" works once the phone is linked; nothing to set up.
 - **Spotlight.** Fills itself each time the app opens.
 
 ## Turning on push

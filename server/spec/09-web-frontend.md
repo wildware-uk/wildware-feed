@@ -122,7 +122,7 @@ Page options: no route exports `prerender`, `ssr`, `csr` or `trailingSlash`. Def
 - Page component (`src/http/routes/+page.svelte:12-17`, `projects/[slug]/+page.svelte:10-27`):
   - renders `<Shell snapshot project focus>`;
   - `focus` is read **client-side** from `?focus=`;
-  - title is `Agent Dashboard`, or `<project.name ?? 'Project'> · Agent Dashboard` on a project page;
+  - title is `Wildware Feed`, or `<project.name ?? 'Project'> · Wildware Feed` on a project page;
   - the project page keys `Shell` on the slug, so switching project rebuilds the shell.
 - Shell hydrates its stores from `snapshot` once. After that, everything comes from the API and the stream (§5).
 - The HTML embeds the whole snapshot twice: once rendered, once as hydration data. The live page measured 962 KB raw and 100 KB compressed (`src/http/compress.ts:4-10`).
@@ -180,8 +180,8 @@ Page options: no route exports `prerender`, `ssr`, `csr` or `trailingSlash`. Def
   - `image` = the first ready image's `thumb-1600` or `original`, else a video `poster`. It is an absolute URL under `/s/<token>/media/<id>/<variant>`.
   - `video` = `video` (`video/mp4`) or `original` (with its stored mime).
 - **Head tags**, which must be in the server HTML because unfurl crawlers run no JS (`preview.ts:12-15`, `s/[token]/+page.svelte:16-58`):
-  - `<title>{title} · Agent Dashboard</title>`, `robots noindex,nofollow`, `description`;
-  - `og:type=article`, `og:site_name=Agent Dashboard`, `og:title`, `og:description`, `og:url`;
+  - `<title>{title} · Wildware Feed</title>`, `robots noindex,nofollow`, `description`;
+  - `og:type=article`, `og:site_name=Wildware Feed`, `og:title`, `og:description`, `og:url`;
   - `twitter:title`, `twitter:description`;
   - with an image: `og:image`, `og:image:alt`, `og:image:width`/`og:image:height` when known, `twitter:card=summary_large_image`, `twitter:image`. Without one: `twitter:card=summary`;
   - with a video: `og:video`, `og:video:secure_url`, `og:video:type`.
@@ -241,7 +241,7 @@ Asset URLs in the HTML are **relative** (`paths.relative` default): `./_app/...`
 ### `static/` (copied as-is into `build/client/`)
 
 - `manifest.webmanifest`:
-  - `name "Agent Dashboard"`, `short_name "Agents"`, `start_url "/"`, `scope "/"`, `id "/"`, `display "standalone"`;
+  - `name "Wildware Feed"`, `short_name "Wildware Feed"`, `start_url "/"`, `scope "/"`, `id "/"`, `display "standalone"`;
   - `background_color` and `theme_color` `#111419`;
   - icons: `/icons/icon-192.png` (192, any), `/icons/icon-512.png` (512, any), `/icons/maskable-512.png` (512, maskable), `/icons/icon.svg` (any, svg).
 - `robots.txt`: `User-agent: *` / `Disallow:` (allow all).
@@ -261,7 +261,7 @@ Asset URLs in the HTML are **relative** (`paths.relative` default): `./_app/...`
   - `theme-color` `#111419` (dark) and `#fbfcfd` (light), by media query;
   - `apple-touch-icon` at 180 (`/apple-touch-icon.png`), 167 and 152;
   - `icon` as svg, as png 32 (`/favicon-32.png`) and as png 192;
-  - `apple-mobile-web-app-capable yes`, `mobile-web-app-capable yes`, `apple-mobile-web-app-title Agents`, `apple-mobile-web-app-status-bar-style black-translucent`.
+  - `apple-mobile-web-app-capable yes`, `mobile-web-app-capable yes`, `apple-mobile-web-app-title Wildware Feed`, `apple-mobile-web-app-status-bar-style black-translucent`.
 - Inline blocking script (lines 57-85), which runs before paint:
   - theme comes from `localStorage.theme`, else `prefers-color-scheme`;
   - sets `data-theme` and the `dark` class;
@@ -276,7 +276,7 @@ Asset URLs in the HTML are **relative** (`paths.relative` default): `./_app/...`
 - **Lifecycle:** `install` calls `skipWaiting()`; `activate` calls `clients.claim()` (lines 39-45).
 - **`push`** (lines 47-79):
   - payload is JSON `{title?, body?, url?, tag?, requestId?, actions?: [{action,title,value}]}`; a bad or empty payload is treated as `{}`;
-  - calls `showNotification(title ?? 'Agent Dashboard', {...})` with:
+  - calls `showNotification(title ?? 'Wildware Feed', {...})` with:
     - `body ?? 'An agent is waiting on you.'`
     - `tag ?? 'owner-request'`
     - `icon` and `badge` both `/icons/icon-192.png`
