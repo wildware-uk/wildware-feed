@@ -9,7 +9,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
-import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
@@ -81,7 +80,8 @@ fun AgentTheme(
         CompositionLocalProvider(
             LocalAgentTheme provides values,
             LocalContentColor provides colors.text,
-            LocalIndication provides ripple(color = colors.text),
+            // iOS-style: dim (and shrink, if small) on touch, rather than Android's ripple.
+            LocalIndication provides PressIndication(colors.text, reduced = accessibility.reduceMotion),
             LocalTextSelectionColors provides TextSelectionColors(
                 handleColor = colors.accent,
                 backgroundColor = colors.accent.copy(alpha = 0.28f),
