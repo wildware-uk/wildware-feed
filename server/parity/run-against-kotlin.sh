@@ -9,6 +9,10 @@
 #   TS_SERVER_DIR / TS_SERVER_REF / SKIP_BUILD   as in run-against-ts.sh
 #   PARITY_PORT                                  port for both servers (default 18110)
 #   KOTLIN_TESTS                                 which test classes run against Kotlin (default below)
+#   KOTLIN_DATABASE_URL                          a Postgres server (postgres://user:pass@host:port/any) to run
+#                                                Kotlin on Postgres: between the steps, `feed-server migrate`
+#                                                copies the TS server's file into a new database there. The
+#                                                file-level DatabaseTest is skipped then (it reads SQLite).
 set -euo pipefail
 
 here="$(cd "$(dirname "$0")" && pwd)"
@@ -19,7 +23,7 @@ remote="${TS_SERVER_REPO:-https://github.com/wildware-uk/agent-dashboard.git}"
 password="parity-$(openssl rand -hex 12)"
 # Phase 1: boot, auth and reads.
 # Every phase: boot, auth, reads, writes, streams, every MCP tool, media.
-kotlin_tests="${KOTLIN_TESTS:-SmokeTest AuthTest DatabaseTest McpToolsListTest ReadParityTest FeedApiTest RequestsTest DevicesTest StreamTest McpTransportTest McpToolsTest McpEdgeTest MediaTest RateLimitTest}"
+kotlin_tests="${KOTLIN_TESTS:-SmokeTest AuthTest $([ -n "${KOTLIN_DATABASE_URL:-}" ] || echo DatabaseTest) McpToolsListTest ReadParityTest FeedApiTest RequestsTest DevicesTest StreamTest McpTransportTest McpToolsTest McpEdgeTest MediaTest RateLimitTest}"
 # Tests inside those classes that need a later phase.
 # tsOnly: what the Kotlin server deliberately leaves out (the website, share links, Web Push).
 exclude_tags="${KOTLIN_EXCLUDE_TAGS:-tsOnly}"
@@ -115,6 +119,17 @@ wait_for_server "$work/ts.log"
 stop_server
 
 # ── 2. Kotlin: the same database, the same questions ────────────────────────────────────────────
+if [ -n "${KOTLIN_DATABASE_URL:-}" ]; then
+    # A new database on that server, named for this run, with the TS server's data copied in.
+    pg_admin="${KOTLIN_DATABASE_URL%/*}/postgres"
+    pg_name="parity_$(basename "$work" | tr -c 'a-zA-Z0-9\n' '_' | tr 'A-Z' 'a-z')"
+    psql_run() { docker run --rm --network host postgres:16-alpine psql "$pg_admin" -v ON_ERROR_STOP=1 -q -c "$1"; }
+    if command -v psql >/dev/null; then psql_run() { psql "$pg_admin" -v ON_ERROR_STOP=1 -q -c "$1"; }; fi
+    psql_run "CREATE DATABASE $pg_name"
+    echo "export DATABASE_URL='${KOTLIN_DATABASE_URL%/*}/$pg_name'" >> "$work/env.sh"
+    echo "== copying the TS server's database into Postgres ($pg_name)"
+    ( . "$work/env.sh"; timeout 600 "$kotlin_bin" migrate --from "$work/data" ) | tail -2
+fi
 echo "== starting the Kotlin server on the same data"
 ( . "$work/env.sh"; exec timeout 3600 "$kotlin_bin" ) > "$work/kt.log" 2>&1 &
 server_pid=$!
@@ -129,4 +144,5 @@ status=0
     timeout 1500 ./gradlew --no-daemon -Dorg.gradle.jvmargs=-Xmx3g :server-parity:test "${filters[@]}" ${@+"$@"}) \
     || status=$?
 if [ "$status" -ne 0 ]; then echo "== Kotlin server log (last 80 lines)"; tail -80 "$work/kt.log"; fi
+if [ -n "${KOTLIN_DATABASE_URL:-}" ]; then stop_server; psql_run "DROP DATABASE $pg_name" || true; fi
 exit "$status"

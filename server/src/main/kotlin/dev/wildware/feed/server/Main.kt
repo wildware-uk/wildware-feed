@@ -18,6 +18,7 @@ fun main(args: Array<String>) {
             exitProcess(1)
         }
         val app = App.open(config)
+        println(if (config.databaseUrl != null) "Database: Postgres" else "Database: SQLite in ${config.dataDir}")
         println("Listening on http://${config.host}:${config.port}")
         dev.wildware.feed.server.http.FeedServer(app).start(wait = true)
         return
