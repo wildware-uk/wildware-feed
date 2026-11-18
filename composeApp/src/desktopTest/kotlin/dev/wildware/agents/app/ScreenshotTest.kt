@@ -101,6 +101,22 @@ class ScreenshotTest {
         })
     }
 
+    /** Scrolled into the questions: the "Waiting on you (3)" heading holds the top. */
+    @Test
+    fun stickyWaiting() {
+        val now = dev.wildware.agents.app.feed.LocalNow provides { FakeFeed.Now }
+        shoot("phone-dark-sticky-waiting", Size.Phone, dark = true) {
+            CompositionLocalProvider(now) {
+                AgentsPreview(dark = true, state = FakeFeed.allProjects, safeArea = Size.Phone.safeArea, startAt = "q1")
+            }
+        }
+        shoot("desktop-light-sticky-waiting", Size.Desktop, dark = false) {
+            CompositionLocalProvider(now) {
+                AgentsPreview(dark = false, state = FakeFeed.allProjects, safeArea = Size.Desktop.safeArea, startAt = "q2")
+            }
+        }
+    }
+
     /** The sign-in screen, before anything is typed. Nothing reaches a network. */
     @Test
     fun signIn() {

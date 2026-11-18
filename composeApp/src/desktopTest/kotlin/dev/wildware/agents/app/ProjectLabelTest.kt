@@ -82,7 +82,7 @@ class ProjectLabelTest {
     fun onAPhoneAQuestionShowsTheWholeProjectNameInsteadOfRepeatingWaitingOnYou() = runComposeUiTest {
         phone(FakeFeed.allProjects)
         // Only the section heading says it; the cards under it don't repeat it.
-        onAllNodes(hasText("WAITING ON YOU")).assertCountEquals(1)
+        onAllNodes(hasText("WAITING ON YOU", substring = true)).assertCountEquals(1)
         onAllNodes(hasContentDescription("waiting on you", substring = true, ignoreCase = true)).onFirst().assertExists()
         // The question's label is as wide as the same label on a post, where nothing squeezes it.
         val onQuestion = onAllNodes(hasContentDescription("In project agent-dashboard")).onFirst().fetchSemanticsNode().size.width
