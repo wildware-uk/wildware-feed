@@ -53,7 +53,7 @@ object Migrate {
                     val checked = tool.verify(source, target)
                     out("Identical: ${checked.sumOf { it.rows }} rows in ${checked.size} tables")
                     val store = bucket(env) ?: return@use 0
-                    val media = dev.wildware.feed.server.media.MediaToStore(File(from, "media").toPath().toAbsolutePath(), store, out)
+                    val media = dev.wildware.feed.server.media.MediaToStore(File(from, "media").toPath().toRealPath(), store, out)
                     if (!verifyOnly) {
                         out("Copying media…")
                         val c = media.copy()
