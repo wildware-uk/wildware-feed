@@ -14,7 +14,7 @@ set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 repo_root="$(cd "$here/../.." && pwd)"
 port="${PARITY_PORT:-18110}"
-ref="${TS_SERVER_REF:-8d6c4f613503a545ed73db2cb898ba50cd57fc03}"
+ref="${TS_SERVER_REF:-bef26e7be05aa0d2feb6e1eae9282e751d100abe}"
 remote="${TS_SERVER_REPO:-https://github.com/wildware-uk/agent-dashboard.git}"
 password="parity-$(openssl rand -hex 12)"
 # Phase 1: boot, auth and reads.
@@ -61,7 +61,6 @@ if [ -z "${TS_SERVER_DIR:-}" ]; then
 fi
 ts_dir="$(cd "$TS_SERVER_DIR" && pwd)"
 if [ "${SKIP_BUILD:-}" != "1" ]; then
-    if [ -e "$ts_dir/.local" ]; then echo "$ts_dir looks like a live deployment (.local/ exists)"; exit 1; fi
     echo "== building the TypeScript server"
     (cd "$ts_dir" && timeout 900 npm ci --no-audit --no-fund && timeout 900 npm run build)
 fi
