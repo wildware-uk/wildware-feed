@@ -56,6 +56,8 @@ class AppPlatform(
     val localServer: dev.wildware.agents.app.local.LocalServerHost? = null,
     /** "Send crash reports", in a build that sends them (`CrashReporting.start`); null in any other. */
     val crashReports: dev.wildware.agents.app.crash.CrashReportSetting? = null,
+    /** The iPhone's Live Activities, for the settings sheet; null where there are none. */
+    val liveActivities: LiveActivityStatus? = null,
 ) {
     companion object {
         /** Everything in memory: for tests and previews. */

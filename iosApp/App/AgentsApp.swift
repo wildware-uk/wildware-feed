@@ -34,7 +34,11 @@ struct AgentsApp: App {
                 AppLifecycle.shared.foreground()
             }
             if phase == .background { OutboxRunner.shared.scheduleBackground() }
-            Task { await LiveActivityController.shared.refresh(startIfNeeded: phase == .background) }
+            // iOS lets the app start an activity only while it is in front, so that is when it tries.
+            Task {
+                if phase == .active { await LiveActivityController.shared.syncTokens() }
+                await LiveActivityController.shared.refresh(startIfNeeded: phase == .active)
+            }
             if phase == .active { Task { await SpotlightIndexer.refresh() } }
         }
     }

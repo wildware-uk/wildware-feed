@@ -1,6 +1,9 @@
 package dev.wildware.agents.app.crash
 
 import dev.wildware.agents.TextStore
+import io.sentry.kotlin.multiplatform.Sentry
+import io.sentry.kotlin.multiplatform.SentryLevel
+import io.sentry.kotlin.multiplatform.protocol.Breadcrumb
 import kotlin.concurrent.Volatile
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -73,6 +76,15 @@ internal expect fun platformCrashSdk(): CrashSdk
 object CrashReporting {
     /** Whether this build reports crashes at all: release builds made by CI do; others send nothing. */
     val available: Boolean get() = CrashReportingBuild.Dsn.isNotBlank()
+
+    /**
+     * Leaves a note that a later crash report carries, such as why a Live Activity would not
+     * start. [message] must hold nothing of the owner's: no names, text, servers or keys.
+     */
+    fun note(category: String, message: String) {
+        if (setting?.enabled?.value != true) return
+        runCatching { Sentry.addBreadcrumb(Breadcrumb(level = SentryLevel.WARNING, category = category, message = message)) }
+    }
 
     /** The switch, once [start] has run in a build that reports crashes; null otherwise. */
     var setting: CrashReportSetting? = null

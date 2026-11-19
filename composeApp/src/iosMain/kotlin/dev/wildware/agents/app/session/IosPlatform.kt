@@ -74,6 +74,7 @@ fun iosPlatform(
         postTarget = IosTextStore(postTarget),
         pushAlerts = true,
         crashReports = dev.wildware.agents.app.crash.CrashReporting.setting,
+        liveActivities = LiveActivities.status,
         clearLocalData = {
             outbox.clear()
             remove(readMarks)

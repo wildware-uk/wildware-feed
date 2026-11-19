@@ -50,6 +50,7 @@ import androidx.compose.ui.unit.dp
 import dev.wildware.agents.AlertPrefs
 import dev.wildware.agents.app.ProductName
 import dev.wildware.agents.app.crash.CrashReportSetting
+import dev.wildware.agents.app.session.LiveActivityStatus
 import dev.wildware.agents.app.design.AgentTheme
 import dev.wildware.agents.app.design.Icons
 import dev.wildware.agents.app.design.touchTarget
@@ -65,6 +66,9 @@ val LocalCriticalAlertSettings = staticCompositionLocalOf<(() -> Unit)?> { null 
 
 /** "Send crash reports", in a build that sends them; null in any other, which shows no switch. */
 val LocalCrashReports = staticCompositionLocalOf<CrashReportSetting?> { null }
+
+/** The iPhone's Live Activities; null on a device without them, which shows nothing about them. */
+val LocalLiveActivities = staticCompositionLocalOf<LiveActivityStatus?> { null }
 
 /** One switch: what it is called and what it sets. */
 private data class AlertChoice(val label: String, val axis: AlertPrefs.Axis, val value: String)
@@ -122,6 +126,7 @@ fun AlertSettingsSheet(ui: FeedUi, safeArea: SafeArea) {
                 color = if (alerts.problem != null) colors.error else colors.textMuted,
                 style = AgentTheme.type.body,
             )
+            LocalLiveActivities.current?.let { LiveActivitiesGroup(it) }
             LocalCrashReports.current?.let { CrashReportsGroup(it) }
             // The dashboard's own settings, for whoever may change them.
             KeepMediaEntry(ui)
@@ -212,6 +217,33 @@ private fun CrashReportsGroup(setting: CrashReportSetting) {
         color = AgentTheme.colors.textMuted,
         style = AgentTheme.type.body,
     )
+}
+
+/**
+ * Whether the lock screen can show what agents are doing: says so when Live Activities are off
+ * for this app, with a way to the switch, and why the last one would not start.
+ */
+@Composable
+private fun LiveActivitiesGroup(status: LiveActivityStatus) {
+    val colors = AgentTheme.colors
+    val state by status.state.collectAsState()
+    SettingsHeading("Live Activity")
+    val note = when {
+        !state.allowed -> "Live Activities are off for $ProductName, so nothing shows on the lock screen. Turn them on in Settings, under $ProductName."
+        state.problem != null -> "The last Live Activity did not start: ${state.problem}"
+        else -> "Shows on the lock screen and in the Dynamic Island while an agent is waiting on you or working."
+    }
+    Text(
+        note,
+        Modifier.padding(horizontal = 16.dp, vertical = 6.dp).semantics { liveRegion = LiveRegionMode.Polite },
+        color = if (state.allowed && state.problem == null) colors.textMuted else colors.error,
+        style = AgentTheme.type.body,
+    )
+    if (!state.allowed) {
+        Row(Modifier.padding(horizontal = 8.dp)) {
+            AppButton("Open Settings", ButtonTone.Quiet, onClick = status::openSettings)
+        }
+    }
 }
 
 /** A small heading over a group of settings. */

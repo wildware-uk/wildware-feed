@@ -18,8 +18,10 @@ import java.util.concurrent.TimeUnit
 
 /**
  * The Live Activity on the owner's phone (spec/08 §7): after any watched event (coalesced over 2 s,
- * and every minute anyway) each activity gets the new state if it changed, and a new request may
- * start one on a phone that has none (at most every 5 minutes). State is kept in memory only.
+ * and every minute anyway) each activity gets the new state if it changed. A phone that has none
+ * is pushed one (at most every 5 minutes) when a new request waits on the owner, or when agents
+ * start working after a quiet spell. Once nothing has waited on him and nothing has been worked on
+ * for [IDLE_END_MS], each activity is ended. State is kept in memory only.
  */
 class LiveActivity(private val app: App, private val apns: Apns, private val bundleId: String) {
     private val messages = PushMessages(app)
@@ -28,6 +30,10 @@ class LiveActivity(private val app: App, private val apns: Apns, private val bun
     private val timer = Executors.newSingleThreadScheduledExecutor { r -> Thread(r, "live-activity").apply { isDaemon = true } }
     private var pending: ScheduledFuture<*>? = null
     @Volatile private var newRequestId: String? = null
+    /** Whether the last run found the owner [busy]; null before the first, so a restart starts nothing. */
+    private var wasBusy: Boolean? = null
+    /** Since when nothing has been [busy], or null while something is. */
+    private var idleSince: Long? = null
 
     /** The content state; optional fields for later designs are appended through [extra]. */
     fun state(extra: List<Pair<String, JsonElement>> = emptyList()): JsonObject {
@@ -88,8 +94,17 @@ class LiveActivity(private val app: App, private val apns: Apns, private val bun
         val state = state()
         val waiting = state["waiting"]!!.jsonPrimitive.int
         val timestamp = now / 1000
+        val busy = busy(state)
+        val workBegan = busy && wasBusy == false && waiting == 0
+        wasBusy = busy
+        idleSince = if (busy) null else idleSince ?: now
+        val ending = idleSince?.let { now - it >= IDLE_END_MS } == true
         for (device in devices) {
             val token = device.liveActivityToken ?: continue
+            if (ending) {
+                end(device, token, state, timestamp)
+                continue
+            }
             val key = "${device.id}:$token"
             val previous = lastSent[key]
             if (previous != null && Wire.encode(previous) == Wire.encode(state)) continue
@@ -104,15 +119,12 @@ class LiveActivity(private val app: App, private val apns: Apns, private val bun
             val outcome = apns.deliver(device, "live_activity_token", headers(if (urgent) 10 else 5), Wire.encode(payload))
             if (outcome == "sent") lastSent[key] = state else lastSent.remove(key)
         }
-        if (requestId == null || waiting == 0) return
+        val asked = requestId != null && waiting > 0
+        if (!asked && !workBegan) return
         for (device in devices) {
             if (device.pushToStartToken == null || device.liveActivityToken != null) continue
             if (now - (startedAt[device.id] ?: Long.MIN_VALUE / 2) < PUSH_TO_START_COOLDOWN_MS) continue
-            val message = messages.request(requestId)
-            val alert = buildJsonObject {
-                put("title", JsonPrimitive(message?.title ?: "${state["topAgent"]?.takeIf { it !is JsonNull }?.jsonPrimitive?.content ?: "An agent"} is waiting on you"))
-                put("body", JsonPrimitive(message?.body ?: state["topQuestion"]?.takeIf { it !is JsonNull }?.jsonPrimitive?.content ?: ""))
-            }
+            val alert = if (asked) requestAlert(requestId!!, state) else workAlert(state)
             startedAt[device.id] = now
             val payload = buildJsonObject {
                 put("aps", buildJsonObject {
@@ -127,6 +139,47 @@ class LiveActivity(private val app: App, private val apns: Apns, private val bun
             apns.deliver(device, "push_to_start_token", headers(10), Wire.encode(payload))
         }
     }
+
+    /** What a push-to-start for a new request says: the alert's own words for it. */
+    private fun requestAlert(requestId: String, state: JsonObject): JsonObject {
+        val message = messages.request(requestId)
+        return buildJsonObject {
+            put("title", JsonPrimitive(message?.title ?: "${state.text("topAgent") ?: "An agent"} is waiting on you"))
+            put("body", JsonPrimitive(message?.body ?: state.text("topQuestion") ?: ""))
+        }
+    }
+
+    /** What a push-to-start for agents getting to work says: who is on what. */
+    private fun workAlert(state: JsonObject): JsonObject {
+        val first = (state["working"] as? kotlinx.serialization.json.JsonArray)?.firstOrNull() as? JsonObject
+        val inProgress = state["inProgress"]!!.jsonPrimitive.int
+        return buildJsonObject {
+            put("title", JsonPrimitive(first?.text("agent")?.let { "$it is working" } ?: "Agents are working"))
+            put("body", JsonPrimitive(first?.text("task") ?: if (inProgress == 1) "1 task in progress" else "$inProgress tasks in progress"))
+        }
+    }
+
+    /**
+     * Ends [device]'s activity and forgets its token, so the server stops updating it and a later
+     * request or burst of work can start a new one.
+     */
+    private fun end(device: PushDevice, token: String, state: JsonObject, timestamp: Long) {
+        val payload = buildJsonObject {
+            put("aps", buildJsonObject {
+                put("timestamp", JsonPrimitive(timestamp))
+                put("event", JsonPrimitive("end"))
+                put("content-state", state)
+                put("dismissal-date", JsonPrimitive(timestamp))
+            })
+        }
+        val outcome = apns.deliver(device, "live_activity_token", headers(5), Wire.encode(payload))
+        if (outcome == "sent") {
+            app.db.update("UPDATE owner_devices SET live_activity_token = NULL WHERE id = ? AND live_activity_token = ?", device.id, token)
+        }
+        if (outcome != "failed") lastSent.remove("${device.id}:$token")
+    }
+
+    private fun JsonObject.text(key: String): String? = get(key)?.takeIf { it is JsonPrimitive && it.isString }?.jsonPrimitive?.content
 
     /** The top request's options as lock-screen buttons, only when all 1-4 of them fit uncut. */
     private fun lockScreenOptions(top: JsonObject): JsonElement {
@@ -150,6 +203,20 @@ class LiveActivity(private val app: App, private val apns: Apns, private val bun
         const val COALESCE_MS = 2_000L
         const val REFRESH_MS = 60_000L
         const val PUSH_TO_START_COOLDOWN_MS = 5 * 60 * 1000L
+        /** How long nothing must wait on the owner or be worked on before the activity ends. */
+        const val IDLE_END_MS = 10 * 60 * 1000L
+
+        /**
+         * Whether the owner has something to watch: a question waiting on him, or agents online
+         * with cards in progress. Cards left in progress while every agent is offline don't count,
+         * or a forgotten card would keep the activity up for good.
+         */
+        fun busy(state: JsonObject): Boolean {
+            val waiting = state["waiting"]!!.jsonPrimitive.int
+            val inProgress = state["inProgress"]!!.jsonPrimitive.int
+            val online = state["online"]!!.jsonPrimitive.int
+            return waiting > 0 || (inProgress > 0 && online > 0)
+        }
         val WATCHED = setOf(
             "request.created", "request.answered", "request.updated", "agent.presence", "agent.renamed",
             "update.created", "update.updated", "update.deleted", "message.created", "message.updated",

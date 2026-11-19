@@ -34,6 +34,7 @@ import dev.wildware.agents.app.feed.LocalMediaAuth
 import dev.wildware.agents.app.feed.LocalMediaHandler
 import dev.wildware.agents.app.feed.rememberPlatformMediaHandler
 import dev.wildware.agents.app.feed.LocalPushAlerts
+import dev.wildware.agents.app.feed.LocalLiveActivities
 import dev.wildware.agents.app.feed.LocalFilePicker
 import dev.wildware.agents.app.feed.LocalVoiceInput
 import dev.wildware.agents.app.feed.FilePicker
@@ -130,6 +131,7 @@ fun AgentsApp(
                         LocalDemo provides screen.demo,
                         LocalOpenSettings provides openSettings,
                         LocalCrashReports provides platform.crashReports,
+                        LocalLiveActivities provides platform.liveActivities,
                     ) {
                         FeedScreen(state, safeArea, navigator = navigator, onAwayFromTop = session::holdArrivals) { event ->
                             when (event) {

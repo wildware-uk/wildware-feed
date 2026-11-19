@@ -33,7 +33,7 @@ final class AppModel: ObservableObject {
         await Notifications.requestPermission()
         if let apnsToken { await sendApnsToken(apnsToken) }
         await LiveActivityController.shared.watchTokens()
-        await LiveActivityController.shared.start()
+        await LiveActivityController.shared.refresh(startIfNeeded: true)
         WidgetCenter.shared.reloadAllTimelines()
         AgentsShortcuts.updateAppShortcutParameters()
         await KnownProjects.refresh()

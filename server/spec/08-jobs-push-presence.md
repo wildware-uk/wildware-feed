@@ -491,20 +491,28 @@ No `apns-expiration`, no `apns-collapse-id`.
    (so also on first send), else 5. Payload:
    `{"aps":{"timestamp":T,"event":"update","content-state":STATE}}`.
    On `sent` remember the state; on `failed`/`removed` forget it (retried next run).
-5. **Push-to-start** only if `newRequestId` was set and `waiting > 0`: devices with
+   **Busy** = `waiting > 0`, or `inProgress > 0` with `online > 0`. Since the Kotlin server
+   (not the TS one): once nothing has been busy for 600 000 ms (`IDLE_END_MS`, counted in memory
+   from the first idle run), each device with `liveActivityToken` gets
+   `{"aps":{"timestamp":T,"event":"end","content-state":STATE,"dismissal-date":T}}` (priority 5)
+   instead of an update, and on `sent` its `live_activity_token` is cleared.
+5. **Push-to-start** only if `newRequestId` was set and `waiting > 0`, or (Kotlin server) work
+   began: this run is busy with `waiting = 0` and the last run was not busy (never on the first
+   run after a restart). Devices with
    `pushToStartToken` and **no** `liveActivityToken`, and `now - lastStart(device) >= 300 000`
    (`PUSH_TO_START_COOLDOWN_MS`). The start time is recorded before sending, whatever the outcome.
    Priority 10. Payload:
    `{"aps":{"timestamp":T,"event":"start","content-state":STATE,"attributes-type":"AgentsActivityAttributes","attributes":{},"alert":{"title":…,"body":…}}}`
    where alert = `requestMessage(newRequestId)` title/body, falling back to
-   `"<topAgent ?? 'An agent'> is waiting on you"` / `topQuestion ?? ""`.
+   `"<topAgent ?? 'An agent'> is waiting on you"` / `topQuestion ?? ""`. For work that began:
+   `"<working[0].agent> is working"` / `working[0].task`, falling back to `"Agents are working"` /
+   `"<n> task(s) in progress"`.
 6. Same `deliverToDevice` outcome rules as §6.8 (dead token clears that LA column).
    Environment = the device's `apns_environment ?? 'production'` (the alert token's environment).
 
 - State (`lastSent`, start cooldowns) is in memory; a restart re-sends every activity its state.
-- The server **never sends `event: "end"`**, nor `stale-date` / `dismissal-date`. The app ends
-  activities itself and clears its update token with `PUT … {updateToken: null}`
-  (`LiveActivityController.swift:80-100`).
+- The TS server **never sends `event: "end"`**; the Kotlin server ends an idle activity (step 4).
+  The app also clears its update token with `PUT … {updateToken: null}` when an activity ends.
 
 ---
 
