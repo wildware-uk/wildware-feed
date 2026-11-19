@@ -395,6 +395,8 @@ data class FeedState(
     /** Every word the projects on screen use for their cards, for the tag picker. */
     val tags: List<CardTag> = emptyList(),
     val bell: Bell = Bell(),
+    /** Who a message can @mention, in the order the @ list shows them. */
+    val mentionable: List<Mentionable> = emptyList(),
     /** Which alerts this device gets. */
     val alerts: AlertSettings = AlertSettings(),
     /** How long the dashboard keeps media. */
@@ -461,4 +463,23 @@ data class OutboxSummary(
     /** The first item the dashboard refused, to retry or drop. */
     val failedId: String? = null,
     val failedMessage: String? = null,
+)
+
+/**
+ * What an @ in a message box can name. Agents today; [MentionKind.Group] is for @here and
+ * @everyone, and [MentionKind.Person] is the hook for other people once there are team accounts.
+ */
+enum class MentionKind { Agent, Group, Person }
+
+/** One row of the @ list: what it inserts ([name]), and how it shows. */
+@Immutable
+data class Mentionable(
+    val kind: MentionKind,
+    val name: String,
+    val id: String? = null,
+    /** An agent's: online ones first, with a dot. */
+    val presence: Presence? = null,
+    val hue: Int = 0,
+    /** A short line beside the name, as for a group. */
+    val hint: String? = null,
 )

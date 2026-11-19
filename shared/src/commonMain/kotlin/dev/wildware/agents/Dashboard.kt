@@ -214,6 +214,11 @@ class Dashboard internal constructor(
     /** Agents beating right now. */
     val online: StateFlow<List<LiveAgentView>> = mutableOnline.asStateFlow()
 
+    private val mutableAgentNames = MutableStateFlow<Map<String, String>>(emptyMap())
+
+    /** Every agent the dashboard has named, by id, online or not: who a message can @mention. */
+    val agentNames: StateFlow<Map<String, String>> = mutableAgentNames.asStateFlow()
+
     /** The sidebar: every project (archived ones last), with its badges. */
     val projects: StateFlow<List<ProjectSummary>> = mutableProjects.asStateFlow()
 
@@ -393,6 +398,7 @@ class Dashboard internal constructor(
         val pending = drafts()
         feeds.values.forEach { it.drafts = pending }
         val names = names()
+        if (mutableAgentNames.value != names) mutableAgentNames.value = names
         val onlineAgents = presence.agents.filter { it.lastHeartbeatAt >= now - PresenceReader.WindowMillis }
         mutableOnline.value = onlineAgents
         val projectsById = everything.projects().associateBy { it.id }

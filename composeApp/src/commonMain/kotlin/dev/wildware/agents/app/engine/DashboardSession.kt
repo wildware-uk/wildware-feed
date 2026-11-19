@@ -1,5 +1,7 @@
 package dev.wildware.agents.app.engine
 
+import dev.wildware.agents.UpdateCard
+import kotlinx.coroutines.flow.distinctUntilChanged
 import dev.wildware.agents.CardKinds
 import dev.wildware.agents.CardRef
 import dev.wildware.agents.Dashboard
@@ -101,6 +103,19 @@ class DashboardSession(
     /** The latest engine feed, for finding what an event is about. */
     private val latest: EngineFeed get() = feed.state.value
 
+    /** Who the @ list offers, worked out only when the agents or their activity change. */
+    private val mentionables = combine(dashboard.agentNames, dashboard.online, dashboard.everything.state) { names, online, everything ->
+        val lastActive = HashMap<String, Long>()
+        fun saw(agentId: String?, at: Long) {
+            if (agentId != null && at > (lastActive[agentId] ?: Long.MIN_VALUE)) lastActive[agentId] = at
+        }
+        everything.allCards.forEach { card ->
+            if (card is UpdateCard) saw(card.update.agentId, card.update.createdAt)
+            card.replies.forEach { saw(it.message.agentId, it.message.createdAt) }
+        }
+        Mentionables.of(names, online, lastActive)
+    }.distinctUntilChanged()
+
     val state: StateFlow<FeedState> = combine(
         combine(
             combine(feeds.flatMapLatest { it.state }, dashboard.waiting, ::Pair),
@@ -115,13 +130,13 @@ class DashboardSession(
         dashboard.everything.state,
         dashboard.projects,
         dashboard.notifications,
-        combine(mutableAlerts, mutableRetention, ::Pair),
-    ) { shown, everything, projects, notifications, (alerts, retention) ->
+        combine(mutableAlerts, mutableRetention, mentionables, ::Triple),
+    ) { shown, everything, projects, notifications, (alerts, retention, mentionable) ->
         // Search looks across every project's loaded cards, whichever feed is on screen.
         val all = if (shown.current.slug == null) shown else mapper.map(everything, projects, emptyList(), emptyList(), null)
         // Parse what the feed will draw before handing it over, here off the UI thread, so a card
         // that scrolls into view (or arrives) finds its markdown ready instead of parsing mid-frame.
-        shown.copy(searchIndex = searchEntriesOf(all.sections), bell = mapper.bell(notifications), alerts = alerts, retention = retention).also { MarkdownCache.warm(markdownIn(it).asIterable()) }
+        shown.copy(searchIndex = searchEntriesOf(all.sections), bell = mapper.bell(notifications), alerts = alerts, retention = retention, mentionable = mentionable).also { MarkdownCache.warm(markdownIn(it).asIterable()) }
     }.stateIn(scope, SharingStarted.Eagerly, mapper.map(feed.state.value, emptyList(), emptyList(), emptyList(), null))
 
     /** True once the dashboard has stopped taking this device's key. */

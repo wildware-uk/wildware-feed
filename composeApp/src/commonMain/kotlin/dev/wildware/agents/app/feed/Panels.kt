@@ -1,5 +1,7 @@
 package dev.wildware.agents.app.feed
 
+import androidx.compose.ui.text.TextRange
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -526,6 +528,24 @@ fun Composer(
     }
     // Read as a yes/no, so typing redraws only the text, not the whole box, on every key.
     val blank by remember { derivedStateOf { text.text.isBlank() } }
+    // The @mention under the cursor, if any: only the word at the cursor is read, so other typing
+    // redraws nothing here.
+    val typing by remember { derivedStateOf { if (text.selection.collapsed) MentionText.at(text.text.toString(), text.selection.end) else null } }
+    var mentionClosedAt by remember { mutableStateOf<Int?>(null) }
+    var mentionSelected by remember { mutableIntStateOf(0) }
+    val mention = typing?.takeIf { open && it.start != mentionClosedAt }
+    val mentionChoices = mention?.let { MentionText.matches(ui?.state?.mentionable.orEmpty(), it.query) }.orEmpty()
+    LaunchedEffect(mention?.start, mention?.query) { mentionSelected = 0 }
+    val pickMention: (Mentionable) -> Unit = { choice ->
+        val at = typing
+        if (at != null) {
+            val (next, cursor) = MentionText.insert(text.text.toString(), at, choice.name, text.selection.end)
+            text.edit {
+                replace(0, length, next)
+                selection = TextRange(cursor)
+            }
+        }
+    }
     val send = {
         val typed = text.text.toString().trim()
         if (typed.isNotEmpty() || files.isNotEmpty()) {
@@ -535,8 +555,10 @@ fun Composer(
             refused = null
         }
     }
+    Column(modifier.fillMaxWidth()) {
+    if (mentionChoices.isNotEmpty()) MentionList(mentionChoices, mentionSelected, pickMention)
     Column(
-        modifier
+        Modifier
             .fillMaxWidth()
             .lift(AgentTheme.elevation.raised, shape)
             .clip(shape)
@@ -584,6 +606,16 @@ fun Composer(
                         ui?.composerOpen = it.isFocused
                     }
                 }.onPreviewKeyEvent { e ->
+                    // While the @ list is up, the arrows, Enter, Tab and Escape are its.
+                    if (e.type == KeyEventType.KeyDown && mentionChoices.isNotEmpty()) {
+                        when (e.key) {
+                            Key.DirectionDown -> { mentionSelected = (mentionSelected + 1) % mentionChoices.size; return@onPreviewKeyEvent true }
+                            Key.DirectionUp -> { mentionSelected = (mentionSelected - 1 + mentionChoices.size) % mentionChoices.size; return@onPreviewKeyEvent true }
+                            Key.Enter, Key.Tab -> { pickMention(mentionChoices[mentionSelected.coerceIn(mentionChoices.indices)]); return@onPreviewKeyEvent true }
+                            Key.Escape -> { mentionClosedAt = mention?.start; return@onPreviewKeyEvent true }
+                            else -> {}
+                        }
+                    }
                     if (e.type == KeyEventType.KeyDown && e.key == Key.Escape) {
                         close()
                         return@onPreviewKeyEvent true
@@ -608,6 +640,7 @@ fun Composer(
                 SendButton(enabled = !blank || files.isNotEmpty(), onClick = send)
             }
         }
+    }
     }
 }
 
