@@ -84,7 +84,7 @@ fun MentionList(choices: List<Mentionable>, selected: Int, onPick: (Mentionable)
             .padding(vertical = 4.dp)
             .semantics {
                 collectionInfo = CollectionInfo(count, 1)
-                contentDescription = "$count ${if (count == 1) "agent" else "agents"} to mention"
+                contentDescription = "$count to mention"
                 liveRegion = LiveRegionMode.Polite
             },
     ) {

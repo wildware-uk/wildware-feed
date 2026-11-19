@@ -17,8 +17,14 @@ object Mentionables {
         val (on, off) = all.entries.partition { it.key in live }
         val ordered = on.sortedByDescending { live.getValue(it.key).lastHeartbeatAt } +
             off.sortedWith(compareByDescending<Map.Entry<String, String>> { lastActive[it.key] ?: Long.MIN_VALUE }.thenBy { it.value.lowercase() })
-        return ordered.map { (id, name) ->
+        return Groups + ordered.map { (id, name) ->
             Mentionable(MentionKind.Agent, name, id, if (id in live) Presence.Online else Presence.Offline, hue(id))
         }
     }
+
+    /** @here and @everyone, which the dashboard expands itself. Other people join here with team accounts. */
+    val Groups = listOf(
+        Mentionable(MentionKind.Group, "here", hint = "every agent online now"),
+        Mentionable(MentionKind.Group, "everyone", hint = "every agent"),
+    )
 }

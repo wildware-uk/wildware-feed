@@ -147,6 +147,42 @@ class FeedTest {
     private fun human(body: String, project: String? = null, replyTo: String? = null, updateId: String? = null, answers: String? = null, request: String? = null) =
         feed.messages.post(Messages.Post(author = "human", body = body, project = project, replyTo = replyTo, updateId = updateId, answers = answers, requestId = request))
 
+    private fun mentioned(messageId: String) =
+        db.query("SELECT agent_id FROM message_mentions WHERE message_id = ? ORDER BY agent_id", messageId) { it.getString(1) }
+
+    private fun online(agentId: String, beat: Long = now) = db.update(
+        "INSERT INTO sessions (id, agent_id, started_at, last_heartbeat_at) VALUES (?, ?, 1, ?)", "S-$agentId", agentId, beat,
+    )
+
+    @Test
+    fun `at-everyone reaches every agent and at-here only those online now`() {
+        agent("A1", "scout")
+        agent("A2", "forge")
+        agent("A3", "quill")
+        agent("A4", "gone", revoked = true)
+        feed.projects.create("P", null, null)
+        online("A1")
+        online("A3", beat = now - 10 * 60_000)
+
+        assertEquals(listOf("A1", "A2", "A3"), mentioned(human("Heads up @everyone", project = "p").id))
+        assertEquals(listOf("A1"), mentioned(human("Anyone around? @HERE", project = "p").id))
+        assertEquals(listOf("A1", "A2"), mentioned(human("@here and @forge please", project = "p").id))
+        assertEquals(emptyList(), mentioned(human("mail me at a@everyone.example or `@here`", project = "p").id))
+    }
+
+    @Test
+    fun `an agent saying at-everyone is not told about its own message`() {
+        agent("A1", "scout")
+        agent("A2", "forge")
+        feed.projects.create("P", null, null)
+        online("A1")
+        online("A2")
+        val sent = feed.messages.post(Messages.Post(author = "agent:A1", body = "Done, @everyone", project = "p"))
+        assertEquals(listOf("A2"), mentioned(sent.id))
+        val here = feed.messages.post(Messages.Post(author = "agent:A2", body = "@here look", project = "p"))
+        assertEquals(listOf("A1"), mentioned(here.id))
+    }
+
     @Test
     fun `replies flatten to the post and anchors are checked`() {
         agent("A1", "scout")

@@ -6,9 +6,14 @@ import java.util.regex.Pattern
 
 /**
  * `@name` in a message (spec/02 §7.7; TS `src/domain/mentions.ts`): code is ignored, names match
- * case-insensitively, and every live agent with a named name is mentioned.
+ * case-insensitively, and every live agent with a named name is mentioned. Two groups on top:
+ * `@everyone` mentions every agent, and `@here` every agent online now ([Sessions.PRESENCE_WINDOW_MS]).
+ * A group never mentions the agent that wrote the message.
  */
 object Mentions {
+    const val EVERYONE = "everyone"
+    const val HERE = "here"
+
     /** JavaScript's `$` without the `m` flag is the very end, hence `\z`. */
     private val CODE = Regex("```[\\s\\S]*?(?:```|\\z)|~~~[\\s\\S]*?(?:~~~|\\z)|`[^`\\n]*`")
 
@@ -30,16 +35,25 @@ object Mentions {
         return found
     }
 
-    fun mentionedAgentIds(db: Database, body: String): List<String> {
+    fun mentionedAgentIds(db: Database, body: String, author: String? = null, now: Long = System.currentTimeMillis()): List<String> {
         if ('@' !in body) return emptyList()
         val agents = db.query("SELECT id, name FROM agents WHERE revoked_at IS NULL ORDER BY seq") { it.getString(1) to it.getString(2) }
-        val names = mentionedNames(body, agents.map { it.second }.distinct())
-        return agents.filter { it.second.lowercase() in names }.map { it.first }
+        val names = mentionedNames(body, agents.map { it.second }.distinct() + listOf(EVERYONE, HERE))
+        val named = agents.filter { it.second.lowercase() in names }.map { it.first }
+        val sender = author?.takeIf { it.startsWith("agent:") }?.removePrefix("agent:")
+        val group = when {
+            EVERYONE in names -> agents.map { it.first }
+            HERE in names -> db.query(
+                "SELECT DISTINCT agent_id FROM sessions WHERE ended_at IS NULL AND last_heartbeat_at >= ?", now - Sessions.PRESENCE_WINDOW_MS,
+            ) { it.getString(1) }.toSet().let { live -> agents.map { it.first }.filter { it in live } }
+            else -> emptyList()
+        }
+        return (named + group.filter { it != sender }).distinct()
     }
 
-    /** Replace the message's mentions with what its body says now. */
-    fun record(db: Database, messageId: String, body: String) {
-        val ids = mentionedAgentIds(db, body)
+    /** Replace the message's mentions with what its body says now. [author] is never mentioned by a group. */
+    fun record(db: Database, messageId: String, body: String, author: String? = null, now: Long = System.currentTimeMillis()) {
+        val ids = mentionedAgentIds(db, body, author, now)
         db.transaction {
             db.update("DELETE FROM message_mentions WHERE message_id = ?", messageId)
             for (id in ids) {

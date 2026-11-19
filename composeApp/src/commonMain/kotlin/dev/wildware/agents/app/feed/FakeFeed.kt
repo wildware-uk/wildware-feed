@@ -214,7 +214,8 @@ object FakeFeed {
         owner = owner,
         projects = listOf(dashboard, ios, engine, website, infra, oldDashboard),
         agents = listOf(forge, scout, relay, lumen, quill),
-        mentionable = listOf(forge, scout, relay, lumen, quill).map { Mentionable(MentionKind.Agent, it.name, it.id, it.presence, it.hue) },
+        mentionable = dev.wildware.agents.app.engine.Mentionables.Groups +
+            listOf(forge, scout, relay, lumen, quill).map { Mentionable(MentionKind.Agent, it.name, it.id, it.presence, it.hue) },
         current = dashboard,
         sections = listOf(
             FeedSection("Waiting on you", listOf(question, pictureQuestion)),

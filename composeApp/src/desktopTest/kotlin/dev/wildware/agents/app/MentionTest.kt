@@ -24,6 +24,7 @@ import dev.wildware.agents.app.design.AgentTheme
 import dev.wildware.agents.app.engine.Mentionables
 import dev.wildware.agents.app.feed.FakeFeed
 import dev.wildware.agents.app.feed.FeedScreen
+import dev.wildware.agents.app.feed.MentionKind
 import dev.wildware.agents.app.feed.MentionText
 import dev.wildware.agents.app.feed.Presence
 import kotlin.test.Test
@@ -63,8 +64,10 @@ class MentionTest {
         val names = mapOf("a1" to "scout", "a2" to "forge", "a3" to "quill", "a4" to "atlas")
         val online = listOf(LiveAgentView(agentId = "a2", name = "forge", lastHeartbeatAt = 10))
         val list = Mentionables.of(names, online, lastActive = mapOf("a3" to 500L, "a1" to 900L))
-        assertEquals(listOf("forge", "scout", "quill", "atlas"), list.map { it.name })
-        assertEquals(Presence.Online, list.first().presence)
+        assertEquals(listOf("here", "everyone", "forge", "scout", "quill", "atlas"), list.map { it.name })
+        assertEquals(listOf(MentionKind.Group, MentionKind.Group), list.take(2).map { it.kind })
+        assertEquals(listOf("every agent online now", "every agent"), list.take(2).map { it.hint })
+        assertEquals(Presence.Online, list[2].presence)
         assertEquals(Presence.Offline, list.last().presence)
     }
 
@@ -84,7 +87,8 @@ class MentionTest {
     fun typingAtListsEveryAgentWithTheOnlineOnesFirst() = runComposeUiTest {
         feed()
         onNode(box).performTextInput("ask @")
-        onNode(hasContentDescription("5 agents to mention", substring = true)).assertExists()
+        onNode(hasContentDescription("7 to mention", substring = true)).assertExists()
+        assertTrue(onAllNodes(row("here")).fetchSemanticsNodes().isNotEmpty())
         assertTrue(onAllNodes(row("forge")).fetchSemanticsNodes().isNotEmpty())
         assertTrue(onAllNodes(row("quill")).fetchSemanticsNodes().isNotEmpty())
     }
@@ -134,5 +138,14 @@ class MentionTest {
         onAllNodes(reply).onFirst().performTextInput("thanks @rel")
         assertTrue(onAllNodes(row("relay")).fetchSemanticsNodes().isNotEmpty())
         assertTrue(onAllNodes(hasText("relay")).fetchSemanticsNodes().isNotEmpty())
+    }
+
+    @Test
+    fun hereAndEveryoneComeFirstWithWhatTheyReach() = runComposeUiTest {
+        feed()
+        onNode(box).performTextInput("@ev")
+        assertTrue(onAllNodes(hasContentDescription("Mention everyone, every agent", substring = true)).fetchSemanticsNodes().isNotEmpty())
+        onNode(box).performKeyInput { pressKey(Key.Enter) }
+        assertEquals("@everyone ", typed())
     }
 }

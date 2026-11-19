@@ -48,6 +48,6 @@ class MentionScreenshotTest {
         ImageIO.write(onAllNodes(isRoot()).onFirst().captureToImage().toAwtImage(), "png", File(outDir, "$name.png"))
     }
 
-    @Test fun phone() = runDesktopComposeUiTest(1170, 2532) { shoot("phone-dark-mention", 3f, true, SafeArea(top = 54.dp, bottom = 34.dp), "Can you check this @") }
-    @Test fun desktop() = runDesktopComposeUiTest(2880, 1800) { shoot("desktop-light-mention", 2f, false, SafeArea(), "Over to @r") }
+    @Test fun phone() = runDesktopComposeUiTest(1170, 2532) { shoot("phone-dark-mention-groups", 3f, true, SafeArea(top = 54.dp, bottom = 34.dp), "Can you check this @") }
+    @Test fun desktop() = runDesktopComposeUiTest(2880, 1800) { shoot("desktop-light-mention-groups", 2f, false, SafeArea(), "Over to @") }
 }

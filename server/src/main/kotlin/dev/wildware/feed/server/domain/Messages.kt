@@ -106,7 +106,7 @@ class Messages(private val feed: Feed) {
             id, projectId, updateId, author, body, feed.now(), if (request) null else anchor, answersId, requestId,
         )
         val message = find(id)!!
-        Mentions.record(db, message.id, message.body)
+        Mentions.record(db, message.id, message.body, message.author, feed.now())
 
         val agentId = if (author.startsWith(AGENT_PREFIX)) author.removePrefix(AGENT_PREFIX).ifEmpty { null } else null
         if (mediaIds.isNotEmpty()) FeedAttachments.attachMedia(db, mediaIds, "message_id", id, "author", author)
@@ -131,7 +131,7 @@ class Messages(private val feed: Feed) {
         val clean = requiredText(body, "body", BODY_MAX)
         db.update("UPDATE messages SET body = ?, edited_at = ? WHERE id = ? AND deleted_at IS NULL", clean, feed.now(), message.id)
         val saved = find(message.id)!!
-        Mentions.record(db, saved.id, saved.body)
+        Mentions.record(db, saved.id, saved.body, saved.author, feed.now())
         feed.publish("message.updated", buildJsonObject {
             put("messageId", saved.id)
             put("projectId", saved.projectId)
