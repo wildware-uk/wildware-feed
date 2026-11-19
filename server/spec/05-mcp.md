@@ -249,6 +249,17 @@ All tools answer with `ok`/`failed` (`src/mcp/results.ts:47-71`).
 | `requestView` | `id, kind, question, detail\|null, options\|null, project_id\|null, update_id\|null, message_id\|null, expires_at, [edited_at]` | `src/mcp/results.ts:126-139` |
 | card ref | `{"kind":"update"\|"message"\|"request","id":"…"}` | set_status/tag_card/card fields |
 
+### 3.1a Priority and critical alerts (Kotlin only)
+
+`post_update`, `edit_update` and `request_input` take `priority`: `low`, `medium` (default), `high` or
+`critical`. Requests store it in `approvals.priority` (migration 049) and show `priority` only when it is
+not `medium`, so ordinary reads are unchanged. A new critical update or question pages the owner's
+phones that turned critical alerts on (spec/03, spec/08); an edit to `critical` pages nobody. Each tool's
+description and its `priority` description say so: `critical` pages the owner through silent mode and
+Do Not Disturb, and is only for when the owner has explicitly told the agent to use it. No cap. These
+wordings are the only differences from the TS server's `tools/list`, listed in
+`parity/src/test/resources/tools-list-kotlin-changes.json`.
+
 ### 3.2 Request results (`request_input`, `await_request`)
 
 `requestResult` (`src/mcp/results.ts:149-185`):

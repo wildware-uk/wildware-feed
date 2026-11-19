@@ -224,6 +224,10 @@ working-tree SQL with the runner's own hash):
 | 43 | `owner-devices` | `aa55018a705ad19c3103f7853cc3c25ce945f6b646b48e4199e8308234fc4ee2` |
 | 44 | `mentions` | `d88737723f6b8512b1e73e72032677a7cb903675a5afbfd1434362312d526cff` |
 | 45 | `alert-projects` | `7cbe2615fe2e5ff45b4604b98a5809431535d2fffae4741a11b19982991f386e` |
+| 46 | `media-indexes-come-back` | `357b4342fe37b91bddc580b48db9def109c73f62454ab94afcca05632ecbb683` |
+| 47 | `device-alert-prefs` | `e135df3c06ce57b245afb42184c8c23cfec4510f73453f9686ae659195ef49d9` |
+| 48 | `media-retention` | `afc20b267c20eacdae209999ac1ecc796ae0a79a039b02ce375d6bdb1925f2c9` (Kotlin only) |
+| 49 | `request-priority` | `e0a17823bbfac65b7e582741261d7fe16751d4e0e3bf0e33593994d170316502` (Kotlin only) |
 
 ## 5. Final schema after 045 (verbatim `sqlite_master.sql`)
 

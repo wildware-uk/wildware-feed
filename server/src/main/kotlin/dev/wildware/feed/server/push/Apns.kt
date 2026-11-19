@@ -134,7 +134,9 @@ class Apns(private val app: App, private val settings: Config.Apns, private val 
         )
     }
 
-    private fun thread(projectId: String?) = projectId?.let { app.db.one("SELECT slug FROM projects WHERE id = ?", it) { rs -> rs.getString(1) } } ?: "dashboard"
+    private fun slug(projectId: String?) = projectId?.let { app.db.one("SELECT slug FROM projects WHERE id = ?", it) { rs -> rs.getString(1) } }
+
+    private fun thread(projectId: String?) = slug(projectId) ?: "dashboard"
 
     fun alertFor(event: AppEvent): Alert? {
         fun id(key: String) = (event.payload[key] as? JsonPrimitive)?.content
@@ -146,6 +148,9 @@ class Apns(private val app: App, private val settings: Config.Apns, private val 
                 Alert(
                     message, "REQUEST", thread(request.projectId), request.projectId, request.question,
                     request = Triple(request.id, request.kind, request.options?.takeIf { it.isNotEmpty() }),
+                    about = dev.wildware.feed.server.domain.AlertPrefs.About(
+                        "request", priority = request.priority, agentId = request.agentId, projectSlug = slug(request.projectId),
+                    ),
                 )
             }
             "update.created" -> {
@@ -153,7 +158,7 @@ class Apns(private val app: App, private val settings: Config.Apns, private val 
                 val built = messages.update(updateId) ?: return null
                 Alert(
                     built.message, "UPDATE", thread(built.projectId), built.projectId, built.body, reply = "update" to updateId,
-                    about = dev.wildware.feed.server.domain.AlertPrefs.About("update", built.level, built.priority),
+                    about = dev.wildware.feed.server.domain.AlertPrefs.About("update", built.level, built.priority, built.agentId, slug(built.projectId)),
                 )
             }
             "message.created" -> {
@@ -180,8 +185,13 @@ class Apns(private val app: App, private val settings: Config.Apns, private val 
             }
             if (wanted.isEmpty()) return@subscribe
             val headers = alertHeaders(settings.bundleId, alert.message.tag, now)
-            val payload = Wire.encode(alertPayload(alert))
-            for (device in wanted) sender.execute { deliver(device, "apns_token", headers, payload) }
+            val normal = Wire.encode(alertPayload(alert))
+            val paged = Wire.encode(alertPayload(alert, page = CRITICAL_STYLE))
+            for (device in wanted) {
+                // Paged only on a phone that turned critical alerts on, for this agent and project.
+                val payload = if (dev.wildware.feed.server.domain.AlertPrefs.pages(device.alertPrefs, alert.about)) paged else normal
+                sender.execute { deliver(device, "apns_token", headers, payload) }
+            }
         }
         return { stop(); sender.shutdownNow() }
     }
@@ -246,19 +256,36 @@ class Apns(private val app: App, private val settings: Config.Apns, private val 
             "apns-collapse-id" to truncateBytes(tag, COLLAPSE_ID_MAX_BYTES),
         )
 
-        /** spec/08 §6.7, key order as the TS server builds it; [Alert.extra] keys come last. */
-        fun alertPayload(alert: Alert): JsonObject = buildJsonObject {
+        /**
+         * How a page reaches a phone that turned critical alerts on: "time-sensitive" for now, which
+         * gets through Focus and Do Not Disturb; "critical" (loud through the silent switch) only once
+         * Apple grants the app the Critical Alerts entitlement. Without it, keep "time-sensitive".
+         */
+        const val CRITICAL_STYLE = "time-sensitive"
+
+        /**
+         * spec/08 §6.7, key order as the TS server builds it; [Alert.extra] keys come last. [page] is
+         * how this phone is paged ("time-sensitive" or "critical"), or null when it isn't.
+         */
+        fun alertPayload(alert: Alert, page: String? = null): JsonObject = buildJsonObject {
             put("aps", buildJsonObject {
                 put("alert", buildJsonObject { put("title", JsonPrimitive(alert.message.title)); put("body", JsonPrimitive(alert.message.body)) })
-                put("sound", JsonPrimitive("default"))
+                if (page == "critical") {
+                    // A critical alert's sound plays through the silent switch, loud.
+                    put("sound", buildJsonObject { put("critical", JsonPrimitive(1)); put("name", JsonPrimitive("default")); put("volume", JsonPrimitive(1)) })
+                } else {
+                    put("sound", JsonPrimitive("default"))
+                }
                 put("thread-id", JsonPrimitive(alert.threadId))
                 put("category", JsonPrimitive(alert.category))
                 if (alert.category == "REQUEST") put("mutable-content", JsonPrimitive(1))
-                put("interruption-level", JsonPrimitive(if (alert.category == "REQUEST") "time-sensitive" else "active"))
+                put("interruption-level", JsonPrimitive(page ?: if (alert.category == "REQUEST") "time-sensitive" else "active"))
             })
             put("url", JsonPrimitive(alert.message.url))
             put("tag", JsonPrimitive(alert.message.tag))
             put("markdown", JsonPrimitive(truncateBytes(alert.markdown, MARKDOWN_MAX_BYTES)))
+            // The app marks it as critical wherever it shows it, paged or not.
+            if (alert.about.priority == "critical") put("priority", JsonPrimitive("critical"))
             alert.request?.let { (id, kind, options) ->
                 put("requestId", JsonPrimitive(id))
                 put("requestKind", JsonPrimitive(kind))

@@ -6,6 +6,7 @@ import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
+import kotlinx.serialization.json.jsonArray
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -151,19 +152,22 @@ class McpTransportTest : ParityTest() {
     }
 }
 
-/** The whole tools/list payload, byte for byte as JSON: agents read these names, descriptions and schemas. */
+/**
+ * The whole tools/list payload, exactly, as JSON: agents read these names, descriptions and schemas.
+ * The Kotlin server's is the TS server's with the changes in tools-list-kotlin-changes.json, no more.
+ */
 class McpToolsListTest : ParityTest() {
     @Test
     fun `tools list matches the recorded payload exactly`() = parity {
         val recorded = Parity.json.parseToJsonElement(
             McpToolsListTest::class.java.getResource("/tools-list.json")!!.readText(),
-        )
-        val live = alpha.rpcResult("tools/list")["result"]["tools"]
-        val recordedTools = recorded.arr
-        val liveTools = live.arr
-        assertEquals(recordedTools.map { it["name"].s }, liveTools.map { it["name"].s })
-        for ((want, got) in recordedTools.zip(liveTools)) {
-            assertEquals(want, got, "tool ${want["name"].s} differs from server/parity/src/test/resources/tools-list.json")
+        ).jsonArray
+        val expected = if (Parity.kotlin) ToolsListChanges.apply(recorded) else recorded
+        val source = if (Parity.kotlin) "tools-list.json with tools-list-kotlin-changes.json" else "tools-list.json"
+        val live = alpha.rpcResult("tools/list")["result"]["tools"].arr
+        assertEquals(expected.map { it["name"].s }, live.map { it["name"].s })
+        for ((want, got) in expected.zip(live)) {
+            assertEquals(want, got, "tool ${want["name"].s} differs from server/parity/src/test/resources/$source")
         }
     }
 }

@@ -37,7 +37,7 @@ class PushMessages(private val app: App) {
         )
     }
 
-    class Update(val message: PushMessage, val projectId: String?, val body: String, val level: String?, val priority: String?)
+    class Update(val message: PushMessage, val projectId: String?, val body: String, val level: String?, val priority: String?, val agentId: String? = null)
 
     fun update(updateId: String): Update? {
         data class Row(val agentId: String?, val projectId: String?, val title: String?, val body: String, val deletedAt: Long?, val level: String?, val priority: String?)
@@ -52,7 +52,7 @@ class PushMessages(private val app: App) {
                 url = projectUrl(row.projectId, updateId),
                 tag = "update-$updateId",
             ),
-            row.projectId, row.body, row.level, row.priority,
+            row.projectId, row.body, row.level, row.priority, row.agentId,
         )
     }
 

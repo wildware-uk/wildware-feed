@@ -2,8 +2,11 @@ package dev.wildware.feed.server.mcp
 
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
+import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
@@ -39,7 +42,7 @@ class SchemaTest {
         assertEquals(listOf(statuses), issues("set_status", "{}"))
         assertEquals(listOf(statuses), issues("set_status", """{"status":3}"""))
         assertEquals(listOf("Invalid option: expected one of \"thinking\"|\"read\"|\"done\" at state"), issues("acknowledge", "{}"))
-        assertEquals(listOf("Invalid option: expected one of \"low\"|\"medium\"|\"high\" at priority"),
+        assertEquals(listOf("Invalid option: expected one of \"low\"|\"medium\"|\"high\"|\"critical\" at priority"),
             issues("post_update", """{"project":"p","body":"b","priority":null}"""))
         assertEquals(emptyList(), issues("set_status", """{"status":null}"""))
     }
@@ -72,5 +75,30 @@ class SchemaTest {
             (both as kotlinx.serialization.json.JsonArray).map { (it.jsonObject["message"] as kotlinx.serialization.json.JsonPrimitive).content },
         )
         assertEquals("record", ((both[1] as JsonObject)["expected"] as kotlinx.serialization.json.JsonPrimitive).content)
+    }
+
+    @Test
+    fun `every tool that takes critical says it pages the owner and only when told to`() {
+        val tools = Json.parseToJsonElement(javaClass.getResource("/mcp/tools-list.json")!!.readText()).jsonArray.map { it.jsonObject }
+        val critical = tools.filter { tool ->
+            tool["inputSchema"]!!.jsonObject["properties"]!!.jsonObject["priority"]?.jsonObject?.get("enum")?.jsonArray
+                ?.any { it.jsonPrimitive.content == "critical" } == true
+        }
+        assertEquals(listOf("post_update", "edit_update", "request_input"), critical.map { it["name"]!!.jsonPrimitive.content })
+        for (tool in critical) {
+            val name = tool["name"]!!.jsonPrimitive.content
+            val priority = tool["inputSchema"]!!.jsonObject["properties"]!!.jsonObject["priority"]!!.jsonObject
+            assertEquals(listOf("low", "medium", "high", "critical"), priority["enum"]!!.jsonArray.map { it.jsonPrimitive.content }, name)
+            for (text in listOf(tool["description"]!!.jsonPrimitive.content, priority["description"]!!.jsonPrimitive.content)) {
+                val flat = text.replace(Regex("\\s+"), " ")
+                assertContains(flat, "explicitly told you", message = name)
+                if (name == "edit_update") {
+                    assertContains(flat, "sends no page", message = name)
+                } else {
+                    assertContains(flat, "\"critical\" PAGES YOUR OWNER: their phone rings through silent mode and Do Not Disturb", message = name)
+                    assertContains(flat, "only when it is absolutely necessary", message = name)
+                }
+            }
+        }
     }
 }

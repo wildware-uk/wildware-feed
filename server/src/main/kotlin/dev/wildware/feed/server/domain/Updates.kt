@@ -112,6 +112,7 @@ class Updates(private val feed: Feed) {
         const val BODY_MAX = 100_000
         const val TITLE_MAX = 200
         val LEVELS = listOf("info", "success", "warn", "error")
-        val PRIORITIES = listOf("low", "medium", "high")
+        /** `critical` pages the owner's phones through Do Not Disturb, on a phone that turned critical alerts on. */
+        val PRIORITIES = listOf("low", "medium", "high", "critical")
     }
 }

@@ -156,7 +156,7 @@ for t in $kotlin_tests; do filters+=(--tests "*.$t"); done
 echo "== running against the Kotlin server: $kotlin_tests"
 status=0
 (cd "$repo_root" && env "${common_env[@]}" PARITY_CLI="$work/kt-cli.sh" PARITY_READS=compare PARITY_EXCLUDE_TAGS="$exclude_tags" \
-    PARITY_OWNER_AUTH=device PARITY_WEB=0 \
+    PARITY_OWNER_AUTH=device PARITY_WEB=0 PARITY_SERVER=kotlin \
     timeout 1500 ./gradlew --no-daemon -Dorg.gradle.jvmargs=-Xmx3g :server-parity:test "${filters[@]}" ${@+"$@"}) \
     || status=$?
 if [ "$status" -ne 0 ]; then echo "== Kotlin server log (last 80 lines)"; tail -80 "$work/kt.log"; fi

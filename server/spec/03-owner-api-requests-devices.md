@@ -360,14 +360,19 @@ base64url, no padding (43 chars); stores HMAC hex under `TOKEN_SECRET`.
 - `PUT`: strict JSON body; it must contain key `prefs` → else 400 `send prefs: { types, levels, priorities }, or null`.
   `prefs` is checked as Web Push preferences were (`assertPushPrefs`): `null` → NULL; not an object (or an
   array) → `preferences must be an object, or null for the default`; each of `types` (`request, update, message,
-  comment`), `levels` (`info, success, warn, error`), `priorities` (`low, medium, high`) when present (even
+  comment`), `levels` (`info, success, warn, error`), `priorities` (`low, medium, high`; Kotlin also `critical`) when present (even
   `null`) must be a list of those words → `<field> must be a list` / `<field> must be any of: a, b, …`;
-  deduped, in the order `types, levels, priorities`; other keys dropped; nothing left → NULL.
+  deduped. Kotlin only, critical alerts: `critical` (true/false; anything else → `critical must be true or
+  false`) turns paging on, off by default; `criticalAgents` (agent ids) and `criticalProjects` (project slugs)
+  narrow it → `<field> must be a list` / `<field> must be a list of strings`; deduped. Stored in the order
+  `types, levels, priorities, critical, criticalAgents, criticalProjects`; other keys dropped; nothing left → NULL.
   200 `{"ok":true,"prefs":<checked or null>}`.
 - `GET`: 200 `{"prefs":<stored or null>}`.
 - `GET /api/devices` entries gain `alertPrefs` (last key).
 - APNs alerts go only to phones whose prefs `notifies(prefs, about)`: the type must be in `types`
-  (default all four); for an update, also its level in `levels` and priority in `priorities` when both are set.
+  (default all four); for an update, also its level in `levels` and priority in `priorities` when both are set
+  (`critical` passes where `high` does). A phone that `pages(prefs, about)` (priority `critical`, `critical:
+  true`, and its agent id and project slug in the lists when they are set) is told whatever its filters say.
 
 ---
 

@@ -115,8 +115,10 @@ class DevicesTest : ParityTest() {
         device.send(HttpMethod.Put, path, obj("prefs" to obj("types" to null))).expectError(400, "invalid_argument", "types must be a list")
         device.send(HttpMethod.Put, path, obj("prefs" to obj("levels" to arr("loud"))))
             .expectError(400, "invalid_argument", "levels must be any of: info, success, warn, error")
+        // The Kotlin server also takes "critical" (critical alerts).
+        val priorities = if (Parity.kotlin) "low, medium, high, critical" else "low, medium, high"
         device.send(HttpMethod.Put, path, obj("prefs" to obj("priorities" to arr(1))))
-            .expectError(400, "invalid_argument", "priorities must be any of: low, medium, high")
+            .expectError(400, "invalid_argument", "priorities must be any of: $priorities")
 
         val chosen = obj("priorities" to arr("high", "high"), "types" to arr("update", "request"), "x" to 1)
         assertEquals(

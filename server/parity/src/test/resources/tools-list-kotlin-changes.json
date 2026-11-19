@@ -1,0 +1,114 @@
+[
+ {
+  "tool": "post_update",
+  "path": [
+   "description"
+  ],
+  "why": "Critical alerts: a page that reaches the owner's phone through silent mode and Do Not Disturb.",
+  "replace": "- priority (optional): \"low\", \"medium\" (default) or \"high\" — whether it can wait. Your\n  owner filters notifications on it per device, so \"high\" is what reaches a phone.\n",
+  "with": "- priority (optional): \"low\", \"medium\" (default), \"high\" or \"critical\" — whether it can\n  wait. Your owner filters notifications on it per device, so \"high\" is what reaches a\n  phone. \"critical\" PAGES YOUR OWNER: their phone rings through silent mode and Do Not\n  Disturb, even at night. Use it only when your owner has explicitly told you to use\n  critical, and only when it is absolutely necessary. Never pick it on your own.\n"
+ },
+ {
+  "tool": "post_update",
+  "path": [
+   "inputSchema",
+   "properties",
+   "priority",
+   "description"
+  ],
+  "why": "Critical alerts: a page that reaches the owner's phone through silent mode and Do Not Disturb.",
+  "replace": "How much this needs your owner NOW: \"low\", \"medium\" (the default) or \"high\". A different question from level — level is what happened, priority is whether it can wait. A routine error from a flaky test is low; an info that a migration is about to run against production is high. Your owner filters notifications on this, per device, so \"high\" is what reaches a phone at 2am. Use it sparingly or it stops meaning anything.",
+  "with": "How much this needs your owner NOW: \"low\", \"medium\" (the default), \"high\" or \"critical\". A different question from level — level is what happened, priority is whether it can wait. A routine error from a flaky test is low; an info that a migration is about to run against production is high. Your owner filters notifications on this, per device, so \"high\" is what reaches a phone at 2am. Use it sparingly or it stops meaning anything. \"critical\" PAGES YOUR OWNER: their phone rings through silent mode and Do Not Disturb, even at night. Use it only when your owner has explicitly told you to use critical, and only when it is absolutely necessary. Never pick it on your own."
+ },
+ {
+  "tool": "post_update",
+  "path": [
+   "inputSchema",
+   "properties",
+   "priority",
+   "enum"
+  ],
+  "why": "Critical alerts: a page that reaches the owner's phone through silent mode and Do Not Disturb.",
+  "was": [
+   "low",
+   "medium",
+   "high"
+  ],
+  "now": [
+   "low",
+   "medium",
+   "high",
+   "critical"
+  ]
+ },
+ {
+  "tool": "edit_update",
+  "path": [
+   "description"
+  ],
+  "why": "Critical alerts: a page that reaches the owner's phone through silent mode and Do Not Disturb.",
+  "replace": "- priority (optional): \"low\", \"medium\" or \"high\". Demote something that has stopped\n  mattering rather than leaving it shouting.\n",
+  "with": "- priority (optional): \"low\", \"medium\", \"high\" or \"critical\". Demote something that has\n  stopped mattering rather than leaving it shouting. Changing it to \"critical\" marks the\n  card critical but sends no page: only a new post_update or request_input pages your\n  owner. Even so, use critical only when your owner has explicitly told you to.\n"
+ },
+ {
+  "tool": "edit_update",
+  "path": [
+   "inputSchema",
+   "properties",
+   "priority",
+   "description"
+  ],
+  "why": "Critical alerts: a page that reaches the owner's phone through silent mode and Do Not Disturb.",
+  "replace": "How much this needs your owner NOW: \"low\", \"medium\" (the default) or \"high\". A different question from level — level is what happened, priority is whether it can wait. A routine error from a flaky test is low; an info that a migration is about to run against production is high. Your owner filters notifications on this, per device, so \"high\" is what reaches a phone at 2am. Use it sparingly or it stops meaning anything.",
+  "with": "How much this needs your owner NOW: \"low\", \"medium\" (the default), \"high\" or \"critical\". A different question from level — level is what happened, priority is whether it can wait. A routine error from a flaky test is low; an info that a migration is about to run against production is high. Your owner filters notifications on this, per device, so \"high\" is what reaches a phone at 2am. Use it sparingly or it stops meaning anything. Changing it to \"critical\" marks the card critical but sends no page: only a new post_update or request_input pages your owner. Even so, use critical only when your owner has explicitly told you to."
+ },
+ {
+  "tool": "edit_update",
+  "path": [
+   "inputSchema",
+   "properties",
+   "priority",
+   "enum"
+  ],
+  "why": "Critical alerts: a page that reaches the owner's phone through silent mode and Do Not Disturb.",
+  "was": [
+   "low",
+   "medium",
+   "high"
+  ],
+  "now": [
+   "low",
+   "medium",
+   "high",
+   "critical"
+  ]
+ },
+ {
+  "tool": "request_input",
+  "path": [
+   "description"
+  ],
+  "why": "Critical alerts: a page that reaches the owner's phone through silent mode and Do Not Disturb.",
+  "replace": "timeout_s is how long the request stays answerable, one hour by default.\n",
+  "with": "timeout_s is how long the request stays answerable, one hour by default.\npriority is \"low\", \"medium\" (the default), \"high\" or \"critical\". \"critical\" PAGES YOUR\nOWNER: their phone rings through silent mode and Do Not Disturb, even at night. Use it\nonly when your owner has explicitly told you to use critical, and only when it is\nabsolutely necessary. Never pick it on your own.\n"
+ },
+ {
+  "tool": "request_input",
+  "path": [
+   "inputSchema",
+   "properties",
+   "priority"
+  ],
+  "why": "Critical alerts: a page that reaches the owner's phone through silent mode and Do Not Disturb.",
+  "now": {
+   "type": "string",
+   "enum": [
+    "low",
+    "medium",
+    "high",
+    "critical"
+   ],
+   "description": "How much this needs your owner NOW: \"low\", \"medium\" (the default), \"high\" or \"critical\". \"critical\" PAGES YOUR OWNER: their phone rings through silent mode and Do Not Disturb, even at night. Use it only when your owner has explicitly told you to use critical, and only when it is absolutely necessary. Never pick it on your own."
+  }
+ }
+]

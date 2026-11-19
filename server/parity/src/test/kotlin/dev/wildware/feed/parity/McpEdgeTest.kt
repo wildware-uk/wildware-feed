@@ -144,7 +144,9 @@ class McpEdgeTest : ParityTest() {
         fun pu(vararg extra: Pair<String, Any?>) = JsonObject(p + obj(*extra))
         a.sdk("post_update", obj(), "Invalid input: expected string, received undefined at project\nInvalid input: expected string, received undefined at body")
         a.sdk("post_update", pu("level" to "loud"), "Invalid option: expected one of \"info\"|\"success\"|\"warn\"|\"error\" at level")
-        a.sdk("post_update", pu("priority" to null), "Invalid option: expected one of \"low\"|\"medium\"|\"high\" at priority")
+        // The Kotlin server also takes "critical" (tools-list-kotlin-changes.json).
+        val priorities = if (Parity.kotlin) "\"low\"|\"medium\"|\"high\"|\"critical\"" else "\"low\"|\"medium\"|\"high\""
+        a.sdk("post_update", pu("priority" to null), "Invalid option: expected one of $priorities at priority")
         a.sdk("post_update", pu("body" to x(100_001)), "Too big: expected string to have <=100000 characters at body")
         a.sdk("post_update", pu("title" to x(201)), "Too big: expected string to have <=200 characters at title")
         a.sdk("post_update", pu("media_ids" to "x"), "Invalid input: expected array, received string at media_ids")

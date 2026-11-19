@@ -25,7 +25,7 @@ internal object Rows {
     const val CARD_TAG = "seq, id, tag_id, update_id, message_id, request_id, author, created_at"
     const val FIELD = "seq, id, update_id, message_id, request_id, name, slug, value, author, created_at, updated_at"
     const val DELIVERY = "seq, id, message_id, agent_id, delivered_at, client_id"
-    const val APPROVAL = "seq, id, agent_id, project_id, update_id, message_id, kind, question, detail, options, config, state, expires_at, decided_at, decided_value, answer, edited_at, pinned"
+    const val APPROVAL = "seq, id, agent_id, project_id, update_id, message_id, kind, question, detail, options, config, state, expires_at, decided_at, decided_value, answer, edited_at, pinned, priority"
     const val MEDIA = "seq, id, agent_id, author, update_id, message_id, request_id, task_id, kind, mime, bytes, sha256, width, height, duration_ms, filename, status, created_at"
     const val EMBED = "seq, id, type_id, update_id, message_id, request_id, task_id, agent_id, author, data, source_url, created_at"
     const val NOTIFICATION = "seq, id, kind, project_id, update_id, message_id, request_id, agent_id, title, body, created_at, seen_at"
@@ -214,6 +214,9 @@ internal object Rows {
             put("answer", answer)
             long(rs, "editedAt", "edited_at")
             flag(rs, "pinned", "pinned")
+            // Migration 049. Only when it says something: a question is "medium" unless the agent
+            // said otherwise, and leaving that out keeps every ordinary read as it always was.
+            rs.getString("priority")?.takeIf { it != "medium" }?.let { put("priority", it) }
         }
     }
 

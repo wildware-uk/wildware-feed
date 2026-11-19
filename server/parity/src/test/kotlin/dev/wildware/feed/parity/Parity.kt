@@ -34,6 +34,8 @@ import kotlin.random.Random
  * - PARITY_OWNER_AUTH      `device` to act as the owner with a device key instead of the login form
  * - PARITY_WEB             `0` for a server without the deprecated website (no pages, no login form)
  * - PARITY_DATA_DIR        the server's DATA_DIR, only for checks that look at files on disk (optional)
+ * - PARITY_SERVER          `kotlin` for the Kotlin server, which differs from the TS one on purpose in a few
+ *                          written-down places (see [Parity.kotlin]); `ts` or unset for the TS server
  */
 object Parity {
     val baseUrl: String = env("PARITY_BASE_URL")?.trimEnd('/') ?: ""
@@ -45,6 +47,17 @@ object Parity {
 
     /** False for a server without the deprecated website (PARITY_WEB=0): no pages, no login form. */
     val web: Boolean = env("PARITY_WEB") != "0"
+
+    /**
+     * True for the Kotlin server (PARITY_SERVER=kotlin). The TS server is retired, so the Kotlin one
+     * may say or accept more than it did, but only where a test expects it: tool descriptions in
+     * tools-list-kotlin-changes.json, and the few checks that ask this.
+     */
+    val kotlin: Boolean = when (val server = env("PARITY_SERVER") ?: "ts") {
+        "kotlin" -> true
+        "ts" -> false
+        else -> error("PARITY_SERVER must be ts or kotlin, not $server")
+    }
 
     val configured: Boolean get() = baseUrl.isNotEmpty() && adminPassword.isNotEmpty() && cli.isNotEmpty()
 

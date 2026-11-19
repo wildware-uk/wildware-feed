@@ -48,6 +48,7 @@ PARITY_CLI='/path/to/run-the-server-cli.sh' \
   `$PARITY_CLI revoke-token <agent id>`. Agents can only be made this way, so the Kotlin server needs
   the same two commands.
 - `PARITY_SKIP_LOCKOUT=1` skips the login-lockout test, for a server you can't restart.
+- `PARITY_SERVER=kotlin` for the Kotlin server (see tools-list below); unset means the TS server.
 - `PARITY_DATA_DIR` is the server's data directory. Only `DatabaseTest` uses it, read-only; without it
   those checks are skipped.
 - `PARITY_REQUIRE_FIXES=1` makes the decided-fix tests required (see below).
@@ -69,8 +70,15 @@ Without these variables every test is skipped, so a plain `./gradlew build` stay
 - Some tests pin behaviour the spec calls a surprise (they say "spec surprise" in a message). If the
   Kotlin server fixes one, fix the TypeScript server or change the test on purpose — don't let them
   drift.
-- `src/test/resources/tools-list.json` is the exact MCP `tools/list` payload. Agents read those
-  descriptions, so the Kotlin server must return it byte for byte.
+- `src/test/resources/tools-list.json` is the TS server's exact MCP `tools/list` payload. Agents read
+  those descriptions, so a server must return exactly that, as JSON. The TS server is retired, so the
+  Kotlin server's descriptions may move on, but only through `src/test/resources/tools-list-kotlin-changes.json`:
+  each entry names a tool, a path inside it and why, and either swaps one exact piece of text or
+  replaces one value. With `PARITY_SERVER=kotlin` (set by `run-against-kotlin.sh`) the suite expects
+  the TS payload with those changes applied, nothing more, so any other difference still fails. The
+  Kotlin server serves `server/src/main/resources/mcp/tools-list.json`; change the two together.
+- A few other checks expect a different message from the Kotlin server where it accepts more (a
+  `critical` priority, say); they ask `Parity.kotlin`.
 - Video tests need `ffmpeg` on the machine running the tests (they are skipped without it).
 
 ## What it covers

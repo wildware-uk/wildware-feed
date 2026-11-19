@@ -200,4 +200,43 @@ class PushTest {
         assertTrue(!about.notifies(prefs, dev.wildware.feed.server.domain.AlertPrefs.About("comment")))
         assertTrue(about.notifies(prefs, dev.wildware.feed.server.domain.AlertPrefs.About("update", "info", null)), "an update with no priority passes the priority filter")
     }
+
+    @Test
+    fun `critical pages a phone that turned it on, for the agents and projects it named`() {
+        val rules = dev.wildware.feed.server.domain.AlertPrefs
+        fun prefs(json: String) = rules.check(kotlinx.serialization.json.Json.parseToJsonElement(json))
+        val critical = dev.wildware.feed.server.domain.AlertPrefs.About("update", "error", "critical", agentId = "a1", projectSlug = "fees")
+        assertTrue(!rules.pages(null, critical))
+        assertTrue(!rules.pages(prefs("""{"critical":false}"""), critical))
+        assertTrue(rules.pages(prefs("""{"critical":true}"""), critical))
+        assertTrue(!rules.pages(prefs("""{"critical":true}"""), critical.copy(priority = "high")))
+        assertTrue(rules.pages(prefs("""{"critical":true,"criticalAgents":["a1"],"criticalProjects":["fees"]}"""), critical))
+        assertTrue(!rules.pages(prefs("""{"critical":true,"criticalAgents":["a2"]}"""), critical))
+        assertTrue(!rules.pages(prefs("""{"critical":true,"criticalProjects":["docs"]}"""), critical))
+        // A page gets past every other filter; critical counts as high for a phone that isn't paged.
+        assertTrue(rules.notifies(prefs("""{"types":["request"],"critical":true}"""), critical))
+        assertTrue(!rules.notifies(prefs("""{"types":["request"]}"""), critical))
+        assertTrue(rules.notifies(prefs("""{"priorities":["high"]}"""), critical))
+    }
+
+    @Test
+    fun `a critical alert says so, and a paged phone gets it time-sensitive or as Apple's critical alert`() {
+        val alert = Apns.Alert(
+            PushMessage("Production is down", "Every request fails", "u", "update-U1"), "UPDATE", "web", "P1", "b",
+            about = dev.wildware.feed.server.domain.AlertPrefs.About("update", "error", "critical"),
+        )
+        assertEquals("time-sensitive", Apns.CRITICAL_STYLE)
+        assertEquals(
+            """{"aps":{"alert":{"title":"Production is down","body":"Every request fails"},"sound":"default","thread-id":"web","category":"UPDATE","interruption-level":"active"},"url":"u","tag":"update-U1","markdown":"b","priority":"critical"}""",
+            Wire.encode(Apns.alertPayload(alert)),
+        )
+        assertEquals(
+            """{"aps":{"alert":{"title":"Production is down","body":"Every request fails"},"sound":"default","thread-id":"web","category":"UPDATE","interruption-level":"time-sensitive"},"url":"u","tag":"update-U1","markdown":"b","priority":"critical"}""",
+            Wire.encode(Apns.alertPayload(alert, page = Apns.CRITICAL_STYLE)),
+        )
+        assertEquals(
+            """{"critical":1,"name":"default","volume":1}""",
+            Wire.encode((Apns.alertPayload(alert, page = "critical")["aps"] as kotlinx.serialization.json.JsonObject)["sound"]!!),
+        )
+    }
 }

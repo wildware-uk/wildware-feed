@@ -280,4 +280,15 @@ class RequestsTest {
         now += 5_000
         assertNull(reads.pendingRequests(now).firstOrNull())
     }
+
+    @Test
+    fun `a question is medium unless the agent says and may be critical`() {
+        val plain = ask()
+        assertEquals("medium", plain.priority)
+        assertEquals(null, plain.json["priority"], "an ordinary question reads as it always did")
+        val loud = ask { copy(priority = "critical") }
+        assertEquals("critical", loud.priority)
+        assertEquals("critical", (loud.json["priority"] as kotlinx.serialization.json.JsonPrimitive).content)
+        refused("priority must be one of: low, medium, high, critical") { ask { copy(priority = "urgent") } }
+    }
 }

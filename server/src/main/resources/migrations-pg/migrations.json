@@ -10,5 +10,11 @@
   "name": "media-retention",
   "file": "048-media-retention.sql",
   "checksum": "c9b5e2f232fcd9d1ec9ccb9f14ac24ea69d95f5f0fe75852d27b7cecf4c3bc5f"
+ },
+ {
+  "version": 49,
+  "name": "request-priority",
+  "file": "049-request-priority.sql",
+  "checksum": "760adf695b140c74d4dab3a1228755d030d428859df75d9f03584e748868900f"
  }
 ]

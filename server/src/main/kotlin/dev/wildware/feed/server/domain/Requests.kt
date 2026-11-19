@@ -39,6 +39,8 @@ class OwnerRequest(val json: JsonObject) {
     val answeredAt get() = l("answeredAt")
     val answer: JsonObject? get() = json["answer"] as? JsonObject
     val editedAt get() = l("editedAt")
+    /** Reads leave out "medium", so a request with none is medium. */
+    val priority get() = s("priority") ?: "medium"
 }
 
 /** What a wait hands back, whichever tool called it (TS `RequestResult`). */
@@ -60,6 +62,8 @@ data class NewRequest(
     val update: String? = null,
     val message: String? = null,
     val timeoutS: Double? = null,
+    /** How much it needs the owner now (migration 049); `critical` pages their phones. */
+    val priority: String? = null,
     val mediaIds: List<String>? = null,
     /** In the order JavaScript would walk the object (integer-like keys first). */
     val optionMedia: List<Pair<String, String>>? = null,
@@ -115,6 +119,8 @@ class Requests(
         val baseConfig = assertConfig(kind, options, input)
         val anchor = anchor(input)
         val timeoutS = assertTimeout(input.timeoutS)
+        val priority = input.priority ?: "medium"
+        if (priority !in Updates.PRIORITIES) throw invalid("priority must be one of: ${Updates.PRIORITIES.joinToString(", ")}")
 
         val author = "agent:$agentId"
         val mediaIds = if (!input.mediaIds.isNullOrEmpty()) assertAttachable(input.mediaIds, author).toMutableList() else mutableListOf()
@@ -137,11 +143,11 @@ class Requests(
         val now = clock()
         val id = Ulid.next(now)
         val row = db.one(
-            "INSERT INTO approvals (id, agent_id, project_id, update_id, message_id, kind, question, detail, options, config, state, expires_at) " +
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?) RETURNING ${Rows.APPROVAL}",
+            "INSERT INTO approvals (id, agent_id, project_id, update_id, message_id, kind, question, detail, options, config, state, expires_at, priority) " +
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?) RETURNING ${Rows.APPROVAL}",
             id, agentId, anchor.projectId, anchor.updateId, anchor.messageId, kind, question, detail,
             options?.let { Wire.encode(JsonArray(it.map(::JsonPrimitive))) }, config?.let { jsonText(JsonObject(it)) },
-            now + (timeoutS * 1000).toLong(),
+            now + (timeoutS * 1000).toLong(), priority,
         ) { Rows.request(it) }!!
 
         if (mediaIds.isNotEmpty()) {

@@ -389,6 +389,10 @@ apns-collapse-id: <tag cut to 64 UTF-8 bytes, no split characters>
 - `title/body/url/tag` = the Web Push message (§5.4). No `badge`.
 - `mutable-content: 1` only for `REQUEST`. `interruption-level` = `time-sensitive` for
   `REQUEST`, else `active`.
+- Kotlin only, critical: a phone the alert pages (spec/03 alert-prefs) gets `interruption-level` =
+  `CRITICAL_STYLE` (`time-sensitive` today; `critical`, with `sound` `{"critical":1,"name":"default","volume":1}`,
+  once Apple grants the entitlement). Other phones get the normal payload. Every critical alert's payload
+  carries `"priority":"critical"` after `markdown`.
 - `thread-id`: project slug, or `"dashboard"` when no project (`:346-349`).
 - `markdown`: raw source cut to 2048 UTF-8 bytes (`MARKDOWN_MAX_BYTES`): request → `question`
   (not `detail`), update → `body`, message → `body`.

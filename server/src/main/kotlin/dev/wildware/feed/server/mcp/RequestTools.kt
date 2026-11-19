@@ -39,6 +39,7 @@ fun ToolRegistry.registerRequestTools(app: App) {
             update = a["update"].jsString,
             message = a["message_id"].jsString,
             timeoutS = a["timeout_s"].jsNumber,
+            priority = a["priority"].jsString,
             mediaIds = (a["media_ids"] as? JsonArray)?.map { it.jsString!! },
             optionMedia = (a["option_media"] as? JsonObject)?.let { pictures ->
                 Js.orderedKeys(pictures.keys).map { it to pictures.getValue(it).jsString!! }
