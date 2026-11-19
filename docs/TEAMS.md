@@ -50,6 +50,8 @@ visible to all-projects users only.
   universal links.
 - **Passkeys.** Later, hosted only (section 11). A passkey is tied to a domain the app must list
   in its own entitlements, which a self-hosted address can never be.
+- **A grant from the control plane.** Hosted only, slice 2 (section 7): the hosted "Log in" signs
+  the person in on the control plane, which hands the app a one-time grant for their team's server.
 
 Without mail, nothing breaks: invites and password resets become links an admin copies and sends
 however they like (chat, text message).
@@ -139,9 +141,8 @@ per-user read cursor (`notification_reads`, section 9). The bell lists only noti
 projects the user can see.
 
 **Mail (optional).** `SMTP_URL` (`smtp://` or `smtps://`, user and password in the URL) and
-`MAIL_FROM`. Unset means no mail: email codes are switched off and invites are links only. A
-public `GET /api/auth/methods` tells the app what to offer:
-`{"password":true,"emailCode":false,"legacyPassword":true}`.
+`MAIL_FROM`. Unset means no mail: email codes are switched off and invites are links only. The
+public `GET /api/server` (section 8) tells the app what to offer.
 
 ## 5. Invites and lifecycle
 
@@ -214,6 +215,27 @@ routes, and no other credential is accepted here.
 Seats = users not removed. Storage = media plus derivatives bytes. The control plane decides what
 any of it costs.
 
+**Sign-in grants** (slice 2). The hosted service's "Log in" happens on the control plane, not on
+the team's server: the person signs in there (email and password, or a magic link), and the
+control plane answers the app with their team server's address and a **grant**, a short-lived
+statement it signs: "this person may sign in to this server once". The app then trades the grant
+for a device key on the team server, exactly as a password sign-in would. The open server needs
+nothing hosted-specific beyond checking that signature:
+
+- `GRANT_PUBLIC_KEY`: the control plane's Ed25519 public key (base64 of the 32 raw bytes). Unset
+  means grants are off and the route below answers 404, as on any self-hosted server.
+- The grant is `<base64url payload>.<base64url signature>`, the signature over the payload bytes.
+  The payload is JSON `{"aud": "<this server's PUBLIC_BASE_URL>", "email": "…", "jti": "<random>",
+  "exp": <unix seconds>}`.
+- `POST /api/devices/grant` `{grant, name}` → 201 with the same body as password sign-in. Refused
+  (401 `grant_refused`, one message for every reason) when the signature is bad, `aud` is not this
+  server, it has expired (at most 5 minutes after issue, small clock skew allowed), its `jti` was
+  used before, or no current user has that email. A grant never creates a user: the control plane
+  provisions people through `create-owner` and invites, like anyone else.
+- One use: the `jti` is stored in `auth_codes` (purpose `grant`, hashed, kept until `exp`), the
+  same table as every other one-time secret, so no extra table.
+- The same rate limits as password sign-in, keyed on the client address.
+
 **`PUT /admin/suspended`** `{"suspended":true,"reason":"…"}`. Also `feed-server suspend` and
 `unsuspend` for self-hosters. While suspended the server is **read-only**:
 
@@ -232,9 +254,7 @@ Shared code (`composeApp` common, `shared`) does most of it, on phone and deskto
 
 **Shared (phone and desktop).**
 
-- Sign-in: server address, then email and password. "Email me a code" only when
-  `/api/auth/methods` says so. "I have an invite" path. An older server (no `/api/auth/methods`)
-  gets today's password-only screen.
+- Sign-in: see "The sign-in screen" below.
 - Settings, "You": name, email, password, sign out other devices, leave team.
 - Settings, "Team" (owner and admin only): people with role and project access, pending invites
   with copy and revoke, invite sheet (role, email, all or chosen projects), remove person.
@@ -246,6 +266,30 @@ Shared code (`composeApp` common, `shared`) does most of it, on phone and deskto
   fail.
 - A read-only banner while the server is suspended.
 - Team of one: none of the labels show, so the feed looks as it does today.
+
+**The sign-in screen.** Two clear ways in, on every platform, plus the desktop's own server:
+
+- **Log in**: the hosted service. Email and password or a magic link on the control plane, which
+  answers with the team server's address and a grant (section 7); the app trades the grant for a
+  device key and opens the feed. Until the control plane exists it is hidden behind a build flag, or
+  shown as "coming soon".
+- **Connect to a host**: someone's own server, in two steps.
+  1. *Address.* The app asks the public `GET /api/server` and checks it is a Wildware Feed server:
+     `{"product": "wildware-feed", "version": "…", "signIn": ["password"], "team": false}`, where
+     `signIn` lists what the server offers (`password` today, the owner's password;
+     `email-password`, `email-code` and `grant` as the slices land) and `team` says whether it has
+     people. Anything else gets a friendly "That address isn't a Wildware Feed server" (with "check
+     the address, or that it starts with https://"), and an unreachable one "Couldn't reach that
+     address". A server too old to have `/api/server` but answering `/api/summary` with a 401 JSON
+     body is treated as `{"signIn": ["password"]}`.
+  2. *That host's login.* What `signIn` offers: email and password (and "Email me a code" when
+     offered) on a team server, today's owner password otherwise; the device name; and "I have
+     an invite".
+- **This computer** (desktop only): the server inside the app, as today.
+- **Try a demo** stays, everywhere.
+
+`GET /api/server` is public and says nothing a stranger can use: no team name, no counts, no
+user list. It lands before slice 1 (it is useful today), so the two-step screen ships first.
 
 **iOS (native Swift parts).** Notification content and service extensions: "Sam replied" text
 from the alert payload, which gains an `actorName` key. Widgets and Live Activity: no change in
@@ -263,7 +307,9 @@ devices, so the invite sheet warns when `PUBLIC_BASE_URL` is a loopback address.
 
 ## 9. Database
 
-Migrations use the next free numbers: **048** and **049** today. Each one ships as a pair under the
+Migrations use the numbers **048** and **049**, reserved for this work. (**050** is already taken by
+media retention; the runner applies any version it has not applied yet, in order, so 048 and 049
+can still land after it.) Each one ships as a pair under the
 same version and name: `server/src/main/resources/migrations/048-people.sql` for SQLite and
 `server/src/main/resources/migrations-pg/048-people.sql` for Postgres, each listed with its own
 checksum in its folder's `migrations.json`. Both are add-only: new tables, new nullable columns, and
@@ -356,10 +402,15 @@ user, also closes that device's open streams.
   streams closed); last-owner rules; `create-owner` and `reset-password` on the CLI.
 - Attribution in the app and to agents (section 3).
 - Push to every user's devices, minus the person who acted.
-- App: new sign-in, invite accept, "You" and "Team" settings, "who did this" labels.
+- App: the host's email-and-password login (step 2 of "Connect to a host"), invite accept, "You"
+  and "Team" settings, "who did this" labels.
+
+**Before slice 1: the two-step sign-in.** `GET /api/server`, and the sign-in screen's "Log in"
+(hidden) and "Connect to a host" (address, then the host's login). Small, and useful on its own.
 
 **Slice 2: the hosted hooks.** `ADMIN_API_TOKEN`, `/admin/usage`, suspension, agent tokens minted
-and revoked in the app, admin reset links.
+and revoked in the app, admin reset links, and sign-in grants (`GRANT_PUBLIC_KEY`,
+`POST /api/devices/grant`).
 
 **Slice 3: chosen projects and viewers.** Migration 049, the viewer role, per-project access, the
 filtered stream, media, summary, bell and pushes, and the leak tests. This is the riskiest slice.
@@ -374,8 +425,8 @@ leak tests exist for that. Slice 1 avoids the risk by giving everyone every proj
 
 ## 12. Open questions for the owner
 
-1. Is the TypeScript server retired before slice 1 ships? Migration 048 stops it opening the
-   database, so it can no longer be the fallback.
+1. ~~Is the TypeScript server retired before slice 1 ships?~~ Settled: it was retired at the move
+   to the Kotlin server, so migration 048 closes no door that is still open.
 2. Hosted: one server per team (this design), or many teams on one server? Many teams means a
    team id on every row, which is a much bigger change; better decided now.
 3. Should a request alert everyone who can see its project, or only some people (for example,
