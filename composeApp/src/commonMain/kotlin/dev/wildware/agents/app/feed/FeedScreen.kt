@@ -590,13 +590,10 @@ private fun LazyListScope.feedItems(ui: FeedUi, density: Density, list: LazyList
     }
     sections.forEachIndexed { s, section ->
         val key = "section-$s"
-        if (section.items.any { it is FeedItem.Question }) {
-            // Questions stay in sight: their heading holds the top while they scroll under it.
-            stickyHeader(key = key, contentType = "waiting") {
-                StickyHeading(section, first = s == 0, list, key)
-            }
-        } else item(key = key, contentType = "section") {
-            SectionHeading(section, first = s == 0, Modifier.feedItemMotion(this).widthIn(max = FeedMaxWidth).fillMaxWidth())
+        // Every heading holds the top while its cards scroll under it, as the website's do, so the
+        // owner always knows which day they are reading; the next one pushes it away.
+        stickyHeader(key = key, contentType = if (section.items.any { it is FeedItem.Question }) "waiting" else "section") {
+            StickyHeading(section, first = s == 0, list, key)
         }
         section.items.forEachIndexed { i, item ->
             // By kind, so a card scrolling in takes over the layout of one of its kind that scrolled out.
@@ -618,7 +615,7 @@ private fun LazyListScope.feedItems(ui: FeedUi, density: Density, list: LazyList
 }
 
 /**
- * The "Waiting on you" heading, held at the top of the list. The list holds it at its very top,
+ * A section's heading ("Waiting on you", "Today"), held at the top of the list. The list holds it at its very top,
  * under its top padding (the status bar on a phone), so it moves itself down past that and paints
  * the background behind, so what scrolls under it doesn't show through. It moves by drawing, not
  * by growing, so the cards around it never shift.

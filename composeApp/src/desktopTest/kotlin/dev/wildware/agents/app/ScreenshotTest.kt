@@ -722,6 +722,31 @@ class ScreenshotTest {
         }
     }
 
+    /**
+     * Times as the website says them ("updated 5m ago", "3h ago"), and a day heading held at the top
+     * while its cards scroll under it.
+     */
+    @Test
+    fun dayHeadingsAndTimes() {
+        val times = mapOf("u1" to "updated 5m ago", "u2" to "2h ago", "o1" to "3h ago", "u3" to "updated 40m ago", "u4" to "1d ago")
+        val sections = FakeFeed.state.sections.filter { s -> s.items.none { it is FeedItem.Question } }.map { section ->
+            section.copy(items = section.items.map { item ->
+                val time = times[item.id] ?: return@map item
+                when (item) {
+                    is FeedItem.Update -> item.copy(time = time)
+                    is FeedItem.Post -> item.copy(time = time)
+                    else -> item
+                }
+            })
+        }
+        val state = FakeFeed.state.copy(sections = sections)
+        for (dark in listOf(false, true)) {
+            val mode = if (dark) "dark" else "light"
+            shoot("phone-$mode-day-heading", Size.Phone, dark) { AgentsPreview(dark = dark, state = state, safeArea = Size.Phone.safeArea, startAt = "u2") }
+            shoot("desktop-$mode-day-heading", Size.Desktop, dark) { AgentsPreview(dark = dark, state = state, safeArea = Size.Desktop.safeArea, startAt = "o1") }
+        }
+    }
+
     /** Increase Contrast on, in both themes, and the largest common text size. */
     @Test
     fun accessibilityVariants() {

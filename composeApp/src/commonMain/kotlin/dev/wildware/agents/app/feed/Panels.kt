@@ -702,7 +702,8 @@ private fun SendButton(enabled: Boolean, onClick: () -> Unit) {
 fun ReplyView(reply: Reply, modifier: Modifier = Modifier) {
     val colors = AgentTheme.colors
     val time = if (reply.sending) SendingLabel else reply.time
-    val spoken = listOfNotNull(reply.author.name, time, reply.edited, "new".takeIf { reply.unread }).joinToString(", ")
+    val detail = if (reply.sending) "" else reply.timeDetail
+    val spoken = listOfNotNull(reply.author.name, detail.ifEmpty { time }, reply.edited, "new".takeIf { reply.unread }).joinToString(", ")
     Row(modifier.fillMaxWidth().alpha(if (reply.sending) SendingAlpha else 1f)) {
         Avatar(reply.author, 28.dp, showPresence = false)
         Column(Modifier.padding(start = 10.dp).weight(1f)) {
@@ -716,7 +717,7 @@ fun ReplyView(reply: Reply, modifier: Modifier = Modifier) {
                     color = colors.text,
                     style = AgentTheme.type.label.copy(fontWeight = FontWeight.SemiBold),
                 )
-                MetaText(time, Modifier.padding(start = 8.dp).clearAndSetSemantics { })
+                TimeText(time, detail, Modifier.padding(start = 8.dp).clearAndSetSemantics { })
                 if (reply.edited != null) EditedMark(Modifier.padding(start = 6.dp).clearAndSetSemantics { })
             }
             Spacer(Modifier.height(2.dp))

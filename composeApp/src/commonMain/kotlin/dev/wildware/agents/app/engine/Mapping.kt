@@ -192,9 +192,11 @@ internal class FeedMapper(
     private fun FeedCard.toItem(agents: AgentDirectory, project: (String?) -> Project, index: CardIndex): FeedItem? = when (this) {
         is UpdateCard -> {
             val (title, body) = titleAndBody(update.title, update.body)
+            val time = cardTime(createdAt, activityAt, update.editedAt)
             FeedItem.Update(
                 id = id,
-                time = timeLabel(createdAt),
+                time = time.first,
+                timeDetail = time.second,
                 agent = agents.agent(update.agentId),
                 project = project(update.projectId),
                 level = level(update.level),
@@ -216,9 +218,10 @@ internal class FeedMapper(
                 edited = editedLabel(update.editedAt),
             )
         }
-        is PostCard -> FeedItem.Post(
+        is PostCard -> cardTime(createdAt, activityAt, post.message.editedAt).let { time -> FeedItem.Post(
             id = id,
-            time = timeLabel(createdAt),
+            time = time.first,
+            timeDetail = time.second,
             author = author(post, agents),
             project = project(projectId),
             body = post.message.body,
@@ -239,7 +242,7 @@ internal class FeedMapper(
             pinned = pinned,
             // Work says where it has got to, which answers "has anybody got this" better.
             undelivered = post.message.status == null && undelivered(post),
-        )
+        ) }
     }
 
     private fun RequestCard.toQuestion(agents: AgentDirectory, project: (String?) -> Project, index: CardIndex): FeedItem.Question {
@@ -335,7 +338,8 @@ internal class FeedMapper(
             Reply(
                 id = line.message.id,
                 author = author(line, agents),
-                time = timeLabel(line.message.createdAt),
+                time = relativeLabel(line.message.createdAt),
+                timeDetail = exactTime(line.message.createdAt),
                 body = line.message.body,
                 reactions = reactions(line.reactions),
                 unread = line.message.id in unreadIds,
@@ -492,13 +496,48 @@ internal class FeedMapper(
         }
     }
 
+    /**
+     * How long ago, as the website says it: "now", "45s ago", "5m ago", "3h ago", "2d ago", and past a
+     * month the day itself, when "how long" has stopped being the question. Kept fresh by the engine's tick.
+     */
+    fun relativeLabel(at: Long): String {
+        val seconds = (now() - at) / 1000
+        return when {
+            // A phone's clock a few seconds ahead must not read as "in 3 seconds".
+            seconds < 10 -> "now"
+            seconds < 60 -> "${seconds}s ago"
+            seconds < 3600 -> "${seconds / 60}m ago"
+            seconds < 86_400 -> "${seconds / 3600}h ago"
+            seconds < 30 * 86_400 -> "${seconds / 86_400}d ago"
+            else -> exactDay(at)
+        }
+    }
+
+    /**
+     * A card's time: how long ago it last changed (a reply, its work state, an edit), as "updated 5m
+     * ago" when that was after it was posted; and the whole instants behind it, to hover or hear.
+     */
+    fun cardTime(createdAt: Long, activityAt: Long, editedAt: Long?): Pair<String, String> {
+        val updatedAt = maxOf(createdAt, activityAt, editedAt ?: 0)
+        return if (updatedAt > createdAt) {
+            "updated ${relativeLabel(updatedAt)}" to "Posted ${exactTime(createdAt)} · updated ${exactTime(updatedAt)}"
+        } else {
+            relativeLabel(createdAt) to "Posted ${exactTime(createdAt)}"
+        }
+    }
+
     /** The whole instant, as the website writes it: "Monday 3 August 2026 at 14:05". */
     fun exactTime(millis: Long): String {
         val then = Instant.fromEpochMilliseconds(millis).toLocalDateTime(zone)
-        val weekday = then.dayOfWeek.name.lowercase().replaceFirstChar { it.uppercase() }
-        val month = then.month.name.lowercase().replaceFirstChar { it.uppercase() }
-        return "$weekday ${then.day} $month ${then.year} at ${then.hour.toString().padStart(2, '0')}:${then.minute.toString().padStart(2, '0')}"
+        return "${exactDay(millis)} at ${then.hour.toString().padStart(2, '0')}:${then.minute.toString().padStart(2, '0')}"
     }
+
+    private fun exactDay(millis: Long): String {
+        val day = dayOf(millis)
+        return "${day.dayOfWeek.name.lowercase().replaceFirstChar { it.uppercase() }} ${day.day} ${monthName(day)} ${day.year}"
+    }
+
+    private fun monthName(day: LocalDate) = day.month.name.lowercase().replaceFirstChar { it.uppercase() }
 
     /** Stated, never silent: a card that was rewritten says when. Null when it never was. */
     fun editedLabel(editedAt: Long?): String? = editedAt?.takeIf { it > 0 }?.let { "Edited ${exactTime(it)}" }
@@ -512,7 +551,9 @@ internal class FeedMapper(
             daysAgo == 0L -> "Today"
             daysAgo == 1L -> "Yesterday"
             daysAgo in 2..6 -> day.dayOfWeek.name.lowercase().replaceFirstChar { it.uppercase() }
-            else -> "${day.day} ${day.month.name.lowercase().replaceFirstChar { it.uppercase() }}"
+            // An older year says so: "3 August" alone would read as this year's.
+            day.year != today.year -> "${day.day} ${monthName(day)} ${day.year}"
+            else -> "${day.day} ${monthName(day)}"
         }
     }
 

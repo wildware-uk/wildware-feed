@@ -70,6 +70,39 @@ class MappingTest {
         EngineFeed(null, null, status, true, false, false, waiting, emptyList(), cards, 0, false, emptyList())
 
     @Test
+    fun cardTimesSayHowLongAgo() {
+        val minute = 60_000L
+        assertEquals("now", mapper.relativeLabel(noon - 5_000))
+        assertEquals("45s ago", mapper.relativeLabel(noon - 45_000))
+        assertEquals("5m ago", mapper.relativeLabel(noon - 5 * minute))
+        assertEquals("3h ago", mapper.relativeLabel(noon - 3 * 60 * minute))
+        assertEquals("2d ago", mapper.relativeLabel(noon - 2 * 24 * 60 * minute))
+        // Past a month, the day itself.
+        assertEquals("Saturday 4 October 2025", mapper.relativeLabel(noon - 410L * 24 * 60 * minute))
+    }
+
+    @Test
+    fun aCardThatChangedSaysUpdated() {
+        val minute = 60_000L
+        val card = update("u1", noon - 60 * minute, "T", "B", replies = listOf(line("m1", "agent:a1", noon - 5 * minute)))
+        val item = mapper.map(feed(listOf(card.copy(activityAt = noon - 5 * minute))), listOf(mega), emptyList(), emptyList(), null).sections.single().items.single() as FeedItem.Update
+        assertEquals("updated 5m ago", item.time)
+        assertEquals("Posted Wednesday 18 November 2026 at 11:00 · updated Wednesday 18 November 2026 at 11:55", item.timeDetail)
+        assertEquals("5m ago", item.replies.single().time)
+        assertEquals("Wednesday 18 November 2026 at 11:55", item.replies.single().timeDetail)
+        val quiet = mapper.map(feed(listOf(update("u2", noon - 60 * minute, "T", "B"))), listOf(mega), emptyList(), emptyList(), null).sections.single().items.single() as FeedItem.Update
+        assertEquals("1h ago", quiet.time)
+        assertEquals("Posted Wednesday 18 November 2026 at 11:00", quiet.timeDetail)
+    }
+
+    @Test
+    fun aDayFromAnotherYearSaysTheYear() {
+        assertEquals("3 August", mapper.dayLabel(kotlinx.datetime.LocalDate(2026, 8, 3)))
+        assertEquals("3 August 2025", mapper.dayLabel(kotlinx.datetime.LocalDate(2025, 8, 3)))
+        assertEquals("Yesterday", mapper.dayLabel(kotlinx.datetime.LocalDate(2026, 11, 17)))
+    }
+
+    @Test
     fun anEditedUpdateAndReplySayWhen() {
         val edited = update("u1", noon, "Title", "Body", replies = listOf(line("m1", "agent:a1", noon).let { it.copy(message = it.message.copy(editedAt = noon - 90 * 60_000)) }))
         val card = edited.copy(update = edited.update.copy(editedAt = noon + 5 * 60_000))

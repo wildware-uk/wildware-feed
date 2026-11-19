@@ -125,11 +125,13 @@ private fun CardHeader(
     critical: Boolean = false,
     /** "Edited Monday 3 August 2026 at 14:05" when it was rewritten; drawn as "edited". */
     edited: String? = null,
+    /** The whole instants behind [time]: shown on hover, and read out in its place. */
+    timeDetail: String = "",
 ) {
     val colors = AgentTheme.colors
     val type = AgentTheme.type
     val spoken = listOfNotNull(
-        author.name, role, time, edited, "pinned".takeIf { pinned }, "critical".takeIf { critical }, "high priority".takeIf { high && !critical },
+        author.name, role, timeDetail.ifEmpty { time }, edited, "pinned".takeIf { pinned }, "critical".takeIf { critical }, "high priority".takeIf { high && !critical },
         level?.label, status?.let { "status ${it.label}" },
     ).joinToString(", ")
     Row(
@@ -154,7 +156,7 @@ private fun CardHeader(
                 ProjectLabel(project, Modifier.weight(1f, fill = false))
             }
             Spacer(Modifier.width(10.dp))
-            MetaText(time, Modifier.clearAndSetSemantics { })
+            TimeText(time, timeDetail, Modifier.clearAndSetSemantics { })
             if (edited != null) EditedMark(Modifier.padding(start = 6.dp).clearAndSetSemantics { })
             if (pinned) Icon(Icons.Pin, null, tint = colors.accent, modifier = Modifier.padding(start = 8.dp).size(13.dp))
         }
@@ -309,6 +311,7 @@ fun UpdateCard(
                 fold = fold,
                 critical = item.critical,
                 edited = item.edited,
+                timeDetail = item.timeDetail,
             )
             Column(Modifier.padding(start = indent, top = 8.dp)) {
                 if (density == Density.Compact) Chips(item.level, item.status, item.high, Modifier.padding(bottom = 8.dp), onStatus = chooseStatus, critical = item.critical)
@@ -845,6 +848,7 @@ fun PostCard(item: FeedItem.Post, modifier: Modifier = Modifier, density: Densit
                 pinned = pinned,
                 fold = fold,
                 edited = item.edited,
+                timeDetail = if (item.sending) "" else item.timeDetail,
             )
             Column(Modifier.padding(start = indent, top = 8.dp)) {
                 if (density == Density.Compact && item.status != null) Chips(null, item.status, modifier = Modifier.padding(bottom = 8.dp), onStatus = chooseStatus)

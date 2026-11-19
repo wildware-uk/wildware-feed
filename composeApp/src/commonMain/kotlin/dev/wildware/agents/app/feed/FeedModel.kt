@@ -160,6 +160,8 @@ data class Reply(
     val acks: Acks = Acks(),
     /** When it was last changed, as "Edited Monday 3 August 2026 at 14:05"; null when never. Drawn as "edited". */
     val edited: String? = null,
+    /** The whole instant behind [time], as "Posted Monday 3 August 2026 at 14:05 · updated …". Shown on hover, read aloud. */
+    val timeDetail: String = "",
 )
 
 /**
@@ -300,6 +302,8 @@ sealed interface FeedItem {
         val pinned: Boolean = false,
         /** When it was last changed, as "Edited Monday 3 August 2026 at 14:05"; null when never. Drawn as "edited". */
         val edited: String? = null,
+        /** The whole instant behind [time], as "Posted Monday 3 August 2026 at 14:05 · updated …". Shown on hover, read aloud. */
+        val timeDetail: String = "",
     ) : Threaded {
         override val starter: Author get() = Author.AgentAuthor(agent)
     }
@@ -377,6 +381,8 @@ sealed interface FeedItem {
         val questions: List<Question> = emptyList(),
         /** When it was last changed, as "Edited Monday 3 August 2026 at 14:05"; null when never. Drawn as "edited". */
         val edited: String? = null,
+        /** The whole instant behind [time], as "Posted Monday 3 August 2026 at 14:05 · updated …". Shown on hover, read aloud. */
+        val timeDetail: String = "",
         val tags: List<CardTag> = emptyList(),
         val fields: List<CardField> = emptyList(),
         /** Its work state, when someone marked it as work. */
