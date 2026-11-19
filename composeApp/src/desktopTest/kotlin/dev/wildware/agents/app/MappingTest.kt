@@ -280,6 +280,25 @@ class MappingTest {
     }
 
     @Test
+    fun aQuestionCarriesItsTagsFieldsReactionsAndPin() {
+        val request = RequestCard(
+            RequestView(
+                id = "r6", agentId = "a1", kind = "confirm", question = "Ship?", pinned = true,
+                reactions = listOf(ReactionView("x9", card = CardRef(CardKinds.Request, "r6"), actor = "human", emoji = "👀")),
+            ),
+            agentName = "lumen", projectName = null, discussion = emptyList(), unread = 0, sending = false,
+            tags = listOf(dev.wildware.agents.TagView("t1", "p1", "release", "release")),
+            fields = listOf(dev.wildware.agents.CardFieldView("f1", CardRef(CardKinds.Request, "r6"), "branch", "branch", "fix/sounds", "agent:a1")),
+        )
+        val q = mapper.map(feed(emptyList(), listOf(request)), listOf(mega), emptyList(), emptyList(), null).sections.single().items.single() as FeedItem.Question
+        assertEquals(listOf("release"), q.tags.map { it.name })
+        assertEquals(listOf(dev.wildware.agents.app.feed.CardField("branch", "fix/sounds")), q.fields)
+        assertEquals(listOf("👀"), q.reactions.map { it.emoji })
+        assertTrue(q.reactions.single().mine)
+        assertTrue(q.pinned)
+    }
+
+    @Test
     fun picturesOnOptionsGoToTheirOptionsAndNotTheCard() {
         fun media(id: String) = MediaView(id = id, kind = "image", status = "ready", variants = listOf("original"), filename = "$id.png")
         val request = RequestCard(

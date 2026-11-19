@@ -322,6 +322,10 @@ internal class FeedMapper(
             preset = config?.defaultValue?.takeIf { kind == QuestionKind.Choice && it in options },
             unsent = index.refused(id)?.let(::unsent),
             edited = editedLabel(request.editedAt),
+            tags = tags.map { it.toCardTag() },
+            fields = fields.map { CardField(it.name, it.value) },
+            reactions = reactions(request.reactions),
+            pinned = request.pinned,
         )
     }
 

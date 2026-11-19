@@ -362,7 +362,8 @@ class DashboardSession(
             ?: allLines().firstOrNull { it.message.id == id }?.let { CardRef(CardKinds.Message, id) }
 
     private fun reactionsOn(id: String): List<ReactionView> =
-        latest.card(id)?.reactions ?: allLines().firstOrNull { it.message.id == id }?.reactions.orEmpty()
+        latest.card(id)?.reactions ?: request(id)?.request?.reactions
+            ?: allLines().firstOrNull { it.message.id == id }?.reactions.orEmpty()
 
     /** The answer as the server takes it for this kind of question. */
     private fun answerValue(card: RequestCard, choices: List<String>): JsonElement = when (card.request.requestKind) {

@@ -453,7 +453,7 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
     private fun tagOf(item: FeedItem): List<CardTag> = when (item) {
         is FeedItem.Update -> item.tags
         is FeedItem.Post -> item.tags
-        is FeedItem.Question -> emptyList()
+        is FeedItem.Question -> item.tags
     }
 
     private fun noteTag(event: FeedEvent.Tag) {
@@ -608,7 +608,7 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
     private fun reactionsOf(item: FeedItem): List<Reaction> = when (item) {
         is FeedItem.Update -> item.reactions
         is FeedItem.Post -> item.reactions
-        is FeedItem.Question -> emptyList()
+        is FeedItem.Question -> item.reactions
     }
 }
 

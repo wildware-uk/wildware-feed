@@ -753,6 +753,24 @@ class ScreenshotTest {
         }
     }
 
+    /** A question wearing what any card can: a pin, tags, details and reactions. */
+    @Test
+    fun questionExtras() {
+        val base = FakeFeed.state.sections.flatMap { it.items }.filterIsInstance<FeedItem.Question>().first()
+        val q = base.copy(
+            pinned = true,
+            tags = listOf(dev.wildware.agents.app.feed.CardTag("t1", "release", "#2563eb"), dev.wildware.agents.app.feed.CardTag("t2", "sounds")),
+            fields = listOf(dev.wildware.agents.app.feed.CardField("branch", "feat/reaction-sounds"), dev.wildware.agents.app.feed.CardField("test group", "120 people")),
+            reactions = listOf(dev.wildware.agents.app.feed.Reaction("👀", 1, mine = true, spoken = "eyes"), dev.wildware.agents.app.feed.Reaction("🎉", 2, mine = false, spoken = "party")),
+        )
+        val state = FakeFeed.state.copy(sections = listOf(FakeFeed.state.sections.first().copy(items = listOf(q))))
+        for (dark in listOf(false, true)) {
+            val mode = if (dark) "dark" else "light"
+            shoot("phone-$mode-question-extras", Size.Phone, dark) { AgentsPreview(dark = dark, state = state, safeArea = Size.Phone.safeArea) }
+            shoot("desktop-$mode-question-extras", Size.Desktop, dark) { AgentsPreview(dark = dark, state = state, safeArea = Size.Desktop.safeArea) }
+        }
+    }
+
     /** Increase Contrast on, in both themes, and the largest common text size. */
     @Test
     fun accessibilityVariants() {

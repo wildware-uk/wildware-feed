@@ -346,6 +346,11 @@ sealed interface FeedItem {
         val unsent: Unsent? = null,
         /** When it was last changed, as "Edited Monday 3 August 2026 at 14:05"; null when never. Drawn as "edited". */
         val edited: String? = null,
+        /** The project's words on it, its fields and reactions, and whether it is pinned: as on any card. */
+        val tags: List<CardTag> = emptyList(),
+        val fields: List<CardField> = emptyList(),
+        val reactions: List<Reaction> = emptyList(),
+        val pinned: Boolean = false,
         /** The talk about the question before it is answered: its own thread, oldest first. */
         override val replies: List<Reply> = emptyList(),
         override val unreadReplies: Int = 0,

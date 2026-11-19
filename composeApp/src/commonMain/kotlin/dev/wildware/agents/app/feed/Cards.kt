@@ -454,9 +454,17 @@ fun QuestionCard(
     val fold = rememberFold(item.id, "question", item.prompt, inThread || !showDiscussion)
     // A folded question hides its answers, so nothing answers it blind: no swipes, no keys.
     val folded = fold?.folded == true
+    // The card menu as on every card: pin, tags, details, react, copy. A question is never work and
+    // can't be deleted here; the agent withdraws it.
+    val pinned = ui?.isPinned(item.id, item.pinned) ?: item.pinned
+    val target = MenuTarget(item.id, item.agent.name, item.prompt, own = false, taggable = true, pinned = pinned, deletable = false, hasDetails = true)
+    val tags = ui?.tagsFor(item.id, item.tags) ?: item.tags
+    val reactions = ui?.reactionsFor(item.id, item.reactions) ?: item.reactions
+    WithMenu(target, modifier) { gestures ->
     SwipeActions(
         shape = shape,
-        modifier = modifier,
+        // The menu's gestures go on the card inside: both list actions for screen readers, and on one node one would hide the other.
+        modifier = Modifier,
         state = swipe,
         startAction = when {
             item.sending || folded -> null
@@ -471,7 +479,7 @@ fun QuestionCard(
         },
     ) {
     Column(
-        Modifier
+        gestures
             .fillMaxWidth()
             .then(frame)
             .semantics(mergeDescendants = false) { contentDescription = (if (item.critical) "Critical question" else "Question") + " from ${item.agent.name}, waiting on you" }
@@ -521,6 +529,7 @@ fun QuestionCard(
                 // Inside a thread the project is already known.
                 if (showsProject() && !inThread) ProjectLabel(item.project)
             }
+            if (pinned) Icon(Icons.Pin, "Pinned", tint = colors.accent, modifier = Modifier.padding(end = 8.dp).size(13.dp))
             TimeLeft(item.expiresAt, item.expiresIn)
         }
         val context = item.inReplyTo
@@ -637,6 +646,9 @@ fun QuestionCard(
         } else {
             item.unsent?.let { UnsentAnswer(it) }
         }
+        CardDetails(item.id, ui?.fieldsFor(item.id, item.fields) ?: item.fields, Modifier.padding(top = 8.dp))
+        TagChips(tags, Modifier.padding(top = 10.dp))
+        if (reactions.isNotEmpty()) ReactionRow(reactions, item.id, Modifier.padding(top = 10.dp))
         if (LocalIsPhone.current) {
             Text(
                 when {
@@ -657,6 +669,7 @@ fun QuestionCard(
             if (LocalInlineThreads.current) InlineThread(item, action = "Discuss") else DiscussButton(item)
         }
     }
+}
 }
 }
 

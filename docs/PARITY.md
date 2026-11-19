@@ -58,7 +58,7 @@ It doesn't, beyond oldest first.
 | 17 | Answer error | Done | Alert, keeps typed text (`:566-568`) | Yes: the card says "Couldn't send your answer", why, and what was said, puts typed words back in the box, with Try again / Drop it | Yes | — | P2 |
 | 18 | Offline answer | Done | — | Yes: outbox, "Answer waiting to send" | Yes | App only | — |
 | 19 | Discussion thread on a request | Done | Reply/react/acks under the controls (`RequestCard.svelte:686-705`) | Yes: Discuss opens the question's own thread (#53) | Yes: inline under the controls (#53) | — | P1 |
-| 20 | Reactions / tags / fields / pin on request | Open | Same as other cards | No | No | See rows 40-48 | P2 |
+| 20 | Reactions / tags / fields / pin on request | Done | Same as other cards | Yes: card menu (Pin, Tags…, Details…, react), tags, "Details (N)", reactions and a pin mark on the question | Yes | — | P2 |
 | 21 | "edited" marker on request | Done | Shown when agent rewrote it (`:386-399`) | Yes: "edited" by the agent's name; read out with the exact time | Yes | — | P2 |
 | 22 | Collapse request | Done | Fold to one line | Yes: the fold arrow keeps its header, question and one line; answers wait until it is opened; remembered with other folds | Yes | — | P2 |
 | 23 | Answer from notification | Done | Web push SW: confirm/buttons/choice first two (`service-worker.ts:81-140`) | Yes, iOS: per-kind actions incl. text input, Face ID (`iosApp/Common/Notifications.swift`) | Partial: desktop notice opens card, no answer buttons (`desktop/NotificationRules.kt`) | iOS richer | — |
