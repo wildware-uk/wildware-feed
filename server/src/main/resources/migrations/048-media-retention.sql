@@ -1,4 +1,4 @@
--- Migration 050: media retention. The owner's server-wide settings, starting with how long media is
+-- Migration 048: media retention. The owner's server-wide settings, starting with how long media is
 -- kept; media removed for its age keeps its row, marked with when and after how many days.
 -- (048 and 049 are reserved for teams; the runner applies any it has not, in order.)
 CREATE TABLE server_settings (

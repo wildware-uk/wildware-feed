@@ -329,10 +329,10 @@
   "checksum": "e135df3c06ce57b245afb42184c8c23cfec4510f73453f9686ae659195ef49d9"
  },
  {
-  "version": 50,
+  "version": 48,
   "name": "media-retention",
-  "file": "050-media-retention.sql",
+  "file": "048-media-retention.sql",
   "rebuildsTables": false,
-  "checksum": "ac758e818b42cc0c3b7cc520388debfea183cf70945ad31d7f0da4f5a4bedfe0"
+  "checksum": "afc20b267c20eacdae209999ac1ecc796ae0a79a039b02ce375d6bdb1925f2c9"
  }
 ]

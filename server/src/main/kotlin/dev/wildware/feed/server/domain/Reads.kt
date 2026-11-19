@@ -232,7 +232,7 @@ class Reads(private val db: Database, private val clock: () -> Long = System::cu
             out.getOrPut(row.card) { mutableListOf() } += if (removedAt == null) {
                 row.json.plus("variants" to JsonArray(variantsOf(row, derivatives[row.id].orEmpty()).map(::JsonPrimitive)))
             } else {
-                // Removed for its age (migration 050): no addresses, and a note the apps show instead.
+                // Removed for its age (migration 048): no addresses, and a note the apps show instead.
                 row.json.plus("variants" to JsonArray(emptyList())).plus(
                     "removed" to buildJsonObject { put("at", Wire.isoOf(removedAt)); put("afterDays", row.removedAfterDays) },
                 )

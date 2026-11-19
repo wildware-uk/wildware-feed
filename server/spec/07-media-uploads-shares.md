@@ -283,7 +283,7 @@ Mount `src/http/routes/api/updates/[id]/share/+server.ts:11-15`; handlers `src/h
 
 ---
 
-## 12. Media retention (Kotlin server only, migration 050)
+## 12. Media retention (Kotlin server only, migration 048)
 
 The owner chooses how long media is kept. Off by default; nothing is removed until it is turned on.
 

@@ -148,7 +148,7 @@ fun Route.feedRoutes(app: App) {
         return CardRef(kind, id)
     }
 
-    // Media retention (migration 050): how many days media of which kinds is kept. Owner only.
+    // Media retention (migration 048): how many days media of which kinds is kept. Owner only.
     endpoint(
         "/api/settings/media-retention",
         HttpMethod.Get to { call.respondOwner(200, app.retention.settings().json()) },

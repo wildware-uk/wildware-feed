@@ -67,7 +67,7 @@ class App(val config: Config, val db: Database, val clock: () -> Long = System::
         db, bus, mediaPaths, dev.wildware.feed.server.media.FfmpegTools(threads = config.ffmpegThreads), clock, config.deriveWorkers,
     )
 
-    /** How long media is kept (migration 050), and the nightly removal. */
+    /** How long media is kept (migration 048), and the nightly removal. */
     val retention = dev.wildware.feed.server.media.Retention(db, bus, mediaPaths, clock)
 
     /** Which file answers a media URL. */

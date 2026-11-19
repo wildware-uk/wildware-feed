@@ -18,7 +18,7 @@ import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 
 /**
- * Media retention (migration 050): the owner chooses how many days media of which kinds is kept;
+ * Media retention (migration 048): the owner chooses how many days media of which kinds is kept;
  * once a night, older media loses its files and is marked removed. Its card keeps a note that it
  * was removed, and after how many days.
  *
