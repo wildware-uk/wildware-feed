@@ -7,6 +7,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -128,9 +129,14 @@ class UpdateUiTest {
         onNodeWithText("What's new in 1.0.2").assertExists()
         onNodeWithText("Update automatically").performClick()
         waitUntil(timeoutMillis = 20_000) { !automatic.value }
+        // Off, the restart pill (and its menu) gives way to the plain "Update available" pill.
+        // Wait for the screen to show that before turning it back on: flipped back faster than a
+        // frame, the old pill would stay with its menu open, and the next click would only close the menu.
+        waitUntil(timeoutMillis = 20_000) { onAllNodesWithContentDescription("Update to 1.0.2 available").fetchSemanticsNodes().isNotEmpty() }
+        onNodeWithText("Update automatically").assertDoesNotExist()
         automatic.value = true
-        waitUntil(timeoutMillis = 20_000) { updates.background.value is BackgroundUpdate.Staged }
-        waitForIdle()
+        waitUntil(timeoutMillis = 20_000) { onAllNodesWithContentDescription(label).fetchSemanticsNodes().isNotEmpty() }
+        onNodeWithText("Update automatically").assertDoesNotExist()
 
         onNodeWithContentDescription(label).performClick()
         waitUntil(timeoutMillis = 20_000) { quit }
