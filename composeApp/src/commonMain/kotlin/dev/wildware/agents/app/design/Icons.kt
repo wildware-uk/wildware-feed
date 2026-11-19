@@ -103,8 +103,13 @@ object Icons {
         "M4 12H7", "M13 12H20", circle(10f, 12f, 2.5f),
         "M4 18H13", "M19 18H20", circle(16f, 18f, 2.5f),
     )
+    val Lock = icon("lock", rect(4f, 11f, 16f, 10f, 2f), "M8 11V7A4 4 0 0 1 16 7V11")
+    val Eye = icon("eye", EYE, circle(12f, 12f, 3f))
+    val EyeOff = icon("eye-off", EYE, "M3 3 21 21")
     val Warning = icon("warning", "M10.3 3.9 1.8 18A2 2 0 0 0 3.5 21H20.5A2 2 0 0 0 22.2 18L13.7 3.9A2 2 0 0 0 10.3 3.9Z", "M12 9V13", "M12 17H12.01")
 }
+
+private const val EYE = "M2 12C2 12 5.5 5 12 5C18.5 5 22 12 22 12C22 12 18.5 19 12 19C5.5 19 2 12 2 12Z"
 
 private fun icon(name: String, vararg paths: String): ImageVector =
     ImageVector.Builder(name, 24.dp, 24.dp, 24f, 24f).apply {

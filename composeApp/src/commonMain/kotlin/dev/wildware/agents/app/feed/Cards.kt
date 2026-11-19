@@ -1,5 +1,9 @@
 package dev.wildware.agents.app.feed
 
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.text.font.FontStyle
@@ -625,7 +629,7 @@ fun QuestionCard(
                     QuestionKind.Buttons -> PickMode.Instant
                     QuestionKind.Choice -> PickMode.One
                     QuestionKind.MultiChoice -> PickMode.Many
-                    QuestionKind.Text, QuestionKind.Form, QuestionKind.Unsupported -> PickMode.Instant
+                    QuestionKind.Text, QuestionKind.Form, QuestionKind.Secret, QuestionKind.Unsupported -> PickMode.Instant
                 },
                 onPick = { i -> pick(item.choices[i]) },
                 onLookCloser = { i ->
@@ -674,6 +678,9 @@ fun QuestionCard(
                     ui?.emit(FeedEvent.AnswerForm(item.id, action, text))
                 }
             }
+        }
+        if (item.kind == QuestionKind.Secret) {
+            key(item.id) { SecretAnswer(item, ui, dismiss) }
         }
         if (item.kind == QuestionKind.Unsupported) {
             MetaText("This version of $ProductName can't answer this kind of question. Update the app to answer it.", color = colors.textMuted)
@@ -842,6 +849,77 @@ private fun AnswerField(field: FormField?, enabled: Boolean, onSend: (String) ->
  * draft, then the agent's own actions. Each action sends the field with it, so the owner decides
  * what to do and what to do it to in one go.
  */
+/**
+ * An agent asks for a secret: a masked box, and the name it will be kept under. The value goes to
+ * the dashboard at once and is never queued, kept or shown to the agent, which hears only that it
+ * is ready. Offline, it says so and keeps nothing.
+ */
+@Composable
+private fun SecretAnswer(item: FeedItem.Question, ui: FeedUi?, dismiss: () -> Unit) {
+    val colors = AgentTheme.colors
+    val shape = AgentTheme.shapes.medium
+    val bg = colors.surface.copy(alpha = if (colors.isDark) 0.6f else 0.85f)
+    // Not saveable: a half-typed value must never land in the platform's saved state.
+    val value = remember { androidx.compose.foundation.text.input.TextFieldState() }
+    var sending by remember { mutableStateOf(false) }
+    var problem by remember { mutableStateOf<String?>(null) }
+    var saved by remember { mutableStateOf(false) }
+    DisposableEffect(Unit) { onDispose { value.clearText() } }
+    val name = item.secretName ?: "a secret"
+    val send = {
+        if (value.text.isNotEmpty() && !sending && ui != null) {
+            sending = true
+            problem = null
+            ui.emit(FeedEvent.ProvideSecret(item.id, value.text.toString()) { failed ->
+                sending = false
+                problem = failed
+                if (failed == null) {
+                    saved = true
+                    value.clearText()
+                }
+            })
+        }
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Lock, null, tint = colors.textMuted, modifier = Modifier.size(14.dp))
+            MetaText("Kept as ", Modifier.padding(start = 6.dp), color = colors.textMuted)
+            Text(name, color = colors.text, style = AgentTheme.type.code, maxLines = 1)
+        }
+        if (saved) {
+            MetaText("Saved. ${item.agent.name} only hears that it is ready.", color = colors.textMuted)
+            return@Column
+        }
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .clip(shape)
+                .background(bg)
+                .border(1.dp, colors.border, shape)
+                .padding(horizontal = 14.dp, vertical = 2.dp),
+        ) {
+            TextInput(
+                value,
+                label = "Value of $name, hidden as you type",
+                placeholder = "Paste or type it",
+                modifier = Modifier.fillMaxWidth(),
+                secret = true,
+                enabled = !sending,
+                onSubmit = send,
+            )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            AppButton(if (sending) "Saving…" else "Save secret", ButtonTone.Waiting, icon = Icons.Lock, enabled = !sending && value.text.isNotEmpty(), onClick = send)
+            AppButton("Not now", ButtonTone.Secondary, enabled = !sending, onClick = dismiss)
+        }
+        Text(
+            problem ?: "Stored encrypted. ${item.agent.name} only learns it is ready.",
+            color = if (problem != null) colors.error else colors.textMuted,
+            style = AgentTheme.type.meta,
+        )
+    }
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun FormAnswer(form: FormField, enabled: Boolean, onAnswer: (action: String, text: String) -> Unit) {

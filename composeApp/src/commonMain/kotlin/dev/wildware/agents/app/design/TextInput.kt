@@ -1,5 +1,6 @@
 package dev.wildware.agents.app.design
 
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.text.BasicSecureTextField
@@ -84,9 +85,10 @@ fun TextInput(
             modifier = decorated,
             enabled = enabled,
             textStyle = textStyle,
-            keyboardOptions = keyboard,
+            // A password keyboard: no suggestions, nothing learned. Passing Default would replace that.
+            keyboardOptions = if (keyboard == KeyboardOptions.Default) KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrectEnabled = false) else keyboard,
             onKeyboardAction = { onSubmit?.invoke() },
-            textObfuscationMode = TextObfuscationMode.RevealLastTyped,
+            textObfuscationMode = TextObfuscationMode.Hidden,
             cursorBrush = SolidColor(colors.accent),
             decorator = { inner -> decorator(inner) },
         )

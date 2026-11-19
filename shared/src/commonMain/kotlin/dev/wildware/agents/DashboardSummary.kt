@@ -70,7 +70,9 @@ enum class RequestKind {
     @SerialName("buttons") Buttons,
     @SerialName("choice") Choice,
     @SerialName("multi_choice") MultiChoice,
-    @SerialName("form") Form;
+    @SerialName("form") Form,
+    /** An agent asks for a secret (request_secret): answered in the app's masked box, never from an alert. */
+    @SerialName("secret") Secret;
 
     val wireName: String get() = serializer().descriptor.getElementName(ordinal)
 

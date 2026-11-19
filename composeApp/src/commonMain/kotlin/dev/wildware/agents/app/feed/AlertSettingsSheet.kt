@@ -130,6 +130,7 @@ fun AlertSettingsSheet(ui: FeedUi, safeArea: SafeArea) {
             LocalCrashReports.current?.let { CrashReportsGroup(it) }
             // The dashboard's own settings, for whoever may change them.
             KeepMediaEntry(ui)
+            SecretsEntry(ui)
             DevicesEntry(ui)
         }
     }

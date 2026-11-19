@@ -214,6 +214,9 @@ private fun commandsFor(ui: FeedUi, query: String, extra: List<AppCommand>, cras
         if (state.retention.allowed && wanted("Keep media", "retention", "delete", "media", "settings")) {
             add(Command("Actions", "Keep media", "How long the dashboard keeps pictures and files", Icons.Clock, done { ui.retentionOpen = true }))
         }
+        if (state.secrets.available && wanted("Secrets", "keys", "passwords", "tokens", "settings")) {
+            add(Command("Actions", "Secrets", "Keys and passwords shared with agents", Icons.Lock, done { ui.secretsOpen = true }))
+        }
         if (wanted("Switch theme", "dark", "light")) add(Command("Actions", "Switch light or dark", "", Icons.Moon, done { ui.emit(FeedEvent.ToggleTheme) }))
         if (crashReports != null && wanted("Crash reports", "privacy", "settings")) {
             val on = crashReports.enabled.value

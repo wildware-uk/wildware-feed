@@ -295,6 +295,9 @@ enum class QuestionKind {
     /** Edit the agent's draft in [FeedItem.Question.form], then pick one of its own actions. */
     Form,
 
+    /** A secret the agent asks for: typed into a masked box and sent at once, never queued or kept. */
+    Secret,
+
     /** A kind newer than this app: it says to update the app. */
     Unsupported,
 }
@@ -439,6 +442,8 @@ sealed interface FeedItem {
         override val unreadReplies: Int = 0,
         /** The agent marked it critical: it pages phones that allow it. A solid red "Critical" chip. */
         val critical: Boolean = false,
+        /** For a [QuestionKind.Secret]: the name the value will be stored under. */
+        val secretName: String? = null,
     ) : Threaded {
         val hasPictures: Boolean get() = choices.any { it.image != null }
         override val title: String get() = prompt
@@ -538,6 +543,8 @@ data class FeedState(
     val devices: DeviceList = DeviceList(),
     /** The open agent's OAuth connections, read when its dialog opens. */
     val connections: ConnectionList = ConnectionList(),
+    /** The dashboard's secrets, without values, read when the Secrets sheet opens. */
+    val secrets: SecretList = SecretList(),
     /** Agents asking to join, oldest first: each waits on the owner to allow or deny it. */
     val joining: List<JoinRequest> = emptyList(),
     /** Projects: named groups of channels, by name. */
@@ -623,6 +630,45 @@ data class ConnectionRow(
     /** "Added 3 August 2026". */
     val added: String,
 )
+
+/**
+ * The dashboard's secrets, as the Secrets sheet shows them: never a value. [available] is false on a
+ * dashboard from before secrets (the sheet's way in hides); [enabled] false means it has no
+ * SECRETS_KEY yet. [busy] names the secret being changed while the dashboard is asked.
+ */
+@Immutable
+data class SecretList(
+    val secrets: List<SecretRow> = emptyList(),
+    val loaded: Boolean = false,
+    val available: Boolean = true,
+    val enabled: Boolean = true,
+    val busy: String? = null,
+    val problem: String? = null,
+    /** The audit of the secret open in the sheet, newest first. */
+    val audit: List<SecretAuditRow> = emptyList(),
+    val auditFor: String? = null,
+)
+
+/** One secret: its name, who may use it, and when it was last used. */
+@Immutable
+data class SecretRow(
+    val id: String,
+    val name: String,
+    val note: String?,
+    /** "All agents", "forge, atlas", "No agent yet". */
+    val scope: String,
+    val allAgents: Boolean,
+    val agentIds: List<String>,
+    /** "Used 2h ago", "Never used". */
+    val used: String,
+    /** "Added by you", "From forge". */
+    val origin: String,
+    val paused: Boolean = false,
+)
+
+/** One line of a secret's audit: "Downloaded by forge", "2h ago". */
+@Immutable
+data class SecretAuditRow(val id: String, val what: String, val time: String, val warning: Boolean = false)
 
 /** One signed-in device, as the Devices sheet lists it. */
 @Immutable

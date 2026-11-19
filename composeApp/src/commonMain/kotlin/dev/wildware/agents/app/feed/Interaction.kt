@@ -126,6 +126,34 @@ sealed interface FeedEvent {
     data class SetAlertPrefs(val prefs: AlertPrefs?) : FeedEvent
     /** Read how long the dashboard keeps media again, after a read that failed. */
     data object ReadMediaRetention : FeedEvent
+    /** Read the dashboard's secrets, without values, for the Secrets sheet; and one secret's audit when [auditFor] is set. */
+    data class ReadSecrets(val auditFor: String? = null) : FeedEvent
+    /** Add a secret. [done] hears null once stored, or why not. [toString] leaves the value out. */
+    class AddSecret(val name: String, val value: String, val note: String?, val allAgents: Boolean, val agentIds: List<String>, val done: (String?) -> Unit = {}) : FeedEvent {
+        override fun toString() = "AddSecret($name)"
+    }
+    /** Change who may use a secret, pause or resume it, or replace its value. Null leaves a part as it is. */
+    class ChangeSecret(
+        val secretId: String,
+        val allAgents: Boolean? = null,
+        val agentIds: List<String>? = null,
+        val paused: Boolean? = null,
+        val value: String? = null,
+        val done: (String?) -> Unit = {},
+    ) : FeedEvent {
+        override fun toString() = "ChangeSecret($secretId)"
+    }
+    /** Delete a secret. The sheet has already asked. */
+    data class DeleteSecret(val secretId: String, val done: (String?) -> Unit = {}) : FeedEvent
+    /**
+     * Fetch a secret's value for the owner's eyes, or their clipboard with [copy]. The screen has
+     * already confirmed it is them. [result] hears the value, or null and why not.
+     */
+    data class RevealSecret(val secretId: String, val copy: Boolean, val result: (value: String?, problem: String?) -> Unit) : FeedEvent
+    /** Answer an agent's request for a secret. Sent at once, never queued. [toString] leaves the value out. */
+    class ProvideSecret(val questionId: String, val value: String, val done: (String?) -> Unit = {}) : FeedEvent {
+        override fun toString() = "ProvideSecret($questionId)"
+    }
     /** Read the devices signed in as the owner, for the Devices sheet. */
     data object ReadDevices : FeedEvent
     /** Revoke a device's key, so it can't read or answer anything more. The sheet has already asked. */
@@ -274,6 +302,12 @@ data class ScreenPreview(
     val devicesOpen: Boolean = false,
     /** An agent's dialog, open, by agent id. */
     val agentOpen: String? = null,
+    /** The Secrets sheet, open, on this secret (null: the list) or adding one. */
+    val secretsOpen: Boolean = false,
+    val secretOpen: String? = null,
+    val addingSecret: Boolean = false,
+    /** A secret shown in the clear, for a screenshot of what Reveal looks like. */
+    val revealedSecret: String? = null,
 )
 
 /**
@@ -373,6 +407,8 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
 
     /** The Devices sheet: every device signed in as the owner, to revoke a lost one. */
     var devicesOpen by mutableStateOf(preview.devicesOpen)
+    /** The Secrets sheet: what the dashboard keeps for agents, and who has used it. */
+    var secretsOpen by mutableStateOf(preview.secretsOpen)
     val composerFocus = FocusRequester()
 
     /** A message box has the cursor (on a phone, the keyboard is up). Back closes it first. */

@@ -317,6 +317,7 @@ internal class FeedMapper(
             RequestKind.MultiChoice -> QuestionKind.MultiChoice to options.map { choice(it) }
             RequestKind.Text -> QuestionKind.Text to emptyList()
             RequestKind.Form -> QuestionKind.Form to emptyList()
+            RequestKind.Secret -> QuestionKind.Secret to emptyList()
             null -> QuestionKind.Unsupported to emptyList()
         }
         val config = request.config
@@ -372,6 +373,7 @@ internal class FeedMapper(
             unreadReplies = unread,
             picks = if (kind == QuestionKind.MultiChoice) pickBounds(config, options.size) else PickBounds(),
             critical = request.priority == "critical",
+            secretName = config?.secretName?.takeIf { kind == QuestionKind.Secret },
             // As the website does: a choice question opens on the agent's default, when it is one of the options.
             preset = config?.defaultValue?.takeIf { kind == QuestionKind.Choice && it in options },
             unsent = index.refused(id)?.let(::unsent),

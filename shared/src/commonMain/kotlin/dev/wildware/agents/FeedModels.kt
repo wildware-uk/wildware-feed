@@ -281,6 +281,8 @@ data class RequestConfig(
     val label: String? = null,
     /** Picture questions (buttons, choice, multi_choice): the media id of each option's picture, by option. */
     val optionMedia: Map<String, String>? = null,
+    /** A secret question (request_secret): the name its value will be kept under. */
+    val secretName: String? = null,
 )
 
 /** A question an agent is stopped on. [seq] is queue order: the longest blocked first. */

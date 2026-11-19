@@ -532,6 +532,74 @@ class DashboardClient(
         http.delete("api/devices/${deviceId.encodeURLPathPart()}") { authorise() }.requireSuccess()
     }
 
+    // --- Secrets (docs/SECRETS.md) ------------------------------------------------------------
+
+    /** The dashboard's secrets, without values. A dashboard from before secrets answers 404. */
+    @Throws(Exception::class)
+    suspend fun secrets(): SecretsSnapshot = http.get("api/secrets") { authorise() }.decoded()
+
+    /** Adds a secret. [value] goes in this one request and is never kept by the app. */
+    @Throws(Exception::class)
+    suspend fun createSecret(name: String, value: String, note: String?, scope: SecretScope): SecretView =
+        http.post("api/secrets") {
+            authorise()
+            jsonBody(buildJsonObject {
+                put("name", name)
+                put("value", value)
+                if (note != null) put("note", note)
+                put("allAgents", scope.allAgents)
+                put("agentIds", JsonArray(scope.agentIds.map(::JsonPrimitive)))
+            })
+        }.decoded<SecretBody>().secret
+
+    /** Changes a secret: any of a new [value], its [scope], or whether it is [paused]. Null leaves it. */
+    @Throws(Exception::class)
+    suspend fun changeSecret(secretId: String, value: String? = null, scope: SecretScope? = null, paused: Boolean? = null): SecretView =
+        http.patch("api/secrets/${secretId.encodeURLPathPart()}") {
+            authorise()
+            jsonBody(buildJsonObject {
+                if (value != null) put("value", value)
+                if (scope != null) {
+                    put("allAgents", scope.allAgents)
+                    put("agentIds", JsonArray(scope.agentIds.map(::JsonPrimitive)))
+                }
+                if (paused != null) put("paused", paused)
+            })
+        }.decoded<SecretBody>().secret
+
+    @Throws(Exception::class)
+    suspend fun deleteSecret(secretId: String) {
+        http.delete("api/secrets/${secretId.encodeURLPathPart()}") { authorise() }.requireSuccess()
+    }
+
+    /** The value, for the owner's eyes ([copy] false) or clipboard ([copy] true). The dashboard logs which. */
+    @Throws(Exception::class)
+    suspend fun revealSecret(secretId: String, copy: Boolean): RevealedSecret =
+        http.post("api/secrets/${secretId.encodeURLPathPart()}/reveal") {
+            authorise()
+            jsonBody(buildJsonObject { put("purpose", if (copy) "copy" else "reveal") })
+        }.decoded()
+
+    /** The audit, newest first; [secretId] narrows it to one secret. */
+    @Throws(Exception::class)
+    suspend fun secretAudit(secretId: String? = null): List<SecretAuditEntry> =
+        http.get("api/secrets/audit") {
+            authorise()
+            if (secretId != null) parameter("secret", secretId)
+        }.decoded<SecretAuditBody>().entries
+
+    /**
+     * Answers an agent's request_secret: [value] is stored under the name it asked for, and the
+     * agent hears only that it is ready. Never queued: it goes now or not at all.
+     */
+    @Throws(Exception::class)
+    suspend fun provideSecret(requestId: String, value: String) {
+        http.post("api/requests/${requestId.encodeURLPathPart()}/secret") {
+            authorise()
+            jsonBody(buildJsonObject { put("value", value) })
+        }.requireSuccess()
+    }
+
     /** Swaps the web view's login cookie for a long-lived device key. */
     @Throws(Exception::class)
     suspend fun registerDevice(name: String, sessionCookie: String): DeviceRegistration =

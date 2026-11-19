@@ -85,6 +85,10 @@ class FakeServer {
     var mediaRetention: String? = """{"days":null,"kinds":["image","video","audio","file"]}"""
     /** When set, a retention save is refused with this message, as the dashboard words a 400. */
     @Volatile var refuseRetention: String? = null
+    /** The dashboard's secrets, as `GET /api/secrets` answers; null answers 404, as a dashboard from before secrets. */
+    var secrets: String? = """{"enabled":true,"secrets":[{"id":"s1","name":"OPENAI_API_KEY","note":"For the test suite","allAgents":false,"agents":[{"id":"a1","name":"forge"}],"bytes":24,"createdBy":"owner","createdAt":"2026-11-18T10:00:00Z","updatedAt":"2026-11-18T10:00:00Z","lastUsedAt":"2026-11-19T09:00:00Z"}]}"""
+    /** What a reveal answers. A made-up value: never a real secret. */
+    var revealed = """{"value":"sk-test-NOT-REAL-0000","encoding":"utf8"}"""
     var seq = 10L
 
     /** Make every write fail, as when the server is down: the outbox keeps them waiting. */
@@ -128,6 +132,9 @@ class FakeServer {
                     ?: ok(body.also { mediaRetention = it })
                 path == "/api/projects" -> ok("""{"project":{"id":"p-new","slug":"harbor-app","name":"harbor-app"},"created":true}""", HttpStatusCode.Created)
                 path.startsWith("/api/projects/") -> ok("""{"project":{"id":"p1","slug":"${path.substringAfterLast('/')}","name":"x"}}""")
+                path == "/api/secrets" -> ok("""{"secret":{"id":"s2","name":"NEW","createdAt":"2026-11-19T10:00:00Z","updatedAt":"2026-11-19T10:00:00Z"}}""", HttpStatusCode.Created)
+                path.startsWith("/api/secrets/") && path.endsWith("/reveal") -> ok(revealed)
+                path.startsWith("/api/secrets/") -> ok("""{"secret":{"id":"s1","name":"OPENAI_API_KEY","createdAt":"2026-11-18T10:00:00Z","updatedAt":"2026-11-19T10:00:00Z"}}""")
                 path == "/api/media" -> ok("""{"media":{"id":"md-up","kind":"image","mime":"image/png","status":"pending"}}""", HttpStatusCode.Created)
                 request.method == HttpMethod.Delete && Regex("^/api/agents/[^/]+$").matches(path) -> {
                     val id = path.substringAfterLast('/')
@@ -166,6 +173,8 @@ class FakeServer {
             "/api/agents" -> ok(agentRecords.entries.joinToString(",", """{"agents":[""", "]}") { (id, v) ->
                 """{"id":"$id","name":"${v.first}","createdAt":"2026-11-01T10:00:00Z","lastSeenAt":null,"revokedAt":${if (v.second) "\"2026-11-18T10:00:00Z\"" else "null"}}"""
             })
+            "/api/secrets" -> secrets?.let { ok(it) } ?: ok("""{"error":"not_found"}""", HttpStatusCode.NotFound)
+            "/api/secrets/audit" -> ok("""{"entries":[{"id":"e1","secretId":"s1","secretName":"OPENAI_API_KEY","action":"downloaded","actor":{"kind":"agent","id":"a1","name":"forge"},"detail":"from 10.0.0.2 (curl/8.5.0)","at":"2026-11-19T09:00:00Z"}]}""")
             "/api/settings/media-retention" -> mediaRetention?.let { ok(it) } ?: ok("""{"error":"forbidden","message":"Only the owner can change this."}""", HttpStatusCode.Forbidden)
             "/api/pairings" -> ok(json.encodeToString(dev.wildware.agents.PairingsSnapshot.serializer(), dev.wildware.agents.PairingsSnapshot(seq, pairings = pairings)))
             "/api/snapshot/agents" -> ok(json.encodeToString(AgentsSnapshot.serializer(), AgentsSnapshot(seq, agents = agents)))

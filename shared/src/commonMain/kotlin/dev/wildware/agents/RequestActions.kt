@@ -42,7 +42,7 @@ object RequestActions {
         }
 
         RequestKind.Text -> listOf(NotificationAction(Reply, "Reply", isTextInput = true))
-        RequestKind.MultiChoice, RequestKind.Form -> emptyList()
+        RequestKind.MultiChoice, RequestKind.Form, RequestKind.Secret -> emptyList()
     }
 
     /** The action that picks the option at [index]. */
@@ -82,7 +82,7 @@ object RequestActions {
                 ?.takeIf { actionId == Reply && it.isNotEmpty() }
                 ?.let(::JsonPrimitive)
 
-            RequestKind.MultiChoice, RequestKind.Form -> null
+            RequestKind.MultiChoice, RequestKind.Form, RequestKind.Secret -> null
         }
 
     /**

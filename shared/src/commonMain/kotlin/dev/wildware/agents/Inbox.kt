@@ -61,7 +61,7 @@ object Inbox {
     fun control(kind: RequestKind): InboxControl = when (kind) {
         RequestKind.Confirm, RequestKind.Buttons, RequestKind.Choice -> InboxControl.Choices
         RequestKind.Text -> InboxControl.Text
-        RequestKind.MultiChoice, RequestKind.Form -> InboxControl.Dashboard
+        RequestKind.MultiChoice, RequestKind.Form, RequestKind.Secret -> InboxControl.Dashboard
     }
 
     /** Swiping a row answers it outright, so only a yes-or-no question allows it. */
@@ -78,7 +78,7 @@ object Inbox {
         )
         RequestKind.Buttons, RequestKind.Choice ->
             request.options.orEmpty().mapIndexed { index, option -> InboxChoice(RequestActions.optionActionId(index), option) }
-        RequestKind.Text, RequestKind.MultiChoice, RequestKind.Form -> emptyList()
+        RequestKind.Text, RequestKind.MultiChoice, RequestKind.Form, RequestKind.Secret -> emptyList()
     }
 
     /** The dashboard page that shows this question, to answer it there. */

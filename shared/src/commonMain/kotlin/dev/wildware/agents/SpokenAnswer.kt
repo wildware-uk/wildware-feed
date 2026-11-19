@@ -20,7 +20,7 @@ object SpokenAnswer {
 
             RequestKind.Buttons, RequestKind.Choice -> matchOption(said, request.options.orEmpty())?.let(::JsonPrimitive)
             RequestKind.Text -> JsonPrimitive(spoken.trim())
-            RequestKind.MultiChoice, RequestKind.Form -> null
+            RequestKind.MultiChoice, RequestKind.Form, RequestKind.Secret -> null
         }
     }
 

@@ -36,6 +36,10 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import dev.wildware.agents.AlertPrefs
 import dev.wildware.agents.app.feed.AlertSettings
 import dev.wildware.agents.app.feed.DeviceList
+import dev.wildware.agents.app.feed.SecretAuditRow
+import dev.wildware.agents.app.feed.SecretList
+import dev.wildware.agents.app.feed.SecretRow
+import dev.wildware.agents.SecretScope
 import dev.wildware.agents.app.feed.DeviceRow
 import dev.wildware.agents.DashboardException
 import dev.wildware.agents.MediaRetention
@@ -102,6 +106,7 @@ class DashboardSession(
     val retention: StateFlow<RetentionSettings> = mutableRetention
 
     private val mutableDevices = MutableStateFlow(DeviceList())
+    private val mutableSecrets = MutableStateFlow(SecretList())
 
     /** The open agent's OAuth connections. */
     private val mutableConnections = MutableStateFlow(dev.wildware.agents.app.feed.ConnectionList())
@@ -116,7 +121,7 @@ class DashboardSession(
         .stateIn(scope, SharingStarted.Eagerly, emptySet())
 
     /** What the state adds on top of the feed: settings, the post target, devices and the known agents. */
-    private data class Side(val extras: Extras, val postTarget: String?, val devices: DeviceList, val known: List<dev.wildware.agents.AgentRecord>,
+    private data class Side(val extras: Extras, val postTarget: String?, val devices: Pair<DeviceList, dev.wildware.agents.app.feed.SecretList>, val known: List<dev.wildware.agents.AgentRecord>,
         val followsAndGroups: Pair<dev.wildware.agents.Follows, List<dev.wildware.agents.GroupView>>,
     )
 
@@ -186,9 +191,10 @@ class DashboardSession(
         dashboard.projects,
         dashboard.notifications,
         // What the owner follows rides with the projects (groups) whose levels it reads.
-        combine(combine(mutableAlerts, mutableRetention, mentionables, joining, mutableConnections, ::Extras), lastProject, mutableDevices, knownAgents,
+        combine(combine(mutableAlerts, mutableRetention, mentionables, joining, mutableConnections, ::Extras), lastProject, combine(mutableDevices, mutableSecrets, ::Pair), knownAgents,
             combine(dashboard.followed, dashboard.groups, ::Pair), ::Side),
-    ) { shown, everything, projects, notifications, (extras, postTarget, devices, known, followsAndGroups) ->
+    ) { shown, everything, projects, notifications, (extras, postTarget, devicesAndSecrets, known, followsAndGroups) ->
+        val (devices, secrets) = devicesAndSecrets
         val (follows, groups) = followsAndGroups
         val alerts = extras.alerts
         val retention = extras.retention
@@ -197,7 +203,7 @@ class DashboardSession(
         val all = if (shown.current.slug == null) shown else mapper.map(everything, projects, emptyList(), emptyList(), null)
         // Parse what the feed will draw before handing it over, here off the UI thread, so a card
         // that scrolls into view (or arrives) finds its markdown ready instead of parsing mid-frame.
-        shown.copy(searchIndex = searchEntriesOf(all.sections), bell = mapper.bell(notifications), alerts = alerts, retention = retention, mentionable = mentionable, postTarget = postTarget, devices = devices, joining = extras.joining, connections = extras.connections,
+        shown.copy(searchIndex = searchEntriesOf(all.sections), bell = mapper.bell(notifications), alerts = alerts, retention = retention, mentionable = mentionable, postTarget = postTarget, devices = devices, secrets = secrets, joining = extras.joining, connections = extras.connections,
             agents = withOffline(shown.agents, known), follows = follows,
             groups = groups.map { ProjectGroup(it.id, it.slug, it.name, accent = it.theme?.accent, archived = it.isArchived) }).also { MarkdownCache.warm(markdownIn(it).asIterable()) }
     }.stateIn(scope, SharingStarted.Eagerly, mapper.map(feed.state.value, emptyList(), emptyList(), emptyList(), null))
@@ -280,6 +286,118 @@ class DashboardSession(
                 mutableConnections.value = mutableConnections.value.copy(problem = "Couldn't revoke it. Check the connection and try again.")
             }
             mutableConnections.value = mutableConnections.value.copy(removing = null)
+        }
+    }
+
+    /**
+     * Reads the dashboard's secrets (never their values), and [auditFor]'s audit when given. A
+     * dashboard from before secrets answers 404: the way in hides.
+     */
+    private suspend fun loadSecrets(auditFor: String? = mutableSecrets.value.auditFor) {
+        val before = mutableSecrets.value
+        mutableSecrets.value = try {
+            val snapshot = client.secrets()
+            val audit = auditFor?.let { id -> client.secretAudit(id).map(::auditRow) } ?: before.audit
+            SecretList(
+                secrets = snapshot.secrets.map(::secretRow),
+                loaded = true,
+                enabled = snapshot.enabled,
+                audit = audit,
+                auditFor = auditFor ?: before.auditFor,
+            )
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (refused: DashboardException) {
+            if (refused.status == 404) SecretList(available = false) else before.copy(problem = "Couldn't read the secrets. ${refused.message}")
+        } catch (failed: Throwable) {
+            before.copy(problem = "Couldn't read the secrets. Check the connection and try again.")
+        }
+    }
+
+    private fun agentName(id: String): String? = state.value.agents.firstOrNull { it.id == id }?.name
+
+    private fun secretRow(s: dev.wildware.agents.SecretView): SecretRow {
+        val names = s.agents.map { it.name ?: agentName(it.id) ?: "an agent" }
+        return SecretRow(
+            id = s.id,
+            name = s.name,
+            note = s.note,
+            scope = when {
+                s.allAgents -> "All agents"
+                names.isEmpty() -> "No agent yet"
+                else -> names.joinToString(", ")
+            },
+            allAgents = s.allAgents,
+            agentIds = s.agents.map { it.id },
+            used = s.lastUsedAt?.let(::isoMillis)?.let { "Used ${mapper.relativeLabel(it)}" } ?: "Never used",
+            origin = s.createdBy.removePrefix("agent:").let { by ->
+                if (by == s.createdBy) "Added by you" else "From ${agentName(by) ?: "an agent"}"
+            },
+            paused = s.pausedAt != null,
+        )
+    }
+
+    private fun auditRow(e: dev.wildware.agents.SecretAuditEntry): SecretAuditRow {
+        val who = when (e.actor.kind) {
+            "owner" -> e.actor.name?.let { "on $it" } ?: "by you"
+            "agent" -> "by ${e.actor.name ?: e.actor.id?.let(::agentName) ?: "an agent"}"
+            else -> "by the dashboard"
+        }
+        val agent = e.actor.name ?: e.actor.id?.let(::agentName) ?: "an agent"
+        val what = when (e.action) {
+            "created" -> "Added $who"
+            "url_issued" -> "Link given to $agent"
+            "downloaded" -> "Fetched by $agent"
+            "upload_url_issued" -> "Upload link given to $agent"
+            "uploaded" -> "Uploaded by $agent"
+            "revealed" -> "Shown $who"
+            "copied" -> "Copied $who"
+            "value_changed" -> "Value replaced $who"
+            "scope_changed" -> "Now for ${e.detail ?: "different agents"}"
+            "paused" -> "Paused $who"
+            "resumed" -> "Resumed $who"
+            "provided" -> "Given $who, as asked"
+            "refused" -> "Refused: ${e.detail ?: "the link no longer works"}"
+            "deleted" -> "Deleted $who"
+            else -> e.action.replace('_', ' ').replaceFirstChar { it.uppercase() }
+        }
+        return SecretAuditRow(e.id, what, isoMillis(e.at)?.let(mapper::relativeLabel).orEmpty(), warning = e.action == "refused")
+    }
+
+    /** Runs a change to a secret, then reads the list again. [done] hears null, or why not. */
+    private fun changeSecret(id: String?, done: (String?) -> Unit, change: suspend () -> Unit) {
+        if (id != null) mutableSecrets.value = mutableSecrets.value.copy(busy = id)
+        scope.launch {
+            val problem = try {
+                change()
+                null
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (refused: DashboardException) {
+                refused.message ?: "The dashboard said no."
+            } catch (failed: Throwable) {
+                "Couldn't reach the dashboard. Check the connection and try again."
+            }
+            loadSecrets()
+            mutableSecrets.value = mutableSecrets.value.copy(busy = null)
+            done(problem)
+        }
+    }
+
+    /** A value for the owner: handed to [result] and kept nowhere else. */
+    private fun revealSecret(id: String, copy: Boolean, result: (String?, String?) -> Unit) {
+        scope.launch {
+            try {
+                val revealed = client.revealSecret(id, copy)
+                result(revealed.value, null)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (refused: DashboardException) {
+                result(null, refused.message ?: "The dashboard said no.")
+            } catch (failed: Throwable) {
+                result(null, "Couldn't reach the dashboard. Check the connection and try again.")
+            }
+            loadSecrets()
         }
     }
 
@@ -439,6 +557,8 @@ class DashboardSession(
         scope.launch { loadRetention() }
         // Read now, and again when an agent comes online or goes: it may be one the list has not heard of.
         scope.launch { dashboard.online.map { list -> list.map { it.agentId }.toSet() }.distinctUntilChanged().collect { loadAgents() } }
+        // Early, so the account sheet knows whether this dashboard has secrets at all.
+        scope.launch { loadSecrets(null) }
         // Another process queued, sent or dropped something: show it, and send what is new.
         scope.launch { outboxChanged.collect { outbox.reload() } }
         scope.launch { foreground.collect { resume() } }
@@ -530,6 +650,22 @@ class DashboardSession(
             is FeedEvent.SetAlertPrefs -> saveAlerts(event.prefs)
             is FeedEvent.ReadMediaRetention -> scope.launch { loadRetention() }
             is FeedEvent.ReadDevices -> scope.launch { loadDevices() }
+            is FeedEvent.ReadSecrets -> scope.launch { loadSecrets(event.auditFor ?: mutableSecrets.value.auditFor) }
+            is FeedEvent.AddSecret -> changeSecret(null, event.done) {
+                client.createSecret(event.name, event.value, event.note, SecretScope(event.allAgents, event.agentIds))
+            }
+            is FeedEvent.ChangeSecret -> changeSecret(event.secretId, event.done) {
+                val scope = if (event.allAgents != null || event.agentIds != null) {
+                    SecretScope(event.allAgents ?: false, event.agentIds.orEmpty())
+                } else {
+                    null
+                }
+                client.changeSecret(event.secretId, value = event.value, scope = scope, paused = event.paused)
+            }
+            is FeedEvent.DeleteSecret -> changeSecret(event.secretId, event.done) { client.deleteSecret(event.secretId) }
+            is FeedEvent.RevealSecret -> revealSecret(event.secretId, event.copy, event.result)
+            // Straight to the dashboard, never the outbox: a secret is never written to this device's disk.
+            is FeedEvent.ProvideSecret -> changeNow(event.done) { client.provideSecret(event.questionId, event.value) }
             is FeedEvent.RevokeDevice -> revokeDevice(event.deviceId)
             is FeedEvent.ReadConnections -> scope.launch { loadConnections(event.agentId) }
             is FeedEvent.RevokeConnection -> revokeConnection(event.agentId, event.connectionId)

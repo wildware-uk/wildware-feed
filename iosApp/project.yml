@@ -98,7 +98,7 @@ targets:
         UIBackgroundModes: [remote-notification, audio, fetch, processing]
         # The outbox sends what waited for signal while the app is closed.
         BGTaskSchedulerPermittedIdentifiers: [dev.wildware.agents.outbox.refresh, dev.wildware.agents.outbox.processing]
-        NSFaceIDUsageDescription: Confirm it is you before approving what an agent asks.
+        NSFaceIDUsageDescription: Confirm it is you before approving what an agent asks, or showing a secret.
         # Alerts from agents arrive as messages from them (NotificationService.swift).
         NSUserActivityTypes: [INSendMessageIntent]
         NSMicrophoneUsageDescription: Records the voice notes you send to your agents.
