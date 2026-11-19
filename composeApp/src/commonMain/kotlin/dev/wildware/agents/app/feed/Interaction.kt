@@ -103,6 +103,8 @@ sealed interface FeedEvent {
     data object ReadDevices : FeedEvent
     /** Revoke a device's key, so it can't read or answer anything more. The sheet has already asked. */
     data class RevokeDevice(val deviceId: String) : FeedEvent
+    /** Remove an agent: revoke it, so it and every app signed in as it stop working. The dialog has already asked. */
+    data class RemoveAgent(val agentId: String, val done: (String?) -> Unit = {}) : FeedEvent
     /** Read the MCP clients signed in as this agent over OAuth, for its dialog. */
     data class ReadConnections(val agentId: String) : FeedEvent
     /** Sign one of those clients out. The dialog has already asked. */

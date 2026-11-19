@@ -105,6 +105,18 @@ class DashboardSession(
     /** The open agent's OAuth connections. */
     private val mutableConnections = MutableStateFlow(dev.wildware.agents.app.feed.ConnectionList())
 
+    /**
+     * Every agent the dashboard knows, removed ones too. Offline agents join the agent list from here,
+     * so any agent can be opened (to rename or remove it), and removed ones are kept out of the lists
+     * and the @ list, though old cards still name them.
+     */
+    private val knownAgents = MutableStateFlow<List<dev.wildware.agents.AgentRecord>>(emptyList())
+    private val removedAgents = knownAgents.map { all -> all.filter { it.revokedAt != null }.mapTo(HashSet()) { it.id } as Set<String> }
+        .stateIn(scope, SharingStarted.Eagerly, emptySet())
+
+    /** What the state adds on top of the feed: settings, the post target, devices and the known agents. */
+    private data class Side(val extras: Extras, val postTarget: String?, val devices: DeviceList, val known: List<dev.wildware.agents.AgentRecord>)
+
     /** This device's own key was revoked from its Devices sheet: it is signed out at once. */
     private val revokedHere = MutableStateFlow(false)
 
@@ -140,7 +152,8 @@ class DashboardSession(
     private val latest: EngineFeed get() = feed.state.value
 
     /** Who the @ list offers, worked out only when the agents or their activity change. */
-    private val mentionables = combine(dashboard.agentNames, dashboard.online, dashboard.everything.state) { names, online, everything ->
+    private val mentionables = combine(dashboard.agentNames, dashboard.online, dashboard.everything.state, removedAgents) { allNames, online, everything, removed ->
+        val names = allNames.filterKeys { it !in removed }
         val lastActive = HashMap<String, Long>()
         fun saw(agentId: String?, at: Long) {
             if (agentId != null && at > (lastActive[agentId] ?: Long.MIN_VALUE)) lastActive[agentId] = at
@@ -169,8 +182,8 @@ class DashboardSession(
         dashboard.everything.state,
         dashboard.projects,
         dashboard.notifications,
-        combine(combine(mutableAlerts, mutableRetention, mentionables, joining, mutableConnections, ::Extras), lastProject, mutableDevices, ::Triple),
-    ) { shown, everything, projects, notifications, (extras, postTarget, devices) ->
+        combine(combine(mutableAlerts, mutableRetention, mentionables, joining, mutableConnections, ::Extras), lastProject, mutableDevices, knownAgents, ::Side),
+    ) { shown, everything, projects, notifications, (extras, postTarget, devices, known) ->
         val alerts = extras.alerts
         val retention = extras.retention
         val mentionable = extras.mentionable
@@ -178,7 +191,8 @@ class DashboardSession(
         val all = if (shown.current.slug == null) shown else mapper.map(everything, projects, emptyList(), emptyList(), null)
         // Parse what the feed will draw before handing it over, here off the UI thread, so a card
         // that scrolls into view (or arrives) finds its markdown ready instead of parsing mid-frame.
-        shown.copy(searchIndex = searchEntriesOf(all.sections), bell = mapper.bell(notifications), alerts = alerts, retention = retention, mentionable = mentionable, postTarget = postTarget, devices = devices, joining = extras.joining, connections = extras.connections).also { MarkdownCache.warm(markdownIn(it).asIterable()) }
+        shown.copy(searchIndex = searchEntriesOf(all.sections), bell = mapper.bell(notifications), alerts = alerts, retention = retention, mentionable = mentionable, postTarget = postTarget, devices = devices, joining = extras.joining, connections = extras.connections,
+            agents = withOffline(shown.agents, known)).also { MarkdownCache.warm(markdownIn(it).asIterable()) }
     }.stateIn(scope, SharingStarted.Eagerly, mapper.map(feed.state.value, emptyList(), emptyList(), emptyList(), null))
 
     /** True once the dashboard has stopped taking this device's key. */
@@ -204,6 +218,17 @@ class DashboardSession(
             mutableDevices.value.copy(problem = "Couldn't read the devices. ${refused.message}")
         } catch (failed: Throwable) {
             mutableDevices.value.copy(problem = "Couldn't read the devices. Check the connection and try again.")
+        }
+    }
+
+    /** Reads every agent the dashboard knows. A dashboard without the list leaves the agent list as it was: online agents only. */
+    private suspend fun loadAgents() {
+        try {
+            knownAgents.value = client.agents()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failed: Throwable) {
+            // Nothing to add: the live agents still show.
         }
     }
 
@@ -405,6 +430,8 @@ class DashboardSession(
         dashboard.start()
         scope.launch { loadAlerts() }
         scope.launch { loadRetention() }
+        // Read now, and again when an agent comes online or goes: it may be one the list has not heard of.
+        scope.launch { dashboard.online.map { list -> list.map { it.agentId }.toSet() }.distinctUntilChanged().collect { loadAgents() } }
         // Another process queued, sent or dropped something: show it, and send what is new.
         scope.launch { outboxChanged.collect { outbox.reload() } }
         scope.launch { foreground.collect { resume() } }
@@ -508,8 +535,15 @@ class DashboardSession(
                 client.renameProject(event.slug, event.name.trim(), event.description?.trim())
                 dashboard.refresh()
             }
+            is FeedEvent.RemoveAgent -> changeNow(event.done) {
+                client.removeAgent(event.agentId)
+                knownAgents.value = knownAgents.value.map { if (it.id == event.agentId) it.copy(revokedAt = "now") else it }
+                loadAgents()
+                dashboard.refresh()
+            }
             is FeedEvent.RenameAgent -> changeNow(event.done) {
                 client.renameAgent(event.agentId, event.name.trim())
+                loadAgents()
                 dashboard.refresh()
             }
             is FeedEvent.SetProjectLogo -> changeNow {
@@ -633,4 +667,19 @@ internal fun connectionPlace(origin: String): String {
         lower.endsWith(":") -> "${origin.removeSuffix(":")}: links"
         else -> origin
     }
+}
+
+/**
+ * The agent list: the live agents, then every other agent the dashboard knows that is not removed,
+ * offline, most recently seen first. Removed agents are left out, live or not.
+ */
+internal fun withOffline(live: List<dev.wildware.agents.app.feed.Agent>, known: List<dev.wildware.agents.AgentRecord>): List<dev.wildware.agents.app.feed.Agent> {
+    val removed = known.filter { it.revokedAt != null }.mapTo(HashSet()) { it.id }
+    val shown = live.filter { it.id !in removed }
+    val liveIds = shown.mapTo(HashSet()) { it.id }
+    val offline = known
+        .filter { it.revokedAt == null && it.id !in liveIds }
+        .sortedByDescending { it.lastSeenAt ?: "" }
+        .map { dev.wildware.agents.app.feed.Agent(it.id, it.name, "Agent", dev.wildware.agents.app.feed.Presence.Offline, hue(it.id)) }
+    return shown + offline
 }

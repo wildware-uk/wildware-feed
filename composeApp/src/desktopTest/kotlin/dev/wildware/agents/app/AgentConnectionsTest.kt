@@ -28,7 +28,11 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import dev.wildware.agents.app.design.AccessibilityPrefs
 import dev.wildware.agents.app.design.AgentTheme
+import dev.wildware.agents.AgentRecord
 import dev.wildware.agents.app.engine.connectionPlace
+import dev.wildware.agents.app.engine.withOffline
+import dev.wildware.agents.app.feed.Agent
+import dev.wildware.agents.app.feed.Presence
 import dev.wildware.agents.app.feed.ConnectionList
 import dev.wildware.agents.app.feed.ConnectionRow
 import dev.wildware.agents.app.feed.FakeFeed
@@ -60,12 +64,61 @@ class AgentConnectionsTest {
         loaded = true,
     )
 
+    /** What the dashboard says back to a removal: null for done, or why not. */
+    private var removeAnswer: String? = null
+
     private fun ComposeUiTest.feed(width: Int, connections: ConnectionList = forgeApps, preview: ScreenPreview = ScreenPreview()) = setContent {
         AgentTheme(dark = true) {
             Box(Modifier.size(width.dp, 900.dp)) {
-                FeedScreen(FakeFeed.state.copy(connections = connections), preview = preview, onEvent = { events += it })
+                FeedScreen(FakeFeed.state.copy(connections = connections), preview = preview, onEvent = { event ->
+                    events += event
+                    if (event is FeedEvent.RemoveAgent) event.done(removeAnswer)
+                })
             }
         }
+    }
+
+    @Test
+    fun removingAnAgentAsksFirstThenRemovesItAndCloses() = runComposeUiTest {
+        feed(1440)
+        openForge()
+        onNode(hasText("Remove agent") and hasClickAction()).performScrollTo().performClick()
+        onNode(hasText("Remove forge?", substring = true)).assertExists()
+        assertTrue(events.none { it is FeedEvent.RemoveAgent }, "nothing is removed before the owner says so")
+        onAllNodes(hasText("Keep it") and hasClickAction()).onLast().performClick()
+        onNode(hasText("Remove forge?", substring = true)).assertDoesNotExist()
+        onNode(hasText("Remove agent") and hasClickAction()).performScrollTo().performClick()
+        onAllNodes(hasText("Remove agent") and hasClickAction()).onLast().performScrollTo().performClick()
+        waitForIdle()
+        assertEquals(listOf("a2"), events.filterIsInstance<FeedEvent.RemoveAgent>().map { it.agentId })
+        onNode(hasText("Rename")).assertDoesNotExist()
+    }
+
+    @Test
+    fun aRefusedRemovalSaysWhyAndStaysOpen() = runComposeUiTest {
+        removeAnswer = "Couldn't reach the dashboard. Check the connection and try again."
+        feed(1440)
+        openForge()
+        onNode(hasText("Remove agent") and hasClickAction()).performScrollTo().performClick()
+        onAllNodes(hasText("Remove agent") and hasClickAction()).onLast().performScrollTo().performClick()
+        waitForIdle()
+        onNode(hasText("Couldn't reach the dashboard. Check the connection and try again.")).assertExists()
+        onNode(hasText("Rename")).assertExists()
+    }
+
+    @Test
+    fun theListAddsOfflineAgentsAndLeavesRemovedOnesOut() {
+        val live = listOf(Agent("a1", "forge", "Agent", Presence.Online, 0), Agent("a8", "gone-bot", "Agent", Presence.Online, 1))
+        val known = listOf(
+            AgentRecord("a1", "forge", "2026-11-01T10:00:00Z"),
+            AgentRecord("a9", "old-bot", "2026-11-01T10:00:00Z", lastSeenAt = "2026-11-02T10:00:00Z"),
+            AgentRecord("a7", "older-bot", "2026-11-01T10:00:00Z", lastSeenAt = "2026-11-01T11:00:00Z"),
+            AgentRecord("a8", "gone-bot", "2026-11-01T10:00:00Z", revokedAt = "2026-11-18T10:00:00Z"),
+        )
+        val list = withOffline(live, known)
+        assertEquals(listOf("forge", "old-bot", "older-bot"), list.map { it.name })
+        assertEquals(listOf(Presence.Online, Presence.Offline, Presence.Offline), list.map { it.presence })
+        assertEquals(live, withOffline(live, emptyList()), "an older dashboard: live agents only, as before")
     }
 
     private fun ComposeUiTest.openForge() =
@@ -154,6 +207,20 @@ class AgentConnectionsTest {
         waitUntil(timeoutMillis = 20_000) { onAllNodes(hasText("Connected apps")).fetchSemanticsNodes().isEmpty() }
     }
 
+    @Test
+    fun anOfflineAgentCanBeOpenedAndRemoved() = runDesktopComposeUiTest(width = 1440, height = 900) {
+        val platform = AppPlatform.inMemory(engine = { server.engine() }, sessions = MemorySessionStore(SavedSession("https://dash.test", "key-1", "Test device", deviceId = "d1")))
+        setContent { Box(Modifier.size(1440.dp, 900.dp)) { AgentsApp(platform, dark = true, accessibility = AccessibilityPrefs()) } }
+        waitForNode(hasClickAction() and hasContentDescription("old-bot", substring = true)).performScrollTo().performClick()
+        assertTrue(onAllNodes(hasContentDescription("gone-bot", substring = true)).fetchSemanticsNodes().isEmpty(), "a removed agent is not listed")
+        waitForNode(hasText("Remove agent") and hasClickAction()).performScrollTo().performClick()
+        onAllNodes(hasText("Remove agent") and hasClickAction()).onLast().performScrollTo().performClick()
+        val until = System.currentTimeMillis() + 20_000
+        while (server.wrote("DELETE", "/api/agents/a9") == null && System.currentTimeMillis() < until) Thread.sleep(25)
+        assertTrue(server.wrote("DELETE", "/api/agents/a9") != null, "writes were ${server.writes}")
+        waitUntil(timeoutMillis = 20_000) { onAllNodes(hasContentDescription("old-bot", substring = true)).fetchSemanticsNodes().isEmpty() }
+    }
+
     private fun ComposeUiTest.shoot(name: String, scale: Float, dark: Boolean, safeArea: SafeArea, preview: ScreenPreview) {
         setContent {
             CompositionLocalProvider(LocalDensity provides Density(scale)) {
@@ -167,6 +234,13 @@ class AgentConnectionsTest {
         val file = File(outDir, "$name-${if (dark) "dark" else "light"}-agent-connections.png")
         ImageIO.write(onAllNodes(isRoot()).onFirst().captureToImage().toAwtImage(), "png", file)
         println("screenshot: ${file.absolutePath}")
+        onAllNodes(hasText("Keep it") and hasClickAction()).onFirst().performClick()
+        onNode(hasText("Remove agent") and hasClickAction()).performScrollTo().performClick()
+        onAllNodes(hasText("Remove agent") and hasClickAction()).onLast().performScrollTo()
+        waitForIdle()
+        val removing = File(outDir, "$name-${if (dark) "dark" else "light"}-agent-remove.png")
+        ImageIO.write(onAllNodes(isRoot()).onFirst().captureToImage().toAwtImage(), "png", removing)
+        println("screenshot: ${removing.absolutePath}")
     }
 
     @Test

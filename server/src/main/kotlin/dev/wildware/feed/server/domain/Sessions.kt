@@ -50,6 +50,14 @@ class Sessions(private val db: Database, private val bus: Bus, private val work:
         return find(session.id)!! to true
     }
 
+    /** Close every open session of [agentId] (it was revoked), announcing it offline if it was online. */
+    fun endAll(agentId: String) {
+        val at = clock()
+        val wasOnline = onlineAt(agentId, at)
+        db.update("UPDATE sessions SET ended_at = ? WHERE agent_id = ? AND ended_at IS NULL", at, agentId)
+        if (wasOnline) announce(agentId, null, false)
+    }
+
     /** Close sessions idle for 10 minutes; announce agents that went offline because of it. */
     fun sweep(idleMs: Long = SESSION_IDLE_MS) {
         val at = clock()

@@ -121,6 +121,11 @@ limits (spec 01) count per agent on the Kotlin server, so new tokens never buy m
   its access tokens, or null.
 - `DELETE /api/agents/{id}/connections/{connection}` → `{revoked: true|false}`: revokes that one
   connection; the agent and its other tokens keep working. 404 for a connection that is not that agent's.
+- `GET /api/agents` → `{agents: [{id, name, createdAt, lastSeenAt, revokedAt}]}`: every agent, removed
+  ones too (old cards still name them), by seq. The app adds the offline ones to its agent list.
+- `DELETE /api/agents/{id}` → `{revoked: true|false}`: removes the agent. It is revoked (its token
+  and every OAuth connection stop working), its open sessions end with an `agent.presence` offline
+  event, and `agent.revoked {agentId}` is published. What it posted stays. 404 for an unknown agent.
 
 ## 7. Storage (migration 051)
 

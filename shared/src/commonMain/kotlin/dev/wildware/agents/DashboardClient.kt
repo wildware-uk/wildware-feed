@@ -250,6 +250,19 @@ class DashboardClient(
         return response.decoded<ConnectionsBody>().connections
     }
 
+    /** Every agent, removed ones too (marked by [AgentRecord.revokedAt]): old cards still name them. */
+    @Throws(Exception::class)
+    suspend fun agents(): List<AgentRecord> = http.get("api/agents") { authorise() }.decoded<AgentsBody>().agents
+
+    /**
+     * Removes an agent: its token and every app signed in as it stop working at once, and it leaves
+     * the agent lists. What it posted stays.
+     */
+    @Throws(Exception::class)
+    suspend fun removeAgent(agentId: String) {
+        http.delete("api/agents/${agentId.encodeURLPathPart()}") { authorise() }.requireSuccess()
+    }
+
     /** Revokes one of an agent's connections: that client is signed out; the agent and its other tokens keep working. */
     @Throws(Exception::class)
     suspend fun revokeAgentConnection(agentId: String, connectionId: String) {
@@ -650,6 +663,20 @@ data class AgentConnection(
     val createdAt: String,
     val lastUsedAt: String? = null,
 )
+
+/** An agent as the owner's list has it. */
+@Serializable
+data class AgentRecord(
+    val id: String,
+    val name: String,
+    val createdAt: String,
+    val lastSeenAt: String? = null,
+    /** Set once the owner removed it. */
+    val revokedAt: String? = null,
+)
+
+@kotlinx.serialization.Serializable
+internal data class AgentsBody(val agents: List<AgentRecord> = emptyList())
 
 @kotlinx.serialization.Serializable
 internal data class ConnectionsBody(val connections: List<AgentConnection> = emptyList())

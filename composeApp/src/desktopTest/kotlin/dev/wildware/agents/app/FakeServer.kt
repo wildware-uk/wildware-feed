@@ -71,6 +71,11 @@ class FakeServer {
     @Volatile var refuseApprove: String? = null
     /** This device's alert choice, as `{"prefs":…}` JSON. */
     var alertPrefs = """{"prefs":null}"""
+    /** Every agent, as `GET /api/agents` answers: id to (name, removed). DELETE /api/agents/{id} removes one. */
+    val agentRecords: MutableMap<String, Pair<String, Boolean>> = Collections.synchronizedMap(linkedMapOf(
+        "a1" to ("forge" to false), "a9" to ("old-bot" to false), "a8" to ("gone-bot" to true),
+    ))
+
     /** Agent a1's OAuth connections, as `GET /api/agents/a1/connections` answers. */
     var connections = """{"connections":[{"id":"g1","clientName":"Cursor","redirectOrigin":"cursor:","createdAt":"2026-11-18T10:00:00Z","lastUsedAt":"2026-11-19T09:00:00Z"}]}"""
 
@@ -124,6 +129,11 @@ class FakeServer {
                 path == "/api/projects" -> ok("""{"project":{"id":"p-new","slug":"harbor-app","name":"harbor-app"},"created":true}""", HttpStatusCode.Created)
                 path.startsWith("/api/projects/") -> ok("""{"project":{"id":"p1","slug":"${path.substringAfterLast('/')}","name":"x"}}""")
                 path == "/api/media" -> ok("""{"media":{"id":"md-up","kind":"image","mime":"image/png","status":"pending"}}""", HttpStatusCode.Created)
+                request.method == HttpMethod.Delete && Regex("^/api/agents/[^/]+$").matches(path) -> {
+                    val id = path.substringAfterLast('/')
+                    agentRecords[id]?.let { agentRecords[id] = it.first to true }
+                    ok("""{"revoked":true}""")
+                }
                 path.startsWith("/api/pairings/") && path.endsWith("/approve") -> refuseApprove?.let {
                     ok("""{"error":"$it","message":"an agent is already called \"forge\"; choose another name"}""", HttpStatusCode.Conflict)
                 } ?: ok("{}")
@@ -153,6 +163,9 @@ class FakeServer {
             "/api/devices/current/alert-prefs" -> ok(alertPrefs)
             "/api/devices" -> ok(devices)
             "/api/agents/a1/connections" -> ok(connections)
+            "/api/agents" -> ok(agentRecords.entries.joinToString(",", """{"agents":[""", "]}") { (id, v) ->
+                """{"id":"$id","name":"${v.first}","createdAt":"2026-11-01T10:00:00Z","lastSeenAt":null,"revokedAt":${if (v.second) "\"2026-11-18T10:00:00Z\"" else "null"}}"""
+            })
             "/api/settings/media-retention" -> mediaRetention?.let { ok(it) } ?: ok("""{"error":"forbidden","message":"Only the owner can change this."}""", HttpStatusCode.Forbidden)
             "/api/pairings" -> ok(json.encodeToString(dev.wildware.agents.PairingsSnapshot.serializer(), dev.wildware.agents.PairingsSnapshot(seq, pairings = pairings)))
             "/api/snapshot/agents" -> ok(json.encodeToString(AgentsSnapshot.serializer(), AgentsSnapshot(seq, agents = agents)))

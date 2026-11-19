@@ -18,6 +18,7 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
@@ -217,7 +218,36 @@ fun Route.feedRoutes(app: App) {
     )
 
     endpoint(
+        "/api/agents",
+        HttpMethod.Get to {
+            // Revoked ones too, marked: old cards still name them.
+            call.respondOwner(200, buildJsonObject {
+                put("agents", JsonArray(app.agents.list(includeRevoked = true).map { a ->
+                    buildJsonObject {
+                        put("id", a.id)
+                        put("name", a.name)
+                        put("createdAt", Wire.isoOf(a.createdAt))
+                        put("lastSeenAt", a.lastSeenAt?.let { JsonPrimitive(Wire.isoOf(it)) } ?: JsonNull)
+                        put("revokedAt", a.revokedAt?.let { JsonPrimitive(Wire.isoOf(it)) } ?: JsonNull)
+                    }
+                }))
+            })
+        },
+    )
+
+    endpoint(
         "/api/agents/{id}",
+        HttpMethod.Delete to {
+            // Removing an agent revokes it: its token and every OAuth connection stop working at once,
+            // its sessions end (so it leaves the agent lists), and what it posted stays.
+            val id = param("id")
+            val revoked = app.agents.revoke(id)
+            if (revoked) {
+                app.sessions.endAll(id)
+                app.bus.publish("agent.revoked", buildJsonObject { put("agentId", id) })
+            }
+            call.respondOwner(200, buildJsonObject { put("revoked", revoked) })
+        },
         HttpMethod.Patch to {
             val body = call.jsonObjectBody()
             if (body.keys.toList() != listOf("name")) throw invalid("an agent patch changes name and nothing else")
