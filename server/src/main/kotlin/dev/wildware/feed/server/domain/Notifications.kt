@@ -200,9 +200,13 @@ class Notifications(private val db: Database, private val bus: Bus, private val 
         return changed.size
     }
 
-    private fun announce(changed: List<String?>, also: List<String> = emptyList()) {
+    /**
+     * [changed] are the rows an `UPDATE … RETURNING` marked, in no promised order (Postgres returns
+     * them as it finds them), so their tags go out oldest bell row first, then [also].
+     */
+    private fun announce(changed: List<Seen>, also: List<String> = emptyList()) {
         if (changed.isNotEmpty()) bus.publish("notifications.seen", buildJsonObject { put("count", changed.size) })
-        publishCleared(changed.filterNotNull() + also)
+        publishCleared(changed.sortedBy { it.seq }.mapNotNull { it.tag } + also)
     }
 
     /** `notifications.cleared {tags}`: these alerts are done with on every device. Nothing when there are none. */
@@ -259,7 +263,7 @@ class Notifications(private val db: Database, private val bus: Bus, private val 
         private const val CHUNK = 200
 
         /** What an `UPDATE … RETURNING` gives [tagOf]. */
-        private const val SEEN_COLUMNS = "kind, update_id, message_id"
+        private const val SEEN_COLUMNS = "seq, kind, update_id, message_id"
 
         /** An alert's tag (spec/08 §6.7): its kind and the id of what it is about. */
         private val TAG = Regex("^(request|pairing|update|message)-(.+)$")
@@ -271,11 +275,17 @@ class Notifications(private val db: Database, private val bus: Bus, private val 
          * The alert tag a seen bell row clears: an update's or a line's. A question's alert stays
          * until the question is settled, since its buttons still answer it.
          */
-        private fun tagOf(rs: java.sql.ResultSet): String? = when (rs.getString(1)) {
-            "update" -> rs.getString(2)?.let { "update-$it" }
-            "reply" -> rs.getString(3)?.let { "message-$it" }
-            else -> null
-        }
+        private fun tagOf(rs: java.sql.ResultSet) = Seen(
+            seq = rs.getLong(1),
+            tag = when (rs.getString(2)) {
+                "update" -> rs.getString(3)?.let { "update-$it" }
+                "reply" -> rs.getString(4)?.let { "message-$it" }
+                else -> null
+            },
+        )
+
+        /** A bell row just marked seen: where it sits in the bell, and the alert tag it clears, if any. */
+        private class Seen(val seq: Long, val tag: String?)
 
         private fun marks(ids: List<*>) = ids.joinToString(", ") { "?" }
 
