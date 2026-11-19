@@ -67,6 +67,8 @@ class FakeServer {
     var notifications = listOf<NotificationView>()
     /** This device's alert choice, as `{"prefs":…}` JSON. */
     var alertPrefs = """{"prefs":null}"""
+    /** The devices signed in as the owner, as `GET /api/devices` answers. */
+    var devices = """{"devices":[{"id":"d1","name":"Test device","createdAt":"2026-11-18T10:00:00Z","lastSeenAt":null},{"id":"d2","name":"Old phone","createdAt":"2026-10-01T10:00:00Z","lastSeenAt":"2026-11-01T09:00:00Z"}]}"""
     /** How long the dashboard keeps media, as `GET /api/settings/media-retention` answers; null refuses with a 403. */
     var mediaRetention: String? = """{"days":null,"kinds":["image","video","audio","file"]}"""
     /** When set, a retention save is refused with this message, as the dashboard words a 400. */
@@ -139,6 +141,7 @@ class FakeServer {
             "/api/messages" -> ok(json.encodeToString(MessagesSnapshot.serializer(), MessagesSnapshot(seq = seq, messages = messages, reactions = reactions, media = messageMedia)))
             "/api/snapshot/requests" -> ok(json.encodeToString(RequestsSnapshot.serializer(), RequestsSnapshot(seq, requests = requests)))
             "/api/devices/current/alert-prefs" -> ok(alertPrefs)
+            "/api/devices" -> ok(devices)
             "/api/settings/media-retention" -> mediaRetention?.let { ok(it) } ?: ok("""{"error":"forbidden","message":"Only the owner can change this."}""", HttpStatusCode.Forbidden)
             "/api/snapshot/agents" -> ok(json.encodeToString(AgentsSnapshot.serializer(), AgentsSnapshot(seq, agents = agents)))
             "/api/notifications" -> ok(json.encodeToString(NotificationsSnapshot.serializer(), NotificationsSnapshot(

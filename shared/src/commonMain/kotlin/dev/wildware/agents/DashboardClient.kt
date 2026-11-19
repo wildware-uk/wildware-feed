@@ -361,6 +361,19 @@ class DashboardClient(
             })
         }.decoded()
 
+    /** Every device signed in to this dashboard as the owner, oldest first. */
+    @Throws(Exception::class)
+    suspend fun devices(): List<OwnerDevice> = http.get("api/devices") { authorise() }.decoded<DevicesBody>().devices
+
+    /**
+     * Revokes a device's key, so a lost phone can't read or answer anything more. Revoking this
+     * device's own key signs it out.
+     */
+    @Throws(Exception::class)
+    suspend fun removeDevice(deviceId: String) {
+        http.delete("api/devices/${deviceId.encodeURLPathPart()}") { authorise() }.requireSuccess()
+    }
+
     /** Swaps the web view's login cookie for a long-lived device key. */
     @Throws(Exception::class)
     suspend fun registerDevice(name: String, sessionCookie: String): DeviceRegistration =
@@ -539,6 +552,20 @@ class DashboardClient(
         else -> "Shared ${attachments.size} files from my phone"
     }
 }
+
+/** A device signed in as the owner. Times are ISO-8601; [lastSeenAt] is null until it is first used. */
+@Serializable
+data class OwnerDevice(
+    val id: String,
+    val name: String,
+    val createdAt: String,
+    val lastSeenAt: String? = null,
+    /** It takes push alerts (an iPhone). */
+    val hasApns: Boolean = false,
+)
+
+@kotlinx.serialization.Serializable
+internal data class DevicesBody(val devices: List<OwnerDevice> = emptyList())
 
 @kotlinx.serialization.Serializable
 internal data class ProjectBody(val project: ProjectView)

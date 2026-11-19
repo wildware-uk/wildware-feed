@@ -34,6 +34,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import dev.wildware.agents.AlertPrefs
 import dev.wildware.agents.app.feed.AlertSettings
+import dev.wildware.agents.app.feed.DeviceList
+import dev.wildware.agents.app.feed.DeviceRow
 import dev.wildware.agents.DashboardException
 import dev.wildware.agents.MediaRetention
 import dev.wildware.agents.app.feed.RetentionSettings
@@ -98,6 +100,11 @@ class DashboardSession(
     /** How long the dashboard keeps media, read when the session starts. */
     val retention: StateFlow<RetentionSettings> = mutableRetention
 
+    private val mutableDevices = MutableStateFlow(DeviceList())
+
+    /** This device's own key was revoked from its Devices sheet: it is signed out at once. */
+    private val revokedHere = MutableStateFlow(false)
+
     private val selected = MutableStateFlow<String?>(null)
     private var feed: Feed = dashboard.everything
     private val feeds = MutableStateFlow(feed)
@@ -135,20 +142,64 @@ class DashboardSession(
         dashboard.everything.state,
         dashboard.projects,
         dashboard.notifications,
-        combine(combine(mutableAlerts, mutableRetention, mentionables, ::Triple), lastProject, ::Pair),
-    ) { shown, everything, projects, notifications, (settings, postTarget) ->
+        combine(combine(mutableAlerts, mutableRetention, mentionables, ::Triple), lastProject, mutableDevices, ::Triple),
+    ) { shown, everything, projects, notifications, (settings, postTarget, devices) ->
         val (alerts, retention, mentionable) = settings
         // Search looks across every project's loaded cards, whichever feed is on screen.
         val all = if (shown.current.slug == null) shown else mapper.map(everything, projects, emptyList(), emptyList(), null)
         // Parse what the feed will draw before handing it over, here off the UI thread, so a card
         // that scrolls into view (or arrives) finds its markdown ready instead of parsing mid-frame.
-        shown.copy(searchIndex = searchEntriesOf(all.sections), bell = mapper.bell(notifications), alerts = alerts, retention = retention, mentionable = mentionable, postTarget = postTarget).also { MarkdownCache.warm(markdownIn(it).asIterable()) }
+        shown.copy(searchIndex = searchEntriesOf(all.sections), bell = mapper.bell(notifications), alerts = alerts, retention = retention, mentionable = mentionable, postTarget = postTarget, devices = devices).also { MarkdownCache.warm(markdownIn(it).asIterable()) }
     }.stateIn(scope, SharingStarted.Eagerly, mapper.map(feed.state.value, emptyList(), emptyList(), emptyList(), null))
 
     /** True once the dashboard has stopped taking this device's key. */
-    val signedOut: StateFlow<Boolean> = dashboard.status
-        .map { it == StreamStatus.SignedOut }
+    val signedOut: StateFlow<Boolean> = combine(dashboard.status, revokedHere) { status, revoked -> revoked || status == StreamStatus.SignedOut }
         .stateIn(scope, SharingStarted.Eagerly, false)
+
+    /** Reads the devices signed in as the owner. This one first, then the most recently used. */
+    private suspend fun loadDevices() {
+        mutableDevices.value = try {
+            val rows = client.devices().map { d ->
+                DeviceRow(
+                    id = d.id,
+                    name = d.name,
+                    seen = d.lastSeenAt?.let(::isoMillis)?.let { "Last used ${mapper.relativeLabel(it)}" } ?: "Never used",
+                    added = isoMillis(d.createdAt)?.let { "Added ${mapper.shortDay(it)}" } ?: "",
+                    current = d.id == saved.deviceId,
+                ) to (d.lastSeenAt?.let(::isoMillis) ?: 0L)
+            }
+            DeviceList(rows.sortedWith(compareByDescending<Pair<DeviceRow, Long>> { it.first.current }.thenByDescending { it.second }).map { it.first }, loaded = true)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (refused: DashboardException) {
+            mutableDevices.value.copy(problem = "Couldn't read the devices. ${refused.message}")
+        } catch (failed: Throwable) {
+            mutableDevices.value.copy(problem = "Couldn't read the devices. Check the connection and try again.")
+        }
+    }
+
+    /** Revokes a device's key, then reads the list again. Revoking this device's own key signs it out. */
+    private fun revokeDevice(id: String) {
+        if (mutableDevices.value.removing != null) return
+        mutableDevices.value = mutableDevices.value.copy(removing = id, problem = null)
+        scope.launch {
+            try {
+                client.removeDevice(id)
+                if (id == saved.deviceId) {
+                    revokedHere.value = true
+                    return@launch
+                }
+                loadDevices()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (refused: DashboardException) {
+                mutableDevices.value = mutableDevices.value.copy(problem = "Couldn't revoke it. ${refused.message}")
+            } catch (failed: Throwable) {
+                mutableDevices.value = mutableDevices.value.copy(problem = "Couldn't revoke it. Check the connection and try again.")
+            }
+            mutableDevices.value = mutableDevices.value.copy(removing = null)
+        }
+    }
 
     private suspend fun loadAlerts() {
         mutableAlerts.value = try {
@@ -338,6 +389,8 @@ class DashboardSession(
             is FeedEvent.ClearNotifications -> dashboard.markNotificationsSeen(null)
             is FeedEvent.SetAlertPrefs -> saveAlerts(event.prefs)
             is FeedEvent.ReadMediaRetention -> scope.launch { loadRetention() }
+            is FeedEvent.ReadDevices -> scope.launch { loadDevices() }
+            is FeedEvent.RevokeDevice -> revokeDevice(event.deviceId)
             is FeedEvent.SetMediaRetention -> saveRetention(event.setting)
             is FeedEvent.SelectProject -> select(event.slug)
             is FeedEvent.CreateProject -> changeNow(event.done) {

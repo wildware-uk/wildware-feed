@@ -62,27 +62,11 @@ private val kindLabels = listOf(
 internal fun KeepMediaEntry(ui: FeedUi) {
     val retention = ui.state.retention
     if (!retention.allowed) return
-    val colors = AgentTheme.colors
-    val shape = AgentTheme.shapes.small
     val now = if (retention.loaded) MediaRetention.label(retention.setting.days) else ""
     SettingsHeading("This dashboard")
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .touchTarget()
-            .clip(shape)
-            .pressable("Keep media" + if (now.isNotEmpty()) ", $now" else "", shape, labelIsShown = true) {
-                ui.alertsOpen = false
-                ui.retentionOpen = true
-            }
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(Icons.Clock, null, tint = colors.textMuted, modifier = Modifier.size(18.dp))
-        Spacer(Modifier.width(12.dp))
-        Text("Keep media", Modifier.weight(1f), color = colors.text, style = AgentTheme.type.body)
-        MetaText(now, color = colors.textMuted)
-        Icon(Icons.ChevronRight, null, tint = colors.textFaint, modifier = Modifier.padding(start = 6.dp).size(16.dp))
+    SettingsLinkRow(Icons.Clock, "Keep media", now) {
+        ui.alertsOpen = false
+        ui.retentionOpen = true
     }
 }
 

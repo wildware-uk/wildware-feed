@@ -613,6 +613,9 @@ internal class FeedMapper(
         return "${day.dayOfWeek.name.lowercase().replaceFirstChar { it.uppercase() }} ${day.day} ${monthName(day)} ${day.year}"
     }
 
+    /** "3 August 2026": a day, short enough for a line of small print. */
+    fun shortDay(millis: Long): String = dayOf(millis).let { "${it.day} ${monthName(it)} ${it.year}" }
+
     private fun monthName(day: LocalDate) = day.month.name.lowercase().replaceFirstChar { it.uppercase() }
 
     /** Stated, never silent: a card that was rewritten says when. Null when it never was. */
@@ -745,3 +748,7 @@ internal fun StreamStatus.toLink(): LinkStatus = when (this) {
     StreamStatus.Offline -> LinkStatus.Reconnecting
     StreamStatus.Idle, StreamStatus.SignedOut -> LinkStatus.Offline
 }
+
+/** An ISO-8601 instant as milliseconds, or null when it isn't one. */
+@OptIn(ExperimentalTime::class)
+internal fun isoMillis(iso: String): Long? = runCatching { Instant.parse(iso).toEpochMilliseconds() }.getOrNull()

@@ -28,6 +28,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
+import dev.wildware.agents.app.design.pressable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -116,6 +118,7 @@ fun AlertSettingsSheet(ui: FeedUi, safeArea: SafeArea) {
             )
             // The dashboard's own settings, for whoever may change them.
             KeepMediaEntry(ui)
+            DevicesEntry(ui)
         }
     }
 }
@@ -162,6 +165,28 @@ internal fun SettingsSheet(title: String, safeArea: SafeArea, onClose: () -> Uni
             Box(Modifier.fillMaxWidth().heightIn(max = 1.dp).background(colors.border))
             content()
         }
+    }
+}
+
+/** A row that opens more settings: an icon, what it is, what it is set to now, and an arrow. */
+@Composable
+internal fun SettingsLinkRow(icon: ImageVector, label: String, value: String, onClick: () -> Unit) {
+    val colors = AgentTheme.colors
+    val shape = AgentTheme.shapes.small
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .touchTarget()
+            .clip(shape)
+            .pressable(label + if (value.isNotEmpty()) ", $value" else "", shape, labelIsShown = true, onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(icon, null, tint = colors.textMuted, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(12.dp))
+        Text(label, Modifier.weight(1f), color = colors.text, style = AgentTheme.type.body)
+        MetaText(value, color = colors.textMuted)
+        Icon(Icons.ChevronRight, null, tint = colors.textFaint, modifier = Modifier.padding(start = 6.dp).size(16.dp))
     }
 }
 

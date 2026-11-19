@@ -234,6 +234,18 @@ class DashboardClientTest {
     }
 
     @Test
+    fun `the devices are listed and one is revoked by id`() = runTest {
+        val c = client {
+            json("""{"devices":[{"id":"d1","name":"Sam's iPhone","createdAt":"2026-08-03T10:00:00Z","lastSeenAt":"2026-11-19T09:00:00Z","hasApns":true,"hasLiveActivity":false,"alertProjects":null,"alertPrefs":null},{"id":"d2","name":"Old iPad","createdAt":"2026-03-02T10:00:00Z","lastSeenAt":null}]}""")
+        }
+        val devices = c.devices()
+        c.removeDevice("d2")
+
+        assertEquals(listOf(OwnerDevice("d1", "Sam's iPhone", "2026-08-03T10:00:00Z", "2026-11-19T09:00:00Z", hasApns = true), OwnerDevice("d2", "Old iPad", "2026-03-02T10:00:00Z")), devices)
+        assertEquals(listOf("GET /api/devices", "DELETE /api/devices/d2"), seen.map { "${it.first.method.value} ${it.first.url.encodedPath}" })
+    }
+
+    @Test
     fun `recent activity is named and plain`() = runTest {
         val activity = client { json(SNAPSHOT) }.recent(projectSlug = "garden-game", limit = 5)
 

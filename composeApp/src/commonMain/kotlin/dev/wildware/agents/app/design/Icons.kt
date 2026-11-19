@@ -70,6 +70,8 @@ object Icons {
     val Grip = icon("grip", "M5 9H19", "M5 15H19")
     val ZoomIn = icon("zoom-in", circle(11f, 11f, 7f), "M21 21 16.5 16.5", "M11 8V14", "M8 11H14")
     val ZoomOut = icon("zoom-out", circle(11f, 11f, 7f), "M21 21 16.5 16.5", "M8 11H14")
+    /** A phone, for devices. */
+    val Phone = icon("phone", rect(6f, 2f, 12f, 20f, 2.5f), "M11 18H13")
     val Link = icon("link", "M10 13A5 5 0 0 0 17.54 13.54L20.54 10.54A5 5 0 0 0 13.47 3.47L11.75 5.18", "M14 11A5 5 0 0 0 6.46 10.46L3.46 13.46A5 5 0 0 0 10.53 20.53L12.24 18.82")
     val Trash = icon("trash", "M3 6H21", "M19 6V20A2 2 0 0 1 17 22H7A2 2 0 0 1 5 20V6", "M8 6V4A2 2 0 0 1 10 2H14A2 2 0 0 1 16 4V6")
     val Pencil = icon("pencil", "M12 20H21", "M16.5 3.5A2.12 2.12 0 0 1 19.5 6.5L7 19L3 20L4 16Z")

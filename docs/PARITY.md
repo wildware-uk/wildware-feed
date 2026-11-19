@@ -165,7 +165,7 @@ It doesn't, beyond oldest first.
 | 111 | Theme toggle | Done | Header Dark/Light, remembered | Command bar "Switch light or dark" only | Sidebar moon + command bar | No visible toggle on phone | P2 |
 | 112 | Sign in / out | Done | Password page; logout confirm page | Yes sign-in screen; Sign out in drawer, no confirm | Yes, sidebar icon, no confirm | Add confirm | P2 |
 | 113 | Account avatar button | Done | — | Yes: Opens "Alerts on this device" | Yes | — | P2 |
-| 114 | Devices list / revoke | Open | No web UI (API only) | No | No | Not a gap vs web | P2 |
+| 114 | Devices list / revoke | Done | No web UI (API only) | Yes: "Devices" in the account sheet (and the command bar) lists every signed-in device, this one first, with when each was last used; Revoke asks first, and revoking this device signs it out | Yes | App only: the website never had it | P2 |
 | **Keyboard (desktop)** |||||||
 | 115 | Escape closes drawers/menus/lightbox | Done | Yes | Drawer/thread/viewer Esc | Menus, viewer, command bar | Parity | — |
 | 116 | Cmd/Ctrl+Enter sends | Done | Composer + reply | — | Yes | — | — |
@@ -178,7 +178,7 @@ It doesn't, beyond oldest first.
 
 ## What is left
 
-Every P0 and P1 row is Done. P2s still open: row 114, the Devices screen (PR #114). Rows 51 (share links), 55 (app frames: a link instead) and 100 (board columns) are dropped.
+Nothing. Every row is Done, App only or N/A, except three the owner dropped: rows 51 (share links), 55 (app frames: a link instead) and 100 (board columns).
 
 ## Method and limits
 

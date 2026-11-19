@@ -503,6 +503,8 @@ data class FeedState(
     val logoChoices: List<LogoChoice> = emptyList(),
     /** On "All projects", the project a new post goes to unless another is picked: last posted to, or last opened. */
     val postTarget: String? = null,
+    /** The devices signed in as the owner, read when the Devices sheet opens. */
+    val devices: DeviceList = DeviceList(),
 ) {
     fun item(id: String): FeedItem? = sections.firstNotNullOfOrNull { s -> s.items.firstOrNull { it.id == id } }
 }
@@ -547,6 +549,29 @@ data class RetentionSettings(
     val saving: Boolean = false,
     val problem: String? = null,
     val saves: Int = 0,
+)
+
+/** The devices signed in as the owner: this one first, then the rest by when they were last used. */
+@Immutable
+data class DeviceList(
+    val devices: List<DeviceRow> = emptyList(),
+    val loaded: Boolean = false,
+    /** The device being revoked, while the dashboard is asked. */
+    val removing: String? = null,
+    val problem: String? = null,
+)
+
+/** One signed-in device, as the Devices sheet lists it. */
+@Immutable
+data class DeviceRow(
+    val id: String,
+    val name: String,
+    /** "Last used 5m ago", "Never used". */
+    val seen: String,
+    /** "Added 3 August 2026". */
+    val added: String,
+    /** The device this app is running on. */
+    val current: Boolean = false,
 )
 
 /** The live connection, as the header says it. */

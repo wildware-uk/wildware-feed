@@ -95,6 +95,10 @@ sealed interface FeedEvent {
     data class SetAlertPrefs(val prefs: AlertPrefs?) : FeedEvent
     /** Read how long the dashboard keeps media again, after a read that failed. */
     data object ReadMediaRetention : FeedEvent
+    /** Read the devices signed in as the owner, for the Devices sheet. */
+    data object ReadDevices : FeedEvent
+    /** Revoke a device's key, so it can't read or answer anything more. The sheet has already asked. */
+    data class RevokeDevice(val deviceId: String) : FeedEvent
     /** Save how long the dashboard keeps media. The screen has already asked when it deletes more. */
     data class SetMediaRetention(val setting: MediaRetention) : FeedEvent
     data class DropUnsent(val outboxId: String) : FeedEvent
@@ -225,6 +229,8 @@ data class ScreenPreview(
     /** The "Keep media" settings, open, with this draft in them (null starts from what is saved). */
     val retentionOpen: Boolean = false,
     val retentionDraft: RetentionForm? = null,
+    /** The Devices sheet, open. */
+    val devicesOpen: Boolean = false,
 )
 
 /**
@@ -299,6 +305,9 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
     var alertsOpen by mutableStateOf(preview.alertsOpen)
     /** How long the dashboard keeps media. */
     var retentionOpen by mutableStateOf(preview.retentionOpen)
+
+    /** The Devices sheet: every device signed in as the owner, to revoke a lost one. */
+    var devicesOpen by mutableStateOf(preview.devicesOpen)
     val composerFocus = FocusRequester()
 
     /** A message box has the cursor (on a phone, the keyboard is up). Back closes it first. */
