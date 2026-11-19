@@ -178,6 +178,7 @@ internal class FeedMapper(
                 attachments = update.media.tiles().map { tile(it) },
                 sounds = update.media.sounds(),
                 files = update.media.files(),
+                embeds = update.embeds.embeds(),
                 reactions = reactions(reactions),
                 replies = replies(replies, unread, agents, project, threads),
                 unreadReplies = unread,
@@ -196,6 +197,7 @@ internal class FeedMapper(
             attachments = post.media.tiles().map { tile(it) },
             sounds = post.media.sounds(),
             files = post.media.files(),
+            embeds = post.embeds.embeds(),
             acks = acks(this, agents),
             replies = replies(replies, unread, agents, project, threads),
             unreadReplies = unread,
@@ -249,6 +251,7 @@ internal class FeedMapper(
             attachments = request.cardMedia.tiles().map { tile(it) },
             sounds = request.cardMedia.sounds(),
             files = request.cardMedia.files(),
+            embeds = request.embeds.embeds(),
             form = if (kind == QuestionKind.Form) {
                 FormField(
                     label = config?.label?.takeIf { it.isNotBlank() },
@@ -308,6 +311,7 @@ internal class FeedMapper(
                 attachments = line.media.tiles().map { tile(it) },
                 sounds = line.media.sounds(),
                 files = line.media.files(),
+                embeds = line.embeds.embeds(),
                 acks = acks(line.acks, agents),
             )
         }
@@ -403,6 +407,8 @@ internal class FeedMapper(
                 removedAfterDays = removed?.afterDays,
             )
         }
+
+    private fun List<dev.wildware.agents.EmbedView>.embeds() = map { dev.wildware.agents.app.feed.Embed(dev.wildware.agents.EmbedLook.resolve(it), serverUrl) }
 
     private fun image(media: MediaView): Attachment {
         val variant = if ("thumb-1600" in media.variants) "thumb-1600" else "original"

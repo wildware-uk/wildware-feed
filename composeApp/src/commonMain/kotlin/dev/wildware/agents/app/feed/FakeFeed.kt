@@ -165,6 +165,39 @@ object FakeFeed {
         high = true,
     )
 
+    private fun embed(id: String, type: String, name: String, spec: String, data: String, source: String? = null) = Embed(
+        dev.wildware.agents.EmbedLook.resolve(
+            dev.wildware.agents.EmbedView(
+                id = id, type = type, typeName = name,
+                spec = kotlinx.serialization.json.Json.parseToJsonElement(spec) as kotlinx.serialization.json.JsonObject,
+                data = kotlinx.serialization.json.Json.parseToJsonElement(data) as kotlinx.serialization.json.JsonObject,
+                sourceUrl = source,
+            ),
+        ),
+    )
+
+    /** A Jira ticket, the way an agent quotes one onto a card. */
+    val jiraEmbed = embed(
+        "e1", "jira-issue", "Jira issue",
+        """{"theme":{"accent":"#0052cc","background":"#ffffff","foreground":"#172b4d","muted":"#626f86","border":"#dfe1e6","radius":"sm"},
+           "frame":{"padding":"normal"},"chrome":{"mark":"jira","label":"Jira"},
+           "blocks":[{"type":"text","value":"{{key}}","tone":"accent","size":"sm"},{"type":"heading","value":"{{summary}}","level":2},
+             {"type":"chips","value":"{{status}}","style":"lozenge"},{"type":"divider"},
+             {"type":"fields","items":[{"label":"Assignee","value":"{{assignee}}"},{"label":"Priority","value":"{{priority}}"}]},
+             {"type":"footer","value":"Open in Jira","url":"{{source_url}}"}]}""",
+        """{"key":"FEED-112","summary":"Stale push tokens are not cleared","status":"In progress","assignee":"scout","priority":"High"}""",
+        source = "https://example.atlassian.net/browse/FEED-112",
+    )
+
+    /** A Slack message: no badge bar, a rounded avatar, the body under the name. */
+    val slackEmbed = embed(
+        "e2", "slack-message", "Slack message",
+        """{"theme":{"background":"#ffffff","foreground":"#1d1c1d","muted":"#616061","border":"#dddddd","accent":"#1264a3"},
+           "frame":{"indent":true,"padding":"roomy"},"chrome":{"mark":"slack","label":"#{{channel}}"},
+           "blocks":[{"type":"header","title":"{{author}}","meta":"{{time}}","shape":"rounded"},{"type":"markdown","value":"{{text}}"}]}""",
+        """{"channel":"ios","author":"Sam","time":"10:02","text":"My iPad stopped getting alerts after the update. **Anyone else?**"}""",
+    )
+
     private val push = FeedItem.Update(
         id = "u4",
         time = "Yesterday",

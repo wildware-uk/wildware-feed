@@ -155,6 +155,7 @@ data class Reply(
     val attachments: List<Attachment> = emptyList(),
     val sounds: List<Sound> = emptyList(),
     val files: List<FileAttachment> = emptyList(),
+    val embeds: List<Embed> = emptyList(),
     /** Agents reading it or thinking about it: "scout is thinking…". */
     val acks: Acks = Acks(),
 )
@@ -274,6 +275,8 @@ sealed interface FeedItem {
         val sounds: List<Sound> = emptyList(),
         /** Files, to download. */
         val files: List<FileAttachment> = emptyList(),
+        /** Things shown in the look of where they came from: a Slack message, a Jira ticket. */
+        val embeds: List<Embed> = emptyList(),
         val reactions: List<Reaction> = emptyList(),
         val acks: Acks = Acks(),
         override val replies: List<Reply> = emptyList(),
@@ -306,6 +309,8 @@ sealed interface FeedItem {
         val attachments: List<Attachment> = emptyList(),
         val sounds: List<Sound> = emptyList(),
         val files: List<FileAttachment> = emptyList(),
+        /** Things shown in the look of where they came from: a Slack message, a Jira ticket. */
+        val embeds: List<Embed> = emptyList(),
         /** A form question's field and actions; null for every other kind. */
         val form: FormField? = null,
         /** A text question's box: the agent's placeholder, draft, lines and length. Null for every other kind. */
@@ -339,6 +344,8 @@ sealed interface FeedItem {
         val attachments: List<Attachment> = emptyList(),
         val sounds: List<Sound> = emptyList(),
         val files: List<FileAttachment> = emptyList(),
+        /** Things shown in the look of where they came from: a Slack message, a Jira ticket. */
+        val embeds: List<Embed> = emptyList(),
         val acks: Acks = Acks(),
         override val replies: List<Reply> = emptyList(),
         override val unreadReplies: Int = 0,
