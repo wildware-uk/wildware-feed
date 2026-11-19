@@ -183,6 +183,10 @@ data class ScreenPreview(
     val highlighted: String? = null,
     /** The "couldn't find what that link pointed at" notice. */
     val missingLink: Boolean = false,
+    /** The video (by address) playing in its card. */
+    val inlineVideo: String? = null,
+    /** The video filling the window. */
+    val playing: VideoSource? = null,
     /** The notification list under the bell, open. */
     val bellOpen: Boolean = false,
     /** The work-state choice, open. */
@@ -209,7 +213,10 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
     var viewer by mutableStateOf(preview.viewer)
 
     /** A video playing full screen in the app (phones). */
-    var playing by mutableStateOf<VideoSource?>(null)
+    var playing by mutableStateOf(preview.playing)
+
+    /** The video playing in its card, by address: one at a time. */
+    var inlineVideo by mutableStateOf(preview.inlineVideo)
 
     /** A short line at the bottom of the screen, gone by itself. */
     var toast by mutableStateOf<String?>(null)

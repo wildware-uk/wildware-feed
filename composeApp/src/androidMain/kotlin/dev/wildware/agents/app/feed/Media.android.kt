@@ -21,7 +21,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-/** Videos play in the app, full screen, with the system's own controls. */
+/** The app adds its own full-screen button over the video. */
+actual val videoControlsHaveFullScreen: Boolean = false
+
+/** Videos play in the app, in the card or full screen, with the system's own controls. */
 actual val playsVideoInApp: Boolean = true
 
 /** The system's video view and its play, pause and scrub bar, streaming with the device key. */

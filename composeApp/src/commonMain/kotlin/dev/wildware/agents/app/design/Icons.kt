@@ -81,6 +81,9 @@ object Icons {
     val ArrowUp = icon("arrow-up", "M12 19V5", "M5 12 12 5 19 12")
     val Play = icon("play", "M7 4 19 12 7 20Z")
     val Pause = icon("pause", "M8 5V19", "M16 5V19")
+    val Volume = icon("volume", "M11 5 6 9H2V15H6L11 19Z", "M15.5 8.5A5 5 0 0 1 15.5 15.5", "M19 5A10 10 0 0 1 19 19")
+    val Muted = icon("muted", "M11 5 6 9H2V15H6L11 19Z", "M22 9 16 15", "M16 9 22 15")
+    val Expand = icon("expand", "M15 3H21V9", "M9 21H3V15", "M21 3 14 10", "M3 21 10 14")
     val File = icon("file", "M14 2H6A2 2 0 0 0 4 4V20A2 2 0 0 0 6 22H18A2 2 0 0 0 20 20V8Z", "M14 2V8H20")
     val Sliders = icon(
         "sliders",

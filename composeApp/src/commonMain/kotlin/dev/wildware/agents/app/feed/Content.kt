@@ -346,6 +346,7 @@ private fun names(agents: List<Agent>): String = when (agents.size) {
 fun AttachmentView(attachment: Attachment, modifier: Modifier = Modifier, onOpen: () -> Unit = {}) {
     val colors = AgentTheme.colors
     val shape = AgentTheme.shapes.medium
+    val inline = playingInline(attachment.video)
     Column(modifier) {
         Box(
             Modifier
@@ -356,7 +357,8 @@ fun AttachmentView(attachment: Attachment, modifier: Modifier = Modifier, onOpen
                 .border(1.dp, colors.border, shape)
                 .then(
                     // Removed media has nothing to open: the placeholder says what happened.
-                    if (attachment.isRemoved) {
+                    // Playing, the player's own controls take the taps.
+                    if (attachment.isRemoved || inline) {
                         Modifier
                     } else {
                         Modifier.pressable(
@@ -368,7 +370,12 @@ fun AttachmentView(attachment: Attachment, modifier: Modifier = Modifier, onOpen
                     },
                 ),
         ) {
-            if (attachment.video != null && !attachment.isRemoved) VideoFace(attachment, Modifier.fillMaxSize()) else AttachmentImage(attachment, Modifier.fillMaxSize())
+            val video = attachment.video?.takeUnless { attachment.isRemoved }
+            when {
+                video != null && inline -> InlineVideo(video, Modifier.fillMaxSize())
+                video != null -> VideoFace(attachment, Modifier.fillMaxSize())
+                else -> AttachmentImage(attachment, Modifier.fillMaxSize())
+            }
         }
         Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(if (attachment.video != null) Icons.Play else Icons.Image, null, tint = colors.textFaint, modifier = Modifier.size(14.dp))
@@ -475,11 +482,17 @@ fun MediaGrid(images: List<Attachment>, modifier: Modifier = Modifier, onOpen: (
 private fun GridTile(images: List<Attachment>, index: Int, modifier: Modifier, onOpen: (Int) -> Unit, more: Int = 0) {
     val image = images[index]
     val spoken = tileLabel(image, index, images.size) + if (more > 0) ", and $more more" else ""
+    val inline = playingInline(image.video)
     // A removed tile opens nothing, unless it is the "+N more" one, which still opens the rest.
-    val opens = !image.isRemoved || more > 0
+    val opens = (!image.isRemoved || more > 0) && !inline
     val press = if (opens) Modifier.pressable(spoken, RectangleShape, role = if (image.video != null) Role.Button else Role.Image) { onOpen(index) } else Modifier
     Box(modifier.then(press)) {
-        if (image.video != null && !image.isRemoved) VideoFace(image, Modifier.fillMaxSize(), small = true) else AttachmentImage(image, Modifier.fillMaxSize())
+        val video = image.video?.takeUnless { image.isRemoved }
+        when {
+            video != null && inline -> InlineVideo(video, Modifier.fillMaxSize())
+            video != null -> VideoFace(image, Modifier.fillMaxSize(), small = true)
+            else -> AttachmentImage(image, Modifier.fillMaxSize())
+        }
         if (more > 0) {
             Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.5f)), contentAlignment = Alignment.Center) {
                 Text("+$more", color = Color.White, style = AgentTheme.type.title)

@@ -18,7 +18,6 @@ import kotlin.test.assertTrue
 /** Where the desktop puts media, and that a file from an agent is saved but never run. */
 class DesktopMediaHandlerTest {
     private val root: File = Files.createTempDirectory("media").toFile()
-    private val opened = mutableListOf<File>()
     private val auth = MediaAuth("https://dash.test", "Bearer key-1")
     private val seen = mutableListOf<String?>()
 
@@ -30,8 +29,6 @@ class DesktopMediaHandlerTest {
             }
         },
         downloads = File(root, "Downloads"),
-        playing = File(root, "playing"),
-        openWithSystem = { opened += it },
     )
 
     @Test
@@ -43,21 +40,14 @@ class DesktopMediaHandlerTest {
         assertEquals("Saved to Downloads as build.log", first)
         assertEquals("Saved to Downloads as build (2).log", second)
         assertEquals("bytes of /media/doc/original", File(root, "Downloads/build.log").readText())
-        assertTrue(opened.isEmpty(), "a saved file is never opened")
         assertEquals(listOf<String?>("Bearer key-1", "Bearer key-1"), seen)
     }
 
     @Test
-    fun aSoundOpensInTheSystemPlayerWithAnExtensionThatSaysWhatItIs() = runBlocking {
+    fun soundsAndVideosAreNeverDownloadedToPlay() = runBlocking {
         handler().open(Sound("snd", "https://dash.test/media/snd/original", 9_000, "audio/mpeg"), auth)
-        assertEquals("sound.mp3", opened.single().name)
-        assertEquals("bytes of /media/snd/original", opened.single().readText())
-    }
-
-    @Test
-    fun theKeyGoesOnlyToTheDashboard() = runBlocking {
-        handler().open(Sound("x", "https://elsewhere.test/a.mp3", null, "audio/mpeg"), auth)
-        assertEquals(listOf<String?>(null), seen)
+        assertTrue(File(root, "Downloads").listFiles().orEmpty().isEmpty(), "nothing saved")
+        assertEquals(listOf<String?>(), seen, "nothing fetched")
     }
 
     @Test

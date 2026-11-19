@@ -116,7 +116,10 @@ expect fun rememberPlatformMediaHandler(engine: () -> HttpClientEngine): MediaHa
 /** Whether videos play inside the app (phones) or are handed to the system's player (desktop). */
 expect val playsVideoInApp: Boolean
 
-/** A video playing full screen with the platform's own controls: play, scrub and full screen. */
+/** Whether the platform's own video controls already have a full-screen button (the iPhone's do). */
+expect val videoControlsHaveFullScreen: Boolean
+
+/** A video playing with the platform's own controls: play, scrub and full screen. Streamed, never saved. */
 @Composable
 expect fun InAppVideo(video: VideoSource, auth: MediaAuth?, modifier: Modifier)
 

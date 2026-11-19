@@ -316,21 +316,22 @@ class EngineWiringTest {
     }
 
     @Test
-    fun aVideoPlaysItsTranscodeWhenTapped() = runDesktopComposeUiTest(width = 1440, height = 900) {
+    fun aVideoPlaysInItsCardWhenTapped() = runDesktopComposeUiTest(width = 1440, height = 900) {
         withMedia()
         app()
         waitForNode(hasContentDescription("Play video 1 of 1, 0:42")).performScrollTo().performClick()
-        waitUntil(timeoutMillis = 10_000) { media.opened.isNotEmpty() }
-        assertEquals(listOf("https://dash.test/media/vid/video"), media.opened)
+        // In the app, in its card: nothing downloaded, nothing handed to another program.
+        waitForNode(hasContentDescription("Full screen"))
+        assertTrue(media.opened.isEmpty(), "got ${media.opened}")
     }
 
     @Test
-    fun onDesktopASoundPlaysInTheSystemPlayer() = runDesktopComposeUiTest(width = 1440, height = 900) {
+    fun onDesktopASoundPlaysInTheApp() = runDesktopComposeUiTest(width = 1440, height = 900) {
         withMedia()
         app()
         waitForNode(hasContentDescription("Play sound 1 of 1, 0:09")).performScrollTo().performClick()
-        waitUntil(timeoutMillis = 10_000) { media.opened.isNotEmpty() }
-        assertEquals(listOf("https://dash.test/media/snd/original"), media.opened)
+        waitForIdle()
+        assertTrue(media.opened.isEmpty(), "nothing handed to the system's player: ${media.opened}")
     }
 
     @Test

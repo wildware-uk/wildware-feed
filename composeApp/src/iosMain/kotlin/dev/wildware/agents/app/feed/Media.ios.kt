@@ -34,7 +34,10 @@ import platform.CoreMedia.*
 import platform.Foundation.*
 import platform.UIKit.*
 
-/** Videos play in the app, full screen, in the system's own player. */
+/** AVKit's controls have their own full-screen button. */
+actual val videoControlsHaveFullScreen: Boolean = true
+
+/** Videos play in the app, in the card or full screen, in the system's own player. */
 actual val playsVideoInApp: Boolean = true
 
 /** A streamed asset, sending the device key to the dashboard (and to nobody else). */

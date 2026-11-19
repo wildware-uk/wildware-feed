@@ -1,5 +1,14 @@
 package dev.wildware.agents.app.feed
 
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.foundation.focusable
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -54,7 +63,7 @@ import kotlinx.coroutines.launch
 
 /**
  * What a tap on a grid tile does: a picture opens the viewer (looking through the pictures only),
- * a video plays, in the app on a phone and in the system's player on a desktop.
+ * a video plays right there in its card.
  */
 @Composable
 fun rememberTileOpener(attachments: List<Attachment>): (Int) -> Unit {
@@ -71,7 +80,7 @@ fun rememberTileOpener(attachments: List<Attachment>): (Int) -> Unit {
             when {
                 tile.isRemoved -> if (pictures.isNotEmpty()) ui?.viewer = Gallery(pictures, 0)
                 video == null -> ui?.viewer = Gallery(pictures, pictures.indexOf(tile))
-                playsVideoInApp -> ui?.playing = video
+                playsVideoInApp -> ui?.inlineVideo = video.url
                 handler != null -> scope.launch {
                     ui?.toast = "Opening the video…"
                     ui?.toast = handOver { handler.open(video, auth) }
@@ -331,11 +340,59 @@ fun FileChip(file: FileAttachment) {
     }
 }
 
+/** Whether [video] is the one playing in its card: read per tile, so only that tile redraws. */
+@Composable
+internal fun playingInline(video: VideoSource?): Boolean {
+    val ui = LocalFeedUi.current ?: return false
+    if (video == null) return false
+    val playing by remember(video.url) { derivedStateOf { ui.inlineVideo == video.url } }
+    return playing
+}
+
+/**
+ * A video playing in its card, in place of its poster, with the platform's controls and a way to fill
+ * the window. Scrolled away, it stops; tapped again, it starts from the top.
+ */
+@Composable
+internal fun InlineVideo(video: VideoSource, modifier: Modifier) {
+    val ui = LocalFeedUi.current
+    val auth = LocalMediaAuth.current
+    DisposableEffect(video.url) { onDispose { if (ui?.inlineVideo == video.url) ui.inlineVideo = null } }
+    Box(modifier.background(Color.Black)) {
+        InAppVideo(video, auth, Modifier.fillMaxSize())
+        if (!videoControlsHaveFullScreen) Box(
+            Modifier
+                .align(Alignment.TopEnd)
+                .padding(8.dp)
+                .clip(CircleShape)
+                .background(Color.Black.copy(alpha = 0.55f))
+                .pressable("Full screen", CircleShape) {
+                    ui?.inlineVideo = null
+                    ui?.playing = video
+                },
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(Icons.Expand, null, tint = Color.White, modifier = Modifier.padding(8.dp).size(16.dp))
+        }
+    }
+}
+
 /** A video playing full screen in the app, over everything, with a close button. */
 @Composable
 fun VideoOverlay(ui: FeedUi, video: VideoSource, safeArea: SafeArea) {
     val auth = LocalMediaAuth.current
-    Box(Modifier.fillMaxSize().background(Color.Black).semantics { contentDescription = "Video" }) {
+    // Escape closes it on a computer, as Back does on a phone.
+    val focus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(Color.Black)
+            .semantics { contentDescription = "Video" }
+            .focusRequester(focus)
+            .focusable()
+            .onKeyEvent { e -> if (e.key == Key.Escape && e.type == KeyEventType.KeyUp) { ui.playing = null; true } else false },
+    ) {
         InAppVideo(video, auth, Modifier.fillMaxSize().padding(top = safeArea.top, bottom = safeArea.bottom))
         Box(
             Modifier

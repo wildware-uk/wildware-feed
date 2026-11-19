@@ -92,6 +92,12 @@ kotlin {
                 implementation(libs.ktor.client.okhttp)
                 // "This computer": the app can run the Wildware Feed server itself.
                 implementation(project(":server"))
+                // Plays videos and sounds in the app (AVFoundation, Media Foundation, GStreamer). It lists
+                // the coroutines test kit as a runtime dependency, which has no place in the app.
+                implementation(libs.composemediaplayer.get().let { "${it.module}:${it.versionConstraint.requiredVersion}" }) {
+                    exclude(group = "org.jetbrains.kotlinx", module = "kotlinx-coroutines-test-jvm")
+                    exclude(group = "org.jetbrains.kotlinx", module = "kotlinx-coroutines-test")
+                }
             }
         }
         androidMain.dependencies {
@@ -132,7 +138,8 @@ compose.desktop {
             copyright = "© 2026 Wildware"
             // What `suggestRuntimeModules` found, plus the TLS curves OkHttp needs that it can't see.
             // java.sql and java.net.http are for the server the app can host ("This computer").
-            modules("java.instrument", "java.management", "jdk.unsupported", "java.naming", "jdk.crypto.ec", "java.sql", "java.net.http")
+            // jdk.httpserver: the loopback proxy the video player streams through (LoopbackMediaProxy).
+            modules("java.instrument", "java.management", "jdk.unsupported", "java.naming", "jdk.crypto.ec", "java.sql", "java.net.http", "jdk.httpserver")
             macOS {
                 bundleID = "dev.wildware.agents.desktop"
                 dockName = "Wildware Feed"
