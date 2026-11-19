@@ -78,6 +78,9 @@ class DemoServer(private val now: () -> Long = { Clock.System.now().toEpochMilli
     /** The alerts this "device" asked for, as JSON; null for the defaults. */
     private var alertPrefs: JsonElement = JsonNull
 
+    /** Agents the owner renamed in the demo, by id. */
+    private var renamed = mapOf<String, String>()
+
     /** A network engine that never leaves the device. Each session asks for its own. */
     fun engine(): HttpClientEngine = MockEngine { request -> route(request) }
 
@@ -123,7 +126,7 @@ class DemoServer(private val now: () -> Long = { Clock.System.now().toEpochMilli
                             cardFields = fields,
                             cardApps = emptyList(),
                             updates = UpdatesPage(updates.filter { slug == null || it.projectId == projectId }, null, false),
-                            agentNames = data.agentNames,
+                            agentNames = data.agentNames + renamed,
                         ),
                     ),
                 )
@@ -131,7 +134,7 @@ class DemoServer(private val now: () -> Long = { Clock.System.now().toEpochMilli
             "api/snapshot/updates" -> ok(json.encodeToString(UpdatesPage(emptyList(), null, false)))
             "api/messages" -> ok(json.encodeToString(MessagesSnapshot(seq = seq, messages = messages, reactions = reactions)))
             "api/snapshot/requests" -> ok(json.encodeToString(RequestsSnapshot(seq, requests = requests)))
-            "api/snapshot/agents" -> ok(json.encodeToString(AgentsSnapshot(seq, agents = data.agents(now()))))
+            "api/snapshot/agents" -> ok(json.encodeToString(AgentsSnapshot(seq, agents = data.agents(now()).map { a -> renamed[a.agentId]?.let { a.copy(name = it) } ?: a })))
             "api/notifications" -> ok(json.encodeToString(NotificationsSnapshot(seq)))
             "api/devices/current/alert-prefs" -> ok("""{"prefs":$alertPrefs}""")
             else -> ok("""{"error":"not_found","message":"The demo has no $path."}""", HttpStatusCode.NotFound)
@@ -181,6 +184,13 @@ class DemoServer(private val now: () -> Long = { Clock.System.now().toEpochMilli
                     description = input.text("description"), createdAt = now(), updatedAt = now(),
                 ).also { projects = projects + it }
                 ok("""{"project":${json.encodeToString(project)},"created":${existing == null}}""", if (existing == null) HttpStatusCode.Created else HttpStatusCode.OK)
+            }
+            path.startsWith("api/agents/") && method == HttpMethod.Patch -> {
+                val id = parts[2]
+                val name = input.text("name")?.trim().orEmpty()
+                if (name.isEmpty()) return ok("""{"error":"invalid_argument","message":"An agent needs a name."}""", HttpStatusCode.BadRequest)
+                renamed = renamed + (id to name)
+                ok("""{"agent":{"id":"$id","name":${json.encodeToString(name)}}}""")
             }
             path.startsWith("api/projects/") && method == HttpMethod.Patch -> {
                 val slug = parts[2]

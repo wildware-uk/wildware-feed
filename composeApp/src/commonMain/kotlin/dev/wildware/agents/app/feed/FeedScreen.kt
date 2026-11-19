@@ -248,6 +248,7 @@ private fun FeedScreenBody(
             if (ui.alertsOpen) AlertSettingsSheet(ui, if (phone) safeArea else SafeArea())
             if (ui.retentionOpen) RetentionSettingsSheet(ui, if (phone) safeArea else SafeArea())
             ui.projectDialog?.let { ProjectDialogView(ui, it) }
+            ui.agentOpen?.let { AgentDialog(ui, it) }
         }
         FollowNavigation(ui, navigator)
         FollowSystemBack(ui, widthPx)

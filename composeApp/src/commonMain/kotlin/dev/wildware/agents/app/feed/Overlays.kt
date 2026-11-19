@@ -532,10 +532,13 @@ fun ProjectsDrawer(ui: FeedUi, progress: EdgeProgress, widthPx: Float, safeArea:
             SectionLabel("Agents", Modifier.padding(horizontal = 10.dp))
             Spacer(Modifier.height(6.dp))
             ui.state.agents.forEach { a ->
+                val shape = AgentTheme.shapes.medium
                 Row(
                     Modifier
-                        .padding(horizontal = 10.dp, vertical = 6.dp)
-                        .semantics(mergeDescendants = true) { contentDescription = agentSpoken(a) },
+                        .fillMaxWidth()
+                        .clip(shape)
+                        .pressable(agentSpoken(a), shape) { ui.agentOpen = a.id }
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.Top,
                 ) {
                     Avatar(Author.AgentAuthor(a), 26.dp, showPresence = true)

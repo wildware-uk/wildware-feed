@@ -229,7 +229,7 @@ fun Sidebar(
                     MetaText("${state.agents.count { it.presence == Presence.Online }} online")
                 }
                 Spacer(Modifier.height(8.dp))
-                state.agents.forEach { a -> AgentRow(a) }
+                state.agents.forEach { a -> AgentRow(a) { ui.agentOpen = a.id } }
                 if (state.agents.isEmpty()) MetaText("No agents online right now", Modifier.padding(horizontal = 10.dp))
             }
             Spacer(Modifier.height(18.dp))
@@ -291,12 +291,11 @@ private fun ProjectGlyph(p: Project) {
 }
 
 @Composable
-private fun AgentRow(agent: Agent) {
+private fun AgentRow(agent: Agent, onOpen: () -> Unit) {
     val colors = AgentTheme.colors
-    val spoken = "${agent.name}, ${agent.role}, ${agent.presence.label}" + (agent.doing?.let { ", $it" } ?: "")
     val shape = AgentTheme.shapes.small
     Row(
-        Modifier.fillMaxWidth().clip(shape).pressable(spoken, shape) {}.padding(horizontal = 10.dp, vertical = 5.dp),
+        Modifier.fillMaxWidth().clip(shape).pressable(agentSpoken(agent), shape, onClick = onOpen).padding(horizontal = 10.dp, vertical = 5.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Avatar(Author.AgentAuthor(agent), 26.dp, showPresence = true)

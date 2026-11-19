@@ -214,10 +214,10 @@ class DashboardSession(
     }
 
     /**
-     * A change to a project, made straight away rather than queued: it needs the dashboard's say
+     * A change to a project or an agent, made straight away rather than queued: it needs the dashboard's say
      * (a name can be taken or too long), so [done] hears null once it is made or the reason it wasn't.
      */
-    private fun changeProject(done: (String?) -> Unit = {}, change: suspend () -> Unit) {
+    private fun changeNow(done: (String?) -> Unit = {}, change: suspend () -> Unit) {
         scope.launch {
             val problem = try {
                 change()
@@ -330,32 +330,36 @@ class DashboardSession(
             is FeedEvent.ReadMediaRetention -> scope.launch { loadRetention() }
             is FeedEvent.SetMediaRetention -> saveRetention(event.setting)
             is FeedEvent.SelectProject -> select(event.slug)
-            is FeedEvent.CreateProject -> changeProject(event.done) {
+            is FeedEvent.CreateProject -> changeNow(event.done) {
                 val made = client.createProject(event.name.trim(), event.description?.trim())
                 dashboard.refresh()
                 select(made.slug)
             }
-            is FeedEvent.EditProject -> changeProject(event.done) {
+            is FeedEvent.EditProject -> changeNow(event.done) {
                 client.renameProject(event.slug, event.name.trim(), event.description?.trim())
                 dashboard.refresh()
             }
-            is FeedEvent.SetProjectLogo -> changeProject {
+            is FeedEvent.RenameAgent -> changeNow(event.done) {
+                client.renameAgent(event.agentId, event.name.trim())
+                dashboard.refresh()
+            }
+            is FeedEvent.SetProjectLogo -> changeNow {
                 client.setProjectLogo(event.slug, event.mediaId)
                 dashboard.refresh()
             }
-            is FeedEvent.SetLogoInsteadOfName -> changeProject {
+            is FeedEvent.SetLogoInsteadOfName -> changeNow {
                 client.setLogoInsteadOfName(event.slug, event.instead)
                 dashboard.refresh()
             }
-            is FeedEvent.PinProject -> changeProject {
+            is FeedEvent.PinProject -> changeNow {
                 client.setProjectPinned(event.slug, event.pinned)
                 dashboard.refresh()
             }
-            is FeedEvent.ArchiveProject -> changeProject {
+            is FeedEvent.ArchiveProject -> changeNow {
                 client.setProjectArchived(event.slug, event.archived)
                 dashboard.refresh()
             }
-            is FeedEvent.SetProjectColours -> changeProject {
+            is FeedEvent.SetProjectColours -> changeNow {
                 client.setProjectColours(event.slug, event.background, event.accent)
                 dashboard.refresh()
             }

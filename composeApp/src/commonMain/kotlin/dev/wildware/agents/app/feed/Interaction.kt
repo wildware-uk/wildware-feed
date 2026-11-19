@@ -60,6 +60,9 @@ sealed interface FeedEvent {
     /** Rename project [slug] and say what it is for. [done] as for [CreateProject]. */
     data class EditProject(val slug: String, val name: String, val description: String?, val done: (problem: String?) -> Unit = {}) : FeedEvent
 
+    /** Rename agent [agentId] everywhere it shows. [done] hears null once renamed, or why not. */
+    data class RenameAgent(val agentId: String, val name: String, val done: (String?) -> Unit = {}) : FeedEvent
+
     /** Make picture [mediaId] project [slug]'s logo, or take the logo off with null. */
     data class SetProjectLogo(val slug: String, val mediaId: String?) : FeedEvent
 
@@ -248,6 +251,9 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
 
     /** A short line at the bottom of the screen, gone by itself. */
     var toast by mutableStateOf<String?>(null)
+
+    /** The agent whose card is open, to read about it and rename it: its id. */
+    var agentOpen by mutableStateOf<String?>(null)
 
     /** The new-project or project-settings dialog, while it is open. */
     var projectDialog by mutableStateOf<ProjectDialog?>(null)

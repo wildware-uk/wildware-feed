@@ -174,7 +174,7 @@ fun ProjectDialogView(ui: FeedUi, dialog: ProjectDialog) {
 }
 
 @Composable
-private fun BoxedField(
+internal fun BoxedField(
     label: String,
     state: TextFieldState,
     spoken: String,

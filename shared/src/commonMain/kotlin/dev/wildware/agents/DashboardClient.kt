@@ -229,6 +229,15 @@ class DashboardClient(
             put("theme", buildJsonObject { put("logoReplacesName", instead) })
         })
 
+    /** Renames an agent: every card it posted is relabelled. A name the dashboard refuses comes back as a [DashboardException]. */
+    @Throws(Exception::class)
+    suspend fun renameAgent(agentId: String, name: String) {
+        http.patch("api/agents/${agentId.encodeURLPathPart()}") {
+            authorise()
+            jsonBody(buildJsonObject { put("name", name) })
+        }.requireSuccess()
+    }
+
     /** Pins a project to the top of the project list, or unpins it. */
     @Throws(Exception::class)
     suspend fun setProjectPinned(slug: String, pinned: Boolean): ProjectView =

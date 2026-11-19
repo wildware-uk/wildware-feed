@@ -330,6 +330,13 @@ class DashboardClientTest {
     }
 
     @Test
+    fun `renaming an agent patches its name`() = runTest {
+        client { json("""{"agent":{"id":"a1","name":"forge-mac"}}""") }.renameAgent("a1", "forge-mac")
+
+        assertEquals("""{"name":"forge-mac"}""", seen.single().second)
+    }
+
+    @Test
     fun `a logo is set and taken off and can stand in for the name`() = runTest {
         val c = client { json("""{"project":{"id":"p9","slug":"harbor-app","name":"harbor-app"}}""") }
         c.setProjectLogo("harbor-app", "md1")

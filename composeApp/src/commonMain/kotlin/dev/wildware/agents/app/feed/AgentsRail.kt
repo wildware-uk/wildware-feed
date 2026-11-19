@@ -15,7 +15,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.clearAndSetSemantics
-import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.draw.clip
+import dev.wildware.agents.app.design.pressable
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
@@ -45,19 +46,21 @@ fun AgentsRail(ui: FeedUi, modifier: Modifier = Modifier) {
         if (agents.isEmpty()) {
             MetaText("Nobody is working right now.", color = colors.textMuted)
         }
-        agents.forEach { agent -> AgentRow(agent) }
+        agents.forEach { agent -> AgentRow(agent) { ui.agentOpen = agent.id } }
     }
 }
 
 @Composable
-private fun AgentRow(agent: Agent) {
+private fun AgentRow(agent: Agent, onOpen: () -> Unit) {
     val colors = AgentTheme.colors
     val details = agent.details
+    val shape = AgentTheme.shapes.small
     Row(
         Modifier
             .fillMaxWidth()
-            .padding(vertical = 7.dp)
-            .semantics(mergeDescendants = true) { contentDescription = agentSpoken(agent) },
+            .clip(shape)
+            .pressable(agentSpoken(agent), shape, onClick = onOpen)
+            .padding(vertical = 7.dp),
         verticalAlignment = Alignment.Top,
     ) {
         Avatar(Author.AgentAuthor(agent), 30.dp, showPresence = true)

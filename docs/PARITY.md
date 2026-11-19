@@ -152,9 +152,9 @@ It doesn't, beyond oldest first.
 | 101 | Project label on cards in All projects | Done | Project name on cards when on All | Yes: "# project" on All projects, phone too | Yes | — | P0 |
 | **Agents / presence** |||||||
 | 102 | Live agents list | Done | Name, sessions, model, host, cwd, last heartbeat (`RightRail.svelte:78-191`) | Yes: Model, host, folder, sessions, last seen (PR #39) | Yes | — | P1 |
-| 103 | Rename agent | Open | Inline rename in rail (`RightRail.svelte:45-68`) | No | No | Port | P2 |
+| 103 | Rename agent | Done | Inline rename in rail (`RightRail.svelte:45-68`) | Yes: tap an agent in the drawer to open it and rename it | Yes: click an agent in the sidebar or the rail | — | P2 |
 | 104 | Online avatars in header | Done | — | — | Yes stack + "N online" | App only | — |
-| 105 | Agent row tap | Open | — | — | No-op pressable (`Panels.kt` AgentRow) | Could filter to that agent | P2 |
+| 105 | Agent row tap | Done | — | Yes: opens the agent: what its session says, and its name to change | Yes: same, from the sidebar and the rail | Opens the agent rather than filtering to it | P2 |
 | **Notifications** |||||||
 | 106 | Notification bell + list | Done | Unseen count, list, Mark all read, click to go (`NotificationBell.svelte`) | Yes: Bell lists notifications (PR #15) | Yes | — | P0 |
 | 107 | Mark notifications seen | Done | `/api/notifications/seen` | Yes: Opening a notification marks it seen; "Mark all read" clears them | Yes | — | P1 |
