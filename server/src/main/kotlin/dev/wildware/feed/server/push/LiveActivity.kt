@@ -49,9 +49,9 @@ class LiveActivity(private val app: App, private val apns: Apns, private val bun
             put("topExpiresAt", top?.let { JsonPrimitive(Math.floorDiv(java.time.Instant.parse(it["expiresAt"]!!.jsonPrimitive.content).toEpochMilli(), 1000L)) } ?: JsonNull)
             put("topOptions", top?.let { lockScreenOptions(it) } ?: JsonNull)
             val default = top?.get("default")
-            // `default.length <= 40` in JS: a string or a list short enough passes, anything else is null.
-            val fits = (default is JsonPrimitive && default.isString && default.content.length <= OPTION_MAX) ||
-                (default is kotlinx.serialization.json.JsonArray && default.size <= OPTION_MAX)
+            // The phone decodes topDefault as a string, and one value of the wrong type blanks the
+            // whole Live Activity, so a list default (multi_choice) or a long one goes as null.
+            val fits = default is JsonPrimitive && default.isString && default.content.length <= OPTION_MAX
             put("topDefault", if (fits) default!! else JsonNull)
             val working = summary["working"]!!.jsonArray
             put("working", if (working.isNotEmpty()) working else JsonNull)

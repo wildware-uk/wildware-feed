@@ -4,6 +4,7 @@ import dev.wildware.feed.server.App
 import dev.wildware.feed.server.Config
 import dev.wildware.feed.server.db.Database
 import dev.wildware.feed.server.http.Wire
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonPrimitive
 import java.security.KeyPairGenerator
 import java.security.Signature
@@ -169,6 +170,18 @@ class PushTest {
             """{"online":0,"waiting":1,"inProgress":1,"topAgent":"Rover","topQuestion":"Which?","topRequestId":"R1","topKind":"choice","topAgentId":"A1","topProject":"Garden Game","topExpiresAt":1700000999,"topOptions":["red","green"],"topDefault":"red","working":[{"agentId":"A1","agent":"Rover","task":"Fixing fee rounding at checkout","since":1700000500}]}""",
             Wire.encode(state),
         )
+    }
+
+    @Test
+    fun `a list default never reaches the Live Activity, which only reads a string`() {
+        app.db.update("INSERT INTO agents (id, name, token_hash, created_at) VALUES ('A1', 'Rover', 'x', 1)")
+        app.db.update("INSERT INTO projects (id, slug, name, created_at, updated_at) VALUES ('P1', 'garden', 'Garden Game', 1, 1)")
+        app.db.update(
+            "INSERT INTO approvals (id, agent_id, project_id, question, options, state, expires_at, kind, config) VALUES " +
+                "('R1', 'A1', 'P1', 'Which ones?', '[\"red\",\"green\"]', 'pending', 1700000999999, 'multi_choice', '{\"default\":[\"red\"]}')",
+        )
+        val state = LiveActivity(app, Apns(app, apnsConfig) { ApnsResponse(200, null) }, "dev.example.feed").state()
+        assertEquals(JsonNull, state["topDefault"])
     }
 
     @Test

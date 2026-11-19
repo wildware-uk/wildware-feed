@@ -48,6 +48,29 @@ struct AgentsActivityAttributes: ActivityAttributes {
 }
 
 extension AgentsActivityAttributes.ContentState {
+    /// Decodes the seven original keys strictly and every newer one leniently. ActivityKit draws a
+    /// blank box when a pushed state fails to decode, so one newer field of an unexpected type (a
+    /// list where a string was expected, say) must cost only that field, never the whole activity.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        online = try c.decode(Int.self, forKey: .online)
+        waiting = try c.decode(Int.self, forKey: .waiting)
+        inProgress = try c.decode(Int.self, forKey: .inProgress)
+        topAgent = try c.decodeIfPresent(String.self, forKey: .topAgent)
+        topQuestion = try c.decodeIfPresent(String.self, forKey: .topQuestion)
+        topRequestId = try c.decodeIfPresent(String.self, forKey: .topRequestId)
+        topKind = try c.decodeIfPresent(String.self, forKey: .topKind)
+        topAgentId = (try? c.decodeIfPresent(String.self, forKey: .topAgentId)) ?? nil
+        topProject = (try? c.decodeIfPresent(String.self, forKey: .topProject)) ?? nil
+        topExpiresAt = (try? c.decodeIfPresent(Int.self, forKey: .topExpiresAt)) ?? nil
+        topOptions = (try? c.decodeIfPresent([String].self, forKey: .topOptions)) ?? nil
+        topDefault = (try? c.decodeIfPresent(String.self, forKey: .topDefault)) ?? nil
+        working = (try? c.decodeIfPresent([Working].self, forKey: .working)) ?? nil
+        sentAnswer = (try? c.decodeIfPresent(String.self, forKey: .sentAnswer)) ?? nil
+    }
+}
+
+extension AgentsActivityAttributes.ContentState {
     init(_ summary: DashboardSummary) {
         let top = summary.topRequest
         self.init(
