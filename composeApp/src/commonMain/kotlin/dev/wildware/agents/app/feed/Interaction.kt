@@ -60,6 +60,12 @@ sealed interface FeedEvent {
     /** Rename project [slug] and say what it is for. [done] as for [CreateProject]. */
     data class EditProject(val slug: String, val name: String, val description: String?, val done: (problem: String?) -> Unit = {}) : FeedEvent
 
+    /** Make picture [mediaId] project [slug]'s logo, or take the logo off with null. */
+    data class SetProjectLogo(val slug: String, val mediaId: String?) : FeedEvent
+
+    /** Show project [slug]'s logo instead of its name above the feed, or beside it. */
+    data class SetLogoInsteadOfName(val slug: String, val instead: Boolean) : FeedEvent
+
     /** Pin project [slug] to the top of the project list, or unpin it. */
     data class PinProject(val slug: String, val pinned: Boolean) : FeedEvent
 

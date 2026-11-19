@@ -212,6 +212,23 @@ class DashboardClient(
             put("description", description?.takeIf { it.isNotBlank() }?.let(::JsonPrimitive) ?: JsonNull)
         })
 
+    /**
+     * Makes picture [mediaId] (an image already on the dashboard) a project's logo, or takes the logo
+     * off with null, which also stops it standing in for the name. The colours are left alone.
+     */
+    @Throws(Exception::class)
+    suspend fun setProjectLogo(slug: String, mediaId: String?): ProjectView =
+        patchProject(slug, buildJsonObject {
+            put("theme", buildJsonObject { put("logoMediaId", mediaId?.let(::JsonPrimitive) ?: JsonNull) })
+        })
+
+    /** Shows a project's logo instead of its name, or beside it. Needs a logo to be set. */
+    @Throws(Exception::class)
+    suspend fun setLogoInsteadOfName(slug: String, instead: Boolean): ProjectView =
+        patchProject(slug, buildJsonObject {
+            put("theme", buildJsonObject { put("logoReplacesName", instead) })
+        })
+
     /** Pins a project to the top of the project list, or unpins it. */
     @Throws(Exception::class)
     suspend fun setProjectPinned(slug: String, pinned: Boolean): ProjectView =

@@ -122,6 +122,25 @@ class MappingTest {
     }
 
     @Test
+    fun aProjectsLogoAndThePicturesToPickOneFrom() {
+        fun picture(id: String, w: Int, h: Int, status: String = "ready") =
+            MediaView(id = id, kind = "image", status = status, variants = listOf("original", "thumb-640"), width = w, height = h)
+        val card = update("u1", noon, "Logos", "").let {
+            it.copy(update = it.update.copy(media = listOf(picture("mark", 600, 200), picture("shot", 1280, 720), picture("wip", 10, 10, status = "pending"))))
+        }
+        val themed = mega.copy(project = mega.project.copy(theme = dev.wildware.agents.ProjectTheme(logoMediaId = "mark", logoReplacesName = true)))
+        val state = mapper.map(feed(listOf(card)), listOf(themed), emptyList(), emptyList(), "mega")
+        val logo = state.current.logo!!
+        assertEquals("https://dash.test/media/mark/thumb-640", logo.url)
+        assertEquals(3f, logo.aspect, "its shape, from the picture on the card")
+        assertEquals("mark", state.current.logoMediaId)
+        assertTrue(state.current.logoInsteadOfName)
+        assertEquals(listOf("mark", "shot"), state.logoChoices.map { it.mediaId }, "ready pictures only")
+        // On All projects there is nothing to pick for.
+        assertTrue(mapper.map(feed(listOf(card)), listOf(themed), emptyList(), emptyList(), null).logoChoices.isEmpty())
+    }
+
+    @Test
     fun anUntitledUpdateTakesItsFirstLineAsItsHeadline() {
         val state = mapper.map(feed(listOf(update("u1", noon, null, "**Disk** is full\n\nPrune the caches."))), listOf(mega), emptyList(), emptyList(), null)
         val item = state.sections.single().items.single() as FeedItem.Update

@@ -147,7 +147,7 @@ It doesn't, beyond oldest first.
 | 96 | Rename / describe project | Open | Inline form (`ProjectActions.svelte:364-397`) | No | No | Port | P1 |
 | 97 | Archive / unarchive | Open | Menu item | No | No | Port | P1 |
 | 98 | Project colours (theme) | Open | Background + accent pickers, AA ink (`theme.ts`) | **No**: neither set nor applied (hue dot only) | **No** | Port at least *applying* the theme | P1 |
-| 99 | Project logo / logo replaces name | Open | Pick from 10 images, checkbox (`ProjectActions.svelte:283-336`, `Shell.svelte:553-581`) | No | No | Port applying it, then picker | P2 |
+| 99 | Project logo / logo replaces name | Done | Pick from 10 images, checkbox (`ProjectActions.svelte:283-336`, `Shell.svelte:553-581`) | Yes: the logo sits by the name above the feed, or stands in for it; picked in the project's settings from up to 10 pictures posted there, with "Use the logo instead of the name" and "Remove logo" | Yes | — | P2 |
 | 100 | Board columns editor | Open | Edit 1-6 columns (board view itself gone) | No | No | Board is gone, so skip | P2 |
 | 101 | Project label on cards in All projects | Done | Project name on cards when on All | Yes: "# project" on All projects, phone too | Yes | — | P0 |
 | **Agents / presence** |||||||

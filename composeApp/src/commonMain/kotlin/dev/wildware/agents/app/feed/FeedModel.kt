@@ -85,7 +85,17 @@ data class Project(
     val accent: String? = null,
     /** Pinned to the top of the project list. */
     val pinned: Boolean = false,
+    /** Its logo, from a picture posted into it; shown by its name above the feed. */
+    val logo: Attachment? = null,
+    /** Which picture [logo] is, to mark it in the picker. */
+    val logoMediaId: String? = null,
+    /** The logo stands in for the name above the feed: a wordmark. */
+    val logoInsteadOfName: Boolean = false,
 )
+
+/** A picture already posted into a project, offered as its logo. */
+@Immutable
+data class LogoChoice(val mediaId: String, val image: Attachment)
 
 sealed interface Author {
     val name: String
@@ -478,6 +488,8 @@ data class FeedState(
     val alerts: AlertSettings = AlertSettings(),
     /** How long the dashboard keeps media. */
     val retention: RetentionSettings = RetentionSettings(),
+    /** Pictures posted into the open project, newest first, to pick its logo from. */
+    val logoChoices: List<LogoChoice> = emptyList(),
 ) {
     fun item(id: String): FeedItem? = sections.firstNotNullOfOrNull { s -> s.items.firstOrNull { it.id == id } }
 }

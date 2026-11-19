@@ -192,9 +192,14 @@ class DemoServer(private val now: () -> Long = { Clock.System.now().toEpochMilli
                 input["pinned"]?.jsonPrimitive?.booleanOrNull?.let { after = after.copy(pinned = it) }
                 (input["theme"] as? JsonObject)?.let { theme ->
                     val was = after.theme ?: ProjectTheme()
+                    val logo = if ("logoMediaId" in theme) theme.text("logoMediaId") else was.logoMediaId
+                    val instead = if ("logoReplacesName" in theme) theme["logoReplacesName"]?.jsonPrimitive?.booleanOrNull else was.logoReplacesName
                     val next = was.copy(
                         background = if ("background" in theme) theme.text("background") else was.background,
                         accent = if ("accent" in theme) theme.text("accent") else was.accent,
+                        logoMediaId = logo,
+                        // No logo, nothing to show instead of the name.
+                        logoReplacesName = instead?.takeIf { it && logo != null },
                     )
                     after = after.copy(theme = next.takeIf { it != ProjectTheme() })
                 }

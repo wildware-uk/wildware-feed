@@ -76,6 +76,9 @@ import androidx.compose.ui.input.key.type
 import dev.wildware.agents.app.design.TextInput
 import dev.wildware.agents.app.design.AppMark
 import androidx.compose.foundation.text.input.clearText
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.ui.layout.ContentScale
 
 @Composable
 private fun Kbd(text: String, light: Boolean = false) {
@@ -336,6 +339,26 @@ private fun OwnerRow(owner: Author.Owner, onAlerts: () -> Unit, onToggleTheme: (
     }
 }
 
+/**
+ * A project's logo above the feed. Beside the name it is decoration, as the name says it all; standing
+ * in for the name (a wordmark) it is the heading, and a screen reader hears the name.
+ */
+@Composable
+private fun ProjectLogo(logo: Attachment, name: String, wordmark: Boolean, compact: Boolean) {
+    val height = if (compact) 32.dp else 40.dp
+    val shape = AgentTheme.shapes.small
+    AttachmentImage(
+        logo,
+        Modifier
+            .then(if (wordmark) Modifier.widthIn(max = 260.dp) else Modifier.padding(end = 10.dp))
+            .height(height)
+            .aspectRatio(if (wordmark) logo.aspect else 1f, matchHeightConstraintsFirst = true)
+            .clip(shape)
+            .then(if (wordmark) Modifier.semantics { heading(); contentDescription = name } else Modifier.clearAndSetSemantics { }),
+        contentScale = ContentScale.Fit,
+    )
+}
+
 /** The title area above the feed: where you are, who is around, and the filters. */
 @Composable
 fun FeedHeader(ui: FeedUi, compact: Boolean, modifier: Modifier = Modifier) {
@@ -350,7 +373,10 @@ fun FeedHeader(ui: FeedUi, compact: Boolean, modifier: Modifier = Modifier) {
                 MetaText(if (state.current.slug == null) "EVERYTHING" else "PROJECT", style = type.overline)
                 Spacer(Modifier.height(2.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
+                    val logo = state.current.logo
+                    val wordmark = logo != null && state.current.logoInsteadOfName
+                    if (logo != null) ProjectLogo(logo, state.current.name, wordmark, compact)
+                    if (!wordmark) Text(
                         state.current.name,
                         Modifier.semantics { heading() },
                         color = colors.text,

@@ -37,6 +37,7 @@ import dev.wildware.agents.app.design.Icons
 import dev.wildware.agents.app.design.ProjectColours
 import dev.wildware.agents.app.design.TextInput
 import dev.wildware.agents.app.design.pressable
+import androidx.compose.foundation.layout.width
 
 /** A colour the owner can give a project, by name. */
 private data class Swatch(val name: String, val hex: String)
@@ -125,6 +126,8 @@ fun ProjectDialogView(ui: FeedUi, dialog: ProjectDialog) {
                         ui.emit(FeedEvent.SetProjectColours(slug, page, accent))
                     }
                     Spacer(Modifier.height(18.dp))
+                    LogoPicker(ui, project, slug)
+                    Spacer(Modifier.height(18.dp))
                     AppButton(
                         if (project.pinned) "Unpin project" else "Pin project",
                         ButtonTone.Secondary,
@@ -193,6 +196,56 @@ private fun BoxedField(
                 .padding(horizontal = 12.dp),
         ) {
             TextInput(state, spoken, placeholder, Modifier.fillMaxWidth(), multiline = multiline, onSubmit = onSubmit)
+        }
+    }
+}
+
+/**
+ * The project's logo, picked from the pictures already posted into it, as on the website: an owner has
+ * no author to upload as, and an agent can set any picture with set_project_theme. Each pick takes
+ * effect at once.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun LogoPicker(ui: FeedUi, project: Project, slug: String) {
+    val colors = AgentTheme.colors
+    val choices = ui.state.logoChoices
+    val shape = AgentTheme.shapes.small
+    Column {
+        MetaText("LOGO", style = AgentTheme.type.overline, color = colors.textMuted)
+        Spacer(Modifier.height(8.dp))
+        if (choices.isEmpty()) {
+            Text(
+                "No pictures in this project yet. Post one, or have an agent set one with set_project_theme.",
+                color = colors.textFaint,
+                style = AgentTheme.type.meta,
+            )
+        } else {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                choices.forEachIndexed { i, choice ->
+                    val picked = choice.mediaId == project.logoMediaId
+                    AttachmentImage(
+                        choice.image,
+                        Modifier
+                            .size(48.dp)
+                            .clip(shape)
+                            .border(if (picked) 2.dp else 1.dp, if (picked) colors.accent else colors.border, shape)
+                            .pressable("Use picture ${i + 1} as the logo", shape, role = Role.RadioButton) {
+                                ui.emit(FeedEvent.SetProjectLogo(slug, choice.mediaId))
+                            }
+                            .semantics { selected = picked },
+                    )
+                }
+            }
+        }
+        if (project.logoMediaId != null) {
+            Spacer(Modifier.height(10.dp))
+            CheckRow("Use the logo instead of the name", project.logoInsteadOfName, enabled = true) {
+                ui.emit(FeedEvent.SetLogoInsteadOfName(slug, !project.logoInsteadOfName))
+            }
+            AppButton("Remove logo", ButtonTone.Secondary, icon = Icons.Close) {
+                ui.emit(FeedEvent.SetProjectLogo(slug, null))
+            }
         }
     }
 }

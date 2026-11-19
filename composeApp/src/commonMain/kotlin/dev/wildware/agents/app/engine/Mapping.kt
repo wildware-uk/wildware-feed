@@ -38,6 +38,8 @@ import dev.wildware.agents.app.feed.FileAttachment
 import dev.wildware.agents.app.feed.Acks
 import dev.wildware.agents.app.feed.Agent
 import dev.wildware.agents.app.feed.Attachment
+import io.ktor.http.encodeURLPathPart
+import dev.wildware.agents.app.feed.LogoChoice
 import dev.wildware.agents.app.feed.Author
 import dev.wildware.agents.app.feed.CardTag
 import dev.wildware.agents.app.feed.CardField
@@ -97,7 +99,8 @@ internal class FeedMapper(
         val onlineIds = online.mapTo(HashSet()) { it.agentId }
         val names = agentNames(feed) + online.associate { it.agentId to it.name }
         val agents = AgentDirectory(names, online.associateBy { it.agentId }, onlineIds, now())
-        val viewProjects = projects.map { it.toView() }
+        val media = if (selectedSlug == null) emptyList() else projectPictures(feed)
+        val viewProjects = projects.map { it.toView(media) }
         val byId = viewProjects.associateBy { it.id }
         val current = when (selectedSlug) {
             null -> Project("all", "All projects", unread = projects.sumOf { it.unread }, waiting = projects.sumOf { it.waiting }, hue = 0)
@@ -145,6 +148,7 @@ internal class FeedMapper(
             newCount = feed.newCount,
             tags = feed.tags.map { it.toCardTag() },
             critical = criticalNotices(inScope, feed),
+            logoChoices = media.take(10).map { LogoChoice(it.id, image(it)) },
         )
     }
 
@@ -157,6 +161,21 @@ internal class FeedMapper(
 
     private fun oneLine(markdown: String) = dev.wildware.agents.PlainText.fromMarkdown(markdown).lineSequence().firstOrNull().orEmpty()
 
+    /** Every picture on the cards loaded, newest card first, each once. */
+    private fun projectPictures(feed: EngineFeed): List<MediaView> = feed.allCards.asSequence()
+        .flatMap { card ->
+            val own = when (card) {
+                is UpdateCard -> card.update.media
+                is PostCard -> card.post.media
+                else -> emptyList()
+            }
+            own.asSequence() + card.replies.asSequence().flatMap { it.media }
+        }
+        // Ready, and with something to show: removed media has no variants left.
+        .filter { it.kind == "image" && it.isReady && it.variants.isNotEmpty() }
+        .distinctBy { it.id }
+        .toList()
+
     private fun agentNames(feed: EngineFeed): Map<String, String> = buildMap {
         feed.allCards.forEach { card ->
             if (card is UpdateCard) put(card.update.agentId, card.agentName)
@@ -168,12 +187,32 @@ internal class FeedMapper(
 
     private fun dev.wildware.agents.TagView.toCardTag() = CardTag(id, name, colour, projectId)
 
-    private fun ProjectSummary.toView() =
-        Project(
+    private fun ProjectSummary.toView(pictures: List<MediaView>): Project {
+        val logoId = project.theme?.logoMediaId
+        return Project(
             project.id, project.name, unread = unread, waiting = waiting, hue = hue(project.id), slug = project.slug,
             archived = project.isArchived, description = project.description,
             background = project.theme?.background, accent = project.theme?.accent, pinned = project.pinned,
+            logo = logoId?.let { id -> logo(id, project.name, pictures.firstOrNull { it.id == id }) },
+            logoMediaId = logoId,
+            logoInsteadOfName = logoId != null && project.theme?.logoReplacesName == true,
         )
+    }
+
+    /**
+     * A project's logo, as the website draws it: the 640-wide thumbnail, which the dashboard makes
+     * for every picture. Its shape comes from the picture when it is on a card loaded here.
+     */
+    private fun logo(mediaId: String, projectName: String, media: MediaView?): Attachment {
+        val w = media?.width
+        val h = media?.height
+        return Attachment(
+            title = "$projectName logo",
+            altText = projectName,
+            aspect = if (w != null && h != null && w > 0 && h > 0) (w.toFloat() / h).coerceIn(0.5f, 6f) else 1f,
+            url = serverUrl.trimEnd('/') + "/media/${mediaId.encodeURLPathPart()}/thumb-640",
+        )
+    }
 
     /**
      * Where each thread line is, so a question asked under one can say what it answers and jump there;

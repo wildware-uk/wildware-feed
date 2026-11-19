@@ -330,6 +330,19 @@ class DashboardClientTest {
     }
 
     @Test
+    fun `a logo is set and taken off and can stand in for the name`() = runTest {
+        val c = client { json("""{"project":{"id":"p9","slug":"harbor-app","name":"harbor-app"}}""") }
+        c.setProjectLogo("harbor-app", "md1")
+        c.setLogoInsteadOfName("harbor-app", true)
+        c.setProjectLogo("harbor-app", null)
+
+        assertEquals(
+            listOf("""{"theme":{"logoMediaId":"md1"}}""", """{"theme":{"logoReplacesName":true}}""", """{"theme":{"logoMediaId":null}}"""),
+            seen.map { it.second },
+        )
+    }
+
+    @Test
     fun `pinning and unpinning a project say which`() = runTest {
         val c = client { json("""{"project":{"id":"p9","slug":"harbor-app","name":"harbor-app","pinned":true}}""") }
         c.setProjectPinned("harbor-app", true)

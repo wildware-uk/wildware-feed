@@ -339,6 +339,14 @@ class DashboardSession(
                 client.renameProject(event.slug, event.name.trim(), event.description?.trim())
                 dashboard.refresh()
             }
+            is FeedEvent.SetProjectLogo -> changeProject {
+                client.setProjectLogo(event.slug, event.mediaId)
+                dashboard.refresh()
+            }
+            is FeedEvent.SetLogoInsteadOfName -> changeProject {
+                client.setLogoInsteadOfName(event.slug, event.instead)
+                dashboard.refresh()
+            }
             is FeedEvent.PinProject -> changeProject {
                 client.setProjectPinned(event.slug, event.pinned)
                 dashboard.refresh()
