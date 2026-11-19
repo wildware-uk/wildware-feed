@@ -87,6 +87,15 @@ fun InlineThread(
             Spacer(Modifier.height(6.dp))
         }
         HeadQuestions(item)
+        // Newest replies are on top, so the way to add one is too: a sent reply lands right under it.
+        if (replying) {
+            val focus = remember { FocusRequester() }
+            ThreadComposer(ui, item.id, Modifier.padding(top = 8.dp, bottom = 4.dp), focus = focus)
+            LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+        } else {
+            Spacer(Modifier.height(if (replies.isEmpty()) 10.dp else 4.dp))
+            ReplyAction(action) { ui?.openThread(item.id, phone = false) }
+        }
         for (i in 0 until order.shown) {
             // Keyed by id: a new reply arrives at the top, and the ones under it keep their place.
             val reply = order.replies[i]
@@ -95,14 +104,6 @@ fun InlineThread(
         }
         if (hidden > 0) {
             TextAction("Show $hidden earlier ${if (hidden == 1) "reply" else "replies"}") { ui?.expandedThreads?.add(item.id) }
-        }
-        if (replying) {
-            val focus = remember { FocusRequester() }
-            ThreadComposer(ui, item.id, Modifier.padding(top = 8.dp), focus = focus)
-            LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
-        } else {
-            Spacer(Modifier.height(if (replies.isEmpty()) 10.dp else 4.dp))
-            ReplyAction(action) { ui?.openThread(item.id, phone = false) }
         }
     }
 }

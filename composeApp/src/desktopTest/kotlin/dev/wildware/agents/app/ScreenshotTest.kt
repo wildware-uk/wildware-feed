@@ -502,6 +502,10 @@ class ScreenshotTest {
         for (dark in listOf(false, true)) {
             val mode = if (dark) "dark" else "light"
             shoot("desktop-$mode-replies", Size.Desktop, dark, startAt = thread)
+            // Not replying yet: the Reply action sits above the newest reply.
+            shoot("desktop-$mode-replies-closed", Size.Desktop, dark) {
+                AgentsPreview(dark = dark, state = FakeFeed.state.copy(openThread = null), startAt = thread)
+            }
             // A short head card, so the replies are on screen.
             val head = (FakeFeed.state.openThread as FeedItem.Update).copy(body = "Two sessions on one token shared a \"last read\" marker. Now each connection has its own.")
             val state = FakeFeed.state.copy(
