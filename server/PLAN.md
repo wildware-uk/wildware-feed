@@ -199,7 +199,9 @@ the write script: an upload, and agent-side media fetch.
   directly is a later nicety.
 - **Sign-in screen:** two choices.
   - **This computer:** start (or reuse) the local server; no address and no password.
-  - **A server:** today's address and password form.
+  - **Connect to a host:** the address first, checked with `GET /api/server`, then that host's
+    login (the owner password today). "Log in" (the hosted service) waits behind a flag; see
+    docs/TEAMS.md, "The sign-in screen".
 
   Settings can switch later. Switching doesn't move data between servers (out of scope). The iOS
   and Android apps are unchanged: a phone signs in to the desktop's server like any server once
