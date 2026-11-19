@@ -315,6 +315,9 @@ struct IslandTrailing: View {
                 }
                 if let others = state.othersWaiting {
                     Text(others).font(Theme.Font.meta).foregroundStyle(Theme.textMuted)
+                } else if state.topExpiry.map({ $0 <= .now }) ?? true {
+                    // Neither a clock nor others to count: say who is online, never leave the corner bare.
+                    OnlineLabel(count: state.online)
                 }
             }
             .padding(.trailing, 4)

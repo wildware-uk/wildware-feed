@@ -161,18 +161,20 @@ class LiveActivity(private val app: App, private val apns: Apns, private val bun
 
     /**
      * Ends [device]'s activity and forgets its token, so the server stops updating it and a later
-     * request or burst of work can start a new one.
+     * request or burst of work can start a new one. It goes with a whole, all-clear state and a
+     * dismissal date already passed, at high priority, so iOS takes it off the lock screen and the
+     * Dynamic Island at once rather than leaving an empty box there.
      */
     private fun end(device: PushDevice, token: String, state: JsonObject, timestamp: Long) {
         val payload = buildJsonObject {
             put("aps", buildJsonObject {
                 put("timestamp", JsonPrimitive(timestamp))
                 put("event", JsonPrimitive("end"))
-                put("content-state", state)
-                put("dismissal-date", JsonPrimitive(timestamp))
+                put("content-state", allClear(state))
+                put("dismissal-date", JsonPrimitive(timestamp - 1))
             })
         }
-        val outcome = apns.deliver(device, "live_activity_token", headers(5), Wire.encode(payload))
+        val outcome = apns.deliver(device, "live_activity_token", headers(10), Wire.encode(payload))
         if (outcome == "sent") {
             app.db.update("UPDATE owner_devices SET live_activity_token = NULL WHERE id = ? AND live_activity_token = ?", device.id, token)
         }
@@ -211,6 +213,21 @@ class LiveActivity(private val app: App, private val apns: Apns, private val bun
          * with cards in progress. Cards left in progress while every agent is offline don't count,
          * or a forgotten card would keep the activity up for good.
          */
+        /**
+         * [state] with nothing waiting: every key the phone decodes, with the question fields and the
+         * working list null, so the ending activity draws its calm panel and never a blank one.
+         */
+        fun allClear(state: JsonObject): JsonObject = buildJsonObject {
+            state.forEach { (key, value) -> put(key, value) }
+            put("waiting", JsonPrimitive(0))
+            for (key in QUESTION_KEYS) put(key, JsonNull)
+            put("working", JsonNull)
+        }
+
+        private val QUESTION_KEYS = listOf(
+            "topAgent", "topQuestion", "topRequestId", "topKind", "topAgentId", "topProject", "topExpiresAt", "topOptions", "topDefault",
+        )
+
         fun busy(state: JsonObject): Boolean {
             val waiting = state["waiting"]!!.jsonPrimitive.int
             val inProgress = state["inProgress"]!!.jsonPrimitive.int

@@ -33,12 +33,18 @@ struct VoiceNoteLiveActivity: Widget {
             } compactLeading: {
                 Image(systemName: state.symbol).foregroundStyle(state.tint)
             } compactTrailing: {
+                // Something in every phase: an empty side leaves a blank patch in the island.
                 if state.phase == .recording {
                     Text(attributes.startedAt, style: .timer)
                         .font(Theme.Font.fixedMono(14))
                         .foregroundStyle(state.tint)
                         .monospacedDigit()
                         .frame(maxWidth: 44)
+                } else {
+                    Text(state.shortLabel)
+                        .font(Theme.Font.fixedMono(12))
+                        .foregroundStyle(state.tint)
+                        .lineLimit(1)
                 }
             } minimal: {
                 Image(systemName: state.symbol).foregroundStyle(state.tint)
@@ -109,6 +115,17 @@ extension VoiceNoteActivityAttributes.ContentState {
         case .sent: "checkmark"
         case .queued: "clock.arrow.circlepath"
         case .failed: "exclamationmark.triangle.fill"
+        }
+    }
+
+    /// One word for the island's small corner.
+    var shortLabel: String {
+        switch phase {
+        case .recording: "Rec"
+        case .sending: "Sending"
+        case .sent: "Sent"
+        case .queued: "Saved"
+        case .failed: "Failed"
         }
     }
 

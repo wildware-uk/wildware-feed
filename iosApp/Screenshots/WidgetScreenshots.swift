@@ -126,6 +126,8 @@ final class WidgetScreenshots: XCTestCase {
         let states: [(String, AgentsActivityAttributes.ContentState)] = [
             ("question", waiting), ("choice", choice), ("text", text), ("sent", sent),
             ("working", working), ("quiet", quietState), ("old-server", old),
+            // The last frame an activity ends on, from the app or the server's end push.
+            ("all-clear", sent.allClear),
         ]
         for scheme in Scheme.allCases {
             for (name, state) in states {
@@ -144,7 +146,11 @@ final class WidgetScreenshots: XCTestCase {
     func testDynamicIsland() throws {
         var working = quietState
         working.working = Self.working
-        for (name, state) in [("waiting", waiting), ("working", working)] {
+        var noClock = waiting
+        // A question with no time left to show and nobody else waiting: the corner still says something.
+        noClock.topExpiresAt = nil
+        noClock.waiting = 1
+        for (name, state) in [("waiting", waiting), ("working", working), ("all-clear", waiting.allClear), ("no-clock", noClock)] {
             let compact = HStack {
                 CompactLeading(state: state)
                 Spacer()
@@ -213,6 +219,19 @@ final class WidgetScreenshots: XCTestCase {
         let note = VoiceNoteActivityAttributes(startedAt: .now.addingTimeInterval(-12), projectName: "garden-game")
         try save("voice-note-recording", liveActivity(VoiceNoteStatusView(attributes: note, state: .init(phase: .recording))), scheme: .dark)
         try save("voice-note-sent", liveActivity(VoiceNoteStatusView(attributes: note, state: .init(phase: .sent, detail: "garden-game"))), scheme: .dark)
+        for phase in [VoiceNoteActivityAttributes.ContentState.Phase.sending, .sent] {
+            let state = VoiceNoteActivityAttributes.ContentState(phase: phase)
+            // Both sides of the island show something in every phase.
+            let compact = HStack {
+                Image(systemName: state.symbol).foregroundStyle(state.tint)
+                Spacer()
+                Text(state.shortLabel).font(Theme.Font.fixedMono(12)).foregroundStyle(state.tint)
+            }
+            .padding(.horizontal, 12)
+            .frame(width: 250, height: 37)
+            .background(.black, in: Capsule())
+            try save("voice-note-island-\(phase.rawValue)", compact, scheme: .dark)
+        }
     }
 
     func testSiriSnippets() throws {

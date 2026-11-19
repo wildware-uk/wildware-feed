@@ -88,7 +88,7 @@ actor LiveActivityController {
     /// only the newest rather than letting them stack up on the lock screen.
     private func endOthers(keeping kept: Activity<AgentsActivityAttributes>) async {
         for activity in Activity<AgentsActivityAttributes>.activities where activity.id != kept.id {
-            await activity.end(nil, dismissalPolicy: .immediate)
+            await Self.end(activity)
         }
     }
 
@@ -133,10 +133,17 @@ actor LiveActivityController {
 
     func endAll() async {
         for activity in Activity<AgentsActivityAttributes>.activities {
-            await activity.end(nil, dismissalPolicy: .immediate)
+            await Self.end(activity)
         }
         sentStartToken = nil
         await clearUpdateToken()
+    }
+
+    /// Ends [activity] with a whole, all-clear last frame rather than none, and takes it away at once,
+    /// so iOS has nothing half-drawn to leave behind on the lock screen or in the Dynamic Island.
+    private static func end(_ activity: Activity<AgentsActivityAttributes>) async {
+        let final = ActivityContent(state: activity.content.state.allClear, staleDate: nil)
+        await activity.end(final, dismissalPolicy: .immediate)
     }
 
     private func watch(_ activity: Activity<AgentsActivityAttributes>) {

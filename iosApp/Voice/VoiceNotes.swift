@@ -174,7 +174,8 @@ final class VoiceNotes: ObservableObject {
     private func endActivity(_ outcome: NoteState?) async {
         for activity in Activity<VoiceNoteActivityAttributes>.activities {
             guard let outcome else {
-                await activity.end(nil, dismissalPolicy: .immediate)
+                // Its own last frame rather than none, so nothing half-drawn is left behind.
+                await activity.end(activity.content, dismissalPolicy: .immediate)
                 continue
             }
             let dismissal: ActivityUIDismissalPolicy = outcome.phase == .failed ? .default : .after(.now + 30)

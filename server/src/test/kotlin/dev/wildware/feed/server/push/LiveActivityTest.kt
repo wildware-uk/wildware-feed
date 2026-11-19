@@ -4,6 +4,7 @@ import dev.wildware.feed.server.App
 import dev.wildware.feed.server.Config
 import dev.wildware.feed.server.db.Database
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
@@ -142,11 +143,34 @@ class LiveActivityTest {
         activity.run()
         assertEquals(listOf("update", "update", "end"), events())
         val end = aps(sent.last())
-        assertEquals(now / 1000, end["dismissal-date"]!!.jsonPrimitive.content.toLong())
+        assertTrue(end["dismissal-date"]!!.jsonPrimitive.content.toLong() < end["timestamp"]!!.jsonPrimitive.content.toLong(), "dismissed at once")
+        assertEquals("10", sent.last().headers.toMap()["apns-priority"], "the end goes out promptly")
+        // A whole state the phone can decode, so iOS never draws the ending activity as an empty box.
+        val final = end["content-state"]!!.jsonObject
+        assertEquals(activity.state().keys, final.keys)
+        assertEquals(0, final["waiting"]!!.jsonPrimitive.content.toInt())
+        assertEquals(1, final["online"]!!.jsonPrimitive.content.toInt())
         assertEquals("cafe", sent.last().deviceToken)
         assertNull(updateToken())
         activity.run()
         assertEquals(3, sent.size, "an ended activity is not pushed again")
+    }
+
+    @Test
+    fun `the all-clear state keeps every key and drops the question and the work`() {
+        agentOnline()
+        startWork()
+        ask()
+        val state = activity.state()
+        assertEquals("Ship it?", state["topQuestion"]!!.jsonPrimitive.content)
+        val clear = LiveActivity.allClear(state)
+        assertEquals(state.keys, clear.keys)
+        assertEquals(0, clear["waiting"]!!.jsonPrimitive.content.toInt())
+        assertEquals(state["online"], clear["online"])
+        assertEquals(state["inProgress"], clear["inProgress"])
+        for (key in listOf("topAgent", "topQuestion", "topRequestId", "topKind", "topExpiresAt", "working")) {
+            assertEquals(JsonNull, clear[key], key)
+        }
     }
 
     @Test

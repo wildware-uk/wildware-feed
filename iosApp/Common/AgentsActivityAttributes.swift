@@ -92,6 +92,12 @@ extension AgentsActivityAttributes.ContentState {
         )
     }
 
+    /// This state with nothing waiting: what an activity shows as it ends, so its last frame is the
+    /// calm panel, never an empty box. The counts stay; the question, the work and "Sent" go.
+    var allClear: Self {
+        Self(online: online, waiting: 0, inProgress: inProgress, topAgent: nil, topQuestion: nil, topRequestId: nil, topKind: nil)
+    }
+
     var topIsConfirm: Bool { topKind == "confirm" }
 
     var topExpiry: Date? { topExpiresAt.map { Date(timeIntervalSince1970: TimeInterval($0)) } }
