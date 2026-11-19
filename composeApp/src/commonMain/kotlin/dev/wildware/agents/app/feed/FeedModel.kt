@@ -304,6 +304,8 @@ sealed interface FeedItem {
         val edited: String? = null,
         /** The whole instant behind [time], as "Posted Monday 3 August 2026 at 14:05 · updated …". Shown on hover, read aloud. */
         val timeDetail: String = "",
+        /** When something last happened on it (posted, replied to, work state), to mark it when that moves on. */
+        val activityAt: Long = 0,
     ) : Threaded {
         override val starter: Author get() = Author.AgentAuthor(agent)
     }
@@ -388,6 +390,8 @@ sealed interface FeedItem {
         val edited: String? = null,
         /** The whole instant behind [time], as "Posted Monday 3 August 2026 at 14:05 · updated …". Shown on hover, read aloud. */
         val timeDetail: String = "",
+        /** When something last happened on it (posted, replied to, work state), to mark it when that moves on. */
+        val activityAt: Long = 0,
         val tags: List<CardTag> = emptyList(),
         val fields: List<CardField> = emptyList(),
         /** Its work state, when someone marked it as work. */

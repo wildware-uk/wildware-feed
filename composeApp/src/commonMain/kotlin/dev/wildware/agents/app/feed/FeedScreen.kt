@@ -202,6 +202,8 @@ fun FeedScreen(
     val ui = remember(state) { FeedUi(preview, state, onEvent) }
     ui.onEvent = onEvent
     ui.onAwayFromTop = onAwayFromTop
+    // One watcher for the whole feed, rather than one per card: marks cards that just moved on.
+    LaunchedEffect(ui) { snapshotFlow { ui.state.sections }.collect { ui.noteActivity(it) } }
     val scope = rememberCoroutineScope()
     BoxWithConstraints(Modifier.fillMaxSize().windowBackground(colors)) {
         val phone = maxWidth < PhoneBreakpoint

@@ -174,6 +174,8 @@ data class ScreenPreview(
     val composerListening: Boolean = false,
     /** Options already picked on picture or choice questions, by question id. */
     val picked: Map<String, Set<String>> = emptyMap(),
+    /** Cards drawn as having just moved on, wearing the fading ring. */
+    val bumped: Set<String> = emptySet(),
     val menu: MenuTarget? = null,
     val viewer: Gallery? = null,
     val drawerOpen: Boolean = false,
@@ -380,6 +382,42 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
             val order = projectOrder ?: return state.projects
             return state.projects.sortedBy { p -> order.indexOf(p.id).let { if (it < 0) Int.MAX_VALUE else it } }
         }
+
+    /** The activity time last seen per card, to tell when one moves on. Plain data: nothing draws from it. */
+    private val seenActivity = HashMap<String, Long>()
+
+    /**
+     * Each card's bump: 0, or a new number each time it moves on, marked for a moment ([BumpMillis]).
+     * One state per card, not one map, so a bump wakes only its own card.
+     */
+    private val bumps = HashMap<String, androidx.compose.runtime.MutableIntState>()
+    private var bumpCount = 0
+
+    fun bumpOf(id: String): androidx.compose.runtime.MutableIntState = bumps.getOrPut(id) { androidx.compose.runtime.mutableIntStateOf(0) }
+
+    init {
+        preview.bumped.forEach { bumpOf(it).intValue = ++bumpCount }
+    }
+
+    /**
+     * Notes where every card is up to, and marks those whose activity moved forward since last
+     * seen, as the website does, so a reader looking elsewhere can tell which one moved. A card
+     * seen for the first time isn't a bump: it is arriving, which has its own motion.
+     */
+    fun noteActivity(sections: List<FeedSection>) {
+        sections.forEach { section ->
+            section.items.forEach { item ->
+                val at = when (item) {
+                    is FeedItem.Update -> item.activityAt
+                    is FeedItem.Post -> item.activityAt
+                    is FeedItem.Question -> return@forEach
+                }
+                if (at <= 0) return@forEach
+                val before = seenActivity.put(item.id, at)
+                if (before != null && at > before) bumpOf(item.id).intValue = ++bumpCount
+            }
+        }
+    }
 
     /** What the owner has picked on choice questions but not sent yet, by question id. */
     val picks = mutableStateMapOf<String, Set<String>>().apply { putAll(preview.picked) }

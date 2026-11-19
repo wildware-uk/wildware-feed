@@ -217,6 +217,7 @@ internal class FeedMapper(
                 critical = update.priority == "critical",
                 pinned = pinned,
                 edited = editedLabel(update.editedAt),
+                activityAt = activityAt,
             )
         }
         is PostCard -> cardTime(createdAt, activityAt, post.message.editedAt).let { time -> FeedItem.Post(
@@ -239,6 +240,7 @@ internal class FeedMapper(
             sending = post.sending,
             questions = post.questions.map { it.toQuestion(agents, project, index) },
             edited = editedLabel(post.message.editedAt),
+            activityAt = activityAt,
             status = workStatus(status),
             pinned = pinned,
             // Work says where it has got to, which answers "has anybody got this" better.

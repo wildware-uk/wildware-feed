@@ -6,6 +6,14 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.foundation.layout.wrapContentSize
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawOutline
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.AnimationVector1D
+import androidx.compose.animation.core.Animatable
 import androidx.compose.ui.semantics.selected
 import androidx.compose.runtime.Immutable
 import dev.wildware.agents.app.ProductName
@@ -80,6 +88,8 @@ fun CardFrame(
     density: Density = Density.Comfortable,
     /** The owner wrote it: an accent rail down its left edge, as the website marks the owner's own posts. */
     mine: Boolean = false,
+    /** The card's id, so it can be marked for a moment when it moves on. Null for what never moves. */
+    bumpId: String? = null,
     content: @Composable () -> Unit,
 ) {
     val colors = AgentTheme.colors
@@ -87,10 +97,18 @@ fun CardFrame(
     val pad = if (density == Density.Comfortable) 18.dp else 14.dp
     val lit = LocalLit.current
     val rail = colors.accent
+    val ring = rememberBumpRing(bumpId)
+    val ringColor = colors.accent
     Box(
         modifier
             .fillMaxWidth()
             .semantics { if (lit) this[Highlighted] = true }
+            // Drawn, and read while drawing: the ring fading out redraws the card, never recomposes it.
+            .then(if (ring == null) Modifier else Modifier.drawWithContent {
+                drawContent()
+                val a = ring.value
+                if (a > 0f) drawOutline(shape.createOutline(size, layoutDirection, this), ringColor.copy(alpha = 0.75f * a), style = Stroke(BumpRing.toPx() * 2))
+            })
             .clip(shape)
             .background(if (selected) colors.surfaceRaised else colors.surface)
             // Drawn, not laid out: no extra node or measure pass for every card in the feed.
@@ -98,6 +116,30 @@ fun CardFrame(
             .border(if (lit) 2.dp else 1.dp, if (lit) colors.accent else if (selected) colors.borderStrong else colors.border, shape)
             .padding(horizontal = pad, vertical = pad - 2.dp),
     ) { content() }
+}
+
+/** How long a card that just moved stays marked, as the website's 1.4 s. */
+internal const val BumpMillis = 1_400
+
+/** The marker's width: a ring in the accent, which no card wears otherwise. Half of its stroke falls outside the clip. */
+private val BumpRing = 2.dp
+
+/**
+ * The fading ring for card [id] while it is marked as having just moved, or null when it isn't,
+ * which is nearly always: then this costs one map read and nothing runs.
+ */
+@Composable
+private fun rememberBumpRing(id: String?): Animatable<Float, AnimationVector1D>? {
+    val ui = LocalFeedUi.current ?: return null
+    val bump = id?.let { remember(ui, it) { ui.bumpOf(it) } } ?: return null
+    val mark = bump.intValue
+    if (mark == 0 || AgentTheme.motion.reduced) return null
+    val ring = remember(mark) { Animatable(1f) }
+    LaunchedEffect(mark) {
+        ring.animateTo(0f, tween(BumpMillis, easing = LinearOutSlowInEasing))
+        if (bump.intValue == mark) bump.intValue = 0
+    }
+    return ring
 }
 
 private val AvatarSize = 26.dp
@@ -297,7 +339,7 @@ fun UpdateCard(
     val chooseStatus = { ui?.emit(FeedEvent.ChooseStatus(item.id, item.status)); Unit }
     val fold = rememberFold(item.id, "update", item.title, inThread)
     WithMenu(target, modifier) { gestures ->
-    CardFrame(gestures, selected = selected, density = density) {
+    CardFrame(gestures, selected = selected, density = density, bumpId = item.id) {
         Column {
             CardHeader(
                 author = Author.AgentAuthor(item.agent),
@@ -870,7 +912,7 @@ fun PostCard(item: FeedItem.Post, modifier: Modifier = Modifier, density: Densit
     val chooseStatus = { ui?.emit(FeedEvent.ChooseStatus(item.id, item.status)); Unit }
     val fold = rememberFold(item.id, "post", dev.wildware.agents.PlainText.clip(dev.wildware.agents.PlainText.fromMarkdown(item.body), 60), inThread)
     WithMenu(target, modifier.alpha(if (item.sending) SendingAlpha else 1f)) { gestures ->
-    CardFrame(gestures, density = density, mine = item.author is Author.Owner) {
+    CardFrame(gestures, density = density, mine = item.author is Author.Owner, bumpId = item.id) {
         Column {
             CardHeader(
                 author = item.author,

@@ -782,6 +782,16 @@ class ScreenshotTest {
         }
     }
 
+    /** A card that just moved to the top, wearing the ring that fades a moment later. */
+    @Test
+    fun bumpedCard() {
+        for (dark in listOf(false, true)) {
+            val mode = if (dark) "dark" else "light"
+            shoot("phone-$mode-bumped", Size.Phone, dark, startAt = "u1", preview = ScreenPreview(bumped = setOf("u1")))
+            shoot("desktop-$mode-bumped", Size.Desktop, dark, startAt = "u1", preview = ScreenPreview(bumped = setOf("u1")))
+        }
+    }
+
     /** Increase Contrast on, in both themes, and the largest common text size. */
     @Test
     fun accessibilityVariants() {

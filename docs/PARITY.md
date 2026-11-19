@@ -73,7 +73,7 @@ It doesn't, beyond oldest first.
 | 31 | Collapse a card / fold memory | Done | Chevron or header click; remembered (500) (`CardActions.svelte:89-113`, `collapse.svelte.ts`) | Yes: chevron folds a card; remembered (500) across restarts (#62) | Yes | — | P1 |
 | 32 | Long body clamp | Done | 420 px with fade, "Show the whole update" (`Clamp.svelte`) | Yes: Folds at 420 dp with "Show more" (`app/feed/Clamp.kt`) | Yes | — | P1 |
 | 33 | Load older | Done | Button, pages of 50 | Yes, auto at end | Yes, auto | — | — |
-| 34 | New-card / bump animation | Open | Enter animation, FLIP slide, bump ring (`bumps.svelte.ts`) | No | No | Polish | P2 |
+| 34 | New-card / bump animation | Done | Enter animation, FLIP slide, bump ring (`bumps.svelte.ts`) | Yes: new cards fade in, moved cards slide (animateItem); a card that moves on wears a fading accent ring for 1.4 s | Yes | Off with reduced motion | P2 |
 | 35 | Empty feed | Done | "Nothing here yet…" | Yes, loading vs empty vs filtered (`FeedScreen.kt` EmptyFeed) | Yes | — | — |
 | 36 | Deep link / focus to card | Done | `?focus=id`, ring 4 s, loads up to 5 pages, "Could not find…" (`Timeline.svelte:159-310,753-763`) | Yes: finds the card, loads up to 5 older pages, rings it 4 s, unfolds it, or says it can't (#64) | Yes | — | P1 |
 | 37 | Pull to refresh | Done | — | Yes | F5 / Cmd-R | App only | — |
