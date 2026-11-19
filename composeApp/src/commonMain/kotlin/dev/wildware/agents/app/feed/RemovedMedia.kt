@@ -94,9 +94,30 @@ fun NotReadyMediaTile(why: NotReady, modifier: Modifier = Modifier) {
 /** A removed sound or file, in the row its player or download chip took. */
 @Composable
 fun RemovedMediaRow(afterDays: Int, modifier: Modifier = Modifier) {
+    val label = removedMediaLabel(afterDays)
+    MediaNoteRow(label, null, label, modifier) { Icon(Icons.Clock, null, tint = AgentTheme.colors.textFaint, modifier = Modifier.size(18.dp)) }
+}
+
+/**
+ * A sound or file the dashboard is still making ("Processing…") or couldn't read ("Media
+ * unavailable"), in the row its player or download chip will take, under its [name] when it has one.
+ */
+@Composable
+fun NotReadyMediaRow(why: NotReady, name: String?, modifier: Modifier = Modifier) {
+    val colors = AgentTheme.colors
+    MediaNoteRow(name ?: why.words, why.words.takeIf { name != null }, listOfNotNull(name, why.words).joinToString(", "), modifier) {
+        when (why) {
+            NotReady.Processing -> Icon(Icons.Clock, null, tint = colors.textFaint, modifier = Modifier.size(18.dp))
+            NotReady.Failed -> Icon(Icons.Warning, null, tint = colors.error, modifier = Modifier.size(18.dp))
+        }
+    }
+}
+
+/** A quiet row in place of a sound or file: an icon, a line, and a smaller line under it when there is one. */
+@Composable
+private fun MediaNoteRow(title: String, detail: String?, spoken: String, modifier: Modifier, icon: @Composable () -> Unit) {
     val colors = AgentTheme.colors
     val shape = AgentTheme.shapes.medium
-    val label = removedMediaLabel(afterDays)
     Row(
         modifier
             .fillMaxWidth()
@@ -104,12 +125,15 @@ fun RemovedMediaRow(afterDays: Int, modifier: Modifier = Modifier) {
             .clip(shape)
             .background(colors.surfaceSunken)
             .border(1.dp, colors.border, shape)
-            .clearAndSetSemantics { contentDescription = label }
+            .clearAndSetSemantics { contentDescription = spoken }
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(Icons.Clock, null, tint = colors.textFaint, modifier = Modifier.size(18.dp))
+        icon()
         Spacer(Modifier.width(10.dp))
-        Text(label, color = colors.textMuted, style = AgentTheme.type.body, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Column(Modifier.weight(1f)) {
+            Text(title, color = if (detail != null) colors.text else colors.textMuted, style = if (detail != null) AgentTheme.type.label else AgentTheme.type.body, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (detail != null) Text(detail, color = colors.textMuted, style = AgentTheme.type.meta, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
     }
 }

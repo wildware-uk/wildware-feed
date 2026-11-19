@@ -526,6 +526,44 @@ class MappingTest {
     }
 
     @Test
+    fun aReplyWithSoundsAndAFileShowsEveryOneInOrderWithItsName() {
+        fun media(id: String, kind: String, status: String = "ready", filename: String? = null, mime: String = "audio/mpeg") =
+            MediaView(id = id, kind = kind, status = status, variants = if (status == "ready") listOf("original") else emptyList(),
+                filename = filename, bytes = 2048, mime = mime, durationMs = 5_000)
+        val voices = (1..5).map { media("v$it", "audio", filename = "voice-$it.mp3") }
+        val reply = line("m2", "agent:a1", noon - 30_000).copy(media = voices + listOf(
+            media("raw", "audio"),
+            media("wip", "audio", status = "pending", filename = "voice-6.mp3"),
+            media("doc", "file", filename = "script.txt", mime = "text/plain"),
+            media("bad", "file", status = "failed", filename = "notes.pdf", mime = "application/pdf"),
+        ))
+        val r = postOf(line("m1", "human", noon - 60_000), listOf(reply)).replies.single()
+
+        assertEquals(listOf("v1", "v2", "v3", "v4", "v5", "raw", "wip"), r.sounds.map { it.id })
+        assertEquals(listOf("voice-1.mp3", "voice-2.mp3", "voice-3.mp3", "voice-4.mp3", "voice-5.mp3", null, "voice-6.mp3"), r.sounds.map { it.name })
+        assertEquals("https://dash.test/media/v1/original", r.sounds.first().url)
+        // Still being made: it keeps its place, says so, and has nothing to play.
+        assertEquals(listOf(null, null, null, null, null, null, NotReady.Processing), r.sounds.map { it.notReady })
+        assertEquals("", r.sounds.last().url)
+        assertEquals(listOf("script.txt", "notes.pdf"), r.files.map { it.name })
+        assertEquals(listOf("https://dash.test/media/doc/original", ""), r.files.map { it.url })
+        assertEquals(listOf(null, NotReady.Failed), r.files.map { it.notReady })
+        assertTrue(r.attachments.isEmpty())
+    }
+
+    @Test
+    fun anUpdateWithSeveralSoundsShowsEveryOneInOrder() {
+        val card = update("u1", noon, "T", "B").let {
+            it.copy(update = it.update.copy(media = (1..3).map { n ->
+                MediaView(id = "s$n", kind = "audio", status = "ready", variants = listOf("original"), filename = "take-$n.mp3", mime = "audio/mpeg")
+            }))
+        }
+        val item = mapper.map(feed(listOf(card)), listOf(mega), emptyList(), emptyList(), null)
+            .sections.single().items.single() as FeedItem.Update
+        assertEquals(listOf("take-1.mp3", "take-2.mp3", "take-3.mp3"), item.sounds.map { it.name })
+    }
+
+    @Test
     fun aDroppedConnectionReadsAsReconnecting() {
         val state = mapper.map(feed(emptyList(), status = StreamStatus.Offline), listOf(mega), emptyList(), emptyList(), "mega")
         assertEquals(LinkStatus.Reconnecting, state.link)

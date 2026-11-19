@@ -476,7 +476,7 @@ internal class FeedMapper(
 
     /** A picture or video the dashboard hasn't made yet, or couldn't: no address, so nothing loads. */
     private fun notReadyTile(media: MediaView): Attachment {
-        val why = if (media.status == "failed") NotReady.Failed else NotReady.Processing
+        val why = notReady(media)
         return Attachment(
             title = media.filename ?: if (media.kind == "video") "Video" else "Image",
             altText = why.words,
@@ -506,25 +506,38 @@ internal class FeedMapper(
         )
     }
 
-    private fun List<MediaView>.sounds() = filter { it.kind == "audio" && (it.isRemoved || it.isReady && "original" in it.variants) }
+    /**
+     * Every sound, in the order it was attached. One still being made, or that never will be, keeps
+     * its place as a row saying so, as a picture does in the grid.
+     */
+    private fun List<MediaView>.sounds() = filter { it.kind == "audio" && (it.isRemoved || !it.isReady || "original" in it.variants) }
         .map { media ->
             val removed = media.removed
-            if (removed != null) Sound(media.id, "", media.durationMs, media.mime, removedAfterDays = removed.afterDays)
-            else Sound(media.id, url(media, "original"), media.durationMs, media.mime)
+            val name = media.filename?.trim()?.takeIf { it.isNotEmpty() }
+            when {
+                removed != null -> Sound(media.id, "", media.durationMs, media.mime, removedAfterDays = removed.afterDays, name = name)
+                !media.isReady -> Sound(media.id, "", media.durationMs, media.mime, name = name, notReady = notReady(media))
+                else -> Sound(media.id, url(media, "original"), media.durationMs, media.mime, name = name)
+            }
         }
 
-    private fun List<MediaView>.files() = filter { it.kind == "file" && (it.isRemoved || it.isReady && "original" in it.variants) }
+    /** Every file, in the order it was attached; one not ready yet keeps its place, as a sound does. */
+    private fun List<MediaView>.files() = filter { it.kind == "file" && (it.isRemoved || !it.isReady || "original" in it.variants) }
         .map { media ->
             val removed = media.removed
+            val ready = removed == null && media.isReady
             FileAttachment(
                 media.id,
-                if (removed != null) "" else url(media, "original"),
+                if (ready) url(media, "original") else "",
                 MediaLabels.fileName(media.filename),
                 MediaLabels.size(media.bytes),
                 media.mime,
                 removedAfterDays = removed?.afterDays,
+                notReady = if (removed == null && !media.isReady) notReady(media) else null,
             )
         }
+
+    private fun notReady(media: MediaView) = if (media.status == "failed") NotReady.Failed else NotReady.Processing
 
     private fun List<dev.wildware.agents.EmbedView>.embeds() = map { dev.wildware.agents.app.feed.Embed(dev.wildware.agents.EmbedLook.resolve(it), serverUrl) }
 

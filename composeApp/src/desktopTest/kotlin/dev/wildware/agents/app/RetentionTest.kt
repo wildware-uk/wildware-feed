@@ -99,7 +99,7 @@ class RetentionTest {
         assertNull(item.attachments[2].video, "a removed video has nothing to play")
         assertEquals("Media removed after 30 days", item.attachments[0].altText)
         assertEquals(16f / 9f, item.attachments[0].aspect, "the slot its picture took")
-        assertEquals(listOf(Sound("snd", "", null, "application/octet-stream", removedAfterDays = 30)), item.sounds)
+        assertEquals(listOf(Sound("snd", "", null, "application/octet-stream", removedAfterDays = 30, name = "snd.bin")), item.sounds)
         assertEquals("", item.files.single().url)
         assertEquals(30, item.files.single().removedAfterDays)
     }

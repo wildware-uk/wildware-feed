@@ -154,8 +154,11 @@ fun Sounds(sounds: List<Sound>, modifier: Modifier = Modifier) {
     Column(modifier.widthIn(max = 560.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         sounds.forEachIndexed { i, sound ->
             val removed = sound.removedAfterDays
+            val notReady = sound.notReady
             if (removed != null) {
                 RemovedMediaRow(removed)
+            } else if (notReady != null) {
+                NotReadyMediaRow(notReady, sound.name)
             } else {
                 val player = rememberSoundPlayer(sound, auth)
                 SoundRow(sound, i, sounds.size, player)
@@ -165,8 +168,8 @@ fun Sounds(sounds: List<Sound>, modifier: Modifier = Modifier) {
 }
 
 /**
- * One sound: play and pause, a row of bars to see and tap where it has got to, and the time.
- * With no [player] (a desktop), the button hands the sound to the system's player instead.
+ * One sound: play and pause, its name over a row of bars to see and tap where it has got to, and
+ * the time. With no [player], the button hands the sound to the system's player instead.
  */
 @Composable
 fun SoundRow(sound: Sound, index: Int, total: Int, player: SoundPlayer?) {
@@ -183,7 +186,9 @@ fun SoundRow(sound: Sound, index: Int, total: Int, player: SoundPlayer?) {
 
     val length = state.durationMs.takeIf { it > 0 } ?: sound.durationMs ?: 0
     val lengthLabel = MediaLabels.duration(length)
-    val name = "sound ${index + 1} of $total" + (lengthLabel?.let { ", $it" } ?: "")
+    val name = "sound ${index + 1} of $total" + (sound.name?.let { ", $it" } ?: "") + (lengthLabel?.let { ", $it" } ?: "")
+    // What the row shows over its bars: the name it was uploaded with, else its place in the list.
+    val title = sound.name ?: if (total > 1) "Sound ${index + 1}" else "Sound"
     val progress = if (length > 0) (state.positionMs.toFloat() / length).coerceIn(0f, 1f) else 0f
     val toggle = {
         when {
@@ -221,27 +226,37 @@ fun SoundRow(sound: Sound, index: Int, total: Int, player: SoundPlayer?) {
             }
         }
         Spacer(Modifier.width(10.dp))
-        Bars(
-            seed = sound.id,
-            progress = progress,
-            modifier = Modifier
-                .weight(1f)
-                .height(28.dp)
-                .semantics {
-                    contentDescription = "Position in $name"
-                    progressBarRangeInfo = ProgressBarRangeInfo(progress, 0f..1f)
-                    if (player != null && length > 0) setProgress { p -> player.seek((p * length).toLong()); true }
-                }
-                .then(
-                    if (player != null && length > 0) {
-                        Modifier.pointerInput(player, length) {
-                            detectTapGestures { at -> player.seek((at.x / size.width * length).toLong().coerceIn(0, length)) }
-                        }
-                    } else {
-                        Modifier
-                    },
-                ),
-        )
+        Column(Modifier.weight(1f)) {
+            Text(
+                title,
+                Modifier.clearAndSetSemantics { },
+                color = colors.text,
+                style = AgentTheme.type.meta,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Bars(
+                seed = sound.id,
+                progress = progress,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(20.dp)
+                    .semantics {
+                        contentDescription = "Position in $name"
+                        progressBarRangeInfo = ProgressBarRangeInfo(progress, 0f..1f)
+                        if (player != null && length > 0) setProgress { p -> player.seek((p * length).toLong()); true }
+                    }
+                    .then(
+                        if (player != null && length > 0) {
+                            Modifier.pointerInput(player, length) {
+                                detectTapGestures { at -> player.seek((at.x / size.width * length).toLong().coerceIn(0, length)) }
+                            }
+                        } else {
+                            Modifier
+                        },
+                    ),
+            )
+        }
         Spacer(Modifier.width(10.dp))
         MetaText(
             when {
@@ -294,7 +309,12 @@ fun Files(files: List<FileAttachment>, modifier: Modifier = Modifier) {
     Column(modifier.widthIn(max = 560.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         files.forEach { file ->
             val removed = file.removedAfterDays
-            if (removed != null) RemovedMediaRow(removed) else FileChip(file)
+            val notReady = file.notReady
+            when {
+                removed != null -> RemovedMediaRow(removed)
+                notReady != null -> NotReadyMediaRow(notReady, file.name)
+                else -> FileChip(file)
+            }
         }
     }
 }

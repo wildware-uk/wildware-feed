@@ -34,8 +34,12 @@ data class Sound(
     val mime: String,
     /** Removed by the owner's media retention after this many days: it shows a placeholder and never plays. */
     val removedAfterDays: Int? = null,
+    /** The name it was uploaded with, shown on its row; null when nobody wrote one down. */
+    val name: String? = null,
+    /** Still being made, or never will be: it shows a placeholder saying so and never plays. */
+    val notReady: NotReady? = null,
 ) : Playable {
-    override val fileName: String get() = "sound.${MediaLabels.extension(mime, "mp3")}"
+    override val fileName: String get() = name?.takeIf { '.' in it } ?: "sound.${MediaLabels.extension(mime, "mp3")}"
 }
 
 /** A file on a card: a download, never something to show. */
@@ -49,6 +53,8 @@ data class FileAttachment(
     val mime: String,
     /** Removed by the owner's media retention after this many days: it shows a placeholder and never downloads. */
     val removedAfterDays: Int? = null,
+    /** Still being made, or never will be: it shows a placeholder saying so and never downloads. */
+    val notReady: NotReady? = null,
 )
 
 /** How long a sound or video is and how big a file is, said the way the website says it. */
