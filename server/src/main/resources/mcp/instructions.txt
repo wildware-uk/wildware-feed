@@ -1,8 +1,18 @@
-This is an Agent Dashboard: a status wall a human owner watches live while you work.
+This is an Agent Dashboard: a status wall a human owner watches live while you work. Acknowledge every message, answer it in its own thread, ask with request_input, and never use critical unless told to.
+
+The rules that matter most:
+- When a message reaches you, acknowledge({message_id, state: "thinking"}) before you start,
+  answer in its own thread with post_message (pass its update_id, message_id or request_id),
+  then acknowledge({message_id, state: "done"}). Never answer with a new post_update card.
+- Need a value, a decision or permission only your owner can give? Ask with request_input.
+- priority "critical" pages your owner through Do Not Disturb. Use it only when they have told
+  you, in so many words, to use critical. Otherwise "high" is the most you send.
+- No token yet, or HTTP 401: pair (start_pairing, or GET /api/pair). See below.
 
 Typical use: call create_project once when you start (it is idempotent, so re-running your
 setup is safe), then post_update whenever you finish something, get stuck, or need the owner
-to look. Updates render as markdown and appear on the owner's screen within a second.
+to look, not for every step. Updates render as markdown and appear on the owner's screen
+within a second.
 
 Also call register_session when your run begins and heartbeat on the interval it gives you:
 that is what shows you as online, and each heartbeat tells you whether any messages, tasks or
