@@ -287,6 +287,7 @@ internal class FeedMapper(
             fields = fields.map { CardField(it.name, it.value) },
             reactions = reactions(reactions),
             sending = post.sending,
+            uploaded = post.uploaded,
             questions = post.questions.map { it.toQuestion(agents, project, index) },
             edited = editedLabel(post.message.editedAt),
             activityAt = activityAt,
@@ -401,6 +402,7 @@ internal class FeedMapper(
                 reactions = reactions(line.reactions),
                 unread = line.message.id in unreadIds,
                 sending = line.sending,
+                uploaded = line.uploaded,
                 questions = line.questions.map { it.toQuestion(agents, project, index) },
                 undelivered = undelivered(line),
                 attachments = line.media.tiles().map { tile(it) },
@@ -537,7 +539,11 @@ internal class FeedMapper(
             )
         }
 
-    private fun notReady(media: MediaView) = if (media.status == "failed") NotReady.Failed else NotReady.Processing
+    private fun notReady(media: MediaView) = when (media.status) {
+        "failed" -> NotReady.Failed
+        dev.wildware.agents.UploadingStatus -> NotReady.Uploading
+        else -> NotReady.Processing
+    }
 
     private fun List<dev.wildware.agents.EmbedView>.embeds() = map { dev.wildware.agents.app.feed.Embed(dev.wildware.agents.EmbedLook.resolve(it), serverUrl) }
 

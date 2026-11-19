@@ -18,6 +18,17 @@ import kotlin.time.ExperimentalTime
 /** The id a line still in the outbox goes by until the dashboard gives it its own. */
 const val DraftPrefix = "outbox:"
 
+/** The status of a file on a line still in the outbox: it is on this device, going up. Never the server's. */
+const val UploadingStatus = "uploading"
+
+/** What the dashboard will call a file of type [mime]: "image", "video", "audio" or "file". */
+fun mediaKindOf(mime: String): String = when (mime.substringBefore(';').trim().lowercase()) {
+    "image/png", "image/jpeg", "image/webp", "image/gif" -> "image"
+    "video/mp4", "video/webm", "video/quicktime" -> "video"
+    "audio/mpeg", "audio/mp4", "audio/ogg", "audio/wav", "audio/x-m4a", "audio/m4a", "audio/x-wav", "audio/wave", "audio/vorbis", "audio/opus" -> "audio"
+    else -> "file"
+}
+
 /** The comments under a card, each with what is said about it. */
 data class ThreadLine(
     val message: MessageView,
@@ -35,6 +46,8 @@ data class ThreadLine(
     val questions: List<RequestCard>,
     /** The owner wrote it here and it is still on its way to the dashboard. */
     val sending: Boolean = false,
+    /** While [sending]: how much of its files have gone up, 0 to 1. Null when none are going up now. */
+    val uploaded: Float? = null,
 )
 
 /** One card in the feed. */
@@ -288,6 +301,7 @@ class Dashboard internal constructor(
         outbox?.let { queue ->
             queue.onSent = { item, result -> withContext(confinedDispatcher) { sent(item, result) } }
             confined.launch { queue.items.collect { changed() } }
+            confined.launch { queue.uploads.collect { changed() } }
         }
     }
 
@@ -405,7 +419,11 @@ class Dashboard internal constructor(
 
     private fun publish() {
         val pending = drafts()
-        feeds.values.forEach { it.drafts = pending }
+        val uploads = outbox?.uploads?.value.orEmpty()
+        feeds.values.forEach {
+            it.drafts = pending
+            it.uploads = uploads
+        }
         val names = names()
         if (mutableAgentNames.value != names) mutableAgentNames.value = names
         val onlineAgents = presence.agents.filter { it.lastHeartbeatAt >= now - PresenceReader.WindowMillis }
@@ -547,6 +565,9 @@ class Feed internal constructor(
     /** The owner's posts and replies still on their way, set before each publish. */
     internal var drafts: List<OutboxItem> = emptyList()
 
+    /** How far each of those has got with its files, by outbox id; set with [drafts]. */
+    internal var uploads: Map<String, Float> = emptyMap()
+
     private var index = ThreadIndex(MessagesSnapshot(seq = 0))
     private var indexedFrom: MessagesSnapshot? = null
     private var indexedDrafts: List<OutboxItem>? = null
@@ -557,7 +578,22 @@ class Feed internal constructor(
         if (indexedFrom !== snapshot || indexedDrafts !== drafts) {
             val lines = drafts.mapNotNull(::draftLine)
             draftIds = lines.mapTo(HashSet()) { it.id }
-            index = ThreadIndex(if (lines.isEmpty()) snapshot else snapshot.copy(messages = snapshot.messages + lines))
+            // A draft's files show where they will be, saying they are going up, until the dashboard has them.
+            val media = drafts.filter { it.files.isNotEmpty() && DraftPrefix + it.id in draftIds }.associate { item ->
+                DraftPrefix + item.id to item.files.mapIndexed { i, file ->
+                    MediaView(
+                        id = "${DraftPrefix}${item.id}/$i",
+                        messageId = DraftPrefix + item.id,
+                        kind = mediaKindOf(file.mimeType),
+                        mime = file.mimeType,
+                        status = UploadingStatus,
+                        filename = file.filename,
+                    )
+                }
+            }
+            index = ThreadIndex(
+                if (lines.isEmpty()) snapshot else snapshot.copy(messages = snapshot.messages + lines, media = snapshot.media + media),
+            )
             indexedFrom = snapshot
             indexedDrafts = drafts
         }
@@ -579,7 +615,8 @@ class Feed internal constructor(
             requestId = thread["request"],
             answers = item.answers,
             author = HumanAuthor,
-            body = item.text ?: item.files.joinToString(", ") { it.filename },
+            // Its files show under it, by name, so the words are only what was written.
+            body = item.text.orEmpty(),
             createdAt = item.createdAtMillis,
         )
     }
@@ -627,6 +664,7 @@ class Feed internal constructor(
             deliveries = index.deliveries[message.id].orEmpty(),
             questions = context.requests.filter { it.messageId == message.id }.map { context.requestCard(it, this) },
             sending = message.id in draftIds,
+            uploaded = if (message.id in draftIds) uploads[message.id.removePrefix(DraftPrefix)] else null,
         )
     }
 

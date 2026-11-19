@@ -7,6 +7,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.JsonElement
@@ -77,6 +78,14 @@ class OutboxQueue @OptIn(ExperimentalTime::class) constructor(
      * out between leaving the outbox and arriving in its thread.
      */
     var onSent: (suspend (OutboxItem, DeliveryResult) -> Unit)? = null
+
+    private val mutableUploads = MutableStateFlow<Map<String, Float>>(emptyMap())
+
+    /**
+     * How far each item's files have gone up, 0 to 1, by item id, while it is being sent. Moves in
+     * whole percents, so watching it redraws a hundred times at most.
+     */
+    val uploads: StateFlow<Map<String, Float>> = mutableUploads.asStateFlow()
 
     private val kicks = Channel<Boolean>(Channel.CONFLATED)
     private var runner: Job? = null
@@ -175,9 +184,13 @@ class OutboxQueue @OptIn(ExperimentalTime::class) constructor(
                     val bytes = storage.readFile(file.name) ?: throw MissingFile(file.filename)
                     Attachment(file.filename, file.mimeType, bytes)
                 }
-                client.deliver(item, attachments)
+                val total = attachments.sumOf { it.bytes.size.toLong() }
+                if (total > 0) progress(item.id, 0f)
+                client.deliverQueued(item, attachments, if (total > 0) { bytes -> progress(item.id, bytes.toFloat() / total) } else null)
             } catch (missing: MissingFile) {
                 DeliveryResult(DeliveryOutcome.GiveUp, message = "${missing.filename} is no longer on this device.")
+            } finally {
+                mutableUploads.update { it - item.id }
             }
             if (result.isSent) {
                 try {
@@ -190,6 +203,12 @@ class OutboxQueue @OptIn(ExperimentalTime::class) constructor(
             }
             update { Outbox.afterAttempt(it, item.id, result, clock()) }
         }
+    }
+
+    /** Notes how far [id]'s files have gone, in whole percents. */
+    private fun progress(id: String, fraction: Float) {
+        val percent = (fraction.coerceIn(0f, 1f) * 100).toInt() / 100f
+        mutableUploads.update { if (it[id] == percent) it else it + (id to percent) }
     }
 
     private class MissingFile(val filename: String) : Exception()

@@ -157,6 +157,9 @@ enum class NotReady(val words: String) {
 
     /** The dashboard couldn't read it, so it never will. */
     Failed("Media unavailable"),
+
+    /** Still on this device, going up with the owner's message. */
+    Uploading("Uploading…"),
 }
 
 /** Pictures to look through full size, starting at [index]. */
@@ -175,6 +178,9 @@ enum class Scene { Dusk, Dawn, Night }
 
 /** What a line or card still in the outbox says instead of its time. */
 const val SendingLabel = "Sending…"
+
+/** What it says while its files go up: "Uploading 45%". */
+fun sendingLabel(uploaded: Float?): String = if (uploaded == null) SendingLabel else "Uploading ${(uploaded * 100).toInt()}%"
 
 /** How faded a line still in the outbox is drawn. */
 const val SendingAlpha = 0.6f
@@ -197,6 +203,8 @@ data class Reply(
     val unread: Boolean = false,
     /** Written here and still on its way to the dashboard. */
     val sending: Boolean = false,
+    /** While [sending]: how much of its files have gone up, 0 to 1; null when none are going up. */
+    val uploaded: Float? = null,
     /** Questions an agent asked under this reply. They are answered right here, as well as at the top. */
     val questions: List<FeedItem.Question> = emptyList(),
     /** The owner's line, sent a while ago, and no agent has it: nobody is listening. */
@@ -442,6 +450,8 @@ sealed interface FeedItem {
         val reactions: List<Reaction> = emptyList(),
         /** Written here and still on its way to the dashboard. */
         val sending: Boolean = false,
+        /** While [sending]: how much of its files have gone up, 0 to 1; null when none are going up. */
+        val uploaded: Float? = null,
         /** Questions an agent asked under the post itself, shown at the top of its thread. */
         val questions: List<Question> = emptyList(),
         /** When it was last changed, as "Edited Monday 3 August 2026 at 14:05"; null when never. Drawn as "edited". */

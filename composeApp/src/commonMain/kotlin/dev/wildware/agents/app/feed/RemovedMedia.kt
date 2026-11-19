@@ -82,6 +82,7 @@ fun NotReadyMediaTile(why: NotReady, modifier: Modifier = Modifier) {
             when (why) {
                 NotReady.Processing -> Icon(Icons.Image, null, tint = colors.textFaint, modifier = Modifier.size(if (roomy) 20.dp else 16.dp))
                 NotReady.Failed -> Icon(Icons.Warning, null, tint = colors.error, modifier = Modifier.size(if (roomy) 20.dp else 16.dp))
+                NotReady.Uploading -> Icon(Icons.ArrowUp, null, tint = colors.textFaint, modifier = Modifier.size(if (roomy) 20.dp else 16.dp))
             }
             if (roomy) {
                 Spacer(Modifier.height(6.dp))
@@ -109,6 +110,7 @@ fun NotReadyMediaRow(why: NotReady, name: String?, modifier: Modifier = Modifier
         when (why) {
             NotReady.Processing -> Icon(Icons.Clock, null, tint = colors.textFaint, modifier = Modifier.size(18.dp))
             NotReady.Failed -> Icon(Icons.Warning, null, tint = colors.error, modifier = Modifier.size(18.dp))
+            NotReady.Uploading -> Icon(Icons.ArrowUp, null, tint = colors.textFaint, modifier = Modifier.size(18.dp))
         }
     }
 }

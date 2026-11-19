@@ -310,13 +310,18 @@ object Outbox {
  * Sends one queued item. Never throws for a failed send: the result says whether to try again.
  * [attachments] are the item's files, read back from disk in the same order.
  */
-internal suspend fun DashboardClient.deliverQueued(item: OutboxItem, attachments: List<Attachment>): DeliveryResult {
+internal suspend fun DashboardClient.deliverQueued(
+    item: OutboxItem,
+    attachments: List<Attachment>,
+    /** How many bytes of the item's files have gone up so far. */
+    uploaded: ((Long) -> Unit)? = null,
+): DeliveryResult {
     var ticketMessageId = item.ticketMessageId
     var sent: MessageView? = null
     return try {
         when (item.kind) {
             OutboxKind.Message -> {
-                val posted = sendMessage(item.thread + listOfNotNull(item.answers?.let { "answers" to it }), item.text, attachments).message
+                val posted = sendMessage(item.thread + listOfNotNull(item.answers?.let { "answers" to it }), item.text, attachments, uploaded).message
                 sent = posted
                 // As on the website, a tag that won't go on doesn't undo the post: the words matter more.
                 val card = posted?.let { CardRef(CardKinds.Message, it.id) }

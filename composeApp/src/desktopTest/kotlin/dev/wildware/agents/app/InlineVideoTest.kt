@@ -54,6 +54,18 @@ class InlineVideoTest {
     }
 
     @Test
+    fun aVideoOnAReplyPlaysInTheAppToo() = runComposeUiTest {
+        val post = FakeFeed.state.sections.flatMap { it.items }.filterIsInstance<FeedItem.Post>().first()
+        val reply = dev.wildware.agents.app.feed.Reply("rv", dev.wildware.agents.app.feed.Author.Owner("Sam"), "9:00", "The recording", attachments = listOf(clip))
+        val p = post.copy(replies = listOf(reply))
+        val state = FakeFeed.state.copy(openThread = null, sections = FakeFeed.state.sections.map { s -> s.copy(items = s.items.map { if (it.id == p.id) p else it }) })
+        setContent { AgentTheme(dark = false) { Box(Modifier.size(1440.dp, 900.dp)) { FeedScreen(state) } } }
+        onNode(hasScrollToNodeAction()).performScrollToNode(hasContentDescription("Play video 1 of 1, 0:12"))
+        onNodeWithContentDescription("Play video 1 of 1, 0:12").performClick()
+        onNodeWithContentDescription("Video").assertExists()
+    }
+
+    @Test
     fun fullScreenFillsTheWindow() = runComposeUiTest {
         show()
         onNodeWithContentDescription("Play video 1 of 1, 0:12").performClick()

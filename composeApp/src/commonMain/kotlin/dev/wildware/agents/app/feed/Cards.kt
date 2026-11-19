@@ -918,7 +918,7 @@ fun PostCard(item: FeedItem.Post, modifier: Modifier = Modifier, density: Densit
             CardHeader(
                 author = item.author,
                 role = if (own) "You" else (item.author as? Author.AgentAuthor)?.agent?.role,
-                time = if (item.sending) SendingLabel else item.time,
+                time = if (item.sending) sendingLabel(item.uploaded) else item.time,
                 level = null,
                 status = item.status,
                 project = item.project,

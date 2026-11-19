@@ -6,6 +6,7 @@ import io.ktor.client.engine.HttpClientEngine
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.defaultRequest
+import io.ktor.client.plugins.onUpload
 import io.ktor.client.request.delete
 import io.ktor.client.request.patch
 import io.ktor.client.request.HttpRequestBuilder
@@ -314,12 +315,16 @@ class DashboardClient(
 
     /** Uploads one file and returns it unattached: send its id with [postMessage] to attach it. */
     @Throws(Exception::class)
-    suspend fun uploadMedia(attachment: Attachment): MediaView =
+    suspend fun uploadMedia(attachment: Attachment): MediaView = uploadMedia(attachment, null)
+
+    /** [uploadMedia], telling [sent] how many of its bytes have gone up so far. */
+    internal suspend fun uploadMedia(attachment: Attachment, sent: ((Long) -> Unit)?): MediaView =
         http.post("api/media") {
             authorise()
             parameter("filename", attachment.filename)
             contentType(ContentType.parse(attachment.mimeType))
             setBody(attachment.bytes)
+            if (sent != null) onUpload { bytes, _ -> sent(bytes) }
         }.decoded<MediaCreatedBody>().media
 
     @Throws(Exception::class)
@@ -504,9 +509,22 @@ class DashboardClient(
         sendMessage(thread, text, attachments).id
 
     /** [send], answering with the message as the dashboard stored it too, when it could be read. */
-    internal suspend fun sendMessage(thread: Map<String, String>, text: String?, attachments: List<Attachment>): Posted {
+    internal suspend fun sendMessage(
+        thread: Map<String, String>,
+        text: String?,
+        attachments: List<Attachment>,
+        /** How many bytes of all the files together have gone up so far. */
+        sent: ((Long) -> Unit)? = null,
+    ): Posted {
         val body = text?.trim()?.takeIf { it.isNotEmpty() } ?: shareCaption(attachments)
-        val mediaIds = attachments.map { upload(it) }
+        var done = 0L
+        val mediaIds = attachments.map { file ->
+            val before = done
+            uploadMedia(file, sent?.let { report -> { bytes -> report(before + bytes) } }).id.also {
+                done += file.bytes.size
+                sent?.invoke(done)
+            }
+        }
         return postMessage(thread + ("body" to body), mediaIds)
     }
 

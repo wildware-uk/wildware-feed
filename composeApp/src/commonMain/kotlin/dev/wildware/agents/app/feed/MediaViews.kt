@@ -319,6 +319,10 @@ fun Files(files: List<FileAttachment>, modifier: Modifier = Modifier) {
     }
 }
 
+/**
+ * A file to download: its name, its size, and a download icon. Saved, it says where; on a desktop
+ * it then offers "Show in folder", to find the file without hunting for it.
+ */
 @Composable
 fun FileChip(file: FileAttachment) {
     val colors = AgentTheme.colors
@@ -328,6 +332,7 @@ fun FileChip(file: FileAttachment) {
     val scope = rememberCoroutineScope()
     var status by remember(file.id) { mutableStateOf<String?>(null) }
     var busy by remember(file.id) { mutableStateOf(false) }
+    var saved by remember(file.id) { mutableStateOf(false) }
     Row(
         Modifier
             .fillMaxWidth()
@@ -339,11 +344,13 @@ fun FileChip(file: FileAttachment) {
                 busy = true
                 status = "Downloading…"
                 scope.launch {
-                    status = handOver { handler.save(file, auth) }
+                    var ok = false
+                    status = handOver { handler.save(file, auth).also { ok = true } }
+                    saved = ok
                     busy = false
                 }
             }
-            .padding(horizontal = 12.dp, vertical = 10.dp),
+            .padding(start = 12.dp, end = 12.dp, top = 10.dp, bottom = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(Icons.File, null, tint = colors.textMuted, modifier = Modifier.size(18.dp))
@@ -356,7 +363,22 @@ fun FileChip(file: FileAttachment) {
                 color = colors.textMuted,
             )
         }
-        Icon(Icons.Download, null, tint = colors.textMuted, modifier = Modifier.size(16.dp))
+        if (saved && handler?.showsSavedFiles == true) {
+            val label = "Show in folder"
+            Text(
+                label,
+                Modifier
+                    .clip(AgentTheme.shapes.pill)
+                    .pressable("Show ${file.name} in its folder", AgentTheme.shapes.pill) {
+                        if (!handler.showSaved(file)) status = "Couldn't open the folder"
+                    }
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                color = colors.accent,
+                style = AgentTheme.type.label,
+            )
+        } else {
+            Icon(Icons.Download, null, tint = colors.textMuted, modifier = Modifier.size(16.dp))
+        }
     }
 }
 

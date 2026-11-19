@@ -275,11 +275,32 @@ class DesktopMediaHandler(
 ) : MediaHandler {
     override suspend fun open(item: Playable, auth: MediaAuth?): String = "Plays in the app"
 
+    /** Where each file was saved, by its media id, for "Show in folder". */
+    private val saved = java.util.concurrent.ConcurrentHashMap<String, File>()
+
     override suspend fun save(file: FileAttachment, auth: MediaAuth?): String {
         downloads.mkdirs()
         val target = freeName(downloads, safeFileName(file.name))
         download(file.url, auth, target)
+        saved[file.id] = target
         return "Saved to Downloads as ${target.name}"
+    }
+
+    override val showsSavedFiles: Boolean get() = true
+
+    /** Never opens the file itself, only its folder: a file from an agent could be a program. */
+    override fun showSaved(file: FileAttachment): Boolean {
+        val target = saved[file.id]?.takeIf { it.exists() } ?: return false
+        val folder = target.parentFile ?: return false
+        return runCatching {
+            val desktop = java.awt.Desktop.getDesktop().takeIf { java.awt.Desktop.isDesktopSupported() }
+            when {
+                desktop?.isSupported(java.awt.Desktop.Action.BROWSE_FILE_DIR) == true -> desktop.browseFileDirectory(target)
+                desktop?.isSupported(java.awt.Desktop.Action.OPEN) == true -> Thread { desktop.open(folder) }.start()
+                else -> ProcessBuilder("xdg-open", folder.absolutePath).start()
+            }
+            true
+        }.getOrDefault(false)
     }
 
     private suspend fun download(url: String, auth: MediaAuth?, target: File) = withContext(Dispatchers.IO) {

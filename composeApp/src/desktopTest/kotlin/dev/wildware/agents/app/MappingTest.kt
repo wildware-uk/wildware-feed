@@ -552,6 +552,26 @@ class MappingTest {
     }
 
     @Test
+    fun aReplyStillGoingUpShowsItsFilesAsUploadingAndHowFarItHasGot() {
+        fun media(id: String, kind: String, mime: String, name: String) =
+            MediaView(id = id, kind = kind, status = dev.wildware.agents.UploadingStatus, mime = mime, filename = name)
+        val sending = line("outbox:o1", "human", noon - 1_000).copy(
+            sending = true,
+            uploaded = 0.45f,
+            media = listOf(media("outbox:o1/0", "image", "image/png", "shot.png"), media("outbox:o1/1", "audio", "audio/mpeg", "take.mp3"), media("outbox:o1/2", "file", "application/zip", "logs.zip")),
+        )
+        val r = postOf(line("m1", "human", noon - 60_000), listOf(sending)).replies.single()
+
+        assertEquals(0.45f, r.uploaded)
+        assertEquals(listOf(NotReady.Uploading), r.attachments.map { it.notReady })
+        assertEquals(listOf(NotReady.Uploading), r.sounds.map { it.notReady })
+        assertEquals(listOf("take.mp3"), r.sounds.map { it.name })
+        assertEquals(listOf(NotReady.Uploading), r.files.map { it.notReady })
+        assertEquals(listOf("logs.zip"), r.files.map { it.name })
+        assertEquals("Uploading 45%", dev.wildware.agents.app.feed.sendingLabel(r.uploaded))
+    }
+
+    @Test
     fun anUpdateWithSeveralSoundsShowsEveryOneInOrder() {
         val card = update("u1", noon, "T", "B").let {
             it.copy(update = it.update.copy(media = (1..3).map { n ->

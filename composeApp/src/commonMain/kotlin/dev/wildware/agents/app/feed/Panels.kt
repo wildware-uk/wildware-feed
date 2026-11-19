@@ -777,7 +777,7 @@ private fun SendButton(enabled: Boolean, onClick: () -> Unit) {
 @Composable
 fun ReplyView(reply: Reply, modifier: Modifier = Modifier) {
     val colors = AgentTheme.colors
-    val time = if (reply.sending) SendingLabel else reply.time
+    val time = if (reply.sending) sendingLabel(reply.uploaded) else reply.time
     val detail = if (reply.sending) "" else reply.timeDetail
     val answering = reply.answering?.let { "answering $it" }
     val spoken = listOfNotNull(reply.author.name, answering, detail.ifEmpty { time }, reply.edited, "new".takeIf { reply.unread }).joinToString(", ")

@@ -111,6 +111,12 @@ interface MediaHandler {
     suspend fun open(item: Playable, auth: MediaAuth?): String
 
     suspend fun save(file: FileAttachment, auth: MediaAuth?): String
+
+    /** Whether a saved file can be shown in a folder here: a desktop, where saving puts it in Downloads. */
+    val showsSavedFiles: Boolean get() = false
+
+    /** Opens the folder [file] was saved to, with it picked out where the system can. False when it can't. */
+    fun showSaved(file: FileAttachment): Boolean = false
 }
 
 val LocalMediaHandler = staticCompositionLocalOf<MediaHandler?> { null }
