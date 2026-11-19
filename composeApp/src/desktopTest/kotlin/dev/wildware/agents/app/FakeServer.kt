@@ -91,6 +91,8 @@ class FakeServer {
         val path = request.url.encodedPath
         calls += path + request.url.encodedQuery.let { if (it.isEmpty()) "" else "?$it" }
         if (path == "/api/devices/sign-in") return signIn(request)
+        // Public, and asked before any key exists: "Connect to a host", step 1.
+        if (path == "/api/server") return ok("""{"product":"wildware-feed","version":"dev","signIn":["password"],"team":false}""")
         if (path == "/api/messages" && request.method == HttpMethod.Get && messagesDelayMs > 0) delay(messagesDelayMs)
         authorizations += request.headers[HttpHeaders.Authorization]
         if (request.method != HttpMethod.Get) {

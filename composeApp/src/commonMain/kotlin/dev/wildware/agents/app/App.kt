@@ -109,6 +109,7 @@ fun AgentsApp(
                         safeArea = safeArea,
                         signInHere = if (model.canHostLocally) model::signInHere else null,
                         hostProblem = hostProblem,
+                        checkHost = model::checkHost,
                         signIn = model::signIn,
                         tryDemo = model::enterDemo,
                     )

@@ -11,9 +11,9 @@ import kotlin.test.assertTrue
 
 class ThisComputerTest {
     @Test
-    fun theDesktopStartsOnThisComputerAndPhonesOnAServer() {
+    fun theDesktopStartsOnThisComputerAndPhonesOnAHost() {
         assertEquals(SignInChoice.ThisComputer, defaultSignInChoice(canHostLocally = true))
-        assertEquals(SignInChoice.Server, defaultSignInChoice(canHostLocally = false))
+        assertEquals(SignInChoice.Host, defaultSignInChoice(canHostLocally = false))
     }
 
     @Test

@@ -36,16 +36,20 @@ class StandaloneScreenshotTest {
         for (dark in listOf(false, true)) {
             val theme = if (dark) "dark" else "light"
             shoot("standalone-$theme-sign-in-this-computer", dark) {
-                SignInScreen("Laptop", null, SafeArea(), signInHere = {}) { _, _, _ -> }
+                SignInScreen("Laptop", null, SafeArea(), signInHere = {}, checkHost = { error("no network here") }) { _, _, _ -> }
             }
-            shoot("standalone-$theme-sign-in-a-server", dark) {
-                SignInScreen("Laptop", null, SafeArea(), signInHere = {}, startWith = SignInChoice.Server) { _, _, _ -> }
+            shoot("standalone-$theme-sign-in-connect-to-a-host", dark) {
+                SignInScreen(
+                    "Laptop", null, SafeArea(), signInHere = {}, startWith = SignInChoice.Host,
+                    checkHost = { error("no network here") },
+                ) { _, _, _ -> }
             }
         }
         shoot("standalone-light-sign-in-already-running", dark = false) {
             SignInScreen(
                 "Laptop", null, SafeArea(), signInHere = {},
                 hostProblem = "Another copy of Wildware Feed is already running the server on this computer.",
+                checkHost = { error("no network here") },
             ) { _, _, _ -> }
         }
     }

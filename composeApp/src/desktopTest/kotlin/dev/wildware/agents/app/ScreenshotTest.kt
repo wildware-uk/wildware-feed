@@ -15,8 +15,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.use
 import dev.wildware.agents.app.design.AccessibilityPrefs
 import dev.wildware.agents.app.design.AgentTheme
+import dev.wildware.agents.HostCheck
+import dev.wildware.agents.SignInMethod
+import dev.wildware.agents.app.signin.ConnectState
+import dev.wildware.agents.app.signin.NotAFeedServer
+import dev.wildware.agents.app.signin.SignInChoice
 import dev.wildware.agents.app.signin.SignInScreen
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import dev.wildware.agents.app.feed.AgentDetails
 import dev.wildware.agents.app.feed.Bell
 import dev.wildware.agents.app.feed.BellItem
@@ -197,14 +203,37 @@ class ScreenshotTest {
         shoot("desktop-light-long-body", Size.Desktop, dark = false) { AgentsPreview(dark = false, state = state, safeArea = Size.Desktop.safeArea, startAt = "u3") }
     }
 
-    /** The sign-in screen, before anything is typed. Nothing reaches a network. */
+    /**
+     * "Connect to a host" on the sign-in screen: the address (step 1), the host's login (step 2),
+     * and an address that isn't a Feed server. The desktop shows its tabs; a phone has none.
+     * Nothing reaches a network.
+     */
     @Test
     fun signIn() {
+        val host = HostCheck.Feed("https://dashboard.example.com", listOf(SignInMethod.Password))
         for (size in Size.entries) {
             for (dark in listOf(false, true)) {
-                shoot("${size.label}-${if (dark) "dark" else "light"}-sign-in", size, dark) {
-                    AgentTheme(dark) {
-                        SignInScreen(deviceName = "Alex's MacBook", notice = null, safeArea = size.safeArea, tryDemo = {}) { _, _, _ -> }
+                val name = "${size.label}-${if (dark) "dark" else "light"}-sign-in"
+                val desktop = size != Size.Phone
+                val steps = listOf(
+                    name to { ConnectState() },
+                    "$name-step-2" to { ConnectState("dashboard.example.com", host = host) },
+                    "$name-not-a-feed-server" to { ConnectState("example.com", problem = NotAFeedServer) },
+                )
+                for ((shot, start) in steps) {
+                    shoot(shot, size, dark) {
+                        AgentTheme(dark) {
+                            SignInScreen(
+                                deviceName = if (desktop) "Alex's MacBook" else "Alex's iPhone",
+                                notice = null,
+                                safeArea = size.safeArea,
+                                tryDemo = {},
+                                signInHere = if (desktop) ({}) else null,
+                                startWith = SignInChoice.Host,
+                                connect = remember { start() },
+                                checkHost = { error("no network here") },
+                            ) { _, _, _ -> }
+                        }
                     }
                 }
             }

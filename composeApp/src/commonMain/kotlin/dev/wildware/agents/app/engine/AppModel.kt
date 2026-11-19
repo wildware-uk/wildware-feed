@@ -1,5 +1,6 @@
 package dev.wildware.agents.app.engine
 
+import dev.wildware.agents.HostCheck
 import dev.wildware.agents.SignIn
 import dev.wildware.agents.SignInException
 import dev.wildware.agents.app.session.AppPlatform
@@ -82,6 +83,9 @@ class AppModel(private val platform: AppPlatform, private val scope: CoroutineSc
         platform.sessions.save(saved)
         open(saved)
     }
+
+    /** "Connect to a host", step 1: whether [address] is a Wildware Feed server, and how it signs in. */
+    suspend fun checkHost(address: String): HostCheck = HostCheck.check(address, platform.httpEngine())
 
     /** Signs in and opens the feed. Throws [SignInException] with what went wrong. */
     @Throws(SignInException::class, kotlin.coroutines.cancellation.CancellationException::class)

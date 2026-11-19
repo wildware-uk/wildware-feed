@@ -139,10 +139,17 @@ class EngineWiringTest {
         runOnIdle { node.config[SemanticsActions.CustomActions].first { it.label == label }.action() }
     }
 
+    /** "Connect to a host", step 1: the address, checked against the server, then its password box. */
+    private fun ComposeUiTest.connectTo(address: String) {
+        onNodeWithContentDescription("Host address").performTextInput(address)
+        onNode(hasText("Continue") and hasClickAction()).performClick()
+        waitForLabel("Owner password")
+    }
+
     @Test
     fun aWrongPasswordSaysSoUnderThePasswordBox() = runDesktopComposeUiTest(width = 1440, height = 900) {
         app(MemorySessionStore())
-        onNodeWithContentDescription("Dashboard address").performTextInput("https://dashboard.test")
+        connectTo("https://dashboard.test")
         onNodeWithContentDescription("Owner password").performTextInput("wrong")
         onNode(hasText("Sign in") and hasClickAction()).performClick()
         waitFor("That password isn't right. Try again.")
@@ -151,9 +158,8 @@ class EngineWiringTest {
     @Test
     fun theAddressStartsEmptyAndIsAskedFor() = runDesktopComposeUiTest(width = 1440, height = 900) {
         app(MemorySessionStore())
-        onNodeWithContentDescription("Owner password").performTextInput("right")
-        onNode(hasText("Sign in") and hasClickAction()).performClick()
-        waitFor("Type your dashboard's address.")
+        onNode(hasText("Continue") and hasClickAction()).performClick()
+        waitFor("Type the host's address.")
         assertTrue(server.authorizations.isEmpty())
     }
 
@@ -161,7 +167,7 @@ class EngineWiringTest {
     fun signingInSavesTheKeyAndOpensTheLiveFeed() = runDesktopComposeUiTest(width = 1440, height = 900) {
         val sessions = MemorySessionStore()
         app(sessions)
-        onNodeWithContentDescription("Dashboard address").performTextInput("https://dashboard.test")
+        connectTo("https://dashboard.test")
         onNodeWithContentDescription("Owner password").performTextInput("right")
         onNode(hasText("Sign in") and hasClickAction()).performClick()
         waitFor("Fixed the unread counts")
@@ -458,9 +464,9 @@ class EngineWiringTest {
         app(sessions)
         waitFor("Fixed the unread counts")
         onNodeWithContentDescription("Sign out").performClick()
-        waitForLabel("Owner password")
+        waitForLabel("Host address")
         assertNull(sessions.load())
-        assertNotNull(onNodeWithContentDescription("Owner password").fetchSemanticsNode())
+        assertNotNull(onNodeWithContentDescription("Host address").fetchSemanticsNode())
     }
 
     @Test

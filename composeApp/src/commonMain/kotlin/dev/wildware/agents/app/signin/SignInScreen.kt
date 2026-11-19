@@ -22,6 +22,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -43,7 +44,9 @@ import dev.wildware.agents.app.design.pressable
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import dev.wildware.agents.HostCheck
 import dev.wildware.agents.SignInException
+import dev.wildware.agents.SignInMethod
 import dev.wildware.agents.SignInFailure
 import dev.wildware.agents.app.design.AgentTheme
 import dev.wildware.agents.app.design.Icons
@@ -75,12 +78,55 @@ private fun SignInException.problem(): Problem = when (failure) {
     SignInFailure.Refused -> Problem(Field.Device, message ?: "The dashboard turned that down.")
 }
 
-/** Where to sign in: a server this app runs itself, or one somewhere else. */
-enum class SignInChoice { ThisComputer, Server }
+/**
+ * "Log in", the hosted service. It isn't built yet, so the choice stays hidden until it is: this is
+ * the one switch for it.
+ */
+object HostedLogin {
+    val enabled: Boolean = false
+}
 
-/** "This computer" where the app can run a server itself (the desktop app); otherwise a server. */
-fun defaultSignInChoice(canHostLocally: Boolean): SignInChoice =
-    if (canHostLocally) SignInChoice.ThisComputer else SignInChoice.Server
+/** Where to sign in: the hosted service, a server this app runs itself, or someone's own server. */
+enum class SignInChoice(val label: String) {
+    LogIn("Log in"),
+    ThisComputer("This computer"),
+    Host("Connect to a host"),
+}
+
+/** The choices this app offers, in the order the tabs show them. With only one there are no tabs. */
+fun signInChoices(canHostLocally: Boolean, hostedLogin: Boolean = HostedLogin.enabled): List<SignInChoice> = buildList {
+    if (hostedLogin) add(SignInChoice.LogIn)
+    if (canHostLocally) add(SignInChoice.ThisComputer)
+    add(SignInChoice.Host)
+}
+
+/** The first choice: "This computer" where the app can run a server itself (the desktop app); otherwise a host. */
+fun defaultSignInChoice(canHostLocally: Boolean): SignInChoice = signInChoices(canHostLocally).first()
+
+/**
+ * "Connect to a host": the address as typed, and once it checks out, the host found there, which
+ * is step 2. Going back to step 1 keeps the address.
+ */
+@Stable
+class ConnectState(address: String = "", host: HostCheck.Feed? = null, problem: String? = null) {
+    val address = TextFieldState(address)
+
+    /** The host the address led to; null while still at step 1. */
+    var host: HostCheck.Feed? by mutableStateOf(host)
+
+    /** Why the address didn't check out, shown under it. */
+    var problem: String? by mutableStateOf(problem)
+}
+
+/** What step 1 says about an address that didn't check out. */
+private fun HostCheck.problem(): String? = when (this) {
+    is HostCheck.Feed -> null
+    is HostCheck.NotFeed -> NotAFeedServer
+    is HostCheck.Unreachable -> CouldNotReach
+}
+
+internal const val NotAFeedServer = "That address isn't a Wildware Feed server. Check the address, or that it starts with https://"
+internal const val CouldNotReach = "Couldn't reach that address."
 
 private fun minutes(seconds: Long): String {
     val m = (seconds + 59) / 60
@@ -88,11 +134,12 @@ private fun minutes(seconds: Long): String {
 }
 
 /**
- * Sign in with the dashboard's address, the owner password and a name for this device. The
- * password is sent once and never kept; the device key that comes back is.
+ * Sign in. "Connect to a host" takes two steps: the address, which is checked before anything
+ * else is asked, then that host's own login (today the owner password) and a name for this
+ * device. The password is sent once and never kept; the device key that comes back is.
  *
  * Where the app can run a server itself ([signInHere] is set), it first offers "This computer",
- * which needs only the device's name, or "A server", the form above.
+ * which needs only the device's name.
  */
 @Composable
 fun SignInScreen(
@@ -107,18 +154,23 @@ fun SignInScreen(
     hostProblem: String? = null,
     /** Which choice shows first. */
     startWith: SignInChoice = defaultSignInChoice(signInHere != null),
+    /** Where "Connect to a host" starts; screenshots set it to show step 2 or a problem. */
+    connect: ConnectState = remember { ConnectState() },
+    /** Step 1: whether an address is a Wildware Feed server, and how it signs in. */
+    checkHost: suspend (address: String) -> HostCheck,
     signIn: suspend (server: String, password: String, device: String) -> Unit,
 ) {
     val colors = AgentTheme.colors
     val type = AgentTheme.type
     val scope = rememberCoroutineScope()
-    val server = rememberTextFieldState()
     val password = rememberTextFieldState()
     val device = rememberTextFieldState(deviceName)
     var busy by remember { mutableStateOf(false) }
     var problem by remember { mutableStateOf<Problem?>(null) }
-    var choice by remember { mutableStateOf(if (signInHere == null) SignInChoice.Server else startWith) }
+    val choices = signInChoices(signInHere != null)
+    var choice by remember { mutableStateOf(startWith.takeIf { it in choices } ?: choices.first()) }
     val here = choice == SignInChoice.ThisComputer && signInHere != null
+    val host = connect.host
 
     val submitHere: () -> Unit = submit@{
         if (busy || signInHere == null) return@submit
@@ -137,12 +189,35 @@ fun SignInScreen(
         }
     }
 
-    val submitServer: () -> Unit = submit@{
+    val submitAddress: () -> Unit = submit@{
         if (busy) return@submit
-        if (server.text.isBlank()) {
-            problem = Problem(Field.Server, "Type your dashboard's address.")
+        if (connect.address.text.isBlank()) {
+            connect.problem = "Type the host's address."
             return@submit
         }
+        busy = true
+        connect.problem = null
+        scope.launch {
+            try {
+                val found = checkHost(connect.address.text.toString())
+                connect.problem = found.problem()
+                if (found is HostCheck.Feed) {
+                    problem = null
+                    connect.host = found
+                }
+            } catch (cancelled: kotlin.coroutines.cancellation.CancellationException) {
+                throw cancelled
+            } catch (failed: Exception) {
+                connect.problem = CouldNotReach
+            } finally {
+                busy = false
+            }
+        }
+    }
+
+    val submitPassword: () -> Unit = submit@{
+        val server = host?.server
+        if (busy || server == null) return@submit
         if (password.text.isEmpty()) {
             problem = Problem(Field.Password, "Type the owner password.")
             return@submit
@@ -151,7 +226,7 @@ fun SignInScreen(
         problem = null
         scope.launch {
             try {
-                signIn(server.text.toString(), password.text.toString(), device.text.toString())
+                signIn(server, password.text.toString(), device.text.toString())
             } catch (failed: SignInException) {
                 problem = failed.problem()
             } finally {
@@ -177,9 +252,9 @@ fun SignInScreen(
             AppMark(52.dp)
             Spacer(Modifier.height(20.dp))
             Text("Sign in", Modifier.semantics { heading() }, color = colors.text, style = type.display)
-            if (signInHere != null) {
+            if (choices.size > 1) {
                 Spacer(Modifier.height(16.dp))
-                ChoiceTabs(choice) {
+                ChoiceTabs(choices, choice) {
                     if (!busy) {
                         choice = it
                         problem = null
@@ -190,8 +265,12 @@ fun SignInScreen(
                 Spacer(Modifier.height(6.dp))
             }
             Text(
-                if (here) "Your feed runs right here, on this computer. No address or password needed."
-                else "Connect ${dev.wildware.agents.app.ProductName} to your server. The password is used once; the device keeps its own key.",
+                when {
+                    choice == SignInChoice.LogIn -> "Sign in to your ${dev.wildware.agents.app.ProductName} account."
+                    here -> "Your feed runs right here, on this computer. No address or password needed."
+                    host == null -> "Type the address of your ${dev.wildware.agents.app.ProductName} server."
+                    else -> "The password is used once; this device keeps its own key."
+                },
                 color = colors.textMuted,
                 style = type.body,
             )
@@ -200,84 +279,137 @@ fun SignInScreen(
                 Banner(notice, isError = false)
             }
             Spacer(Modifier.height(24.dp))
-            if (here) {
-                LabelledField(
-                    "Name for this device", device, problem.takeIf { it?.field == Field.Device }?.message,
-                    hint = "Shown in the dashboard's device list, so you can revoke it later.",
-                    keyboard = KeyboardOptions(imeAction = ImeAction.Go),
-                    onSubmit = submitHere,
-                )
-                (problem?.takeIf { it.field == Field.General }?.message ?: hostProblem)?.let {
-                    Spacer(Modifier.height(16.dp))
-                    Banner(it, isError = true)
+            when {
+                // The hosted service isn't built yet; HostedLogin keeps this out of sight.
+                choice == SignInChoice.LogIn -> Banner("Coming soon.", isError = false)
+                here -> {
+                    LabelledField(
+                        "Name for this device", device, problem.takeIf { it?.field == Field.Device }?.message,
+                        hint = "Shown in the dashboard's device list, so you can revoke it later.",
+                        keyboard = KeyboardOptions(imeAction = ImeAction.Go),
+                        onSubmit = submitHere,
+                    )
+                    (problem?.takeIf { it.field == Field.General }?.message ?: hostProblem)?.let {
+                        Spacer(Modifier.height(16.dp))
+                        Banner(it, isError = true)
+                    }
+                    Spacer(Modifier.height(22.dp))
+                    AppButton(
+                        if (busy) "Starting…" else "Start on this computer",
+                        ButtonTone.Primary,
+                        modifier = Modifier.fillMaxWidth(),
+                        icon = if (busy) Icons.Clock else null,
+                        enabled = !busy,
+                        onClick = submitHere,
+                    )
                 }
-                Spacer(Modifier.height(22.dp))
-                AppButton(
-                    if (busy) "Starting…" else "Start on this computer",
-                    ButtonTone.Primary,
-                    modifier = Modifier.fillMaxWidth(),
-                    icon = if (busy) Icons.Clock else null,
-                    enabled = !busy,
-                    onClick = submitHere,
-                )
-            } else {
-            LabelledField(
-                "Dashboard address", server, problem.takeIf { it?.field == Field.Server }?.message,
-                placeholder = "https://dashboard.example.com",
-                keyboard = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Next),
-            )
-            Spacer(Modifier.height(14.dp))
-            LabelledField(
-                "Owner password", password, problem.takeIf { it?.field == Field.Password }?.message,
-                secret = true,
-                keyboard = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Next),
-            )
-            Spacer(Modifier.height(14.dp))
-            LabelledField(
-                "Name for this device", device, problem.takeIf { it?.field == Field.Device }?.message,
-                hint = "Shown in the dashboard's device list, so you can revoke it later.",
-                keyboard = KeyboardOptions(imeAction = ImeAction.Go),
-                onSubmit = submitServer,
-            )
-            problem?.takeIf { it.field == Field.General }?.let {
-                Spacer(Modifier.height(16.dp))
-                Banner(it.message, isError = true)
-            }
-            Spacer(Modifier.height(22.dp))
-            AppButton(
-                if (busy) "Signing in…" else "Sign in",
-                ButtonTone.Primary,
-                modifier = Modifier.fillMaxWidth(),
-                icon = if (busy) Icons.Clock else null,
-                enabled = !busy,
-                onClick = submitServer,
-            )
-            if (tryDemo != null) {
-                Spacer(Modifier.height(18.dp))
-                AppButton(
-                    "Try a demo",
-                    ButtonTone.Secondary,
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = !busy,
-                    onClick = tryDemo,
-                )
-                Text(
-                    "No dashboard yet? Look round on sample projects. Nothing leaves this device.",
-                    Modifier.padding(top = 8.dp).fillMaxWidth(),
-                    color = colors.textFaint,
-                    style = AgentTheme.type.meta,
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                )
-            }
+                host == null -> {
+                    LabelledField(
+                        "Host address", connect.address, connect.problem,
+                        placeholder = "https://dashboard.example.com",
+                        keyboard = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Go),
+                        onSubmit = submitAddress,
+                    )
+                    Spacer(Modifier.height(22.dp))
+                    AppButton(
+                        if (busy) "Checking…" else "Continue",
+                        ButtonTone.Primary,
+                        modifier = Modifier.fillMaxWidth(),
+                        icon = if (busy) Icons.Clock else null,
+                        enabled = !busy,
+                        onClick = submitAddress,
+                    )
+                    if (tryDemo != null) {
+                        Spacer(Modifier.height(18.dp))
+                        AppButton(
+                            "Try a demo",
+                            ButtonTone.Secondary,
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = !busy,
+                            onClick = tryDemo,
+                        )
+                        Text(
+                            "No dashboard yet? Look round on sample projects. Nothing leaves this device.",
+                            Modifier.padding(top = 8.dp).fillMaxWidth(),
+                            color = colors.textFaint,
+                            style = AgentTheme.type.meta,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        )
+                    }
+                }
+                else -> {
+                    HostCard(host.server, enabled = !busy) {
+                        connect.host = null
+                        problem = null
+                    }
+                    Spacer(Modifier.height(18.dp))
+                    // Only what this host offers. A team server will add email and password here.
+                    if (SignInMethod.Password in host.signIn) {
+                        LabelledField(
+                            "Owner password", password, problem.takeIf { it?.field == Field.Password }?.message,
+                            secret = true,
+                            keyboard = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Next),
+                        )
+                        Spacer(Modifier.height(14.dp))
+                        LabelledField(
+                            "Name for this device", device, problem.takeIf { it?.field == Field.Device }?.message,
+                            hint = "Shown in the dashboard's device list, so you can revoke it later.",
+                            keyboard = KeyboardOptions(imeAction = ImeAction.Go),
+                            onSubmit = submitPassword,
+                        )
+                        // Step 2 has no address box, so a problem with the address shows here.
+                        problem?.takeIf { it.field == Field.General || it.field == Field.Server }?.let {
+                            Spacer(Modifier.height(16.dp))
+                            Banner(it.message, isError = true)
+                        }
+                        Spacer(Modifier.height(22.dp))
+                        AppButton(
+                            if (busy) "Signing in…" else "Sign in",
+                            ButtonTone.Primary,
+                            modifier = Modifier.fillMaxWidth(),
+                            icon = if (busy) Icons.Clock else null,
+                            enabled = !busy,
+                            onClick = submitPassword,
+                        )
+                    } else {
+                        Banner("This host signs in a way this app doesn't know yet. Update the app, then try again.", isError = true)
+                    }
+                }
             }
         }
     }
     }
 }
 
-/** "This computer" or "A server", side by side, at the top of the screen. */
+/** Step 2's reminder of which host this is, with the way back to step 1. */
 @Composable
-private fun ChoiceTabs(choice: SignInChoice, onChoose: (SignInChoice) -> Unit) {
+private fun HostCard(server: String, enabled: Boolean, onChange: () -> Unit) {
+    val colors = AgentTheme.colors
+    val shape = AgentTheme.shapes.medium
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(colors.surfaceSunken)
+            .border(1.dp, colors.border, shape)
+            .padding(start = 12.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f).padding(vertical = 4.dp)) {
+            MetaText("SIGNING IN TO", style = AgentTheme.type.overline, color = colors.textMuted)
+            Spacer(Modifier.height(2.dp))
+            Text(
+                server.removePrefix("https://"), color = colors.text, style = AgentTheme.type.body,
+                maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            )
+        }
+        AppButton("Change", ButtonTone.Quiet, enabled = enabled, onClick = onChange)
+    }
+}
+
+/** The ways in, side by side, at the top of the screen. */
+@Composable
+private fun ChoiceTabs(choices: List<SignInChoice>, choice: SignInChoice, onChoose: (SignInChoice) -> Unit) {
     val colors = AgentTheme.colors
     val outer = AgentTheme.shapes.medium
     val inner = AgentTheme.shapes.small
@@ -290,7 +422,8 @@ private fun ChoiceTabs(choice: SignInChoice, onChoose: (SignInChoice) -> Unit) {
             .padding(3.dp)
             .selectableGroup(),
     ) {
-        for ((option, label) in listOf(SignInChoice.ThisComputer to "This computer", SignInChoice.Server to "A server")) {
+        for (option in choices) {
+            val label = option.label
             val selected = option == choice
             Box(
                 Modifier
