@@ -41,3 +41,14 @@ tasks.test {
     useJUnitPlatform()
     timeout.set(Duration.ofMinutes(10))
 }
+
+/** The release version (`agents.version` in gradle.properties), for `GET /api/server`. */
+val generateServerVersion by tasks.registering {
+    val out = layout.buildDirectory.dir("generated/serverVersion")
+    val version = providers.gradleProperty("agents.version").get()
+    inputs.property("version", version)
+    outputs.dir(out)
+    doLast { out.get().file("feed-server-version.txt").asFile.apply { parentFile.mkdirs() }.writeText(version) }
+}
+sourceSets.main { resources.srcDir(generateServerVersion) }
+

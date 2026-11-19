@@ -6,7 +6,8 @@ package dev.wildware.feed.server.http
  */
 object Guard {
     private val TOKEN_AUTHED = listOf("/mcp", "/api/upload", "/api/agent")
-    private val PUBLIC = listOf("/api/devices/sign-in")
+    /** `/api/server` says what this is and how to sign in, for the app's "Connect to a host" step. */
+    private val PUBLIC = listOf("/api/devices/sign-in", "/api/server")
 
     fun normalise(path: String): String = if (path == "/") path else path.trimEnd('/').ifEmpty { "/" }
 

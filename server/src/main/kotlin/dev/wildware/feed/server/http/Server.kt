@@ -65,6 +65,7 @@ fun Application.feed(app: App) {
         if (guardRefused(call, app)) return@intercept finish()
     }
     routing {
+        serverInfoRoute(app)
         deviceRoutes(app)
         // No event bus yet (phase 2): every snapshot is stamped seq 0.
         readRoutes(app, lastSeq = { app.bus.lastSeq })
