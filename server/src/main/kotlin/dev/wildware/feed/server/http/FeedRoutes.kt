@@ -273,8 +273,11 @@ fun Route.feedRoutes(app: App) {
     endpoint(
         "/api/subscriptions",
         HttpMethod.Get to {
+            val seq = app.bus.lastSeq
             val choices = Subscriptions(app.db, app.clock).ownerChoices()
             call.respondOwner(200, buildJsonObject {
+                put("seq", seq)
+                put("at", Wire.isoOf(app.clock()))
                 put("projects", JsonArray(choices.levels.map { (id, level) -> buildJsonObject { put("projectId", id); put("level", level) } }))
                 put("threads", JsonArray(choices.threads.map { (t, on) ->
                     buildJsonObject { put("kind", t.kind); put("id", t.id); put("following", on) }

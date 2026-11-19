@@ -447,8 +447,8 @@ bridge need not be told its projects) and the owner (which alerts are raised).
     project's level being `all`).
   - `PUT /api/cards/{kind}/{id}/follow {following}` → `{thread, owner}`.
   - `PUT /api/projects/{reference}/subscription {level}` → `{projectId, level}`.
-  - `GET /api/subscriptions` → `{projects: [{projectId, level}], threads: [{kind, id,
-    following}]}`: every choice the owner has made, for the app to hold.
+  - `GET /api/subscriptions` → `{seq, at, projects: [{projectId, level}], threads: [{kind,
+    id, following}]}`: every choice the owner has made, for the app to hold.
 
 ## 5. Snapshot cursor
 
