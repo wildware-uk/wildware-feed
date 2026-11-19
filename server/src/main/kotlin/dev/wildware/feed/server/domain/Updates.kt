@@ -19,6 +19,8 @@ class Updates(private val feed: Feed) {
         val mediaIds: List<String>? = null,
         val embeds: List<FeedAttachments.EmbedInput>? = null,
         val apps: List<FeedAttachments.AppInput>? = null,
+        /** Other cards this one points at (migration 056). */
+        val refs: List<CardRef>? = null,
     )
 
     class Edit(
@@ -26,6 +28,8 @@ class Updates(private val feed: Feed) {
         val body: String? = null,
         val level: String? = null,
         val priority: String? = null,
+        /** The cards it points at from now on; an empty list takes them all off. */
+        val refs: List<CardRef>? = null,
     )
 
     fun find(id: String): UpdateRow? = db.one("SELECT ${Rows.UPDATE} FROM updates WHERE id = ?", id) { UpdateRow(Rows.update(it)) }
@@ -47,6 +51,7 @@ class Updates(private val feed: Feed) {
         val apps = if (input.apps.isNullOrEmpty()) emptyList() else FeedAttachments.checkedApps(db, input.apps)
         val priority = input.priority ?: "medium"
         if (priority !in PRIORITIES) throw invalid("priority must be one of: ${PRIORITIES.joinToString(", ")}")
+        val refs = CardRefs(db, feed.clock).check("agent:$agentId", input.refs)
 
         val id = Ulid.next()
         db.update(
@@ -59,6 +64,7 @@ class Updates(private val feed: Feed) {
         if (mediaIds.isNotEmpty()) FeedAttachments.attachMedia(db, mediaIds, "update_id", id, "agent_id", agentId)
         if (embeds.isNotEmpty()) FeedAttachments.attachEmbeds(db, embeds, "update_id", id, agentId, author, feed.now())
         if (apps.isNotEmpty()) FeedAttachments.attachApps(db, apps, CardRef("update", id), agentId, author, feed.now())
+        if (refs.isNotEmpty()) CardRefs(db, feed.clock).set(CardRef("update", id), refs)
         Subscriptions(db, feed.clock).run {
             followProject(Subscriptions.agent(agentId), project.id, afterSeq = 0)
             followThread(Subscriptions.agent(agentId), Subscriptions.Thread("update", id), project.id)
@@ -86,11 +92,15 @@ class Updates(private val feed: Feed) {
             if (it !in PRIORITIES) throw invalid("priority must be one of: ${PRIORITIES.joinToString(", ")}")
             sets["priority"] = it
         }
-        if (sets.size == 1) throw invalid("an edit must change the title, the body, the level or the priority")
+        val card = CardRef("update", update.id)
+        val cardRefs = CardRefs(db, feed.clock)
+        val refs = edit.refs?.let { cardRefs.check("agent:$agentId", it, self = card, kept = cardRefs.on(card)) }
+        if (sets.size == 1 && refs == null) throw invalid("an edit must change the title, the body, the level or the priority")
         db.update(
             "UPDATE updates SET ${sets.keys.joinToString(", ") { "$it = ?" }} WHERE id = ? AND deleted_at IS NULL",
             *sets.values.toTypedArray(), update.id,
         )
+        if (refs != null) cardRefs.set(card, refs)
         val saved = find(update.id)!!
         feed.publish("update.updated", buildJsonObject {
             put("updateId", saved.id); put("projectId", saved.projectId); put("pinned", saved.pinned)

@@ -13,8 +13,8 @@ class DatabaseTest {
     @Test
     fun `the migrations are the TS server's, byte for byte, then this server's own`() {
         // 1 to 47 are the TS server's; 48 is media retention, 49 a question's priority, 50 agent pairing, 51 OAuth,
-        // 52 subscriptions, 53 channels and projects, 54 secrets, 55 people.
-        assertEquals((1..55).toList(), Migrations.all.map { it.version })
+        // 52 subscriptions, 53 channels and projects, 54 secrets, 55 people, 56 card refs.
+        assertEquals((1..56).toList(), Migrations.all.map { it.version })
         for (m in Migrations.all) assertEquals(m.checksum, Migrations.checksum(m.sql), "migration ${m.version}")
         assertEquals(listOf(16, 25, 26, 31, 34, 38), Migrations.all.filter { it.rebuildsTables }.map { it.version })
     }

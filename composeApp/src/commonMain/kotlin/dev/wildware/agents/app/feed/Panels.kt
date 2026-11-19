@@ -845,6 +845,7 @@ fun ReplyView(reply: Reply, modifier: Modifier = Modifier) {
             Spacer(Modifier.height(2.dp))
             MarkdownBody(reply.body)
             PostMedia(reply.attachments, reply.sounds, reply.files, reply.embeds)
+            LinkedCards(reply.refs, Modifier.padding(top = 8.dp))
             if (reply.undelivered) NotDelivered(Modifier.padding(top = 6.dp))
             AckLine(reply.acks, Modifier.padding(top = 6.dp))
             // A question asked under this reply is answered right here, as on the website.

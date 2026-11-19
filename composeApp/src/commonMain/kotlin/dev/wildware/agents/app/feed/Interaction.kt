@@ -489,6 +489,9 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
     /** A link pointed at something the feed couldn't find. */
     var missingLink by mutableStateOf(preview.missingLink)
 
+    /** The reply a linked card opened its thread at: brought into view and ringed for a moment. */
+    var focusedReply by mutableStateOf<String?>(null)
+
     /** The card that shows [id]: the card itself, or the card a reply or a question asked in its thread is under. */
     fun cardFor(id: String): FeedItem? {
         state.item(id)?.let { return it }

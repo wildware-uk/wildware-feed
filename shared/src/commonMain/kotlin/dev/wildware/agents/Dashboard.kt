@@ -53,6 +53,8 @@ data class ThreadLine(
     val sending: Boolean = false,
     /** While [sending]: how much of its files have gone up, 0 to 1. Null when none are going up now. */
     val uploaded: Float? = null,
+    /** Other cards the line points at. */
+    val refs: List<CardRefView> = emptyList(),
 )
 
 /** One card in the feed. */
@@ -767,6 +769,7 @@ class Feed internal constructor(
             answersName = message.answers?.let { index.byId[it] }?.let { context.authorName(it.author) },
             media = index.snapshot.media[message.id].orEmpty(),
             embeds = index.snapshot.embeds[message.id].orEmpty(),
+            refs = index.snapshot.refs[message.id].orEmpty(),
             reactions = index.reactions[message.id].orEmpty(),
             acks = context.acks(index.acks[message.id].orEmpty()),
             deliveries = index.deliveries[message.id].orEmpty(),

@@ -1,6 +1,10 @@
 package dev.wildware.agents.app.engine
 
 import dev.wildware.agents.app.feed.PickBounds
+import dev.wildware.agents.CardRefView
+import dev.wildware.agents.CardKinds
+import dev.wildware.agents.HumanAuthor
+import dev.wildware.agents.app.feed.LinkedCard
 import dev.wildware.agents.RequestConfig
 import dev.wildware.agents.app.feed.CriticalNotice
 import dev.wildware.agents.FeedCard
@@ -267,6 +271,7 @@ internal class FeedMapper(
                 pinned = pinned,
                 edited = editedLabel(update.editedAt),
                 activityAt = activityAt,
+                refs = update.refs.linked(agents, project, update.projectId),
             )
         }
         is PostCard -> cardTime(createdAt, activityAt, post.message.editedAt).let { time -> FeedItem.Post(
@@ -296,6 +301,7 @@ internal class FeedMapper(
             pinned = pinned,
             // Work says where it has got to, which answers "has anybody got this" better.
             undelivered = post.message.status == null && undelivered(post),
+            refs = post.refs.linked(agents, project, projectId),
         ) }
     }
 
@@ -382,6 +388,7 @@ internal class FeedMapper(
             fields = fields.map { CardField(it.name, it.value) },
             reactions = reactions(request.reactions),
             pinned = request.pinned,
+            refs = request.refs.linked(agents, project, request.projectId),
         )
     }
 
@@ -416,6 +423,7 @@ internal class FeedMapper(
                 edited = editedLabel(line.message.editedAt),
                 // Only a line in this same thread: the card's own head needs no saying.
                 answering = line.message.answers?.let(byId::get)?.let { author(it, agents).let { a -> if (a is Author.Owner) "you" else a.name } },
+                refs = line.refs.linked(agents, project, line.message.projectId),
             )
         }
     }
@@ -468,6 +476,43 @@ internal class FeedMapper(
 
     private fun reactions(views: List<ReactionView>): List<Reaction> =
         views.groupBy { it.emoji }.map { (emoji, all) -> Reaction(emoji, all.size, mine = all.any(::mine), spoken = emoji) }
+
+    /** The cards a card points at, drawn small: [here] is the pointing card's project, which they don't repeat. */
+    private fun List<CardRefView>.linked(agents: AgentDirectory, project: (String?) -> Project, here: String?): List<LinkedCard> = map { ref ->
+        val what = when (ref.kind) {
+            CardKinds.Update -> "update"
+            CardKinds.Request -> "question"
+            else -> if (ref.updateId == null && ref.replyTo == null && ref.requestId == null) "post" else "reply"
+        }
+        val home = ref.projectId?.let { project(it) }
+        // A removed message no longer says which thread it was in.
+        if (ref.deleted) return@map LinkedCard(ref.kind, ref.id, removed = true, what = if (ref.kind == CardKinds.Message) "message" else what)
+        val author = ref.author
+        val who = when {
+            author == HumanAuthor -> "You"
+            author != null && author.startsWith("agent:") -> agents.agent(author.removePrefix("agent:"), ref.authorName).name
+            else -> ref.authorName.orEmpty()
+        }
+        val tile = ref.media?.let { listOf(it).tiles().firstOrNull() }?.let { tile(it) }
+        val note = when {
+            tile != null && ref.mediaCount > 1 -> "+${ref.mediaCount - 1} more"
+            tile == null && ref.mediaCount == 1 -> ref.media?.filename?.takeIf { it.isNotBlank() } ?: "1 file"
+            tile == null && ref.mediaCount > 1 -> "${ref.mediaCount} files"
+            else -> null
+        }
+        LinkedCard(
+            kind = ref.kind,
+            id = ref.id,
+            who = who,
+            what = what,
+            where = home?.name?.takeIf { ref.projectId != here && here != null },
+            title = ref.title?.takeIf { it.isNotBlank() },
+            text = ref.text?.takeIf { it.isNotBlank() },
+            media = tile,
+            mediaNote = note,
+            projectSlug = home?.slug,
+        )
+    }
 
     private fun List<MediaView>.images() = filter { it.kind == "image" && it.isReady }
 

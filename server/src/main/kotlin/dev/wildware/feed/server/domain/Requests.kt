@@ -73,6 +73,8 @@ data class NewRequest(
     val embeds: List<NewEmbed>? = null,
     /** For kind "secret" (`request_secret`): the name the value will be stored under. */
     val secretName: String? = null,
+    /** Other cards the question points at (migration 056), shown inside it. */
+    val refs: List<CardRef>? = null,
 )
 
 data class NewEmbed(val type: String, val data: JsonElement?, val sourceUrl: String?)
@@ -85,6 +87,8 @@ data class RequestEdit(
     val options: List<String>? = null,
     val defaultGiven: Boolean = false,
     val default: String? = null,
+    /** The cards it points at from now on; an empty list takes them all off. Null leaves them. */
+    val refs: List<CardRef>? = null,
 )
 
 /**
@@ -144,6 +148,7 @@ class Requests(
                 put("optionMedia", JsonObject(optionMedia.associate { (option, id) -> option to JsonPrimitive(id) }))
             }
         } else baseConfig
+        val refs = CardRefs(db, clock).check(author, input.refs)
 
         val now = clock()
         val id = Ulid.next(now)
@@ -172,6 +177,7 @@ class Requests(
         }
 
         val request = OwnerRequest(row)
+        if (refs.isNotEmpty()) CardRefs(db, clock).set(CardRef("request", request.id), refs)
         Subscriptions(db, clock).followThread(Subscriptions.agent(agentId), Subscriptions.Thread("request", request.id), request.projectId)
         val event = bus.publish("request.created", buildJsonObject {
             put("requestId", request.id)
@@ -291,7 +297,11 @@ class Requests(
             }
         }
 
-        if (question == null && !input.detailGiven && !optionsGiven && !configGiven) {
+        val card = CardRef("request", request.id)
+        val cardRefs = CardRefs(db, clock)
+        val refs = input.refs?.let { cardRefs.check("agent:$agentId", it, self = card, kept = cardRefs.on(card)) }
+
+        if (question == null && !input.detailGiven && !optionsGiven && !configGiven && refs == null) {
             throw invalid("an edit must change the question, the detail, the options or the default")
         }
 
@@ -306,6 +316,7 @@ class Requests(
             "UPDATE approvals SET ${sets.joinToString(", ")} WHERE id = ? AND state = 'pending' RETURNING ${Rows.APPROVAL}",
             *args.toTypedArray(),
         ) { Rows.request(it) } ?: throw settledAlready(mustFind(request.id))
+        if (refs != null) cardRefs.set(card, refs)
 
         val edited = OwnerRequest(row)
         bus.publish("request.updated", buildJsonObject {

@@ -12,6 +12,7 @@ import kotlinx.serialization.json.put
 class Messages(private val feed: Feed) {
     private val db get() = feed.db
     private val subscriptions get() = Subscriptions(feed.db, feed.clock)
+    private val cardRefs get() = CardRefs(feed.db, feed.clock)
 
     /** Optional keys are null when left out; an empty string is still "given" where the TS checks `!= null`. */
     class Post(
@@ -27,6 +28,8 @@ class Messages(private val feed: Feed) {
         val apps: List<FeedAttachments.AppInput>? = null,
         /** Which person, for a `human` author (migration 055); the founder when left out. */
         val userId: String? = null,
+        /** Other cards this one points at (migration 056). */
+        val refs: List<CardRef>? = null,
     )
 
     class Page(val messages: List<MessageRow>, val cursor: String, val unread: Long, val markedRead: Boolean)
@@ -96,6 +99,7 @@ class Messages(private val feed: Feed) {
         val mediaIds = if (input.mediaIds.isNullOrEmpty()) emptyList() else FeedAttachments.assertAttachableToMessage(db, input.mediaIds, author)
         val embeds = if (input.embeds.isNullOrEmpty()) emptyList() else FeedAttachments.checkedEmbeds(db, input.embeds)
         val apps = if (input.apps.isNullOrEmpty()) emptyList() else FeedAttachments.checkedApps(db, input.apps)
+        val refs = cardRefs.check(author, input.refs)
 
         if (answered != null && !sameThread(answered, updateId, anchor, requestId)) {
             throw invalid("that message is in a different thread")
@@ -116,6 +120,7 @@ class Messages(private val feed: Feed) {
         if (mediaIds.isNotEmpty()) FeedAttachments.attachMedia(db, mediaIds, "message_id", id, "author", author)
         if (embeds.isNotEmpty()) FeedAttachments.attachEmbeds(db, embeds, "message_id", id, agentId, author, feed.now())
         if (apps.isNotEmpty()) FeedAttachments.attachApps(db, apps, CardRef("message", id), agentId, author, feed.now())
+        if (refs.isNotEmpty()) cardRefs.set(CardRef("message", id), refs)
 
         feed.publish("message.created", buildJsonObject {
             put("messageId", message.id)
@@ -132,14 +137,20 @@ class Messages(private val feed: Feed) {
         for (id in people) feed.publish("subscriptions.updated", People.followsChanged(db, id))
     }
 
-    /** Only the author may edit a live message; its mentions are worked out again. */
-    fun edit(messageId: String, by: String, body: String): MessageRow = feed.op {
+    /**
+     * Only the author may edit a live message; its mentions are worked out again. [refs], when
+     * given, become the cards it points at; an empty list takes them all off.
+     */
+    fun edit(messageId: String, by: String, body: String, refs: List<CardRef>? = null): MessageRow = feed.op {
         val message = find(messageId)
         if (message == null || message.deletedAt != null) throw notFound("no such message: $messageId")
         checkAuthor(by)
         if (by != message.author) throw invalid("that message was posted by somebody else")
         val clean = requiredText(body, "body", BODY_MAX)
+        val card = CardRef("message", message.id)
+        val newRefs = refs?.let { cardRefs.check(by, it, self = card, kept = cardRefs.on(card)) }
         db.update("UPDATE messages SET body = ?, edited_at = ? WHERE id = ? AND deleted_at IS NULL", clean, feed.now(), message.id)
+        if (newRefs != null) cardRefs.set(card, newRefs)
         val saved = find(message.id)!!
         followed(subscriptions.afterPost(saved, Mentions.record(db, saved.id, saved.body, saved.author, feed.now()), Mentions.mentionedPeople(db, saved.body)))
         feed.publish("message.updated", buildJsonObject {

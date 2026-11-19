@@ -52,5 +52,11 @@
   "name": "people",
   "file": "055-people.sql",
   "checksum": "64247c99d4ffc2048cfcf08bf9624cf7fea63ae02a8dfa0044dd83533651fe01"
+ },
+ {
+  "version": 56,
+  "name": "card-refs",
+  "file": "056-card-refs.sql",
+  "checksum": "0a5745dd91944e1b43b58399c9fa777519e9c9739a1aace1ca5553184e03de7a"
  }
 ]

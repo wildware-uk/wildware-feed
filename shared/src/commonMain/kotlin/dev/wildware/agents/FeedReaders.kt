@@ -633,6 +633,7 @@ internal class ThreadsReader(
             acks = current.acks.filter { it.messageId !in replaced } + part.acks.filter { it.messageId in replaced },
             media = current.media.filterKeys { it !in replaced } + part.media.filterKeys { it in replaced },
             embeds = current.embeds.filterKeys { it !in replaced } + part.embeds.filterKeys { it in replaced },
+            refs = current.refs.filterKeys { it !in replaced } + part.refs.filterKeys { it in replaced },
             deliveries = current.deliveries.filter { it.messageId !in replaced } + part.deliveries.filter { it.messageId in replaced },
             reactions = current.reactions.filter { it.messageId !in replaced } + part.reactions.filter { it.messageId in replaced },
         ))
@@ -654,7 +655,24 @@ internal class RequestsReader(
             event.type in MediaEvents && (
                 event.payload.string("requestId")?.let { id -> items.any { it.id == id } }
                     ?: event.payload.string("mediaId").let { id -> items.any { request -> request.media.any { it.id == id } } }
-                )
+                ) ||
+            pointsAtChanged(event)
+
+    /**
+     * A card a question points at changed: its video finished, it was edited or removed. The
+     * question's summary of it is the server's, so read it again.
+     */
+    private fun pointsAtChanged(event: StreamEvent): Boolean {
+        val refs = items.flatMap { it.refs }
+        if (refs.isEmpty()) return false
+        return when (event.type) {
+            in MediaEvents -> event.payload.string("mediaId").let { id -> refs.any { it.media?.id == id } } ||
+                listOf("messageId", "updateId").any { key -> event.payload.string(key)?.let { id -> refs.any { it.id == id } } == true }
+            "message.updated", "message.deleted" -> event.payload.string("messageId").let { id -> refs.any { it.kind == CardKinds.Message && it.id == id } }
+            "update.updated", "update.deleted" -> event.payload.string("updateId").let { id -> refs.any { it.kind == CardKinds.Update && it.id == id } }
+            else -> false
+        }
+    }
 
     override fun handle(event: StreamEvent) {
         // Settled is settled: take it off at once rather than waiting for the re-read to say so.

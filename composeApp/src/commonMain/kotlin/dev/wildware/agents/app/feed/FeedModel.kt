@@ -209,6 +209,42 @@ const val SendingAlpha = 0.6f
 @Immutable
 data class CardTag(val id: String, val name: String, val colour: String? = null, val projectId: String? = null)
 
+/**
+ * Another card this one points at, drawn small inside it: an agent asks about the reply it just
+ * posted with a video, and the video sits in the question. A tap opens that card's thread, at it.
+ * [removed] when that card has gone since; it then says so and opens nothing.
+ */
+@Immutable
+data class LinkedCard(
+    /** "update", "message" or "request". */
+    val kind: String,
+    val id: String,
+    val removed: Boolean = false,
+    /** Who wrote it: an agent's name, or "You". */
+    val who: String = "",
+    /** What it is, in a word: "reply", "post", "update" or "question". */
+    val what: String = "",
+    /** Its project's name, when it is in another project than the card pointing at it. */
+    val where: String? = null,
+    /** An update's headline or a question's wording. */
+    val title: String? = null,
+    /** The first line of what it says. */
+    val text: String? = null,
+    /** Its first picture or video, which opens or plays as it does on its own card. */
+    val media: Attachment? = null,
+    /** About the rest of its files: "+2 more", or "1 file" when there is no picture to show. */
+    val mediaNote: String? = null,
+    /** Its project's slug, to show that project when the one on screen is another. */
+    val projectSlug: String? = null,
+) {
+    /** What it is read out as: "forge's reply: Here it is". */
+    val spoken: String
+        get() = if (removed) "A $what that was removed" else listOfNotNull(
+            "${if (who == "You") "Your" else "$who's"} $what".trim(),
+            where?.let { "in $it" },
+        ).joinToString(" ") + (title ?: text)?.let { ": $it" }.orEmpty()
+}
+
 /** A named note on a card, such as "branch: fix/unread". Agents and the owner both set them. */
 @Immutable
 data class CardField(val name: String, val value: String)
@@ -242,6 +278,8 @@ data class Reply(
     val timeDetail: String = "",
     /** Who wrote the line in this thread that this one answers: an agent's name, or "you". Drawn as "answering forge". */
     val answering: String? = null,
+    /** Other cards it points at, drawn small under what it says. */
+    val refs: List<LinkedCard> = emptyList(),
 )
 
 /**
@@ -393,6 +431,8 @@ sealed interface FeedItem {
         val timeDetail: String = "",
         /** When something last happened on it (posted, replied to, work state), to mark it when that moves on. */
         val activityAt: Long = 0,
+        /** Other cards it points at, drawn small inside it. */
+        val refs: List<LinkedCard> = emptyList(),
     ) : Threaded {
         override val starter: Author get() = Author.AgentAuthor(agent)
     }
@@ -447,6 +487,8 @@ sealed interface FeedItem {
         val critical: Boolean = false,
         /** For a [QuestionKind.Secret]: the name the value will be stored under. */
         val secretName: String? = null,
+        /** Other cards the question points at, drawn small inside it: the reply with the video it asks about. */
+        val refs: List<LinkedCard> = emptyList(),
     ) : Threaded {
         val hasPictures: Boolean get() = choices.any { it.image != null }
         override val title: String get() = prompt
@@ -493,6 +535,8 @@ sealed interface FeedItem {
         override val pinned: Boolean = false,
         /** The owner wrote it, sent it a while ago, and no agent has it: nobody is listening. */
         val undelivered: Boolean = false,
+        /** Other cards it points at, drawn small inside it. */
+        val refs: List<LinkedCard> = emptyList(),
     ) : Threaded {
         override val title: String get() = body.lineSequence().first().take(120)
         override val starter: Author get() = author

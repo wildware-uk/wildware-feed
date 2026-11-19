@@ -48,6 +48,7 @@ fun ToolRegistry.registerRequestTools(app: App) {
                 val embed = e as JsonObject
                 NewEmbed(embed["type"].jsString!!, embed["data"], embed["source_url"].jsString)
             },
+            refs = refsArg(a),
         )
         requestResult(app.requests.requestInput(call.agent.id, input), app.db)
     }
@@ -68,10 +69,12 @@ fun ToolRegistry.registerRequestTools(app: App) {
                 options = (a["options"] as? JsonArray)?.map { it.jsString!! },
                 defaultGiven = "default" in a,
                 default = a["default"].jsString,
+                refs = refsArg(a),
             ),
         )
         ToolResult.ok("Edited \"${request.question}\". Your owner sees the new question.", buildJsonObject {
             put("request", requestView(request))
+            refsView(app, dev.wildware.feed.server.domain.CardRef("request", request.id), a)?.let { put("refs", it) }
         })
     }
 

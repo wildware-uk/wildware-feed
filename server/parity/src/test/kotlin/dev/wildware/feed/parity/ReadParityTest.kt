@@ -91,6 +91,11 @@ class ReadParityTest : ParityTest() {
         // Channels and projects (spec/12): a channel names its group, and the snapshot lists the groups.
         "a project row's groupId, its last key" to Regex(""","groupId":null(?=\})"""),
         "the snapshot's groups" to Regex(""","groups":\[\](?=,"tags":)"""),
+        // Card refs (migration 056): the cards a card points at, last on each update and request,
+        // and per message (only the ones that have some) last in the snapshot and a messages page.
+        "an update's or a request's refs, its last key" to Regex(""","refs":\[\](?=\})"""),
+        "the snapshot's messageRefs, its last key" to Regex(""","messageRefs":\{\}(?=\}$)"""),
+        "a messages page's refs, its last key" to Regex(""","refs":\{\}(?=\}$)"""),
     )
 
     /** `/api/devices` without the reader's own entry. */

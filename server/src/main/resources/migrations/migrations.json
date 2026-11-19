@@ -383,5 +383,12 @@
   "file": "055-people.sql",
   "rebuildsTables": false,
   "checksum": "307a65ac32c6b1d8e1fdb85f1c83a5a47bbf1a7688482ed90cf16009e065b67a"
+ },
+ {
+  "version": 56,
+  "name": "card-refs",
+  "file": "056-card-refs.sql",
+  "rebuildsTables": false,
+  "checksum": "615b0a189d84bfb1f3efe22d34fc55cfbecb9d9888d8679974ace937694222b0"
  }
 ]

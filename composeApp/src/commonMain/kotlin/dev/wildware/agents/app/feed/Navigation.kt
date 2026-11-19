@@ -169,6 +169,21 @@ internal suspend fun FeedUi.goTo(open: OpenCard, unfold: (String) -> Unit = {}) 
 }
 
 /**
+ * Opens the card [link] points at, as a link to it would ([goTo]): its thread, at it. A reply opens
+ * its card's thread with every reply showing, and is brought into view there and ringed. The
+ * project on screen stays unless it is another one than the card's; every project stays every project.
+ */
+internal suspend fun FeedUi.openLinked(link: LinkedCard, unfold: (String) -> Unit = {}) {
+    if (link.removed) return
+    val project = if (state.current.slug == null) null else link.projectSlug ?: state.current.slug
+    goTo(OpenCard(project, link.id), unfold)
+    val card = cardFor(link.id) ?: return
+    if (card.id == link.id) return
+    expandedThreads.add(card.id)
+    focusedReply = link.id
+}
+
+/**
  * One look for a linked card: found yet, the right feed showing, whether there is more to read, and
  * how many cards are in (so a page that arrives without the card still counts as a new look).
  */

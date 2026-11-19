@@ -159,7 +159,12 @@ class FeedApiTest : ParityTest() {
         val thread = owner.get("/api/messages?replyTo=$p")
         assertEquals(200, thread.status.value)
         val body = thread.obj()
-        assertEquals(listOf("seq", "at", "messages", "acks", "media", "embeds", "deliveries", "reactions"), body.keys.toList())
+        assertEquals(
+            listOf("seq", "at", "messages", "acks", "media", "embeds", "deliveries", "reactions") +
+                // Card refs (migration 056): the cards each message points at.
+                if (Parity.kotlin) listOf("refs") else emptyList(),
+            body.keys.toList(),
+        )
         assertEquals(listOf(p, r1["id"].s, r2["id"].s), body["messages"].arr.map { it["id"].s })
         assertEquals(obj(), body["media"])
         assertEquals(3, owner.get("/api/messages?replyTo=$p&limit=1").obj()["messages"].arr.size, "spec surprise: limit ignored for a thread")

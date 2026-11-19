@@ -3,6 +3,7 @@ package dev.wildware.feed.server.mcp
 import dev.wildware.feed.server.App
 import dev.wildware.feed.server.domain.AckRow
 import dev.wildware.feed.server.domain.CardRef
+import dev.wildware.feed.server.domain.CardRefs
 import dev.wildware.feed.server.domain.Cards
 import dev.wildware.feed.server.domain.FeedAttachments
 import dev.wildware.feed.server.domain.FieldRow
@@ -96,6 +97,7 @@ fun ToolRegistry.registerFeedTools(app: App) {
                 mediaIds = call.texts("media_ids"),
                 embeds = call.embeds(),
                 apps = call.apps(),
+                refs = refsArg(call.args),
             ),
         )
         val apps = if (call.list("apps").isNullOrEmpty()) emptyList() else FeedAttachments.appsOn(app.db, CardRef("update", update.id))
@@ -104,6 +106,7 @@ fun ToolRegistry.registerFeedTools(app: App) {
             buildJsonObject {
                 put("update", FeedViews.update(update))
                 if (apps.isNotEmpty()) put("apps", FeedViews.apps(apps))
+                refsView(app, CardRef("update", update.id), call.args)?.let { put("refs", it) }
             },
         )
     }
@@ -117,9 +120,13 @@ fun ToolRegistry.registerFeedTools(app: App) {
                 body = call.text("body"),
                 level = call.text("level"),
                 priority = call.text("priority"),
+                refs = refsArg(call.args),
             ),
         )
-        ToolResult.ok("Edited update ${update.id}.", buildJsonObject { put("update", FeedViews.update(update)) })
+        ToolResult.ok("Edited update ${update.id}.", buildJsonObject {
+            put("update", FeedViews.update(update))
+            refsView(app, CardRef("update", update.id), call.args)?.let { put("refs", it) }
+        })
     }
 
     register("set_status") { call ->
@@ -233,6 +240,7 @@ fun ToolRegistry.registerFeedTools(app: App) {
         val page = messages.read(call.agent.id, call.text("since"), call.channel(), call.args["mark_read"].jsBoolean)
         val count = page.messages.size
         val attachments = Attachments.forMessages(app, page.messages.map { it.id })
+        val refs = CardRefs(app.db, app.clock).summaries("message", page.messages.map { it.id }, reader = call.author)
         val read = when {
             count == 0 -> "No new messages. Carry on."
             page.unread == 0L -> "$count new message${plural(count)}, oldest first."
@@ -256,6 +264,7 @@ fun ToolRegistry.registerFeedTools(app: App) {
                         })
                     }
                     attachments.views[message.id]?.let { put("attachments", JsonArray(it)) }
+                    refs[message.id]?.let { put("refs", JsonArray(it.map(FeedViews::ref))) }
                 }
             }))
             put("count", count)
@@ -289,18 +298,23 @@ fun ToolRegistry.registerFeedTools(app: App) {
                 mediaIds = call.texts("media_ids"),
                 embeds = call.embeds(),
                 apps = call.apps(),
+                refs = refsArg(call.args),
             ),
         )
         val apps = if (call.list("apps").isNullOrEmpty()) emptyList() else FeedAttachments.appsOn(app.db, CardRef("message", message.id))
         ToolResult.ok("Replied. It is on your owner’s screen now.", buildJsonObject {
             put("message", FeedViews.message(message))
             if (apps.isNotEmpty()) put("apps", FeedViews.apps(apps))
+            refsView(app, CardRef("message", message.id), call.args)?.let { put("refs", it) }
         })
     }
 
     register("edit_message") { call ->
-        val message = app.feed.messages.edit(call.text("message_id")!!, call.author, call.text("body")!!)
-        ToolResult.ok("Edited. Your owner sees the new text.", buildJsonObject { put("message", FeedViews.message(message)) })
+        val message = app.feed.messages.edit(call.text("message_id")!!, call.author, call.text("body")!!, refsArg(call.args))
+        ToolResult.ok("Edited. Your owner sees the new text.", buildJsonObject {
+            put("message", FeedViews.message(message))
+            refsView(app, CardRef("message", message.id), call.args)?.let { put("refs", it) }
+        })
     }
 
     register("delete_message") { call ->
@@ -320,6 +334,19 @@ fun ToolRegistry.registerFeedTools(app: App) {
 }
 
 private fun plural(n: Int) = if (n == 1) "" else "s"
+
+/** The `refs` argument (migration 056): `[{ kind, id }]`, or null when it was left out. */
+internal fun refsArg(args: JsonObject): List<CardRef>? = (args["refs"] as? JsonArray)?.map {
+    val o = it as JsonObject
+    CardRef(o["kind"].jsString ?: "", o["id"].jsString ?: "")
+}
+
+/** What a write now points at, for its result: only when the call gave `refs`. */
+internal fun refsView(app: App, card: CardRef, args: JsonObject): JsonArray? {
+    if (args["refs"] !is JsonArray) return null
+    val summaries = CardRefs(app.db, app.clock).summaries(card.kind, listOf(card.id))[card.id].orEmpty()
+    return JsonArray(summaries.map(FeedViews::ref))
+}
 
 private fun ToolCall.text(key: String): String? = args[key].jsString
 
@@ -428,6 +455,19 @@ internal object FeedViews {
         put("author", f.author)
         put("created_at", Wire.isoOf(f.createdAt))
         put("updated_at", Wire.isoOf(f.updatedAt))
+    }
+
+    /** A card ref (migration 056) as an agent reads it, from the owner's summary. */
+    fun ref(summary: JsonObject): JsonObject = buildJsonObject {
+        fun text(key: String) = (summary[key] as? JsonPrimitive)?.takeIf { it !is JsonNull }?.content
+        put("kind", summary["kind"]!!)
+        put("id", summary["id"]!!)
+        put("project_id", text("projectId"))
+        put("author", text("author"))
+        text("title")?.let { put("title", it) }
+        text("text")?.let { put("text", it) }
+        (summary["mediaCount"] as? JsonPrimitive)?.content?.toIntOrNull()?.takeIf { it > 0 }?.let { put("media_count", it) }
+        put("removed", summary["deleted"]!!)
     }
 
     fun apps(views: List<FeedAttachments.AppViewRef>) = JsonArray(views.map { v ->

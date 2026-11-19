@@ -1029,5 +1029,293 @@
   "why": "Teams (migration 055): on a team of several people, agents learn which person wrote or answered, as extra keys only.",
   "replace": "  { \"state\": \"cancelled\", \"request_id\" }\n",
   "with": "  { \"state\": \"cancelled\", \"request_id\" }\n\nOn a team of several people, an answer also says who gave it: answered_by { user_id, name }.\n"
+ },
+ {
+  "tool": "post_message",
+  "path": [
+   "description"
+  ],
+  "why": "Card refs (migration 056): a card points at other cards and shows them inside itself, so an agent can ask a question about a reply it posted elsewhere.",
+  "replace": "exists. set_app_data pushes fresh values into one already posted.\n\nReturns { message: {",
+  "with": "exists. set_app_data pushes fresh values into one already posted.\n- refs (optional): up to 8 other cards to show inside this one, each { kind, id }, kind\n  \"update\", \"message\" or \"request\" and the id the tool that made it returned. Your\n  owner sees each as a small preview, its first picture or video playing in place, and\n  taps it to open that card's thread. Point at what was said elsewhere rather than\n  saying it twice. A card you cannot read, or one already removed, is refused; one\n  removed later shows as removed. The result lists them back as `refs`.\n\nReturns { message: {"
+ },
+ {
+  "tool": "post_message",
+  "path": [
+   "inputSchema",
+   "properties",
+   "refs"
+  ],
+  "why": "Card refs (migration 056): a card points at other cards and shows them inside itself, so an agent can ask a question about a reply it posted elsewhere.",
+  "now": {
+   "description": "Up to 8 other cards to show inside this one, each { kind, id }. Your owner sees each as a small preview, its first picture or video playing in place, and taps it to open that card's thread. A card you cannot read, or one already removed, refuses the whole post.",
+   "maxItems": 8,
+   "type": "array",
+   "items": {
+    "type": "object",
+    "properties": {
+     "kind": {
+      "type": "string",
+      "enum": [
+       "update",
+       "message",
+       "request"
+      ],
+      "description": "What the card is: an update (post_update), a message (post_message) or a request (request_input)."
+     },
+     "id": {
+      "type": "string",
+      "description": "Its id, as the tool that made it returned it (a request's is its request_id)."
+     }
+    },
+    "required": [
+     "kind",
+     "id"
+    ]
+   }
+  }
+ },
+ {
+  "tool": "post_update",
+  "path": [
+   "description"
+  ],
+  "why": "Card refs (migration 056): a card points at other cards and shows them inside itself, so an agent can ask a question about a reply it posted elsewhere.",
+  "replace": "exists. set_app_data pushes fresh values into one already posted.\n\nIf the card is a piece of work",
+  "with": "exists. set_app_data pushes fresh values into one already posted.\n- refs (optional): up to 8 other cards to show inside this one, each { kind, id }, kind\n  \"update\", \"message\" or \"request\". Your owner sees each as a small preview and taps\n  it to open that card's thread: \"this replaces the build I posted yesterday\".\n\nIf the card is a piece of work"
+ },
+ {
+  "tool": "post_update",
+  "path": [
+   "inputSchema",
+   "properties",
+   "refs"
+  ],
+  "why": "Card refs (migration 056): a card points at other cards and shows them inside itself, so an agent can ask a question about a reply it posted elsewhere.",
+  "now": {
+   "description": "Up to 8 other cards to show inside this one, each { kind, id }. Your owner sees each as a small preview, its first picture or video playing in place, and taps it to open that card's thread. A card you cannot read, or one already removed, refuses the whole post.",
+   "maxItems": 8,
+   "type": "array",
+   "items": {
+    "type": "object",
+    "properties": {
+     "kind": {
+      "type": "string",
+      "enum": [
+       "update",
+       "message",
+       "request"
+      ],
+      "description": "What the card is: an update (post_update), a message (post_message) or a request (request_input)."
+     },
+     "id": {
+      "type": "string",
+      "description": "Its id, as the tool that made it returned it (a request's is its request_id)."
+     }
+    },
+    "required": [
+     "kind",
+     "id"
+    ]
+   }
+  }
+ },
+ {
+  "tool": "request_input",
+  "path": [
+   "description"
+  ],
+  "why": "Card refs (migration 056): a card points at other cards and shows them inside itself, so an agent can ask a question about a reply it posted elsewhere.",
+  "replace": "{ type, data, source_url? }, and list_embed_types says which looks exist.\n\nHOW THE WAITING WORKS.",
+  "with": "{ type, data, source_url? }, and list_embed_types says which looks exist.\n\nrefs shows other cards inside the question: up to 8, each { kind, id }, kind \"update\",\n\"message\" or \"request\". Your owner sees each as a small preview, its first picture or\nvideo playing in place, and taps it to open that card's thread. It is how you ask\nabout something you posted elsewhere without posting it twice: reply on the card for\nthe work with the video (post_message with update_id and media_ids), then call\nrequest_input with refs [{ kind: \"message\", id: <that reply's id> }] and ask \"Does\nthis look right?\". The video sits inside the question. A card you cannot read, or one\nalready removed, is refused.\n\nHOW THE WAITING WORKS."
+ },
+ {
+  "tool": "request_input",
+  "path": [
+   "inputSchema",
+   "properties",
+   "refs"
+  ],
+  "why": "Card refs (migration 056): a card points at other cards and shows them inside itself, so an agent can ask a question about a reply it posted elsewhere.",
+  "now": {
+   "description": "Other cards to show inside the question, each { kind, id }, at most 8: say, the reply you just posted with the video in it. Your owner sees each as a small preview and taps it to open its thread. A card you cannot read, or one already removed, refuses the request.",
+   "maxItems": 8,
+   "type": "array",
+   "items": {
+    "type": "object",
+    "properties": {
+     "kind": {
+      "type": "string",
+      "enum": [
+       "update",
+       "message",
+       "request"
+      ],
+      "description": "What the card is: an update (post_update), a message (post_message) or a request (request_input)."
+     },
+     "id": {
+      "type": "string",
+      "description": "Its id, as the tool that made it returned it (a request's is its request_id)."
+     }
+    },
+    "required": [
+     "kind",
+     "id"
+    ]
+   }
+  }
+ },
+ {
+  "tool": "edit_message",
+  "path": [
+   "description"
+  ],
+  "why": "Card refs (migration 056): a card points at other cards and shows them inside itself, so an agent can ask a question about a reply it posted elsewhere.",
+  "replace": "  characters. It replaces the message; it does not append to it.\n\nPrefer this",
+  "with": "  characters. It replaces the message; it does not append to it.\n- refs (optional): the cards it points at from now on, each { kind, id }, at most 8, as\n  on post_message. It replaces the list; [] takes them all off; leave it out to keep\n  them.\n\nPrefer this"
+ },
+ {
+  "tool": "edit_message",
+  "path": [
+   "inputSchema",
+   "properties",
+   "refs"
+  ],
+  "why": "Card refs (migration 056): a card points at other cards and shows them inside itself, so an agent can ask a question about a reply it posted elsewhere.",
+  "now": {
+   "description": "The cards this one points at from now on, each { kind, id }, at most 8. It replaces the whole list; [] takes them all off. Leave it out to keep them.",
+   "maxItems": 8,
+   "type": "array",
+   "items": {
+    "type": "object",
+    "properties": {
+     "kind": {
+      "type": "string",
+      "enum": [
+       "update",
+       "message",
+       "request"
+      ],
+      "description": "What the card is: an update (post_update), a message (post_message) or a request (request_input)."
+     },
+     "id": {
+      "type": "string",
+      "description": "Its id, as the tool that made it returned it (a request's is its request_id)."
+     }
+    },
+    "required": [
+     "kind",
+     "id"
+    ]
+   }
+  }
+ },
+ {
+  "tool": "edit_update",
+  "path": [
+   "description"
+  ],
+  "why": "Card refs (migration 056): a card points at other cards and shows them inside itself, so an agent can ask a question about a reply it posted elsewhere.",
+  "replace": "owner. Even so, use critical only when your owner has explicitly told you to.\n\nAt least one of body, title, level or priority must be given.",
+  "with": "owner. Even so, use critical only when your owner has explicitly told you to.\n- refs (optional): the cards it points at from now on, each { kind, id }, at most 8, as\n  on post_update. It replaces the list; [] takes them all off.\n\nAt least one of body, title, level, priority or refs must be given."
+ },
+ {
+  "tool": "edit_update",
+  "path": [
+   "inputSchema",
+   "properties",
+   "refs"
+  ],
+  "why": "Card refs (migration 056): a card points at other cards and shows them inside itself, so an agent can ask a question about a reply it posted elsewhere.",
+  "now": {
+   "description": "The cards this one points at from now on, each { kind, id }, at most 8. It replaces the whole list; [] takes them all off. Leave it out to keep them.",
+   "maxItems": 8,
+   "type": "array",
+   "items": {
+    "type": "object",
+    "properties": {
+     "kind": {
+      "type": "string",
+      "enum": [
+       "update",
+       "message",
+       "request"
+      ],
+      "description": "What the card is: an update (post_update), a message (post_message) or a request (request_input)."
+     },
+     "id": {
+      "type": "string",
+      "description": "Its id, as the tool that made it returned it (a request's is its request_id)."
+     }
+    },
+    "required": [
+     "kind",
+     "id"
+    ]
+   }
+  }
+ },
+ {
+  "tool": "edit_request",
+  "path": [
+   "description"
+  ],
+  "why": "Card refs (migration 056): a card points at other cards and shows them inside itself, so an agent can ask a question about a reply it posted elsewhere.",
+  "replace": "  in the field. Null clears it.\n\nAt least one of them must be given.",
+  "with": "  in the field. Null clears it.\n- refs (optional): the cards it shows from now on, each { kind, id }, at most 8, as on\n  request_input. It replaces the list; [] takes them all off.\n\nAt least one of them must be given."
+ },
+ {
+  "tool": "edit_request",
+  "path": [
+   "inputSchema",
+   "properties",
+   "refs"
+  ],
+  "why": "Card refs (migration 056): a card points at other cards and shows them inside itself, so an agent can ask a question about a reply it posted elsewhere.",
+  "now": {
+   "description": "The cards this one points at from now on, each { kind, id }, at most 8. It replaces the whole list; [] takes them all off. Leave it out to keep them.",
+   "maxItems": 8,
+   "type": "array",
+   "items": {
+    "type": "object",
+    "properties": {
+     "kind": {
+      "type": "string",
+      "enum": [
+       "update",
+       "message",
+       "request"
+      ],
+      "description": "What the card is: an update (post_update), a message (post_message) or a request (request_input)."
+     },
+     "id": {
+      "type": "string",
+      "description": "Its id, as the tool that made it returned it (a request's is its request_id)."
+     }
+    },
+    "required": [
+     "kind",
+     "id"
+    ]
+   }
+  }
+ },
+ {
+  "tool": "get_messages",
+  "path": [
+   "description"
+  ],
+  "why": "Card refs (migration 056): a card points at other cards and shows them inside itself, so an agent can ask a question about a reply it posted elsewhere.",
+  "replace": "bytes, filename, status, included, download_url, reason }] }],\ncount,",
+  "with": "bytes, filename, status, included, download_url, reason }], refs: [{ kind, id,\nproject_id, author, title, text, media_count, removed }] }],\ncount,"
+ },
+ {
+  "tool": "get_messages",
+  "path": [
+   "description"
+  ],
+  "why": "Card refs (migration 056): a card points at other cards and shows them inside itself, so an agent can ask a question about a reply it posted elsewhere.",
+  "replace": "before answering; \"no\" means nothing without the question it was a no to.\n",
+  "with": "before answering; \"no\" means nothing without the question it was a no to.\n\n`refs` is present only on a message that points at other cards: each one's kind, id,\nheadline or first line, and how many files it carries. `removed` is true when that card\nis gone or is not one you can read.\n"
  }
 ]

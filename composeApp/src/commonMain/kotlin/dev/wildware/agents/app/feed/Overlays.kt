@@ -52,6 +52,9 @@ import androidx.compose.material3.MenuDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
+import kotlinx.coroutines.delay
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
@@ -65,6 +68,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -693,10 +697,25 @@ fun InteractiveReply(reply: Reply, modifier: Modifier = Modifier) {
     )
     val shape = AgentTheme.shapes.medium
     val hover = remember { MutableInteractionSource() }
+    // A linked card opened its thread at this reply: bring it into view, ring it a moment.
+    val focused = ui != null && ui.focusedReply == reply.id
+    val bring = remember { BringIntoViewRequester() }
+    val size = remember { intArrayOf(0, 0) }
+    if (focused) {
+        LaunchedEffect(reply.id) {
+            // Once the card it is on has been scrolled to, and the thread has slid in. With room
+            // under it, so the message box floating at the foot of the feed doesn't cover it.
+            delay(FocusSettleMillis)
+            val room = with(density) { FocusRoom.toPx() }
+            runCatching { bring.bringIntoView(Rect(0f, 0f, size[0].toFloat(), size[1] + room)) }
+            delay(RingMillis)
+            if (ui?.focusedReply == reply.id) ui.focusedReply = null
+        }
+    }
     SwipeActions(
         shape = shape,
         // About 8 dp between one reply and the next.
-        modifier = modifier.padding(vertical = 4.dp),
+        modifier = modifier.bringIntoViewRequester(bring).onSizeChanged { size[0] = it.width; size[1] = it.height }.padding(vertical = 4.dp),
         state = swipe,
         startAction = GestureAction("Reply", Icons.Reply, colors.accent, colors.onAccent) {
             ui?.emit(FeedEvent.Reply(reply.id))
@@ -712,7 +731,8 @@ fun InteractiveReply(reply: Reply, modifier: Modifier = Modifier) {
                 Modifier
                     .clip(shape)
                     .background(replySurface(colors, own = reply.author is Author.Owner))
-                    .border(1.dp, colors.border, shape)
+                    .border(if (focused) 2.dp else 1.dp, if (focused) colors.accent else colors.border, shape)
+                    .semantics { if (focused) this[Highlighted] = true }
                     .feedItemGestures(target)
                     .padding(horizontal = 12.dp, vertical = 10.dp),
             )
@@ -752,6 +772,12 @@ private fun HoverReply(hover: MutableInteractionSource, always: Boolean, who: St
         Text("Reply", Modifier.padding(start = 5.dp), color = colors.text, style = AgentTheme.type.label)
     }
 }
+
+/** How long a reply a linked card points at waits before it is brought into view: the feed's scroll and the thread's slide finish first. */
+internal const val FocusSettleMillis = 400L
+
+/** The room kept under that reply as it is brought into view: clear of the message box at the foot. */
+private val FocusRoom = 140.dp
 
 /** The thread on a phone: full screen, back with the button or a swipe from the left edge. */
 @Composable

@@ -101,6 +101,36 @@ data class MediaView(
     fun path(variant: String = "original"): String = "media/$id/$variant"
 }
 
+/**
+ * Another card this one points at (an agent's `refs`): enough of it to draw it small and open its
+ * thread. [deleted] when that card has since been removed; then only [kind], [id] and [projectId]
+ * are left. For a message, [updateId], [replyTo] or [requestId] says which thread it is in; for a
+ * request, [state] where it has got to.
+ */
+@Serializable
+data class CardRefView(
+    /** "update", "message" or "request". */
+    val kind: String,
+    val id: String,
+    val projectId: String? = null,
+    val deleted: Boolean = false,
+    val author: String? = null,
+    val authorName: String? = null,
+    /** An update's headline or a request's question. */
+    val title: String? = null,
+    /** The first line of its body (a request's detail), as plain text. */
+    val text: String? = null,
+    /** Its first picture, video or file. */
+    val media: MediaView? = null,
+    val mediaCount: Int = 0,
+    val updateId: String? = null,
+    val replyTo: String? = null,
+    val requestId: String? = null,
+    val state: String? = null,
+) {
+    val card: CardRef get() = CardRef(kind, id)
+}
+
 /** A card shown in the style of where it came from. [spec] is the look, [data] the values. */
 @Serializable
 data class EmbedView(
@@ -239,6 +269,8 @@ data class UpdateView(
     val statusAt: Long? = null,
     val media: List<MediaView> = emptyList(),
     val embeds: List<EmbedView> = emptyList(),
+    /** Other cards it points at, shown inside it. */
+    val refs: List<CardRefView> = emptyList(),
 ) {
     @Serializable
     data class Share(val views: Int = 0, val sharedAt: Long = 0)
@@ -326,6 +358,8 @@ data class RequestView(
     val reactions: List<ReactionView> = emptyList(),
     /** Who answered, on a team (migration 055); left out for the founder. */
     val answeredBy: String? = null,
+    /** Other cards the question points at, shown inside it: the reply with the video it asks about. */
+    val refs: List<CardRefView> = emptyList(),
 ) {
     /** The person who answered it, or null while it isn't answered. */
     val answeredByPerson: String? get() = if (state == "answered") answeredBy ?: FounderId else null
@@ -396,6 +430,8 @@ data class MessagesSnapshot(
     val embeds: Map<String, List<EmbedView>> = emptyMap(),
     val deliveries: List<DeliveryView> = emptyList(),
     val reactions: List<ReactionView> = emptyList(),
+    /** The cards each message points at, by message id; only messages that point at some. */
+    val refs: Map<String, List<CardRefView>> = emptyMap(),
 )
 
 /** `GET /api/snapshot/requests`: every question waiting on the owner, never paged or scoped. */
