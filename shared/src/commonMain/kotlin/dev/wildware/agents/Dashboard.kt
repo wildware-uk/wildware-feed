@@ -9,6 +9,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.updateAndGet
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.coroutines.ContinuationInterceptor
@@ -214,7 +216,12 @@ class Dashboard internal constructor(
     private val presence = PresenceReader(client, confined, ::changed).also { it.cache = cache }
     private val bell = NotificationsReader(client, confined, ::changed)
     private val joining = PairingsReader(client, confined, ::changed)
-    private val feeds = mutableMapOf<String?, Feed>()
+    /**
+     * Every open feed, by project slug. The app opens and closes feeds from its own thread while the
+     * engine's thread reads them, so the map is never changed in place: each change swaps in a new one.
+     */
+    private val openFeeds = MutableStateFlow<Map<String?, Feed>>(emptyMap())
+    private val feeds: Map<String?, Feed> get() = openFeeds.value
     private var timers: Job? = null
     private var now = clock()
 
@@ -347,14 +354,18 @@ class Dashboard internal constructor(
      * One project's feed by slug, or every project's for null. The same slug gives the same feed.
      * [Feed.close] a project feed when its screen goes away; the all-projects feed stays.
      */
-    fun feed(projectSlug: String?): Feed = feeds.getOrPut(projectSlug) {
-        Feed(projectSlug, this, client, confined, pageSize).also { if (started) it.startReaders() }
+    fun feed(projectSlug: String?): Feed {
+        feeds[projectSlug]?.let { return it }
+        val made = Feed(projectSlug, this, client, confined, pageSize)
+        val feed = openFeeds.updateAndGet { if (projectSlug in it) it else it + (projectSlug to made) }.getValue(projectSlug)
+        if (feed === made && started) made.startReaders()
+        return feed
     }
 
     internal fun release(feed: Feed) {
         if (feed.projectSlug == null) return
         feed.stopReaders()
-        feeds.remove(feed.projectSlug)
+        openFeeds.update { if (it[feed.projectSlug] === feed) it - feed.projectSlug else it }
     }
 
     /** Re-reads everything now, as a pull-to-refresh does. */
@@ -420,7 +431,9 @@ class Dashboard internal constructor(
     private fun publish() {
         val pending = drafts()
         val uploads = outbox?.uploads?.value.orEmpty()
-        feeds.values.forEach {
+        // One look at the open feeds, so one opened meanwhile waits for the next round whole.
+        val open = feeds.values
+        open.forEach {
             it.drafts = pending
             it.uploads = uploads
         }
@@ -433,7 +446,7 @@ class Dashboard internal constructor(
         val onlineIds = onlineAgents.mapTo(HashSet()) { it.agentId }
         val context = FeedContext(names, projectsById, sending, onlineIds, readMarks, requests.items)
         mutableWaiting.value = requests.items.map { context.requestCard(it, everything) }
-        feeds.values.forEach { it.publish(context, stream.status.value, requests.loading) }
+        open.forEach { it.publish(context, stream.status.value, requests.loading) }
         mutableProjects.value = summaries(everything.state.value)
         mutableNotifications.value = bell.list
         if (mutablePairings.value != joining.items) mutablePairings.value = joining.items
