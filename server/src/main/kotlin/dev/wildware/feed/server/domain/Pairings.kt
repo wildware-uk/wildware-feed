@@ -19,9 +19,16 @@ import java.security.SecureRandom
  * denies it, and the agent collects its new token once.
  *
  * Nothing secret is stored. The poll secret is kept as a hash, as agent tokens are. Allowing makes
- * the agent's row with a placeholder hash nobody holds, which keeps the name; the real token is made
- * only when the agent collects it, in the same step that marks the pairing collected, so it is
- * handed over exactly once and is never written anywhere but as its hash.
+ * the agent's row with a placeholder hash nobody holds, which keeps the name; the real token is set
+ * only when the agent collects it, in the same step that marks the pairing collected, and is never
+ * written anywhere but as its hash.
+ *
+ * The token is not random: it is derived from the server's token secret and the poll secret
+ * ([tokenFor]). The server keeps neither in the database, so nothing stored can be turned into
+ * the token, but a poll that brings the poll secret back can have the same token made again. That
+ * is how an answer lost on the way (a poll cut off just as the owner allowed it) is not a lost
+ * token: a repeat poll gets the same token until the token is first used, for up to
+ * [COLLECT_MS] after collection, and never after.
  */
 class Pairings(
     private val db: Database,
@@ -47,7 +54,7 @@ class Pairings(
     /** A pairing just started, with its poll secret: shown once, to the agent that asked. */
     class Started(val pairing: Pairing, val secret: String)
 
-    /** What a poll found. [token] is set on the one poll that collects it. */
+    /** What a poll found. [token] is set on the poll that collects it, and on repeats until it is first used. */
     class Poll(val pairing: Pairing, val token: String? = null, val agentName: String? = null)
 
     /** Start a pairing. [address] is the client's, [askedBy] the agent asking over MCP, if one is. */
@@ -123,8 +130,9 @@ class Pairings(
     }
 
     /**
-     * The agent's poll: waits up to [holdMs] for the owner, then says where it stands. On the first
-     * poll after the owner allowed it, the token is made and handed over; never again after that.
+     * The agent's poll: waits up to [holdMs] for the owner, then says where it stands. The first poll
+     * after the owner allowed it collects the token; a repeat gets the same token back until it is
+     * first used ([again]).
      * An unknown id and a wrong secret are the same not-found, so neither can be probed.
      */
     suspend fun await(id: String, secret: String, holdMs: Long): Poll {
@@ -141,11 +149,23 @@ class Pairings(
         }
         expireDue()
         val now = find(id)!!
-        return if (now.state == "approved") collect(now) else Poll(now)
+        return when (now.state) {
+            "approved" -> collect(now, secret)
+            "collected" -> again(now, secret)
+            else -> Poll(now)
+        }
     }
 
-    private fun collect(pairing: Pairing): Poll {
-        val token = Tokens.random()
+    /**
+     * The token a pairing's agent gets. Making it takes the server's token secret, which is not in
+     * the database, and the poll secret, which is stored only as a hash: so only this server, shown
+     * the poll secret by the agent that holds it, can make it. 32 bytes, base64url, like any token.
+     */
+    private fun tokenFor(pairing: Pairing, secret: String): String =
+        Tokens.base64url(Tokens.hmac(tokenSecret, "$TOKEN_PREFIX${pairing.id}:$secret"))
+
+    private fun collect(pairing: Pairing, secret: String): Poll {
+        val token = tokenFor(pairing, secret)
         val collected = db.transaction { _ ->
             val marked = db.update(
                 "UPDATE agent_pairings SET state = 'collected', collected_at = ? WHERE id = ? AND state = 'approved' AND expires_at > ?",
@@ -155,10 +175,30 @@ class Pairings(
             marked == 1
         }
         val now = find(pairing.id)!!
-        if (!collected) return Poll(now)
+        // Another poll collected it first: this one may still have it, as a repeat.
+        if (!collected) return if (now.state == "collected") again(now, secret) else Poll(now)
         bus.publish("pairing.updated", event(now))
         val name = db.one("SELECT name FROM agents WHERE id = ?", pairing.agentId) { it.getString(1) }
         return Poll(now, token, name)
+    }
+
+    /**
+     * A poll after the token was collected: the same token again while the agent has not used it,
+     * is not revoked, and collected it under [COLLECT_MS] ago. Once it has signed in with it, or
+     * the time is up, the answer is "collected" with no token, for good.
+     */
+    private fun again(pairing: Pairing, secret: String): Poll {
+        val agentId = pairing.agentId ?: return Poll(pairing)
+        val collectedAt = db.one("SELECT collected_at FROM agent_pairings WHERE id = ?", pairing.id) { it.longOrNull("collected_at") }
+            ?: return Poll(pairing)
+        if (clock() >= collectedAt + COLLECT_MS) return Poll(pairing)
+        data class Holder(val hash: String, val name: String, val unused: Boolean)
+        val agent = db.one("SELECT token_hash, name, revoked_at, last_seen_at FROM agents WHERE id = ?", agentId) {
+            Holder(it.getString("token_hash"), it.getString("name"), it.longOrNull("revoked_at") == null && it.longOrNull("last_seen_at") == null)
+        } ?: return Poll(pairing)
+        val token = tokenFor(pairing, secret)
+        if (!agent.unused || !Tokens.same(agent.hash, Tokens.hash(token, tokenSecret))) return Poll(pairing)
+        return Poll(pairing, token, agent.name)
     }
 
     /**
@@ -238,8 +278,14 @@ class Pairings(
         /** How long the owner has to decide. */
         const val TTL_MS = 10 * 60_000L
 
-        /** Once allowed, how long the agent has to collect its token. */
+        /**
+         * Once allowed, how long the agent has to collect its token; once collected, how long a
+         * repeat poll can still get it back if it has not been used.
+         */
         const val COLLECT_MS = 10 * 60_000L
+
+        /** Keeps a pairing token's HMAC apart from every other use of the token secret. */
+        private const val TOKEN_PREFIX = "agent-dashboard:pairing-token:v1:"
 
         /** How long one poll waits for the owner: under the 30 seconds a proxy such as Heroku's allows. */
         const val HOLD_MS = 25_000L

@@ -56,6 +56,59 @@ class PairingsTest {
     }
 
     @Test
+    fun `a poll cut off just as the owner allows it does not lose the token`() = runBlocking<Unit> {
+        val started = pairings.start("laptop", null, null, null, null)
+        val id = started.pairing.id
+        // The agent's poll is holding when the owner allows it; its answer never reaches the agent.
+        val holding = async { pairings.await(id, started.secret, holdMs = 5_000) }
+        delay(50)
+        pairings.approve(id, null)
+        val lost = assertNotNull(holding.await().token)
+
+        val again = pairings.await(id, started.secret, holdMs = 0)
+        assertEquals(lost, again.token, "the same token, not a new one")
+        assertEquals("laptop", again.agentName)
+        assertEquals(lost, pairings.await(id, started.secret, holdMs = 0).token)
+        assertTrue(Regex("^[A-Za-z0-9_-]{43}$").matches(lost))
+
+        // Its first use ends it: never shown again.
+        assertNotNull(agents.authenticate(lost).first)
+        val after = pairings.await(id, started.secret, holdMs = 0)
+        assertNull(after.token)
+        assertEquals("collected", after.pairing.state)
+        assertNotNull(agents.authenticate(lost).first, "and the token keeps working")
+    }
+
+    @Test
+    fun `an unused token is shown again only for ten minutes, and not once revoked`() = runBlocking<Unit> {
+        val late = pairings.start("late", null, null, null, null)
+        pairings.approve(late.pairing.id, null)
+        val token = assertNotNull(pairings.await(late.pairing.id, late.secret, 0).token)
+        now += Pairings.COLLECT_MS - 1
+        assertEquals(token, pairings.await(late.pairing.id, late.secret, 0).token)
+        now += 1
+        assertNull(pairings.await(late.pairing.id, late.secret, 0).token)
+        assertNotNull(agents.authenticate(token).first, "the token itself still works")
+
+        val revoked = pairings.start("revoked", null, null, null, null)
+        val agentId = pairings.approve(revoked.pairing.id, null).agentId!!
+        assertNotNull(pairings.await(revoked.pairing.id, revoked.secret, 0).token)
+        agents.revoke(agentId)
+        assertNull(pairings.await(revoked.pairing.id, revoked.secret, 0).token)
+    }
+
+    @Test
+    fun `a pairing's token cannot be made from what the database holds`() = runBlocking<Unit> {
+        val started = pairings.start("vault", null, null, null, null)
+        pairings.approve(started.pairing.id, null)
+        val token = assertNotNull(pairings.await(started.pairing.id, started.secret, 0).token)
+        // Every column of every table: neither the token nor the poll secret it is made from.
+        val tables = db.query("SELECT name FROM sqlite_master WHERE type = 'table'") { it.getString(1) }
+        val everything = tables.flatMap { t -> db.query("SELECT * FROM \"$t\"") { rs -> (1..rs.metaData.columnCount).joinToString("|") { rs.getString(it).orEmpty() } } }
+        assertTrue(everything.none { token in it || started.secret in it })
+    }
+
+    @Test
     fun `a wrong secret and an unknown id are the same not-found`() = runBlocking<Unit> {
         val started = pairings.start("scout", null, null, null, null)
         val wrong = assertFailsWith<DomainError> { pairings.await(started.pairing.id, "x".repeat(43), 0) }

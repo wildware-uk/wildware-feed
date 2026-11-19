@@ -191,7 +191,7 @@ object PairingWords {
                     put("instructions", approved(base, name))
                 }
                 p.state == "pending" -> put("instructions", "Your owner has not decided yet. That is not a refusal: $again, and keep going while state is \"pending\".")
-                p.state == "collected" -> put("instructions", "This pairing's token was already handed over, and it is never shown twice. If it was lost, start a new pairing.")
+                p.state == "collected" -> put("instructions", "This pairing's token was already handed over, and it has been used or it is too late to show it again. If it was lost, start a new pairing.")
                 p.state == "denied" -> put("instructions", "Your owner denied this pairing. Do not try to connect another way; ask them first if you think it was a mistake.")
                 else -> put("instructions", "Nobody decided before this pairing expired. Start a new one if you still need to connect, and tell your owner first.")
             }
@@ -199,7 +199,8 @@ object PairingWords {
     }
 
     private fun approved(base: String, name: String) =
-        "You are allowed in as \"$name\". Save the token now: it is shown this once and never again, and it is not stored anywhere " +
+        "You are allowed in as \"$name\". Save the token now. If this answer is lost, poll again with the same secret: the same " +
+            "token comes back until it is first used, for up to 10 minutes, and never after. It is not stored anywhere " +
             "you can read it back. Put it in your MCP client's config for the $SERVER_NAME server ($base/mcp, Streamable HTTP) as the " +
             "header Authorization: Bearer <token>. In Claude Code, run claude_code_command from this directory; if a $SERVER_NAME " +
             "server is set up already, first run claude mcp remove --scope local $SERVER_NAME, or change its Authorization header. " +

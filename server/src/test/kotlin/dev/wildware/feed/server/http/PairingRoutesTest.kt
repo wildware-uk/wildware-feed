@@ -96,9 +96,10 @@ class PairingRoutesTest {
         assertTrue(collected.s("claude_code_command").contains("--header \"Authorization: Bearer $token\""))
         assertFalse(approvedText.contains(token))
 
+        // An answer lost on the way is not a lost token: until it is used, a repeat poll gets it again.
         val again = poll(id, secret).bodyAsText().json()
-        assertEquals("collected", again.s("state"))
-        assertFalse("token" in again)
+        assertEquals("approved", again.s("state"))
+        assertEquals(token, again.s("token"))
 
         val mcp = client.post("/mcp") {
             header("Authorization", "Bearer $token")
@@ -108,6 +109,49 @@ class PairingRoutesTest {
         }
         assertEquals(200, mcp.status.value)
         assertTrue(mcp.bodyAsText().contains("for agent \\\"laptop\\\""), mcp.bodyAsText())
+    
+        // Used once, it is never shown again.
+        val afterUse = poll(id, secret).bodyAsText().json()
+        assertEquals("collected", afterUse.s("state"))
+        assertFalse("token" in afterUse)
+    }
+
+    @Test
+    fun `nothing a pairing logs or stores can be used as its token`() {
+        val logged = java.io.ByteArrayOutputStream()
+        val (out, err) = System.out to System.err
+        val tee = java.io.PrintStream(logged, true)
+        System.setOut(tee)
+        System.setErr(tee)
+        var token = ""
+        var secret = ""
+        val app = App(config, Database.memory())
+        try {
+            val (_, key) = app.devices.mint("Phone")
+            testApplication {
+                application { feed(app) }
+                val body = pair("""{"name":"quiet"}""").bodyAsText().json()
+                val id = body.s("pairing_id")
+                secret = body.s("poll_secret")
+                client.post("/api/pairings/$id/approve") { header("Authorization", "Bearer $key") }
+                token = poll(id, secret).bodyAsText().json().s("token")
+                assertEquals(token, poll(id, secret).bodyAsText().json().s("token"))
+            }
+            val everything = app.db.query("SELECT name FROM sqlite_master WHERE type = 'table'") { it.getString(1) }.flatMap { table ->
+                app.db.query("SELECT * FROM \"$table\"") { rs -> (1..rs.metaData.columnCount).joinToString("|") { rs.getString(it).orEmpty() } }
+            }
+            assertTrue(everything.isNotEmpty())
+            for (secretThing in listOf(token, secret)) {
+                assertTrue(everything.none { secretThing in it }, "stored in the database")
+            }
+        } finally {
+            System.setOut(out)
+            System.setErr(err)
+            app.close()
+        }
+        assertTrue(token.isNotEmpty())
+        assertFalse(token in logged.toString(), "logged the token")
+        assertFalse(secret in logged.toString(), "logged the poll secret")
     }
 
     @Test
