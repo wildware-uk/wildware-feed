@@ -141,6 +141,21 @@ class MappingTest {
     }
 
     @Test
+    fun appsOnACardBecomeLinksAndOnlyAPageOfItsOwnHasOne() {
+        fun app(id: String, url: String?, title: String? = null) =
+            dev.wildware.agents.AppView(id, CardRef(CardKinds.Update, "u1"), uri = "ui://$id", name = id, title = title, description = "What $id does", url = url, author = "agent:a1")
+        val card = update("u1", noon, "T", "B").copy(apps = listOf(app("board", "https://board.test/live", title = "Release board"), app("chart", null, title = " ")))
+        val item = mapper.map(feed(listOf(card)), listOf(mega), emptyList(), emptyList(), null).sections.single().items.single() as FeedItem.Update
+        assertEquals(
+            listOf(
+                dev.wildware.agents.app.feed.CardApp("board", "Release board", "What board does", "https://board.test/live"),
+                dev.wildware.agents.app.feed.CardApp("chart", null, "What chart does", null),
+            ),
+            item.apps,
+        )
+    }
+
+    @Test
     fun anUntitledUpdateTakesItsFirstLineAsItsHeadline() {
         val state = mapper.map(feed(listOf(update("u1", noon, null, "**Disk** is full\n\nPrune the caches."))), listOf(mega), emptyList(), emptyList(), null)
         val item = state.sections.single().items.single() as FeedItem.Update

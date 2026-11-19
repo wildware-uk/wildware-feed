@@ -163,6 +163,13 @@ enum class NotReady(val words: String) {
 @Immutable
 data class Gallery(val images: List<Attachment>, val index: Int = 0)
 
+/**
+ * An app an agent put on a card (the website ran it in a frame). [url] is set when it is a page of
+ * its own, which a browser can open; one the dashboard hosts needs the dashboard's sign-in, so it has none.
+ */
+@Immutable
+data class CardApp(val name: String, val title: String? = null, val description: String? = null, val url: String? = null)
+
 /** Which stand-in picture to paint until real images load. */
 enum class Scene { Dusk, Dawn, Night }
 
@@ -333,6 +340,8 @@ sealed interface FeedItem {
         val files: List<FileAttachment> = emptyList(),
         /** Things shown in the look of where they came from: a Slack message, a Jira ticket. */
         val embeds: List<Embed> = emptyList(),
+        /** Apps an agent put on the card. The app can't show them inside a card yet, so each offers a link. */
+        val apps: List<CardApp> = emptyList(),
         val reactions: List<Reaction> = emptyList(),
         val acks: Acks = Acks(),
         override val replies: List<Reply> = emptyList(),
@@ -423,6 +432,8 @@ sealed interface FeedItem {
         val files: List<FileAttachment> = emptyList(),
         /** Things shown in the look of where they came from: a Slack message, a Jira ticket. */
         val embeds: List<Embed> = emptyList(),
+        /** Apps an agent put on the card. The app can't show them inside a card yet, so each offers a link. */
+        val apps: List<CardApp> = emptyList(),
         val acks: Acks = Acks(),
         override val replies: List<Reply> = emptyList(),
         override val unreadReplies: Int = 0,

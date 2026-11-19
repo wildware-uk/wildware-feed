@@ -377,6 +377,7 @@ fun UpdateCard(
                     if (item.sounds.isNotEmpty()) Sounds(item.sounds, Modifier.padding(top = 10.dp))
                     if (item.files.isNotEmpty()) Files(item.files, Modifier.padding(top = 10.dp))
                     Embeds(item.embeds, Modifier.padding(top = 10.dp))
+                    AppLinks(item.apps, Modifier.padding(top = 10.dp))
                     CardDetails(item.id, ui?.fieldsFor(item.id, item.fields) ?: item.fields, Modifier.padding(top = 8.dp))
                     TagChips(tags, Modifier.padding(top = 10.dp))
                     val inline = LocalInlineThreads.current && !inThread
@@ -938,6 +939,7 @@ fun PostCard(item: FeedItem.Post, modifier: Modifier = Modifier, density: Densit
                 val body = @Composable { if (own) PlainBody(item.body) else MarkdownBody(item.body) }
                 if (inThread) body() else Clamp(item.id, "the whole post") { body() }
                 PostMedia(item.attachments, item.sounds, item.files, item.embeds)
+                AppLinks(item.apps, Modifier.padding(top = 10.dp))
                 CardDetails(item.id, ui?.fieldsFor(item.id, item.fields) ?: item.fields, Modifier.padding(top = 8.dp))
                 TagChips(tags, Modifier.padding(top = 10.dp))
                 val inline = LocalInlineThreads.current && !inThread

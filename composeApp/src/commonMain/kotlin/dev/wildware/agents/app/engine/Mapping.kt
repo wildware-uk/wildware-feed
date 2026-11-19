@@ -40,6 +40,7 @@ import dev.wildware.agents.app.feed.Agent
 import dev.wildware.agents.app.feed.Attachment
 import io.ktor.http.encodeURLPathPart
 import dev.wildware.agents.app.feed.LogoChoice
+import dev.wildware.agents.app.feed.CardApp
 import dev.wildware.agents.app.feed.Author
 import dev.wildware.agents.app.feed.CardTag
 import dev.wildware.agents.app.feed.CardField
@@ -254,6 +255,7 @@ internal class FeedMapper(
                 sounds = update.media.sounds(),
                 files = update.media.files(),
                 embeds = update.embeds.embeds(),
+                apps = apps.map { CardApp(it.name, it.title?.takeIf(String::isNotBlank), it.description?.takeIf(String::isNotBlank), it.url) },
                 reactions = reactions(reactions),
                 replies = replies(replies, unread, agents, project, index),
                 unreadReplies = unread,
@@ -277,6 +279,7 @@ internal class FeedMapper(
             sounds = post.media.sounds(),
             files = post.media.files(),
             embeds = post.embeds.embeds(),
+            apps = apps.map { CardApp(it.name, it.title?.takeIf(String::isNotBlank), it.description?.takeIf(String::isNotBlank), it.url) },
             acks = acks(post, agents),
             replies = replies(replies, unread, agents, project, index),
             unreadReplies = unread,

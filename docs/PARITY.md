@@ -94,8 +94,8 @@ It doesn't, beyond oldest first.
 | 51 | Share link (public) | Dropped | Mint link, Copy, Stop sharing, "Public · N views" (`UpdateActions.svelte:57-198`) | **No** ("Copy link" copies `agents://item/<id>`, `Overlays.kt`) | **No** | Dropped by the owner's decision: links stay private to the dashboard | P1 |
 | 52 | Post card: mine styling | Done | Accent left border | Yes: the owner's posts have an accent rail down the left edge | Yes | — | P2 |
 | 53 | "Not delivered to any agent" | Done | Red warning after 15 s with no ack/delivery (`acks.ts:66-93`) | Yes: Red warning after 15 s (PR #37) | Yes | — | P1 |
-| 54 | Embeds (agent "looks") | Open | Blocks rendered with brand mark/palette (`Embed.svelte`, `embeds.ts`) | **No** (EmbedView in engine, unmapped) | **No** | Port | P1 |
-| 55 | Apps (MCP Apps iframe) | Open | Sandboxed app with live data/theme/state/tools (`AppFrame.svelte`, `appbridge.ts`) | No | No | Needs a webview; big | P2 |
+| 54 | Embeds (agent "looks") | Done | Blocks rendered with brand mark/palette (`Embed.svelte`, `embeds.ts`) | Yes: embeds show on cards in the look of where they came from (`Embeds.kt`) | Yes | — | P1 |
+| 55 | Apps (MCP Apps iframe) | Dropped | Sandboxed app with live data/theme/state/tools (`AppFrame.svelte`, `appbridge.ts`) | Link instead: a card with an app shows its name; one with its own page opens in the browser, one the dashboard hosts says it can't be shown yet | Same | Dropped for now by the owner's decision: no frames in the app | P2 |
 | 56 | Copy text | Done | Only code-block copy | Yes menu "Copy text" | Yes | App only | — |
 | 57 | Text selection | Done | Browser native | Yes (`SelectableText.kt`) | Yes | — | — |
 | **Threads and replies** |||||||
@@ -118,7 +118,7 @@ It doesn't, beyond oldest first.
 | 72 | Reactions on thread messages | Done | Yes | Yes: On replies too | Yes | — | P2 |
 | **Composer** |||||||
 | 73 | Post to a project | Done | Textarea, Cmd/Ctrl+Enter, media-only OK | Yes (shown only when a project is open) | Yes | — | — |
-| 74 | Post from All projects | Open | "Choose a project" select (`Composer.svelte:170-189`) | **No**: composer hidden on All projects (`FeedScreen.kt`) | **No** | Port the project picker | P1 |
+| 74 | Post from All projects | Done | "Choose a project" select (`Composer.svelte:170-189`) | Yes: the message box shows on All projects, saying which project it posts to, and can change it; it remembers where you last worked | Yes | — | P1 |
 | 75 | Attachments | Done | Paste, drop, Add file, progress bar, max 24 (`Attachments.svelte`, `uploads.svelte.ts`) | Yes; 25 MB cap; no progress bar | Yes | No upload progress | P2 |
 | 76 | Tags at post time | Done | Pick tags before posting | Yes: "#" by the message box picks tags (or makes one); they show above the box and go on the post once it is up | Yes | — | P2 |
 | 77 | Voice dictation | Done | — | Yes hold-to-talk (`Voice.kt`) | Yes if available | App only | — |
@@ -143,12 +143,12 @@ It doesn't, beyond oldest first.
 | 92 | Pinned project glyph / pin project | Done | Pin icon; Pin/Unpin in menu (`ProjectActions.svelte`) | Yes: "Pin project" / "Unpin project" in the project's settings; a pin by its name in the drawer | Yes: same, and the pin takes the hash's place in the sidebar | — | P2 |
 | 93 | Reorder projects | App only | — | Yes, hold to drag (device-local) | Event exists; no drag in sidebar | App only | — |
 | 94 | Archived section | Done | "Archived (N)" collapsed | Yes (`Panels.kt` ArchivedProjects) | Yes | — | — |
-| 95 | New project | Open | Inline form name + description (`NewProject.svelte`) | **No** | **No** | Port | P1 |
-| 96 | Rename / describe project | Open | Inline form (`ProjectActions.svelte:364-397`) | No | No | Port | P1 |
-| 97 | Archive / unarchive | Open | Menu item | No | No | Port | P1 |
-| 98 | Project colours (theme) | Open | Background + accent pickers, AA ink (`theme.ts`) | **No**: neither set nor applied (hue dot only) | **No** | Port at least *applying* the theme | P1 |
+| 95 | New project | Done | Inline form name + description (`NewProject.svelte`) | Yes: "+ New project" in the drawer and the command bar | Yes: in the sidebar and the command bar | — | P1 |
+| 96 | Rename / describe project | Done | Inline form (`ProjectActions.svelte:364-397`) | Yes: the gear by the project's name opens its settings | Yes | — | P1 |
+| 97 | Archive / unarchive | Done | Menu item | Yes: in the project's settings | Yes | — | P1 |
+| 98 | Project colours (theme) | Done | Background + accent pickers, AA ink (`theme.ts`) | Yes: page and accent colours picked from a set, applied with readable text | Yes | No free hex entry (the website takes one) | P1 |
 | 99 | Project logo / logo replaces name | Done | Pick from 10 images, checkbox (`ProjectActions.svelte:283-336`, `Shell.svelte:553-581`) | Yes: the logo sits by the name above the feed, or stands in for it; picked in the project's settings from up to 10 pictures posted there, with "Use the logo instead of the name" and "Remove logo" | Yes | — | P2 |
-| 100 | Board columns editor | Open | Edit 1-6 columns (board view itself gone) | No | No | Board is gone, so skip | P2 |
+| 100 | Board columns editor | Dropped | Edit 1-6 columns (board view itself gone) | — | — | Dropped by the owner's decision: the board is gone | P2 |
 | 101 | Project label on cards in All projects | Done | Project name on cards when on All | Yes: "# project" on All projects, phone too | Yes | — | P0 |
 | **Agents / presence** |||||||
 | 102 | Live agents list | Done | Name, sessions, model, host, cwd, last heartbeat (`RightRail.svelte:78-191`) | Yes: Model, host, folder, sessions, last seen (PR #39) | Yes | — | P1 |
@@ -178,17 +178,7 @@ It doesn't, beyond oldest first.
 
 ## What is left
 
-Every P0 row is Done. Open or Partial P1 rows, in the order they are being built:
-
-1. Discussion thread on a request: reply, react and see acks under a question before answering (row 19).
-2. `multi_choice` min/max with the "Choose between X and Y" hint (row 11).
-3. `text` answers honouring multiline, placeholder, default and min/max (row 12).
-4. Collapse a card, remembered (row 31).
-5. Deep-link focus: highlight ring, loading older pages, "Could not find…" (row 36).
-
-Then the other open P1s: embeds (row 54), posting from All projects (row 74), and project management: new, rename, archive and colours (rows 95-98).
-
-P2s still open or partial: rows 10, 17, 20-22, 27-29, 34, 42, 52, 55, 64, 67, 68, 76, 79, 85, 92, 99, 100, 103, 105, 114. Row 51 (share links) is dropped.
+Every P0 and P1 row is Done. P2s still open: row 114, the Devices screen (PR #114). Rows 51 (share links), 55 (app frames: a link instead) and 100 (board columns) are dropped.
 
 ## Method and limits
 
