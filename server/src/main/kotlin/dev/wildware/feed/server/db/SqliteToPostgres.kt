@@ -72,6 +72,7 @@ class SqliteToPostgres(private val log: (String) -> Unit = {}) {
                     log("  ${it.table}: ${it.rows} rows" + if (it.nulsReplaced > 0) ", ${it.nulsReplaced} NUL characters replaced" else "")
                 }
             }.also {
+                catchUp(source, pg)
                 // The next seq continues from SQLite's high-water mark, which deleted rows leave above max(seq).
                 val next = nextSeqs(source)
                 for ((table, columns) in tables) {
@@ -140,6 +141,29 @@ class SqliteToPostgres(private val log: (String) -> Unit = {}) {
         }
     }
 
+    /** The newest migration the SQLite file has. */
+    private fun sourceVersion(source: Connection): Int = source.createStatement().use { st ->
+        st.executeQuery("SELECT coalesce(max(version), 0) FROM ${Database.MIGRATIONS_TABLE}").use { it.next(); it.getInt(1) }
+    }
+
+    /**
+     * A source older than the target leaves the target's newer columns empty. Where a later
+     * migration filled them in for existing rows, do the same here, so the copy is what migrating
+     * the file in place would have made. Migration 055 (people): everything the owner did is the
+     * founder's, and their device keys, bell and follows with it.
+     */
+    private fun catchUp(source: Connection, pg: Connection) {
+        val version = sourceVersion(source)
+        for ((since, statements) in CATCH_UP) {
+            if (version >= since) continue
+            pg.createStatement().use { st -> statements.forEach { st.executeUpdate(it) } }
+        }
+    }
+
+    /** A source value as the copy holds it after [catchUp]. */
+    private fun caughtUp(version: Int, table: String, column: String, value: String): String =
+        if (version < 55 && column == "subscriber" && table in SUBSCRIPTION_TABLES && value == "human") "member:founder" else value
+
     /** Counts and checksums on both sides; throws [Mismatch] naming every table that differs. */
     fun verify(source: Connection, target: Database): List<TableReport> {
         val tables = tables(source)
@@ -149,8 +173,9 @@ class SqliteToPostgres(private val log: (String) -> Unit = {}) {
         for ((table, next) in sqliteNext) {
             if (pgNext[table] != next) wrong += "$table (next seq: SQLite $next, Postgres ${pgNext[table]})"
         }
+        val version = sourceVersion(source)
         val reports = tables.map { (table, columns) ->
-            val a = checksum(source, table, columns, replaceNul = true)
+            val a = checksum(source, table, columns, replaceNul = true) { column, v -> caughtUp(version, table, column, v) }
             val b = target.withConnection { checksum(it, table, columns, replaceNul = false) }
             if (a.rows != b.rows || a.checksum != b.checksum) {
                 wrong += "$table (SQLite ${a.rows} rows, Postgres ${b.rows}; checksums ${if (a.checksum == b.checksum) "match" else "differ"})"
@@ -162,7 +187,7 @@ class SqliteToPostgres(private val log: (String) -> Unit = {}) {
         return reports
     }
 
-    private fun checksum(c: Connection, table: String, columns: List<String>, replaceNul: Boolean): TableReport {
+    private fun checksum(c: Connection, table: String, columns: List<String>, replaceNul: Boolean, map: (String, String) -> String = { _, v -> v }): TableReport {
         val digest = MessageDigest.getInstance("SHA-256")
         var rows = 0L
         var nuls = 0
@@ -175,7 +200,7 @@ class SqliteToPostgres(private val log: (String) -> Unit = {}) {
                             is Number -> feed(digest, v.toLong())
                             is String -> {
                                 nuls += v.count { it == '\u0000' }
-                                feed(digest, if (replaceNul) v.replace('\u0000', NUL_STAND_IN) else v)
+                                feed(digest, map(columns[i], if (replaceNul) v.replace('\u0000', NUL_STAND_IN) else v))
                             }
                             else -> error("$table.${columns[i]}: unexpected ${v::class.simpleName}")
                         }
@@ -205,5 +230,21 @@ class SqliteToPostgres(private val log: (String) -> Unit = {}) {
     companion object {
         const val NUL_STAND_IN = '␀'
         private const val BATCH = 500
+
+        private val SUBSCRIPTION_TABLES = setOf("project_subscriptions", "group_subscriptions", "thread_subscriptions")
+
+        /** What a migration did to existing rows, by its version, for a source from before it ([catchUp]). */
+        private val CATCH_UP: List<Pair<Int, List<String>>> = listOf(
+            55 to listOf(
+                "UPDATE owner_devices SET user_id = 'founder' WHERE user_id IS NULL",
+                "UPDATE messages SET user_id = 'founder' WHERE author = 'human' AND user_id IS NULL",
+                "UPDATE approvals SET decided_by = 'founder' WHERE state IN ('approved', 'rejected') AND decided_by IS NULL",
+                "UPDATE reactions SET user_id = 'founder' WHERE actor = 'human' AND user_id = ''",
+                "UPDATE notifications SET member_id = 'founder' WHERE member_id IS NULL",
+                "UPDATE project_subscriptions SET subscriber = 'member:founder' WHERE subscriber = 'human'",
+                "UPDATE group_subscriptions SET subscriber = 'member:founder' WHERE subscriber = 'human'",
+                "UPDATE thread_subscriptions SET subscriber = 'member:founder' WHERE subscriber = 'human'",
+            ),
+        )
     }
 }
