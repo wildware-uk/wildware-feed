@@ -79,10 +79,12 @@ class Reads(private val db: Database, private val clock: () -> Long = System::cu
         val updates = if (hasMore) rows.take(pageLimit) else rows
         val ids = updates.map { it.str("id")!! }
         val reactions = reactionsFor("update", ids)
+        val media = mediaForMany("update_id", ids)
+        val embeds = embedsForMany("update_id", ids)
         val items = updates.zip(ids).map { (update, id) ->
             val extra = mutableListOf<Pair<String, JsonElement>>(
-                "media" to JsonArray(mediaFor("update_id", id)),
-                "embeds" to JsonArray(embedsFor("update_id", id)),
+                "media" to JsonArray(media[id].orEmpty()),
+                "embeds" to JsonArray(embeds[id].orEmpty()),
                 "reactions" to JsonArray(reactions.filter { it["card"].str("id") == id }),
             )
             update.plus(*extra.toTypedArray())
@@ -147,7 +149,10 @@ class Reads(private val db: Database, private val clock: () -> Long = System::cu
         val wanted = LinkedHashSet<String>()
         for (m in window) m.str("replyTo")?.takeIf { it.isNotEmpty() && it !in present }?.let(wanted::add)
         if (wanted.isEmpty()) return window
-        val heads = wanted.mapNotNull { messageById(it) }.filter { it["deletedAt"] is JsonNull }
+        val byId = inChunks(wanted.toList()) { chunk ->
+            db.query("SELECT ${Rows.MESSAGE} FROM messages WHERE id IN (${marks(chunk)})", *chunk.toTypedArray()) { Rows.message(it) }
+        }.associateBy { it.str("id") }
+        val heads = wanted.mapNotNull { byId[it] }.filter { it["deletedAt"] is JsonNull }
         return (heads + window).sortedBy { it["seq"]!!.toString().toLong() }
     }
 
@@ -185,47 +190,67 @@ class Reads(private val db: Database, private val clock: () -> Long = System::cu
     // ---- media and embeds -----------------------------------------------------------------------
 
     /** `MediaAttachment` rows on one card, by seq (TS `src/domain/media.ts`). */
-    fun mediaFor(anchorColumn: String, cardId: String): List<JsonObject> {
-        val rows = db.query("SELECT ${Rows.MEDIA} FROM media WHERE $anchorColumn = ? ORDER BY seq", cardId) { rs ->
-            MediaRow(
-                id = rs.getString("id"),
-                kind = rs.getString("kind"),
-                mime = rs.getString("mime"),
-                status = rs.getString("status"),
-                sha256 = rs.getString("sha256"),
-                json = buildJsonObject {
-                    put("id", rs.getString("id"))
-                    put("updateId", rs.getString("update_id"))
-                    put("messageId", rs.getString("message_id"))
-                    put("requestId", rs.getString("request_id"))
-                    put("taskId", rs.getString("task_id"))
-                    put("kind", rs.getString("kind"))
-                    put("mime", rs.getString("mime"))
-                    put("status", rs.getString("status"))
-                    put("bytes", rs.longOrNull("bytes"))
-                    put("width", rs.longOrNull("width"))
-                    put("height", rs.longOrNull("height"))
-                    put("durationMs", rs.longOrNull("duration_ms"))
-                    put("filename", rs.getString("filename"))
-                },
-            )
+    fun mediaFor(anchorColumn: String, cardId: String): List<JsonObject> = mediaForMany(anchorColumn, listOf(cardId))[cardId].orEmpty()
+
+    /** [mediaFor] for many cards at once: two queries, whatever the count. Cards without media are left out. */
+    fun mediaForMany(anchorColumn: String, cardIds: List<String>): Map<String, List<JsonObject>> {
+        if (cardIds.isEmpty()) return emptyMap()
+        val rows = inChunks(cardIds.distinct()) { chunk ->
+            db.query("SELECT ${Rows.MEDIA} FROM media WHERE $anchorColumn IN (${marks(chunk)})", *chunk.toTypedArray()) { rs ->
+                rs.getLong("seq") to MediaRow(
+                    card = rs.getString(anchorColumn),
+                    id = rs.getString("id"),
+                    kind = rs.getString("kind"),
+                    mime = rs.getString("mime"),
+                    status = rs.getString("status"),
+                    sha256 = rs.getString("sha256"),
+                    json = buildJsonObject {
+                        put("id", rs.getString("id"))
+                        put("updateId", rs.getString("update_id"))
+                        put("messageId", rs.getString("message_id"))
+                        put("requestId", rs.getString("request_id"))
+                        put("taskId", rs.getString("task_id"))
+                        put("kind", rs.getString("kind"))
+                        put("mime", rs.getString("mime"))
+                        put("status", rs.getString("status"))
+                        put("bytes", rs.longOrNull("bytes"))
+                        put("width", rs.longOrNull("width"))
+                        put("height", rs.longOrNull("height"))
+                        put("durationMs", rs.longOrNull("duration_ms"))
+                        put("filename", rs.getString("filename"))
+                    },
+                )
+            }
+        }.sortedBy { it.first }.map { it.second }
+        val derivatives = derivativesOf(rows.map { it.id })
+        val out = LinkedHashMap<String, MutableList<JsonObject>>()
+        for (row in rows) {
+            out.getOrPut(row.card) { mutableListOf() } += row.json.plus("variants" to JsonArray(variantsOf(row, derivatives[row.id].orEmpty()).map(::JsonPrimitive)))
         }
-        return rows.map { it.json.plus("variants" to JsonArray(variantsOf(it).map(::JsonPrimitive))) }
+        return out
     }
 
-    private class MediaRow(val id: String, val kind: String, val mime: String, val status: String, val sha256: String, val json: JsonObject)
+    /** Each media's derivatives as (kind, width), in `kind, width, seq` order. */
+    private fun derivativesOf(mediaIds: List<String>): Map<String, List<Pair<String, Long?>>> =
+        inChunks(mediaIds) { chunk ->
+            db.query(
+                "SELECT media_id, kind, width, seq FROM derivatives WHERE media_id IN (${marks(chunk)})",
+                *chunk.toTypedArray(),
+            ) { Triple(it.getString(1), it.getString(2) to it.longOrNull("width"), it.getLong(4)) }
+        }.sortedWith(compareBy({ it.second.first }, { it.second.second ?: Long.MIN_VALUE }, { it.third }))
+            .groupBy({ it.first }, { it.second })
+
+    private class MediaRow(val id: String, val kind: String, val mime: String, val status: String, val sha256: String, val json: JsonObject, val card: String)
 
     /** `derivativesFor` (TS `src/media/serve.ts`): the addresses that answer right now, from rows alone. */
-    private fun variantsOf(media: MediaRow): List<String> {
+    private fun variantsOf(media: MediaRow, derivatives: List<Pair<String, Long?>>): List<String> {
         if (media.status == "failed") return emptyList()
         val download = media.kind == "file"
         if (!download && media.mime !in RENDERABLE_MIMES) return emptyList()
         if (download) return if (media.sha256.isEmpty()) emptyList() else listOf("original")
         val variants = mutableListOf<String>()
         if (media.sha256.isNotEmpty()) variants += "original"
-        db.query("SELECT kind, width FROM derivatives WHERE media_id = ? ORDER BY kind, width, seq", media.id) {
-            it.getString(1) to it.longOrNull("width")
-        }.forEach { (kind, width) ->
+        derivatives.forEach { (kind, width) ->
             when {
                 kind == "thumb" && width == 640L -> variants += "thumb-640"
                 kind == "thumb" && width == 1600L -> variants += "thumb-1600"
@@ -237,19 +262,31 @@ class Reads(private val db: Database, private val clock: () -> Long = System::cu
     }
 
     /** `EmbedView`s on one card, by seq; one whose type is gone or unreadable is dropped. */
-    fun embedsFor(anchorColumn: String, cardId: String): List<JsonObject> =
-        db.query("SELECT ${Rows.EMBED} FROM embeds WHERE $anchorColumn = ? ORDER BY seq", cardId) { rs ->
-            EmbedRow(
-                rs.getString("id"), rs.getString("type_id"), rs.getString("update_id"), rs.getString("message_id"),
-                rs.getString("request_id"), rs.getString("task_id"), rs.getString("data"), rs.getString("source_url"),
-                rs.getLong("created_at"),
-            )
-        }.mapNotNull { row ->
-            val type = db.one("SELECT slug, name, spec FROM embed_types WHERE id = ?", row.typeId) {
-                Triple(it.getString(1), it.getString(2), it.getString(3))
-            } ?: return@mapNotNull null
-            val spec = Embeds.specOf(type.third) ?: return@mapNotNull null
-            buildJsonObject {
+    fun embedsFor(anchorColumn: String, cardId: String): List<JsonObject> = embedsForMany(anchorColumn, listOf(cardId))[cardId].orEmpty()
+
+    /** [embedsFor] for many cards at once: two queries, whatever the count. */
+    fun embedsForMany(anchorColumn: String, cardIds: List<String>): Map<String, List<JsonObject>> {
+        if (cardIds.isEmpty()) return emptyMap()
+        val rows = inChunks(cardIds.distinct()) { chunk ->
+            db.query("SELECT ${Rows.EMBED} FROM embeds WHERE $anchorColumn IN (${marks(chunk)})", *chunk.toTypedArray()) { rs ->
+                rs.getLong("seq") to EmbedRow(
+                    rs.getString("id"), rs.getString("type_id"), rs.getString("update_id"), rs.getString("message_id"),
+                    rs.getString("request_id"), rs.getString("task_id"), rs.getString("data"), rs.getString("source_url"),
+                    rs.getLong("created_at"), rs.getString(anchorColumn),
+                )
+            }
+        }.sortedBy { it.first }.map { it.second }
+        val typeIds = rows.map { it.typeId }.distinct()
+        val types = inChunks(typeIds) { chunk ->
+            db.query("SELECT id, slug, name, spec FROM embed_types WHERE id IN (${marks(chunk)})", *chunk.toTypedArray()) {
+                it.getString(1) to Triple(it.getString(2), it.getString(3), it.getString(4))
+            }
+        }.toMap()
+        val out = LinkedHashMap<String, MutableList<JsonObject>>()
+        for (row in rows) {
+            val type = types[row.typeId] ?: continue
+            val spec = Embeds.specOf(type.third) ?: continue
+            out.getOrPut(row.card) { mutableListOf() } += buildJsonObject {
                 put("id", row.id)
                 put("updateId", row.updateId)
                 put("messageId", row.messageId)
@@ -263,10 +300,12 @@ class Reads(private val db: Database, private val clock: () -> Long = System::cu
                 put("createdAt", row.createdAt)
             }
         }
+        return out
+    }
 
     private class EmbedRow(
         val id: String, val typeId: String, val updateId: String?, val messageId: String?, val requestId: String?,
-        val taskId: String?, val data: String, val sourceUrl: String?, val createdAt: Long,
+        val taskId: String?, val data: String, val sourceUrl: String?, val createdAt: Long, val card: String,
     )
 
     // ---- tags, fields, apps ---------------------------------------------------------------------
@@ -299,10 +338,15 @@ class Reads(private val db: Database, private val clock: () -> Long = System::cu
                 rs.getString("state"), rs.getString("author"), rs.getString("agent_id"), rs.getLong("created_at"), rs.getLong("updated_at"),
             )
         }
-    }.mapNotNull { view ->
-        val app = db.one("SELECT uri, name, description, url FROM apps WHERE id = ?", view.appId) {
-            listOf(it.getString(1), it.getString(2), it.getString(3), it.getString(4))
-        } ?: return@mapNotNull null
+    }.let { views ->
+        val apps = inChunks(views.map { it.appId }.distinct()) { chunk ->
+            db.query("SELECT id, uri, name, description, url FROM apps WHERE id IN (${marks(chunk)})", *chunk.toTypedArray()) {
+                it.getString(1) to listOf(it.getString(2), it.getString(3), it.getString(4), it.getString(5))
+            }
+        }.toMap()
+        views.map { it to apps[it.appId] }
+    }.mapNotNull { (view, app) ->
+        app ?: return@mapNotNull null
         buildJsonObject {
             put("id", view.id)
             put("card", view.card)
@@ -380,12 +424,65 @@ class Reads(private val db: Database, private val clock: () -> Long = System::cu
     ) { Rows.request(it) }.filter { (it["expiresAt"] as JsonPrimitive).content.toLong() > now }
 
     /** The banner's list: each request with its media, embeds and reactions. */
-    fun requestsSnapshot(): List<JsonObject> = pendingRequests().map { request ->
-        val id = request.str("id")!!
-        request.plus(
-            "media" to JsonArray(mediaFor("request_id", id)),
-            "embeds" to JsonArray(embedsFor("request_id", id)),
-            "reactions" to JsonArray(reactionsFor("request", listOf(id))),
+    fun requestsSnapshot(): List<JsonObject> {
+        val requests = pendingRequests()
+        val ids = requests.map { it.str("id")!! }
+        val media = mediaForMany("request_id", ids)
+        val embeds = embedsForMany("request_id", ids)
+        val reactions = reactionsFor("request", ids)
+        return requests.zip(ids).map { (request, id) ->
+            request.plus(
+                "media" to JsonArray(media[id].orEmpty()),
+                "embeds" to JsonArray(embeds[id].orEmpty()),
+                "reactions" to JsonArray(reactions.filter { it["card"].str("id") == id }),
+            )
+        }
+    }
+
+    // ---- whole pages ----------------------------------------------------------------------------
+
+    data class SnapshotRequest(val project: String?, val status: String?, val limit: Int, val cursor: String?)
+
+    /** `GET /api/snapshot`'s body after `seq` and `at`: a fixed number of queries, whatever its size. */
+    fun snapshot(query: SnapshotRequest): List<Pair<String, JsonElement>> {
+        val projects = listProjects(query.status)
+        val messages = listThread(ThreadQuery(project = query.project))
+        val updates = updatesPage(query.project, query.limit, query.cursor)
+        val messageIds = messages.map { (it["id"] as JsonPrimitive).content }
+        val scope = CardScope(update = updates.ids, message = messageIds, request = pendingRequests().map { (it["id"] as JsonPrimitive).content })
+        val cardTags = cardTags(scope)
+        val cardFields = cardFields(scope)
+        val cardApps = cardApps(scope)
+        val media = mediaForMany("message_id", messageIds)
+        val embeds = embedsForMany("message_id", messageIds)
+        return listOf(
+            "projects" to JsonArray(projects),
+            "tags" to JsonArray(listTags(query.project)),
+            "cardTags" to JsonArray(cardTags),
+            "cardFields" to JsonArray(cardFields),
+            "cardApps" to JsonArray(cardApps),
+            "updates" to updates.json,
+            "agentNames" to agentNames(),
+            "messages" to JsonArray(messages),
+            "acks" to JsonArray(acksForMessages(messageIds)),
+            "messageMedia" to byMessage(messageIds) { media[it].orEmpty() },
+            "messageEmbeds" to byMessage(messageIds) { embeds[it].orEmpty() },
+        )
+    }
+
+    /** `GET /api/messages`'s body after `seq` and `at`. */
+    fun messagesPage(query: ThreadQuery): List<Pair<String, JsonElement>> {
+        val messages = listThread(query)
+        val ids = messages.map { (it["id"] as JsonPrimitive).content }
+        val media = mediaForMany("message_id", ids)
+        val embeds = embedsForMany("message_id", ids)
+        return listOf(
+            "messages" to JsonArray(messages),
+            "acks" to JsonArray(acksForMessages(ids)),
+            "media" to byMessage(ids) { media[it].orEmpty() },
+            "embeds" to byMessage(ids) { embeds[it].orEmpty() },
+            "deliveries" to JsonArray(deliveriesFor(ids)),
+            "reactions" to JsonArray(reactionsFor("message", ids)),
         )
     }
 
@@ -552,6 +649,10 @@ class Reads(private val db: Database, private val clock: () -> Long = System::cu
         )
 
         private fun marks(ids: List<*>) = ids.joinToString(", ") { "?" }
+
+        /** Runs [read] over [ids] in slices small enough for any engine's parameter limit. */
+        private fun <T> inChunks(ids: List<String>, read: (List<String>) -> List<T>): List<T> =
+            if (ids.isEmpty()) emptyList() else ids.chunked(500).flatMap(read)
 
         private fun anchor(kind: String) = when (kind) {
             "update" -> "update_id"

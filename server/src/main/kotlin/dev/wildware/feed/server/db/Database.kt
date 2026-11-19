@@ -30,6 +30,10 @@ class Database private constructor(
 ) : AutoCloseable {
     private val lock = ReentrantLock()
 
+    /** How many statements [query] and [update] have run, for tests that keep reads from growing per row. */
+    @Volatile var statements: Long = 0L
+        private set
+
     /** Whether this thread is inside [withConnection] or [transaction] right now. */
     val heldByCurrentThread: Boolean get() = lock.isHeldByCurrentThread
 
@@ -77,6 +81,7 @@ class Database private constructor(
     }
 
     fun <T> query(sql: String, vararg args: Any?, row: (ResultSet) -> T): List<T> = withConnection { c ->
+        statements++
         checkText(args)
         c.prepareStatement(sql(sql)).use { st ->
             st.bind(args)
@@ -87,6 +92,7 @@ class Database private constructor(
     fun <T> one(sql: String, vararg args: Any?, row: (ResultSet) -> T): T? = query(sql, *args, row = row).firstOrNull()
 
     fun update(sql: String, vararg args: Any?): Int = withConnection { c ->
+        statements++
         checkText(args)
         c.prepareStatement(sql(sql)).use { st -> st.bind(args); st.executeUpdate() }
     }

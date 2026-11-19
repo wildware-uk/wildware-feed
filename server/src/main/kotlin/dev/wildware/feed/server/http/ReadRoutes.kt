@@ -40,33 +40,7 @@ fun Route.readRoutes(app: App, lastSeq: () -> Long) {
         "/api/snapshot",
         HttpMethod.Get to {
             val query = SnapshotQuery.of(call.request.queryParameters)
-            stamped {
-                val projects = reads.listProjects(query.status)
-                val messages = reads.listThread(Reads.ThreadQuery(project = query.project))
-                val updates = reads.updatesPage(query.project, query.limit, query.cursor)
-                val messageIds = messages.map { (it["id"] as JsonPrimitive).content }
-                val scope = Reads.CardScope(
-                    update = updates.ids,
-                    message = messageIds,
-                    request = reads.pendingRequests().map { (it["id"] as JsonPrimitive).content },
-                )
-                val cardTags = reads.cardTags(scope)
-                val cardFields = reads.cardFields(scope)
-                val cardApps = reads.cardApps(scope)
-                listOf(
-                    "projects" to JsonArray(projects),
-                    "tags" to JsonArray(reads.listTags(query.project)),
-                    "cardTags" to JsonArray(cardTags),
-                    "cardFields" to JsonArray(cardFields),
-                    "cardApps" to JsonArray(cardApps),
-                    "updates" to updates.json,
-                    "agentNames" to reads.agentNames(),
-                    "messages" to JsonArray(messages),
-                    "acks" to JsonArray(reads.acksForMessages(messageIds)),
-                    "messageMedia" to reads.byMessage(messageIds) { reads.mediaFor("message_id", it) },
-                    "messageEmbeds" to reads.byMessage(messageIds) { reads.embedsFor("message_id", it) },
-                )
-            }
+            stamped { reads.snapshot(Reads.SnapshotRequest(query.project, query.status, query.limit, query.cursor)) }
         },
     )
     endpoint(
@@ -89,18 +63,7 @@ fun Route.readRoutes(app: App, lastSeq: () -> Long) {
         "/api/messages",
         HttpMethod.Get to {
             val query = threadQuery(call.request.queryParameters)
-            stamped {
-                val messages = reads.listThread(query)
-                val ids = messages.map { (it["id"] as JsonPrimitive).content }
-                listOf(
-                    "messages" to JsonArray(messages),
-                    "acks" to JsonArray(reads.acksForMessages(ids)),
-                    "media" to reads.byMessage(ids) { reads.mediaFor("message_id", it) },
-                    "embeds" to reads.byMessage(ids) { reads.embedsFor("message_id", it) },
-                    "deliveries" to JsonArray(reads.deliveriesFor(ids)),
-                    "reactions" to JsonArray(reads.reactionsFor("message", ids)),
-                )
-            }
+            stamped { reads.messagesPage(query) }
         },
     )
 
