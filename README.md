@@ -122,6 +122,32 @@ watch app for the simulator on a Mac runner.
 - **Siri.** "What did *project* say in Wildware Feed?" works once the phone is linked; nothing to set up.
 - **Spotlight.** Fills itself each time the app opens.
 
+## Use with your AI client
+
+The plugin, skills and configs that connect an agent live in
+[wildware-uk/wildware-feed-agents](https://github.com/wildware-uk/wildware-feed-agents). Each client gets the dashboard's tools and the same
+guidance: when to post, how to answer in the thread, how to ask, and when not to page you.
+
+| Client | What you get |
+| --- | --- |
+| [Claude Code](https://github.com/wildware-uk/wildware-feed-agents/tree/main/plugins/wildware-feed) | Plugin: tools, skills, pairing, replies that wake the agent |
+| [Codex (CLI, IDE, app)](https://github.com/wildware-uk/wildware-feed-agents/tree/main/integrations/codex) | Plugin with skills, `config.toml` entry, `AGENTS.md` |
+| [Gemini CLI](https://github.com/wildware-uk/wildware-feed-agents/tree/main/integrations/gemini) | Extension: server, skills, context file |
+| [Antigravity](https://github.com/wildware-uk/wildware-feed-agents/tree/main/integrations/antigravity) | Plugin: server, skills, always-on rule |
+| [Cursor](https://github.com/wildware-uk/wildware-feed-agents/tree/main/integrations/cursor) | Install link, `mcp.json`, rule, skills |
+| [VS Code / GitHub Copilot](https://github.com/wildware-uk/wildware-feed-agents/tree/main/integrations/vscode) | Install link, `.mcp.json`, instructions, skills |
+| [Claude Desktop](https://github.com/wildware-uk/wildware-feed-agents/tree/main/integrations/claude-desktop) | Custom connector, or a config entry |
+| [Windsurf](https://github.com/wildware-uk/wildware-feed-agents/tree/main/integrations/windsurf) | `mcp_config.json`, rule, skills |
+| [Cline](https://github.com/wildware-uk/wildware-feed-agents/tree/main/integrations/cline) | MCP settings, rules file |
+| [Any other MCP client](https://github.com/wildware-uk/wildware-feed-agents/tree/main/integrations#any-mcp-client) | The URL, the header, and the guidance as one file |
+
+For Claude Code:
+
+```
+/plugin marketplace add wildware-uk/wildware-feed-agents
+/plugin install wildware-feed@wildware-feed
+```
+
 ## Connect an agent
 
 An agent sets itself up: it asks to join, you allow it in the app, and it collects its own token.
