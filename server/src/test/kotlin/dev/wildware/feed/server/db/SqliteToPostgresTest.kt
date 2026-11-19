@@ -90,4 +90,34 @@ class SqliteToPostgresTest {
             assertEquals("The Postgres database isn't empty: agents has 1 rows. Copy only into a new database.", e.message)
         }
     }
+
+    @Test
+    fun `an owner key from before people still opens the dashboard after copying an older file`() {
+        assumeTrue(pg != null, "PG_TEST_URL not set")
+        val secret = "t".repeat(32)
+        val key = dev.wildware.feed.server.auth.Tokens.random()
+        val dir = Files.createTempDirectory("copy-old").toFile()
+        // A server at 054, before people: the owner's phone, words, reaction, bell row and follows.
+        val db = Database.open(dir.path, migrate = false)
+        Migrations.run(db, upTo = 54)
+        db.update("INSERT INTO projects (id, slug, name, created_at, updated_at) VALUES ('P1', 'p', 'P', 1, 1)")
+        db.update("INSERT INTO owner_devices (id, name, token_hash, created_at) VALUES ('D1', 'Phone', ?, 1)", dev.wildware.feed.server.auth.Tokens.hash(key, secret))
+        db.update("INSERT INTO messages (id, project_id, author, body, created_at) VALUES ('M1', 'P1', 'human', 'hi', 1)")
+        db.update("INSERT INTO reactions (id, message_id, actor, emoji, created_at) VALUES ('X1', 'M1', 'human', '👍', 1)")
+        db.update("INSERT INTO notifications (id, kind, title, body, created_at) VALUES ('N1', 'reply', 't', 'b', 1)")
+        db.update("INSERT INTO project_subscriptions (id, subscriber, project_id, level, created_at, chosen) VALUES ('S1', 'human', 'P1', 'muted', 1, 1)")
+        db.close()
+        val file = java.io.File(dir, Database.FILE_NAME)
+        val tool = SqliteToPostgres()
+        Database.memory().use { target ->
+            tool.openSource(file).use { tool.copy(it, target) }
+            tool.openSource(file).use { tool.verify(it, target) }
+            val device = dev.wildware.feed.server.domain.Devices(target, secret).authenticate(key)
+            assertEquals("founder", device?.userId, "the old key still opens the dashboard, as the founder")
+            assertEquals("founder", target.one("SELECT user_id FROM messages WHERE id = 'M1'") { it.getString(1) })
+            assertEquals("founder", target.one("SELECT user_id FROM reactions WHERE id = 'X1'") { it.getString(1) })
+            assertEquals("founder", target.one("SELECT member_id FROM notifications WHERE id = 'N1'") { it.getString(1) })
+            assertEquals("muted", dev.wildware.feed.server.domain.Subscriptions(target).level("member:founder", "P1"))
+        }
+    }
 }
