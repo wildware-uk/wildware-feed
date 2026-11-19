@@ -16,5 +16,11 @@
   "name": "request-priority",
   "file": "049-request-priority.sql",
   "checksum": "760adf695b140c74d4dab3a1228755d030d428859df75d9f03584e748868900f"
+ },
+ {
+  "version": 50,
+  "name": "agent-pairing",
+  "file": "050-agent-pairing.sql",
+  "checksum": "593327afebdb9e206966b762f8d7cb6c7341557a6a510bd1d458ddb0b9f467fb"
  }
 ]

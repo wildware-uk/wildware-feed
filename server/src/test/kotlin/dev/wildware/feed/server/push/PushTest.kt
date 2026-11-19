@@ -140,6 +140,29 @@ class PushTest {
     }
 
     @Test
+    fun `an agent asking to join alerts every phone with its name and code`() {
+        val started = app.pairings.start("laptop-personal", "laptop", null, null, null)
+        val alert = Apns(app, apnsConfig) { ApnsResponse(200, null) }.alertFor(
+            dev.wildware.feed.server.events.AppEvent("pairing.created", 1, "", kotlinx.serialization.json.buildJsonObject { put("pairingId", JsonPrimitive(started.pairing.id)) }),
+        )!!
+        assertEquals(
+            PushMessage(
+                "laptop-personal wants to join",
+                "From laptop. Code ${started.pairing.code}. Open the app to allow or deny it.",
+                "https://dashboard.example.com/",
+                "pairing-${started.pairing.id}",
+            ),
+            alert.message,
+        )
+        assertEquals("PAIRING", alert.category)
+        assertTrue(Wire.encode(Apns.alertPayload(alert)).contains(""""interruption-level":"time-sensitive""""))
+        assertTrue(!Wire.encode(Apns.alertPayload(alert)).contains(started.secret))
+        // A phone that hears only questions still hears this.
+        val onlyQuestions = kotlinx.serialization.json.buildJsonObject { put("types", kotlinx.serialization.json.JsonArray(listOf(JsonPrimitive("request")))) }
+        assertTrue(dev.wildware.feed.server.domain.AlertPrefs.notifies(onlyQuestions, alert.about))
+    }
+
+    @Test
     fun `cut counts the ellipsis and never splits a pair`() {
         val cut = dev.wildware.feed.server.domain.Reads.Companion::cut
         assertEquals("short", cut("short", 40))

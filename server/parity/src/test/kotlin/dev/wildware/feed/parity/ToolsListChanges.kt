@@ -14,9 +14,10 @@ import kotlinx.serialization.json.jsonPrimitive
  * server's descriptions may move on, but only by an entry in that file: anything else that differs
  * from `tools-list.json` is drift, and the test fails on it.
  *
- * Each entry names a tool, a path of keys inside it and why, and one of:
- * - `replace` / `with`: swap that exact text, found once, in the string at the path;
- * - `was` / `now`: the value at the path was `was` and is now `now` (no `was`: a new key).
+ * Each entry names a tool and why, and one of:
+ * - `add`: a tool the TS server never had, the whole of it, added at the end of the list;
+ * - `replace` / `with` at a path of keys inside it: swap that exact text, found once, in the string there;
+ * - `was` / `now` at a path: the value there was `was` and is now `now` (no `was`: a new key).
  *
  * Every entry is checked against the TS payload as it applies, so an entry that no longer fits
  * fails too.
@@ -26,12 +27,23 @@ object ToolsListChanges {
         ToolsListChanges::class.java.getResource("/tools-list-kotlin-changes.json")!!.readText(),
     ).jsonArray
 
+    /** The names of the tools the Kotlin server adds, in order. */
+    fun added(changes: JsonArray = load()): List<String> =
+        changes.map { it.jsonObject }.filter { "add" in it }.map { it.getValue("tool").jsonPrimitive.content }
+
     /** [tools] (the TS payload) with every change in [changes] applied, in order. */
     fun apply(tools: JsonArray, changes: JsonArray = load()): JsonArray {
         var out = tools
         for (change in changes) {
             val c = change.jsonObject
             val name = c.getValue("tool").jsonPrimitive.content
+            if ("add" in c) {
+                val tool = c.getValue("add").jsonObject
+                check(tool["name"]?.jsonPrimitive?.content == name) { "tools-list-kotlin-changes.json: add $name names another tool" }
+                check(out.none { it.jsonObject["name"]?.jsonPrimitive?.content == name }) { "tools-list-kotlin-changes.json: $name is there already" }
+                out = JsonArray(out + tool)
+                continue
+            }
             val path = c.getValue("path").jsonArray.map { it.jsonPrimitive.content }
             val index = out.indexOfFirst { it.jsonObject["name"]?.jsonPrimitive?.content == name }
             check(index >= 0) { "tools-list-kotlin-changes.json: no tool $name" }

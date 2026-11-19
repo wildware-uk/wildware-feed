@@ -27,6 +27,9 @@ class WireTest {
         assertTrue(Guard.requiresSession("/mcp-docs"))
         assertFalse(Guard.requiresSession("/mcp/x"))
         assertFalse(Guard.requiresSession("/api/devices/sign-in"))
+        assertFalse(Guard.requiresSession("/api/pair"))
+        assertFalse(Guard.requiresSession("/api/pair/01ABC"))
+        assertTrue(Guard.requiresSession("/api/pairings"))
         assertTrue(Guard.requiresSession("/api/summary"))
         assertTrue(Guard.isApi("/api/summary/"))
     }

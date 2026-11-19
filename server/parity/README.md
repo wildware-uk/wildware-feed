@@ -73,8 +73,8 @@ Without these variables every test is skipped, so a plain `./gradlew build` stay
 - `src/test/resources/tools-list.json` is the TS server's exact MCP `tools/list` payload. Agents read
   those descriptions, so a server must return exactly that, as JSON. The TS server is retired, so the
   Kotlin server's descriptions may move on, but only through `src/test/resources/tools-list-kotlin-changes.json`:
-  each entry names a tool, a path inside it and why, and either swaps one exact piece of text or
-  replaces one value. With `PARITY_SERVER=kotlin` (set by `run-against-kotlin.sh`) the suite expects
+  each entry names a tool and why, and either adds a whole new tool (`add`, at the end of the list),
+  or, at a path inside an existing tool, swaps one exact piece of text or replaces one value. With `PARITY_SERVER=kotlin` (set by `run-against-kotlin.sh`) the suite expects
   the TS payload with those changes applied, nothing more, so any other difference still fails. The
   Kotlin server serves `server/src/main/resources/mcp/tools-list.json`; change the two together.
 - A few other checks expect a different message from the Kotlin server where it accepts more (a

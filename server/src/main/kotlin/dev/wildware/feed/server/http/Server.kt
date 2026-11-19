@@ -75,6 +75,7 @@ fun Application.feed(app: App) {
         requestRoutes(app)
         sessionRoutes(app)
         mediaRoutes(app)
+        pairingRoutes(app)
 
         // Anything else. Under /api the guard has already turned strangers away: the owner gets a
         // JSON 404 (decided fix 12b). Elsewhere it is the site's own 404 page.

@@ -13,6 +13,7 @@ import dev.wildware.feed.server.mcp.registerFeedTools
 import dev.wildware.feed.server.mcp.registerRequestTools
 import dev.wildware.feed.server.mcp.registerSessionTools
 import dev.wildware.feed.server.mcp.registerMediaTools
+import dev.wildware.feed.server.mcp.registerPairingTools
 import dev.wildware.feed.server.push.startApplePush
 
 /**
@@ -43,6 +44,13 @@ class App(val config: Config, val db: Database, val clock: () -> Long = System::
 
     /** Six attempts a minute per upload token, successful ones included (spec/07 §4). */
     val uploadLimiter = SlidingLimiter(limit = 6, windowMs = 60_000, clock = clock)
+
+    /**
+     * Agent pairing, keyed by client address since the caller has no token: five pairings started
+     * in ten minutes, and 60 polls a minute (each waits up to 25 seconds, so one agent makes about 3).
+     */
+    val pairStartLimiter = SlidingLimiter(limit = 5, windowMs = 600_000, clock = clock)
+    val pairPollLimiter = SlidingLimiter(limit = 60, windowMs = 60_000, clock = clock)
 
     /** Its own 120 a minute per agent token, apart from /mcp's (spec/07 §8). */
     val agentMediaLimiter = SlidingLimiter(limit = 120, windowMs = 60_000, clock = clock)
@@ -78,6 +86,9 @@ class App(val config: Config, val db: Database, val clock: () -> Long = System::
     val notifications = Notifications(db, bus, clock)
     val appState = AppState(db, clock)
 
+    /** Agents asking to join, and the owner allowing or denying them (migration 050). */
+    val pairings = dev.wildware.feed.server.domain.Pairings(db, bus, config.tokenSecret, clock)
+
     /** The bell's recorder listens from the start, as the TS server's does. */
     private val stopNotificationRecorder = notifications.startRecorder()
 
@@ -108,6 +119,7 @@ class App(val config: Config, val db: Database, val clock: () -> Long = System::
     fun startJobs() {
         every(dev.wildware.feed.server.domain.Sessions.SWEEP_INTERVAL_MS, "presence sweep") { sessions.sweep() }
         every(dev.wildware.feed.server.domain.Requests.SWEEP_INTERVAL_MS, "request sweep") { requests.expireDue() }
+        every(dev.wildware.feed.server.domain.Pairings.SWEEP_INTERVAL_MS, "pairing sweep") { pairings.expireDue() }
         every(dev.wildware.feed.server.media.Derive.WORKER_INTERVAL_MS, "media derive") { derive.tick() }
         every(15 * 60_000L, "media sweep") { uploads.sweep() }
         every(dev.wildware.feed.server.media.Retention.CHECK_INTERVAL_MS, "media retention") { retention.tick() }
@@ -120,6 +132,7 @@ class App(val config: Config, val db: Database, val clock: () -> Long = System::
         tools.registerRequestTools(this)
         tools.registerSessionTools(this)
         tools.registerMediaTools(this)
+        tools.registerPairingTools(this)
     }
 
     override fun close() {

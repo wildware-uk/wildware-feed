@@ -341,5 +341,12 @@
   "file": "049-request-priority.sql",
   "rebuildsTables": false,
   "checksum": "e0a17823bbfac65b7e582741261d7fe16751d4e0e3bf0e33593994d170316502"
+ },
+ {
+  "version": 50,
+  "name": "agent-pairing",
+  "file": "050-agent-pairing.sql",
+  "rebuildsTables": false,
+  "checksum": "41bc3c1bf0ead29ecfbfaea3dd6ec02f219ce26b71d360ac311557dda8e684c5"
  }
 ]

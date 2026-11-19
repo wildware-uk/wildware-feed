@@ -104,7 +104,7 @@ data class PushDevice(
 
 /**
  * iOS alerts (spec/08 §6): on `request.created`, `update.created` and `message.created`, an alert to
- * every phone with an APNs token that wants the project. The alert is built inside the event, as the
+ * every phone with an APNs token that wants the project; on `pairing.created`, to every phone. The alert is built inside the event, as the
  * TS server does, and sent off the bus thread.
  */
 class Apns(private val app: App, private val settings: Config.Apns, private val transport: ApnsTransport = HttpApnsTransport(settings, app.clock)) {
@@ -168,6 +168,12 @@ class Apns(private val app: App, private val settings: Config.Apns, private val 
                     built.message, "MESSAGE", thread(built.projectId), built.projectId, built.body, reply = "answers" to messageId,
                     about = dev.wildware.feed.server.domain.AlertPrefs.About(if (built.answered) "message" else "comment"),
                 )
+            }
+            "pairing.created" -> {
+                val pairingId = id("pairingId") ?: return null
+                val pairing = app.pairings.find(pairingId)?.takeIf { it.state == "pending" } ?: return null
+                val message = messages.pairing(pairing)
+                Alert(message, "PAIRING", "dashboard", null, message.body, about = dev.wildware.feed.server.domain.AlertPrefs.About("pairing"))
             }
             else -> null
         }
@@ -279,7 +285,8 @@ class Apns(private val app: App, private val settings: Config.Apns, private val 
                 put("thread-id", JsonPrimitive(alert.threadId))
                 put("category", JsonPrimitive(alert.category))
                 if (alert.category == "REQUEST") put("mutable-content", JsonPrimitive(1))
-                put("interruption-level", JsonPrimitive(page ?: if (alert.category == "REQUEST") "time-sensitive" else "active"))
+                // A question, or an agent asking to join: both wait on the owner, so both get through Focus.
+                put("interruption-level", JsonPrimitive(page ?: if (alert.category == "REQUEST" || alert.category == "PAIRING") "time-sensitive" else "active"))
             })
             put("url", JsonPrimitive(alert.message.url))
             put("tag", JsonPrimitive(alert.message.tag))

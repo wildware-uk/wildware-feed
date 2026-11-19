@@ -122,6 +122,35 @@ watch app for the simulator on a Mac runner.
 - **Siri.** "What did *project* say in Wildware Feed?" works once the phone is linked; nothing to set up.
 - **Spotlight.** Fills itself each time the app opens.
 
+## Connect an agent
+
+An agent sets itself up: it asks to join, you allow it in the app, and it collects its own token.
+Tell it "connect yourself to the dashboard at https://feed.example.com as laptop-personal", or do
+it by hand:
+
+```sh
+# 1. Ask to join. Keep pairing_id and poll_secret; read the code out to the owner.
+curl -s https://feed.example.com/api/pair -H 'Content-Type: application/json' \
+  -d '{"name": "laptop-personal", "host": "laptop", "cwd": "/work/app"}'
+
+# 2. The app shows "laptop-personal wants to join", with the code. Allow or Deny it there.
+
+# 3. Wait for the answer. Each call waits up to 25 seconds; repeat while state is "pending".
+curl -s https://feed.example.com/api/pair/<pairing_id> -H 'Authorization: Bearer <poll_secret>'
+```
+
+When it says `"state": "approved"`, the answer carries the new agent token, once, and a ready
+`claude_code_command`:
+
+```sh
+claude mcp add --transport http --scope local agent-dashboard https://feed.example.com/mcp \
+  --header "Authorization: Bearer <token>"
+```
+
+Then reconnect (`/mcp` in Claude Code). An agent that already has a token, even one it shares with
+another session, can do the same over MCP with `start_pairing` and `await_pairing`. A request
+nobody decides expires after 10 minutes. You can change the name when you allow it.
+
 ## Turning on push
 
 Push needs a paid Apple developer account.

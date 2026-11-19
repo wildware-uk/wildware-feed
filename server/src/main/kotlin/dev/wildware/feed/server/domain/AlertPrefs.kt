@@ -77,6 +77,8 @@ object AlertPrefs {
     }
 
     fun notifies(prefs: JsonObject?, about: About): Boolean {
+        // An agent asking to join is rare, and waits on the owner for ten minutes: always told.
+        if (about.type == "pairing") return true
         // A phone that asked to be paged for this is told, whatever else it filters out.
         if (pages(prefs, about)) return true
         val types = prefs?.get("types").strings() ?: TYPES

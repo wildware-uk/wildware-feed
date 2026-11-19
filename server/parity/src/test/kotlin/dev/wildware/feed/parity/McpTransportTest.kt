@@ -68,7 +68,8 @@ class McpTransportTest : ParityTest() {
     @Test
     fun `tools list has every tool in order, each with a schema`() = parity {
         val tools = alpha.rpcResult("tools/list")["result"]["tools"].arr
-        assertEquals(toolNames, tools.map { it["name"].s })
+        // The Kotlin server adds the tools in tools-list-kotlin-changes.json, after the TS server's.
+        assertEquals(if (Parity.kotlin) toolNames + ToolsListChanges.added() else toolNames, tools.map { it["name"].s })
         for (tool in tools) {
             assertEquals("object", tool["inputSchema"]["type"].s, tool["name"].s)
             assertTrue(tool["description"].s.isNotBlank())

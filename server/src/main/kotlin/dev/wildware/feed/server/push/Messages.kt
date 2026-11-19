@@ -37,6 +37,18 @@ class PushMessages(private val app: App) {
         )
     }
 
+    /** An agent asks to join: who, from where, and the code it was given, to check it by. */
+    fun pairing(pairing: dev.wildware.feed.server.domain.Pairings.Pairing): PushMessage {
+        val asker = pairing.askedBy?.let { agentName(it) }
+        val from = listOfNotNull(pairing.host?.let { "from $it" }, asker?.let { "asked by $it" }).joinToString(", ")
+        return PushMessage(
+            title = "${pairing.name} wants to join",
+            body = (if (from.isEmpty()) "" else "${from.replaceFirstChar { it.uppercase() }}. ") + "Code ${pairing.code}. Open the app to allow or deny it.",
+            url = "$base/",
+            tag = "pairing-${pairing.id}",
+        )
+    }
+
     class Update(val message: PushMessage, val projectId: String?, val body: String, val level: String?, val priority: String?, val agentId: String? = null)
 
     fun update(updateId: String): Update? {
