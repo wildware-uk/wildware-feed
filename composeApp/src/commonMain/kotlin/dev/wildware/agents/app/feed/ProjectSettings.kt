@@ -1,5 +1,8 @@
 package dev.wildware.agents.app.feed
 
+import androidx.compose.foundation.selection.selectableGroup
+import dev.wildware.agents.NotifyLevel
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -30,7 +33,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.selected
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import dev.wildware.agents.app.design.AgentTheme
 import dev.wildware.agents.app.design.Icons
@@ -128,6 +130,8 @@ fun ProjectDialogView(ui: FeedUi, dialog: ProjectDialog) {
                     Spacer(Modifier.height(18.dp))
                     LogoPicker(ui, project, slug)
                     Spacer(Modifier.height(18.dp))
+                    NotifyPicker(ui, project, slug)
+                    Spacer(Modifier.height(18.dp))
                     AppButton(
                         if (project.pinned) "Unpin project" else "Pin project",
                         ButtonTone.Secondary,
@@ -171,6 +175,42 @@ fun ProjectDialogView(ui: FeedUi, dialog: ProjectDialog) {
             )
         },
     )
+}
+
+/** What each notification level is called, and what it lets through. */
+internal val NotifyChoices = listOf(
+    NotifyLevel.All to "All activity",
+    NotifyLevel.Replies to "Replies and mentions",
+    NotifyLevel.Muted to "Muted",
+)
+
+internal fun notifyHint(level: NotifyLevel): String = when (level) {
+    NotifyLevel.All -> "Every new card, reply and question alerts you."
+    NotifyLevel.Replies -> "Only questions, replies to you, and messages that name you."
+    NotifyLevel.Muted -> "Nothing, except critical alerts and threads you follow."
+}
+
+/**
+ * How much of the project alerts the owner, on every device: the bell, pushes and desktop notices.
+ * Each device still picks which kinds of alert it takes. A thread followed or unfollowed by hand
+ * keeps that choice whatever the level.
+ */
+@Composable
+private fun NotifyPicker(ui: FeedUi, project: Project, slug: String) {
+    val colors = AgentTheme.colors
+    val level = ui.follows.level(project.id)
+    Column {
+        Text("Notifications", color = colors.text, style = AgentTheme.type.label)
+        Spacer(Modifier.height(4.dp))
+        Column(Modifier.selectableGroup()) {
+            for ((choice, label) in NotifyChoices) {
+                RadioRow(label, selected = level == choice, enabled = true) {
+                    if (level != choice) ui.emit(FeedEvent.SetProjectNotify(project.id, slug, choice))
+                }
+            }
+        }
+        Text(notifyHint(level), Modifier.padding(top = 2.dp), color = colors.textFaint, style = AgentTheme.type.meta)
+    }
 }
 
 @Composable

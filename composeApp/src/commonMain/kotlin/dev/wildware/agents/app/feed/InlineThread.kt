@@ -20,6 +20,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 import dev.wildware.agents.app.design.AgentTheme
 import dev.wildware.agents.app.design.Icons
@@ -94,7 +96,13 @@ fun InlineThread(
             LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
         } else {
             Spacer(Modifier.height(if (replies.isEmpty()) 10.dp else 4.dp))
-            ReplyAction(action) { ui?.openThread(item.id, phone = false) }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                ReplyAction(action) { ui?.openThread(item.id, phone = false) }
+                if (ui != null) {
+                    val following = ui.following(item)
+                    FollowAction(following, labelled = true) { ui.emit(FeedEvent.FollowThread(item.id, !following)) }
+                }
+            }
         }
         for (i in 0 until order.shown) {
             // Keyed by id: a new reply arrives at the top, and the ones under it keep their place.
@@ -123,6 +131,29 @@ private fun ReplyAction(label: String, onClick: () -> Unit) {
     ) {
         Icon(Icons.Reply, null, tint = colors.textMuted, modifier = Modifier.size(15.dp))
         Text(label, Modifier.padding(start = 6.dp), color = colors.textMuted, style = AgentTheme.type.label)
+    }
+}
+
+/**
+ * Follow or unfollow a thread: whether its replies alert the owner. Lit, a bell, while followed; a
+ * struck-through bell while not. [labelled] adds "Following" or "Follow" beside it.
+ */
+@Composable
+fun FollowAction(following: Boolean, labelled: Boolean = false, onClick: () -> Unit) {
+    val colors = AgentTheme.colors
+    val shape = AgentTheme.shapes.pill
+    val label = if (following) "Unfollow thread" else "Follow thread"
+    val tint = if (following) colors.accent else colors.textMuted
+    Row(
+        Modifier
+            .clip(shape)
+            .pressable(label, shape, onClick = onClick)
+            .semantics { stateDescription = if (following) "Following: replies alert you" else "Not following" }
+            .padding(horizontal = 8.dp, vertical = if (labelled) 4.dp else 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(if (following) Icons.Bell else Icons.BellOff, null, tint = tint, modifier = Modifier.size(if (labelled) 15.dp else 18.dp))
+        if (labelled) Text(if (following) "Following" else "Follow", Modifier.padding(start = 6.dp), color = tint, style = AgentTheme.type.label)
     }
 }
 

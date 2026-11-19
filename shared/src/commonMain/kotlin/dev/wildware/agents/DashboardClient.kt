@@ -188,6 +188,28 @@ class DashboardClient(
         }.requireSuccess()
     }
 
+    /** What the owner follows: a level per project, and the threads they followed or unfollowed. */
+    @Throws(Exception::class)
+    suspend fun follows(): FollowsSnapshot = http.get("api/subscriptions") { authorise() }.decoded()
+
+    /** Follows the thread a card is in, or unfollows it: whether its replies alert the owner. */
+    @Throws(Exception::class)
+    suspend fun followThread(card: CardRef, following: Boolean) {
+        http.put("api/cards/${card.kind.encodeURLPathPart()}/${card.id.encodeURLPathPart()}/follow") {
+            authorise()
+            jsonBody(buildJsonObject { put("following", following) })
+        }.requireSuccess()
+    }
+
+    /** How much of a project alerts the owner. */
+    @Throws(Exception::class)
+    suspend fun setProjectNotify(slug: String, level: NotifyLevel) {
+        http.put("api/projects/${slug.encodeURLPathPart()}/subscription") {
+            authorise()
+            jsonBody(buildJsonObject { put("level", level.wire) })
+        }.requireSuccess()
+    }
+
     /** Pins a card above the feed, or unpins it. Says which, so sending it twice does no harm. */
     @Throws(Exception::class)
     suspend fun pinCard(card: CardRef, pinned: Boolean) {

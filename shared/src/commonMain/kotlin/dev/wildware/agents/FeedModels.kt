@@ -395,6 +395,71 @@ data class PairingsSnapshot(
     val pairings: List<PairingView> = emptyList(),
 )
 
+/** `GET /api/subscriptions`: what the owner chose to follow, per project and per thread. */
+@Serializable
+data class FollowsSnapshot(
+    val seq: Long = 0,
+    val at: String = "",
+    val projects: List<ProjectNotifyView> = emptyList(),
+    val threads: List<ThreadFollowView> = emptyList(),
+)
+
+/** A project's notification level the owner chose: `all`, `replies` or `muted`. */
+@Serializable
+data class ProjectNotifyView(val projectId: String, val level: String)
+
+/** A thread (`update`, `message` for a post, or `request`) the owner followed or unfollowed. */
+@Serializable
+data class ThreadFollowView(val kind: String, val id: String, val following: Boolean)
+
+/** How much of a project raises an alert for the owner: on this device's bell and pushes, and on every phone. */
+enum class NotifyLevel(val wire: String) {
+    /** Everything: the default. */
+    All("all"),
+
+    /** Questions, replies to the owner, and messages that name them. */
+    Replies("replies"),
+
+    /** Nothing but critical alerts and threads the owner follows. */
+    Muted("muted");
+
+    companion object {
+        fun of(wire: String?): NotifyLevel = entries.firstOrNull { it.wire == wire } ?: All
+    }
+}
+
+/**
+ * What the owner follows, as the dashboard keeps it. A thread the owner never chose about follows its
+ * project's level: followed when the project raises everything.
+ */
+data class Follows(
+    val levels: Map<String, NotifyLevel> = emptyMap(),
+    /** By "kind:id": true followed, false unfollowed. */
+    val threads: Map<String, Boolean> = emptyMap(),
+    val loaded: Boolean = false,
+) {
+    fun level(projectId: String?): NotifyLevel = projectId?.let { levels[it] } ?: NotifyLevel.All
+
+    /** The owner's own choice about a thread, or null when they never made one. */
+    fun chosen(kind: String, id: String): Boolean? = threads[key(kind, id)]
+
+    fun following(kind: String, id: String, projectId: String?): Boolean = chosen(kind, id) ?: (level(projectId) == NotifyLevel.All)
+
+    fun withThread(kind: String, id: String, following: Boolean) = copy(threads = threads + (key(kind, id) to following))
+
+    fun withLevel(projectId: String, level: NotifyLevel) = copy(levels = levels + (projectId to level))
+
+    companion object {
+        fun key(kind: String, id: String) = "$kind:$id"
+
+        fun of(snapshot: FollowsSnapshot) = Follows(
+            levels = snapshot.projects.associate { it.projectId to NotifyLevel.of(it.level) },
+            threads = snapshot.threads.associate { key(it.kind, it.id) to it.following },
+            loaded = true,
+        )
+    }
+}
+
 /** `GET /api/snapshot/agents`: who has beaten lately. */
 @Serializable
 data class AgentsSnapshot(

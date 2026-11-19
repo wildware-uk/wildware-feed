@@ -170,7 +170,7 @@ private fun ConfirmDelete(warning: String, saving: Boolean, onCancel: () -> Unit
 
 /** One of several choices, only one of which is on. */
 @Composable
-private fun RadioRow(label: String, selected: Boolean, enabled: Boolean, onSelect: () -> Unit) {
+internal fun RadioRow(label: String, selected: Boolean, enabled: Boolean, onSelect: () -> Unit) {
     val colors = AgentTheme.colors
     Row(
         Modifier

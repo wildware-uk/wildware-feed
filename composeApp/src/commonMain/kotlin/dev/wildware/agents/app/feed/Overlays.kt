@@ -124,6 +124,9 @@ private fun menuRows(target: MenuTarget, phone: Boolean = false): List<MenuRow> 
     target.pinned?.let { pinned ->
         add(MenuRow(if (pinned) "Unpin" else "Pin", Icons.Pin, false, FeedEvent.Pin(target.id, pinned = !pinned)))
     }
+    target.following?.let { following ->
+        add(MenuRow(if (following) "Unfollow thread" else "Follow thread", if (following) Icons.BellOff else Icons.Bell, false, FeedEvent.FollowThread(target.id, !following)))
+    }
     if (target.deletable) add(MenuRow("Delete", Icons.Trash, true, FeedEvent.Delete(target.id)))
 }
 
@@ -786,9 +789,12 @@ fun PhoneThreadScreen(ui: FeedUi, item: Threaded, widthPx: Float, safeArea: Safe
                     style = AgentTheme.type.bodyStrong,
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                 )
+                // Whether its replies alert the owner: lit while followed.
+                val following = ui.following(item)
+                FollowAction(following) { ui.emit(FeedEvent.FollowThread(item.id, !following)) }
                 // The card's own menu, as a long press on it gives: pin, tags, details, work state, delete.
                 IconAction(Icons.More, "More thread actions") {
-                    ui.menu = menuTargetFor(item, ui.isPinned(item.id, item.pinned))
+                    ui.menu = menuTargetFor(item, ui.isPinned(item.id, item.pinned), following)
                 }
             }
             // A preview showing a swiped reply opens scrolled to the replies.

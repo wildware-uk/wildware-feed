@@ -28,6 +28,14 @@ object Icons {
         "M6 8A6 6 0 0 1 18 8C18 15 21 17 21 17H3S6 15 6 8",
         "M10.3 21A1.94 1.94 0 0 0 13.7 21",
     )
+    /** A bell struck through: not following, so no alerts. */
+    val BellOff = icon(
+        "bell-off",
+        "M8.7 3A6 6 0 0 1 18 8A21.3 21.3 0 0 0 18.6 13",
+        "M17 17H3S6 15 6 8A4.7 4.7 0 0 1 6.3 6.3",
+        "M10.3 21A1.94 1.94 0 0 0 13.7 21",
+        "M2 2 22 22",
+    )
     val Settings = icon(
         "settings",
         "M4 21V14", "M4 10V3", "M12 21V12", "M12 8V3", "M20 21V16", "M20 12V3",

@@ -737,6 +737,36 @@ internal class NotificationsReader(
     }
 }
 
+/**
+ * What the owner follows. Re-read whenever it changes, here or on another device, and after the owner
+ * posts in a thread (which follows it). A choice made here shows at once, before the dashboard answers.
+ */
+internal class FollowsReader(
+    private val client: DashboardClient,
+    scope: CoroutineScope,
+    onChange: () -> Unit,
+) : FeedReader(scope, onChange) {
+    var follows: Follows = Follows(); private set
+
+    override val watched = setOf("subscriptions.updated", StreamEvent.Resync)
+
+    override suspend fun load(replace: Boolean) = apply(client.follows())
+
+    internal fun apply(next: FollowsSnapshot) {
+        follows = Follows.of(next)
+        seq = next.seq
+        loaded = true
+    }
+
+    /** Shows a choice before the dashboard has it. The next read replaces it with the dashboard's word. */
+    fun assume(change: (Follows) -> Follows) {
+        follows = change(follows)
+        onChange()
+    }
+
+    fun reread() = refresher.request(replace = true)
+}
+
 /** Who has beaten lately. Re-read on presence events and on a timer, since heartbeats publish nothing. */
 internal class PresenceReader(
     private val client: DashboardClient,

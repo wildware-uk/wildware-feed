@@ -509,6 +509,8 @@ data class FeedState(
     val critical: List<CriticalNotice> = emptyList(),
     /** Which alerts this device gets. */
     val alerts: AlertSettings = AlertSettings(),
+    /** What the owner follows: each project's notification level, and threads followed or unfollowed. */
+    val follows: dev.wildware.agents.Follows = dev.wildware.agents.Follows(),
     /** How long the dashboard keeps media. */
     val retention: RetentionSettings = RetentionSettings(),
     /** Pictures posted into the open project, newest first, to pick its logo from. */

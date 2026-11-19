@@ -111,12 +111,13 @@ class ProjectManagementTest {
             AgentTheme(dark = true) { Box(Modifier.size(1440.dp, 900.dp)) { FeedScreen(shown, onEvent = { events += it }) } }
         }
         onNode(hasContentDescription("Project settings")).performClick()
-        onNode(hasText("Archive project")).performClick()
+        // Below the notification level: scrolled to, as the owner would.
+        onNode(hasText("Archive project")).performScrollTo().performClick()
         waitForIdle()
         shown.value = archived
         waitForIdle()
         onNode(hasContentDescription("Project settings")).performClick()
-        onNode(hasText("Unarchive project")).performClick()
+        onNode(hasText("Unarchive project")).performScrollTo().performClick()
         waitForIdle()
         assertEquals(
             listOf(FeedEvent.ArchiveProject("agent-dashboard", true), FeedEvent.ArchiveProject("agent-dashboard-v1", false)),

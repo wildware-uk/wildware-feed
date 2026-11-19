@@ -77,6 +77,12 @@ sealed interface FeedEvent {
     /** Pin project [slug] to the top of the project list, or unpin it. */
     data class PinProject(val slug: String, val pinned: Boolean) : FeedEvent
 
+    /** Follow or unfollow the thread a card is in: whether its replies alert the owner. */
+    data class FollowThread(val targetId: String, val following: Boolean) : FeedEvent
+
+    /** How much of a project alerts the owner, on every device. */
+    data class SetProjectNotify(val projectId: String, val slug: String, val level: dev.wildware.agents.NotifyLevel) : FeedEvent
+
     /** Archive project [slug], or bring it back. */
     data class ArchiveProject(val slug: String, val archived: Boolean) : FeedEvent
 
@@ -178,6 +184,8 @@ data class MenuTarget(
     val deletable: Boolean = own,
     /** A card that can carry fields: an update or a post, not a reply. */
     val hasDetails: Boolean = false,
+    /** Whether the owner follows the card's thread; null for what has no thread of its own, such as a reply. */
+    val following: Boolean? = null,
 )
 
 /** The work-state choice, open on card [id], whose state is [current]. */
@@ -630,6 +638,12 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
     /** Whether card [id] shows as pinned: the owner's latest tap here, else what the server says. */
     fun isPinned(id: String, server: Boolean): Boolean = pinnedHere[id] ?: server
 
+    /** Whether the owner follows this card's thread: their own choice, or else what its project's level says. */
+    fun following(item: Threaded): Boolean = follows.following(threadKind(item), item.id, threadProject(item))
+
+    /** What the owner follows. Read through here, a card is redrawn only when that changes, not on every new state. */
+    val follows: dev.wildware.agents.Follows by androidx.compose.runtime.derivedStateOf { source.value.follows }
+
     /** Cards whose details are open. */
     val detailsOpen = androidx.compose.runtime.mutableStateSetOf<String>()
 
@@ -789,4 +803,18 @@ internal fun List<Reaction>.withMine(emoji: String, on: Boolean): List<Reaction>
 sealed interface ProjectDialog {
     data object New : ProjectDialog
     data class Settings(val projectId: String) : ProjectDialog
+}
+
+/** The kind of thread a card heads, as the dashboard names it. */
+fun threadKind(item: Threaded): String = when (item) {
+    is FeedItem.Update -> "update"
+    is FeedItem.Question -> "request"
+    is FeedItem.Post -> "message"
+}
+
+/** The project a card's thread is in. */
+fun threadProject(item: Threaded): String? = when (item) {
+    is FeedItem.Update -> item.project.id
+    is FeedItem.Question -> item.project.id
+    is FeedItem.Post -> item.project.id
 }

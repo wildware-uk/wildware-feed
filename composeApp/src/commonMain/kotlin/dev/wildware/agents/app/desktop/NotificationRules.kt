@@ -3,6 +3,8 @@ package dev.wildware.agents.app.desktop
 import dev.wildware.agents.AlertPrefs
 import dev.wildware.agents.FeedCard
 import dev.wildware.agents.FeedState
+import dev.wildware.agents.Follows
+import dev.wildware.agents.NotifyLevel
 import dev.wildware.agents.MessageView
 import dev.wildware.agents.PairingView
 import dev.wildware.agents.PlainText
@@ -35,6 +37,9 @@ data class DesktopNotice(
  * - an update an agent marked critical (other updates stay in the feed and under the bell);
  * - an agent asking to join, whatever the device's choice of alerts: it waits on the owner.
  *
+ * What the owner follows comes first ([Follows]): a thread they unfollowed is quiet, one they chose to
+ * follow announces every agent's reply, and a muted project announces only what is critical.
+ *
  * Something marked critical is flagged [DesktopNotice.critical] where the device's choice lets it
  * page ([AlertPrefs.pages]).
  *
@@ -58,6 +63,8 @@ class NotificationRules(private val maxBody: Int = 140) {
         slugOf: (String?) -> String? = { null },
         /** Agents asking to join. */
         joining: List<PairingView> = emptyList(),
+        /** What the owner follows. */
+        follows: Follows = Follows(),
     ): List<DesktopNotice> {
         if (!ready) return emptyList()
         val threads = threadsOf(feed, waiting)
@@ -81,6 +88,9 @@ class NotificationRules(private val maxBody: Int = 140) {
             if (!seen.add(requestKey(card.id))) continue
             val request = card.request
             val slug = slugOf(request.projectId)
+            val chosen = follows.chosen("request", card.id)
+            val muted = follows.level(request.projectId) == NotifyLevel.Muted
+            if (request.priority != AlertPrefs.Critical && (chosen == false || (chosen == null && muted))) continue
             if (!AlertPrefs.allows(prefs, AlertPrefs.Request, priority = request.priority, agentId = request.agentId, projectSlug = slug)) continue
             val page = AlertPrefs.pages(prefs, request.priority, request.agentId, slug)
             notices += DesktopNotice(requestKey(card.id), title(card.agentName, card.projectName), plain(request.question), card.id, critical = page)
@@ -100,7 +110,10 @@ class NotificationRules(private val maxBody: Int = 140) {
                 if (!seen.add(messageKey(message.id))) continue
                 if (message.createdAt < watermark) continue
                 if (message.agentId == null) continue
-                if (!answersOwner(message, thread) && !mentionsOwner(message.body)) continue
+                val chosen = follows.chosen(thread.kind, thread.cardId)
+                if (chosen == false) continue
+                if (chosen == null && follows.level(thread.projectId) == NotifyLevel.Muted) continue
+                if (chosen == null && !answersOwner(message, thread) && !mentionsOwner(message.body)) continue
                 if (!AlertPrefs.allows(prefs, AlertPrefs.Message)) continue
                 notices += DesktopNotice(messageKey(message.id), title(line.authorName, thread.projectName), plain(message.body), thread.cardId)
             }
@@ -110,12 +123,21 @@ class NotificationRules(private val maxBody: Int = 140) {
     }
 
     /** One card's conversation: the card's own post line (if a post) and its replies. */
-    private class Thread(val cardId: String, val projectName: String?, val head: MessageView?, val lines: List<ThreadLine>, val ownerWroteHere: Boolean)
+    private class Thread(
+        val cardId: String,
+        val projectName: String?,
+        val head: MessageView?,
+        val lines: List<ThreadLine>,
+        val ownerWroteHere: Boolean,
+        /** The thread's kind and project, as the owner's [Follows] know it. */
+        val kind: String,
+        val projectId: String?,
+    )
 
     private fun threadsOf(feed: FeedState, waiting: List<RequestCard>): List<Thread> {
         val fromCards = feed.allCards.map { card -> cardThread(card) }
         val fromQuestions = (waiting + feed.waiting).distinctBy { it.id }.map { question ->
-            Thread(question.id, question.projectName, null, question.discussion, question.discussion.any { it.message.isOwner })
+            Thread(question.id, question.projectName, null, question.discussion, question.discussion.any { it.message.isOwner }, "request", question.request.projectId)
         }
         return fromCards + fromQuestions
     }
@@ -127,8 +149,10 @@ class NotificationRules(private val maxBody: Int = 140) {
             card.post.message,
             listOf(card.post) + card.replies,
             card.post.message.isOwner,
+            "message",
+            card.projectId,
         )
-        is UpdateCard -> Thread(card.id, card.projectName, null, card.replies, card.replies.any { it.message.isOwner })
+        is UpdateCard -> Thread(card.id, card.projectName, null, card.replies, card.replies.any { it.message.isOwner }, "update", card.projectId)
     }
 
     private fun answersOwner(message: MessageView, thread: Thread): Boolean {

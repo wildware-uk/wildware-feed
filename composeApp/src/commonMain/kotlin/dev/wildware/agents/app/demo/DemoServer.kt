@@ -6,6 +6,9 @@ import dev.wildware.agents.CardKinds
 import dev.wildware.agents.CardRef
 import dev.wildware.agents.CardTagView
 import dev.wildware.agents.FeedSnapshot
+import dev.wildware.agents.FollowsSnapshot
+import dev.wildware.agents.ProjectNotifyView
+import dev.wildware.agents.ThreadFollowView
 import dev.wildware.agents.HumanAuthor
 import dev.wildware.agents.LiveAgentView
 import dev.wildware.agents.MessageView
@@ -78,6 +81,10 @@ class DemoServer(private val now: () -> Long = { Clock.System.now().toEpochMilli
     /** The alerts this "device" asked for, as JSON; null for the defaults. */
     private var alertPrefs: JsonElement = JsonNull
 
+    /** What the owner chose to follow: a level per project id, and threads by (kind, id). */
+    private var levels = mapOf<String, String>()
+    private var followed = mapOf<Pair<String, String>, Boolean>()
+
     /** Agents the owner renamed in the demo, by id. */
     private var renamed = mapOf<String, String>()
 
@@ -136,6 +143,15 @@ class DemoServer(private val now: () -> Long = { Clock.System.now().toEpochMilli
             "api/snapshot/requests" -> ok(json.encodeToString(RequestsSnapshot(seq, requests = requests)))
             "api/snapshot/agents" -> ok(json.encodeToString(AgentsSnapshot(seq, agents = data.agents(now()).map { a -> renamed[a.agentId]?.let { a.copy(name = it) } ?: a })))
             "api/notifications" -> ok(json.encodeToString(NotificationsSnapshot(seq)))
+            "api/subscriptions" -> ok(
+                json.encodeToString(
+                    FollowsSnapshot(
+                        seq,
+                        projects = levels.map { (id, level) -> ProjectNotifyView(id, level) },
+                        threads = followed.map { (key, on) -> ThreadFollowView(key.first, key.second, on) },
+                    ),
+                ),
+            )
             "api/devices/current/alert-prefs" -> ok("""{"prefs":$alertPrefs}""")
             else -> ok("""{"error":"not_found","message":"The demo has no $path."}""", HttpStatusCode.NotFound)
         }
@@ -168,6 +184,15 @@ class DemoServer(private val now: () -> Long = { Clock.System.now().toEpochMilli
             }
             path.startsWith("api/requests/") && method == HttpMethod.Delete -> {
                 requests = requests.filter { it.id != parts[2] }
+                ok("{}")
+            }
+            path.startsWith("api/cards/") && path.endsWith("/follow") && method == HttpMethod.Put -> {
+                followed = followed + ((parts[2] to parts[3]) to (input["following"]?.jsonPrimitive?.booleanOrNull == true))
+                ok("{}")
+            }
+            path.startsWith("api/projects/") && path.endsWith("/subscription") && method == HttpMethod.Put -> {
+                val project = projects.firstOrNull { it.slug == parts[2] } ?: return ok("{\"error\":\"not_found\",\"message\":\"No such project.\"}", HttpStatusCode.NotFound)
+                levels = levels + (project.id to (input.text("level") ?: "all"))
                 ok("{}")
             }
             path == "api/devices/current/alert-prefs" -> {

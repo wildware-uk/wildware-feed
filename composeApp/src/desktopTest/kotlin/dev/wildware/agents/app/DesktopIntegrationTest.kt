@@ -97,6 +97,24 @@ class DesktopIntegrationTest {
     }
 
     @Test
+    fun `what the owner follows decides which replies are announced`() {
+        val owner = message("m0", "human", "Owner's note", 900, updateId = "u1")
+        fun cards(vararg more: MessageView) = feed(update("u1", owner, *more), update("u2", *more.map { it.copy(id = it.id + "b", updateId = "u2") }.toTypedArray()))
+        val muted = dev.wildware.agents.Follows(levels = mapOf("p1" to dev.wildware.agents.NotifyLevel.Muted), threads = mapOf("update:u2" to true), loaded = true)
+        val rules = NotificationRules()
+        rules.next(true, emptyList(), cards(), follows = muted)
+        // Muted: the thread the owner spoke in is quiet now, the one they chose to follow is not, and so is the question.
+        val reply = message("m1", "agent:a1", "Done", 2_000, updateId = "u1")
+        val notices = rules.next(true, listOf(question("q2")), cards(reply), follows = muted)
+        assertEquals(listOf("message-m1b"), notices.map { it.key })
+
+        val unfollowed = dev.wildware.agents.Follows(threads = mapOf("update:u1" to false), loaded = true)
+        val quiet = NotificationRules()
+        quiet.next(true, emptyList(), cards(), follows = unfollowed)
+        assertTrue(quiet.next(true, emptyList(), cards(reply), follows = unfollowed).none { it.key == "message-m1" })
+    }
+
+    @Test
     fun `an ordinary new update is still left to the feed`() {
         val rules = NotificationRules()
         rules.next(true, emptyList(), feed())

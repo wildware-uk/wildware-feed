@@ -115,7 +115,7 @@ class DashboardSession(
         .stateIn(scope, SharingStarted.Eagerly, emptySet())
 
     /** What the state adds on top of the feed: settings, the post target, devices and the known agents. */
-    private data class Side(val extras: Extras, val postTarget: String?, val devices: DeviceList, val known: List<dev.wildware.agents.AgentRecord>)
+    private data class Side(val extras: Extras, val postTarget: String?, val devices: DeviceList, val known: List<dev.wildware.agents.AgentRecord>, val follows: dev.wildware.agents.Follows)
 
     /** This device's own key was revoked from its Devices sheet: it is signed out at once. */
     private val revokedHere = MutableStateFlow(false)
@@ -182,8 +182,8 @@ class DashboardSession(
         dashboard.everything.state,
         dashboard.projects,
         dashboard.notifications,
-        combine(combine(mutableAlerts, mutableRetention, mentionables, joining, mutableConnections, ::Extras), lastProject, mutableDevices, knownAgents, ::Side),
-    ) { shown, everything, projects, notifications, (extras, postTarget, devices, known) ->
+        combine(combine(mutableAlerts, mutableRetention, mentionables, joining, mutableConnections, ::Extras), lastProject, mutableDevices, knownAgents, dashboard.followed, ::Side),
+    ) { shown, everything, projects, notifications, (extras, postTarget, devices, known, follows) ->
         val alerts = extras.alerts
         val retention = extras.retention
         val mentionable = extras.mentionable
@@ -192,7 +192,7 @@ class DashboardSession(
         // Parse what the feed will draw before handing it over, here off the UI thread, so a card
         // that scrolls into view (or arrives) finds its markdown ready instead of parsing mid-frame.
         shown.copy(searchIndex = searchEntriesOf(all.sections), bell = mapper.bell(notifications), alerts = alerts, retention = retention, mentionable = mentionable, postTarget = postTarget, devices = devices, joining = extras.joining, connections = extras.connections,
-            agents = withOffline(shown.agents, known)).also { MarkdownCache.warm(markdownIn(it).asIterable()) }
+            agents = withOffline(shown.agents, known), follows = follows).also { MarkdownCache.warm(markdownIn(it).asIterable()) }
     }.stateIn(scope, SharingStarted.Eagerly, mapper.map(feed.state.value, emptyList(), emptyList(), emptyList(), null))
 
     /** True once the dashboard has stopped taking this device's key. */
@@ -554,6 +554,8 @@ class DashboardSession(
                 client.setLogoInsteadOfName(event.slug, event.instead)
                 dashboard.refresh()
             }
+            is FeedEvent.FollowThread -> cardRef(event.targetId)?.let { dashboard.followThread(it, event.following) }
+            is FeedEvent.SetProjectNotify -> dashboard.setProjectNotify(event.projectId, event.slug, event.level)
             is FeedEvent.PinProject -> changeNow {
                 client.setProjectPinned(event.slug, event.pinned)
                 dashboard.refresh()

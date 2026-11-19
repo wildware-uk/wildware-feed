@@ -216,6 +216,7 @@ class Dashboard internal constructor(
     private val presence = PresenceReader(client, confined, ::changed).also { it.cache = cache }
     private val bell = NotificationsReader(client, confined, ::changed)
     private val joining = PairingsReader(client, confined, ::changed)
+    private val follows = FollowsReader(client, confined, ::changed)
     /**
      * Every open feed, by project slug. The app opens and closes feeds from its own thread while the
      * engine's thread reads them, so the map is never changed in place: each change swaps in a new one.
@@ -253,6 +254,29 @@ class Dashboard internal constructor(
     /** The bell: what the owner was told about, newest first, and how many are new. */
     val notifications: StateFlow<NotificationList> = mutableNotifications.asStateFlow()
 
+    private val mutableFollows = MutableStateFlow(Follows())
+
+    /** What the owner follows: which projects and threads raise their alerts. */
+    val followed: StateFlow<Follows> = mutableFollows.asStateFlow()
+
+    /** Follows or unfollows the thread [card] is in (`update`, `message` or `request`). Shown at once. */
+    fun followThread(card: CardRef, following: Boolean) {
+        confined.launch {
+            follows.assume { it.withThread(card.kind, card.id, following) }
+            runCatching { client.followThread(card, following) }
+            follows.reread()
+        }
+    }
+
+    /** Sets how much of a project alerts the owner. Shown at once. */
+    fun setProjectNotify(projectId: String, slug: String, level: NotifyLevel) {
+        confined.launch {
+            follows.assume { it.withLevel(projectId, level) }
+            runCatching { client.setProjectNotify(slug, level) }
+            follows.reread()
+        }
+    }
+
     private val mutableReady = MutableStateFlow(false)
 
     /**
@@ -276,6 +300,7 @@ class Dashboard internal constructor(
         presence.start()
         bell.start()
         joining.start()
+        follows.start()
         feeds.values.forEach { it.startReaders() }
         timers = confined.launch {
             launch {
@@ -374,6 +399,7 @@ class Dashboard internal constructor(
         presence.refreshNow(replace = true)
         bell.refreshNow(replace = true)
         joining.refreshNow(replace = true)
+        follows.refreshNow(replace = true)
         feeds.values.forEach { it.refreshNow() }
     }
 
@@ -403,13 +429,14 @@ class Dashboard internal constructor(
         }
     }
 
-    private fun readers(): List<FeedReader> = listOf(requests, presence, bell, joining) + feeds.values.flatMap { it.readers }
+    private fun readers(): List<FeedReader> = listOf(requests, presence, bell, joining, follows) + feeds.values.flatMap { it.readers }
 
     private suspend fun receive(event: StreamEvent) {
         requests.receive(event)
         presence.receive(event)
         bell.receive(event)
         joining.receive(event)
+        follows.receive(event)
         feeds.values.toList().forEach { it.receive(event) }
     }
 
@@ -450,6 +477,7 @@ class Dashboard internal constructor(
         mutableProjects.value = summaries(everything.state.value)
         mutableNotifications.value = bell.list
         if (mutablePairings.value != joining.items) mutablePairings.value = joining.items
+        if (mutableFollows.value != follows.follows) mutableFollows.value = follows.follows
         if (!mutableReady.value && requests.loaded && everything.state.value.loaded) mutableReady.value = true
     }
 
