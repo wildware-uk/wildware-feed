@@ -193,16 +193,18 @@ private fun rememberFold(id: String, noun: String, name: String, inThread: Boole
  * so the owner can tell whether they want it back without opening it.
  */
 @Composable
-private fun FoldedSummary(body: String, replies: Int) {
+private fun FoldedSummary(body: String, replies: Int, nothingSaid: String? = "No words on this card.") {
     val colors = AgentTheme.colors
     val line = dev.wildware.agents.PlainText.fromMarkdown(body).lineSequence().map { it.trim() }.firstOrNull { it.isNotEmpty() }
-    Text(
-        line ?: "No words on this card.",
-        color = colors.textMuted,
-        style = AgentTheme.type.body,
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
-    )
+    (line ?: nothingSaid)?.let {
+        Text(
+            it,
+            color = colors.textMuted,
+            style = AgentTheme.type.body,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
     if (replies > 0) MetaText(if (replies == 1) "1 reply hidden" else "$replies replies hidden", Modifier.padding(top = 4.dp))
 }
 
@@ -447,18 +449,22 @@ fun QuestionCard(
     val preview = LocalPreview.current
     val commitPx = with(androidx.compose.ui.platform.LocalDensity.current) { SwipeCommitDistance.toPx() }
     val swipe = remember { SwipeActionsState(preview.questionSwipe * commitPx) }
+    // Folds like any card, as on the website, but not where it is the point: under its reply, or heading its own thread.
+    val fold = rememberFold(item.id, "question", item.prompt, inThread || !showDiscussion)
+    // A folded question hides its answers, so nothing answers it blind: no swipes, no keys.
+    val folded = fold?.folded == true
     SwipeActions(
         shape = shape,
         modifier = modifier,
         state = swipe,
         startAction = when {
-            item.sending -> null
+            item.sending || folded -> null
             !gathers && primary != null -> GestureAction(primary.label, Icons.Check, colors.success, Color.White) { answer(primary) }
             gathers && ready -> GestureAction(sendLabel, Icons.Send, colors.success, Color.White) { send() }
             else -> null
         },
         endAction = when {
-            item.sending -> null
+            item.sending || folded -> null
             !gathers && decline != null -> GestureAction(decline.label, Icons.Close, colors.textMuted, colors.background) { answer(decline) }
             else -> GestureAction("Not now", Icons.Close, colors.textMuted, colors.background) { dismiss() }
         },
@@ -469,7 +475,7 @@ fun QuestionCard(
             .then(frame)
             .semantics(mergeDescendants = false) { contentDescription = (if (item.critical) "Critical question" else "Question") + " from ${item.agent.name}, waiting on you" }
             .onKeyEvent { e ->
-                if (e.type != KeyEventType.KeyUp) return@onKeyEvent false
+                if (e.type != KeyEventType.KeyUp || folded) return@onKeyEvent false
                 val number = listOf(Key.One, Key.Two, Key.Three, Key.Four, Key.Five).indexOf(e.key)
                 when {
                     gathers && (e.key == Key.Enter || e.key == Key.Y) -> { send(); true }
@@ -515,6 +521,7 @@ fun QuestionCard(
                 if (showsProject() && !inThread) ProjectLabel(item.project)
             }
             TimeLeft(item.expiresAt, item.expiresIn)
+            fold?.let { IconAction(if (it.folded) Icons.ChevronRight else Icons.ChevronDown, it.label, Modifier.padding(start = 4.dp), onClick = it.toggle) }
         }
         val context = item.inReplyTo
         if (context != null && !inThread) {
@@ -529,6 +536,12 @@ fun QuestionCard(
             style = type.title.copy(fontSize = type.title.fontSize * 1.08f),
         )
         Spacer(Modifier.height(6.dp))
+        if (folded) {
+            // Its header and question stay, so the owner still sees who waits and on what.
+            FoldedSummary(item.body, item.replies.size, nothingSaid = null)
+            MetaText("Open it to answer.", Modifier.padding(top = 4.dp))
+            return@Column
+        }
         Clamp(item.id, "the whole explanation", fade = colors.waitingSoft.compositeOver(colors.background)) { MarkdownBody(item.body) }
         if (item.attachments.isNotEmpty()) {
             Spacer(Modifier.height(10.dp))

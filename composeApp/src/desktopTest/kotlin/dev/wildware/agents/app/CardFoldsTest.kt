@@ -105,6 +105,21 @@ class CardFoldsTest {
     }
 
     @Test
+    fun questionsFoldToTheirQuestionAndCannotBeAnsweredFolded() = runComposeUiTest {
+        val q = FakeFeed.state.sections.flatMap { it.items }.filterIsInstance<FeedItem.Question>().first()
+        val store = MemoryTextStore()
+        show(CardFolds(store))
+        onNodeWithText(q.choices.first().label).assertExists()
+        onNodeWithContentDescription("Collapse question: ${q.prompt}").performClick()
+        onNodeWithText(q.prompt).assertExists()
+        onNodeWithText("Open it to answer.").assertExists()
+        onNodeWithText(q.choices.first().label).assertDoesNotExist()
+        assertTrue(CardFolds(store).isFolded(q.id), "kept for next time")
+        onNodeWithContentDescription("Expand question: ${q.prompt}").performClick()
+        onNodeWithText(q.choices.first().label).assertExists()
+    }
+
+    @Test
     fun aFoldedCardIsWholeInItsOwnThread() = runComposeUiTest {
         val folds = CardFolds(MemoryTextStore()).also { it.set(fix.id, folded = true) }
         show(folds, width = 390, preview = ScreenPreview(threadOpen = true))

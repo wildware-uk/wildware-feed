@@ -60,7 +60,7 @@ It doesn't, beyond oldest first.
 | 19 | Discussion thread on a request | Done | Reply/react/acks under the controls (`RequestCard.svelte:686-705`) | Yes: Discuss opens the question's own thread (#53) | Yes: inline under the controls (#53) | — | P1 |
 | 20 | Reactions / tags / fields / pin on request | Open | Same as other cards | No | No | See rows 40-48 | P2 |
 | 21 | "edited" marker on request | Done | Shown when agent rewrote it (`:386-399`) | Yes: "edited" by the agent's name; read out with the exact time | Yes | — | P2 |
-| 22 | Collapse request | Open | Fold to one line | No | No | See row 31 | P2 |
+| 22 | Collapse request | Done | Fold to one line | Yes: the fold arrow keeps its header, question and one line; answers wait until it is opened; remembered with other folds | Yes | — | P2 |
 | 23 | Answer from notification | Done | Web push SW: confirm/buttons/choice first two (`service-worker.ts:81-140`) | Yes, iOS: per-kind actions incl. text input, Face ID (`iosApp/Common/Notifications.swift`) | Partial: desktop notice opens card, no answer buttons (`desktop/NotificationRules.kt`) | iOS richer | — |
 | 24 | Answer from widget / Live Activity / Watch / Siri | App only | — | App only: StatusWidget answer buttons, Live Activity Yes/No, Watch Inbox, "Answer My Agents" intent | — | App only | — |
 | **Feed / timeline** |||||||

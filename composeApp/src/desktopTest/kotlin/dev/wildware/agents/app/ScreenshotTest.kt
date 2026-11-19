@@ -630,6 +630,12 @@ class ScreenshotTest {
             val mode = if (dark) "dark" else "light"
             for (size in listOf(Size.Phone, Size.Desktop)) {
                 val folds = CardFolds(dev.wildware.agents.MemoryTextStore()).apply { set(fix.id, true); set(post.id, true) }
+                // A folded question keeps its header and question; its answers wait until it is opened.
+                val question = FakeFeed.state.sections.flatMap { it.items }.filterIsInstance<FeedItem.Question>().first()
+                val foldedQuestion = CardFolds(dev.wildware.agents.MemoryTextStore()).apply { set(question.id, true) }
+                shoot("${size.label}-$mode-folded-question", size, dark) {
+                    CompositionLocalProvider(LocalCardFolds provides foldedQuestion) { AgentsPreview(dark = dark, safeArea = size.safeArea) }
+                }
                 shoot("${size.label}-$mode-folded", size, dark) {
                     CompositionLocalProvider(LocalCardFolds provides folds) {
                         AgentsPreview(dark = dark, safeArea = size.safeArea, startAt = fix.id)
