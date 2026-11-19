@@ -3,6 +3,7 @@ package dev.wildware.feed.parity
 import io.ktor.client.request.header
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
@@ -946,8 +947,8 @@ class McpEdgeTest : ParityTest() {
 
     private val holdS: Int = System.getenv("PARITY_HOLD_S")?.toIntOrNull() ?: 55
 
-    private suspend fun pendingRequest(question: String): String =
-        eventually(what = "request '$question' to be pending") {
+    private suspend fun pendingRequest(question: String, agent: Agent, call: Deferred<*>): String =
+        awaitCreated(agent, call, "request '$question' to be pending") {
             owner.get("/api/snapshot/requests").obj()["requests"].arr.firstOrNull { it["question"].s == question }?.get("id").str
         }
 
@@ -976,7 +977,7 @@ class McpEdgeTest : ParityTest() {
             val pickQ = "Pick one $sfx"
             val started = System.nanoTime()
             val asked = async { a.tool("request_input", obj("kind" to "choice", "question" to pickQ, "options" to arr("red", "green"), "default" to "red", "detail" to "d", "project" to p.slug, "timeout_s" to 3600)) }
-            val pick = pendingRequest(pickQ)
+            val pick = pendingRequest(pickQ, a, asked)
             val awaited = async { a.tool("await_request", obj("request_id" to pick)) }
 
             // 2. A request that expires in 5 s is held 5 s, then times out.
@@ -987,7 +988,7 @@ class McpEdgeTest : ParityTest() {
             }
 
             // While both are held: refusals, a pending approval, and edits (which wake nobody).
-            pendingRequest(expireQ)
+            pendingRequest(expireQ, a, expiring)
             val hb = a.ok("register_session")["session_id"].s
             assertEquals(2, a.ok("heartbeat", obj("session_id" to hb))["pending_approvals"].int)
             beta.refused("await_request", obj("request_id" to pick), "invalid_argument", "request belongs to another agent")
@@ -1053,7 +1054,7 @@ class McpEdgeTest : ParityTest() {
             // 4. Withdrawn by the agent while held: the held call returns withdrawn at once.
             val nameQ = "Name it $sfx"
             val named = async { a.tool("request_input", obj("kind" to "text", "question" to nameQ, "placeholder" to "p", "multiline" to true, "min" to 1, "max" to 20, "project" to p.slug)) }
-            val name = pendingRequest(nameQ)
+            val name = pendingRequest(nameQ, a, named)
             a.whole("withdraw_request", obj("request_id" to name), "Withdrew \"$nameQ\". It is off your owner's dashboard.", obj("request_id" to name, "state" to "withdrawn"))
             whole(named.await(), dismissedSummary, dismissed(name, "withdrawn", requestView(name, "text", nameQ, p.id)))
             a.refused("edit_request", obj("request_id" to name, "question" to "x"), "conflict", "request $name was withdrawn")
@@ -1062,7 +1063,7 @@ class McpEdgeTest : ParityTest() {
             // 5. Dismissed by the owner while held: cancelled.
             val someQ = "Pick some $sfx"
             val some = async { a.tool("request_input", obj("kind" to "multi_choice", "question" to someQ, "options" to arr("a", "b", "c"), "min" to 1, "project" to p.slug)) }
-            val someId = pendingRequest(someQ)
+            val someId = pendingRequest(someQ, a, some)
             owner.delete("/api/requests/$someId")
             val someView = requestView(someId, "multi_choice", someQ, p.id, options = listOf("a", "b", "c"))
             whole(some.await(), dismissedSummary, dismissed(someId, "cancelled", someView))
@@ -1095,7 +1096,7 @@ class McpEdgeTest : ParityTest() {
                 val (question, call) = pair
                 val (case, described) = cases[i]
                 val (kind, extra, value) = case
-                val id = pendingRequest(question)
+                val id = pendingRequest(question, a, call)
                 owner.post("/api/requests/$id/answer", obj("value" to value))
                 val options = (extra["options"] as? JsonArray)?.map { it.s }
                 whole(call.await(), "Your owner answered: $described", obj(
@@ -1107,7 +1108,7 @@ class McpEdgeTest : ParityTest() {
             // A blank project is taken as none: the request belongs to no project.
             val loose = "Loose $sfx"
             val call = async { a.tool("request_input", obj("kind" to "confirm", "question" to loose, "project" to "  ")) }
-            val id = pendingRequest(loose)
+            val id = pendingRequest(loose, a, call)
             owner.post("/api/requests/$id/answer", obj("value" to true))
             assertTrue(call.await().structured["request"]["project_id"].isNull)
         }

@@ -40,7 +40,7 @@ class RequestsTest : ParityTest() {
     ): T = coroutineScope {
         val question = args["question"].s
         val held = async { agent.tool("request_input", args) }
-        val request = eventually(what = "request '$question' to be pending") { pendingRequest(question) }
+        val request = awaitCreated(agent, held, "request '$question' to be pending") { pendingRequest(question) }
         try {
             block(request["id"].s, held)
         } finally {

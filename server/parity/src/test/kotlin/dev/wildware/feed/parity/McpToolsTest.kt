@@ -335,7 +335,9 @@ class McpToolsTest : ParityTest() {
         coroutineScope {
             val question = "Ship it? ${Parity.suffix()}"
             val held = async { alpha.tool("request_input", obj("kind" to "confirm", "question" to question, "project" to project.slug)) }
-            val id = eventually { owner.get("/api/snapshot/requests").obj()["requests"].arr.firstOrNull { it["question"].s == question }?.get("id").str }
+            val id = awaitCreated(alpha, held, "request '$question' to be pending") {
+                owner.get("/api/snapshot/requests").obj()["requests"].arr.firstOrNull { it["question"].s == question }?.get("id").str
+            }
             owner.post("/api/requests/$id/answer", obj("value" to true))
             val answered = held.await()
             assertEquals("answered", answered.structured["state"].s)

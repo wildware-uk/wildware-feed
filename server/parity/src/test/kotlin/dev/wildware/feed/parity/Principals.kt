@@ -15,6 +15,7 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.test.assertEquals
 import kotlin.test.fail
@@ -93,6 +94,10 @@ class Device(val id: String, val token: String) {
 /** An agent: a bearer token speaking MCP over Streamable HTTP (JSON-RPC in, JSON out). */
 class Agent(val name: String, val token: String) {
     private val ids = AtomicLong(1)
+    private val throttled = AtomicInteger(0)
+
+    /** True while a call of this agent's is waiting out a 429 before it tries again. */
+    val waitingOutRateLimit: Boolean get() = throttled.get() > 0
 
     /**
      * One JSON-RPC request. A 429 is waited out (honouring Retry-After) and retried, as a real
@@ -112,7 +117,12 @@ class Agent(val name: String, val token: String) {
             }
             if (response.status.value != 429 || !honourRateLimit) return response
             val wait = response.headers[HttpHeaders.RetryAfter]?.toLongOrNull() ?: 5
-            kotlinx.coroutines.delay(wait * 1000)
+            throttled.incrementAndGet()
+            try {
+                kotlinx.coroutines.delay(wait * 1000)
+            } finally {
+                throttled.decrementAndGet()
+            }
         }
     }
 

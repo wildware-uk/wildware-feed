@@ -287,7 +287,9 @@ class StreamTest : ParityTest() {
                 val question = "Go? ${Parity.suffix()}"
                 val held = async { agent.tool("request_input", obj("kind" to "confirm", "question" to question, "project" to project.slug)) }
                 assertEquals(1, stream.awaitEvent("work") { it.obj["pending_approvals"].int == 1 }.obj["pending_approvals"].int)
-                val id = eventually { owner.get("/api/snapshot/requests").obj()["requests"].arr.firstOrNull { it["question"].s == question }?.get("id").str }
+                val id = awaitCreated(agent, held, "request '$question' to be pending") {
+                    owner.get("/api/snapshot/requests").obj()["requests"].arr.firstOrNull { it["question"].s == question }?.get("id").str
+                }
                 owner.post("/api/requests/$id/answer", obj("value" to true))
                 val answer = stream.awaitEvent("answer").obj
                 assertEquals(

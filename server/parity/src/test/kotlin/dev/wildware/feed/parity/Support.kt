@@ -1,5 +1,6 @@
 package dev.wildware.feed.parity
 
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -18,6 +19,7 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TimeSource
 
 /** Every parity class: skipped, not failed, when no server is configured. */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
@@ -70,6 +72,29 @@ suspend fun <T : Any> eventually(timeout: Duration = 30.seconds, every: Duration
         check()?.let { return it }
         if (System.nanoTime() > deadline) error("timed out after $timeout waiting for $what")
         delay(every)
+    }
+}
+
+/**
+ * Poll until [check] finds what [agent]'s background [call] creates, such as the pending request of
+ * a held request_input. If the call returns first, fail at once with what it returned: a refused
+ * call would otherwise look like a timeout. The clock stops while [agent] waits out a 429, since the
+ * suite spends a token's 120 requests a minute faster than that and Retry-After runs up to 60 s.
+ */
+suspend fun <T : Any> awaitCreated(agent: Agent, call: Deferred<*>, what: String, timeout: Duration = 30.seconds, check: suspend () -> T?): T {
+    var spent = Duration.ZERO
+    var last = TimeSource.Monotonic.markNow()
+    while (true) {
+        check()?.let { return it }
+        if (call.isCompleted) {
+            val result = call.await()
+            error("the call returned before $what: ${(result as? ToolResult)?.raw ?: result}")
+        }
+        val now = TimeSource.Monotonic.markNow()
+        if (!agent.waitingOutRateLimit) spent += now - last
+        last = now
+        if (spent > timeout) error("timed out after $timeout waiting for $what")
+        delay(250.milliseconds)
     }
 }
 
