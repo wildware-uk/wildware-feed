@@ -90,6 +90,7 @@ kotlin {
                 implementation(compose.desktop.currentOs)
                 implementation(libs.coroutines.swing)
                 implementation(libs.ktor.client.okhttp)
+                implementation(libs.jna)
                 // "This computer": the app can run the Wildware Feed server itself.
                 implementation(project(":server"))
                 // Plays videos and sounds in the app (AVFoundation, Media Foundation, GStreamer). It lists

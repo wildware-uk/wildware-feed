@@ -1,5 +1,10 @@
 package dev.wildware.agents.app
 
+import androidx.compose.ui.graphics.toArgb
+import dev.wildware.agents.app.design.colorsFor
+import dev.wildware.agents.app.design.systemDarkPreference
+import dev.wildware.agents.app.design.resolveDark
+import dev.wildware.agents.app.desktop.WindowsTitleBar
 import kotlinx.coroutines.flow.combine
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -198,6 +203,11 @@ fun main(args: Array<String>) {
         ) {
             window = this.window
             this.window.minimumSize = java.awt.Dimension(380, 560)
+            // Windows draws a white title bar unless asked: match the app's light or dark, and its colour.
+            val themeChoice by model.theme.collectAsState()
+            val dark = resolveDark(themeChoice, systemDarkPreference())
+            val frame = this.window
+            LaunchedEffect(dark) { WindowsTitleBar.apply(frame, dark, colorsFor(dark).background.toArgb()) }
             val updates = shell.updates
             val available = updates?.available?.collectAsState()?.value
             val screen by model.screen.collectAsState()
