@@ -171,8 +171,25 @@ jobs:
           xcrun notarytool submit "$dmg" --key "$key" --key-id "$ASC_KEY_ID" --issuer "$ASC_ISSUER_ID" --wait --timeout 30m
           rm -f "$key"
           xcrun stapler staple "$dmg"
-          spctl --assess --type open --context context:primary-signature -v "$dmg" || true
           echo "notarized=true" >> "$GITHUB_OUTPUT"
+
+      # Gatekeeper's own verdict, as a Mac that downloaded the files would give it. Fails the run
+      # rather than publish a "signed and notarised" build that a Mac would still refuse.
+      - name: Check Gatekeeper accepts the .dmg and the app
+        if: steps.notarize.outputs.notarized == 'true'
+        timeout-minutes: 5
+        run: |
+          set -euo pipefail
+          dmg="dist/Wildware-Feed-$VERSION-mac-arm64.dmg"
+          xcrun stapler validate "$dmg"
+          spctl -a -vv -t open --context context:primary-signature "$dmg"
+          spctl -a -vv -t install "$dmg" || echo "::notice::spctl -t install has no verdict for a .dmg on this macOS; the open check above is the one that counts."
+          mount="$(mktemp -d)"
+          hdiutil attach -nobrowse -readonly -mountpoint "$mount" "$dmg" >/dev/null
+          trap 'hdiutil detach "$mount" -quiet || true' EXIT
+          app="$(find "$mount" -maxdepth 1 -name '*.app' | head -1)"
+          codesign --verify --deep --strict --verbose=2 "$app"
+          spctl -a -vv -t exec "$app"
 
       - name: Delete the signing keychain
         if: always()

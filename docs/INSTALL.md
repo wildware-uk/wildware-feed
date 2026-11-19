@@ -104,7 +104,7 @@ unsigned and the release notes say so.
 
 | Secret | What it is |
 | --- | --- |
-| `MACOS_CERT_P12_BASE64` | The **Developer ID Application** certificate and its private key, exported from Keychain Access as a `.p12`, then base64-encoded (`base64 -i cert.p12 \| pbcopy`). |
+| `MACOS_CERT_P12_BASE64` | The **Developer ID Application** certificate and its private key as a `.p12`, base64-encoded ("Making the Mac certificate" below says how). |
 | `MACOS_CERT_PASSWORD` | The password chosen when exporting that `.p12`. |
 | `APPLE_TEAM_ID` | The 10-character Team ID from developer.apple.com › Membership. |
 | `ASC_KEY_ID` | An App Store Connect API key's Key ID (App Store Connect › Users and Access › Integrations › Team Keys, role Developer). |
@@ -115,6 +115,33 @@ unsigned and the release notes say so.
 
 The Mac needs the first three to sign, and all six to notarise. Notarising is what stops the
 "could not verify" message for good.
+
+### Making the Mac certificate
+
+Apple lets only the team's **Account Holder** make a Developer ID certificate: an App Store Connect
+API key is refused ("This operation can only be performed by the Account Holder"), so this one is
+made by hand, once (it lasts five years). Any computer with `openssl` will do:
+
+```sh
+# 1. A private key and a certificate signing request. Keep devid.key private.
+openssl req -new -newkey rsa:2048 -nodes -keyout devid.key -subj "/CN=Wildware Feed" -out devid.csr
+```
+
+2. Signed in as the Account Holder, open developer.apple.com › Certificates › **+**, pick
+   **Developer ID Application**, upload `devid.csr`, and download the `.cer`.
+
+```sh
+# 3. Pair them into a .p12 that macOS can read (3DES, SHA-1 MAC), with a password you choose.
+openssl x509 -inform der -in developerID_application.cer -out devid.pem
+openssl pkcs12 -export -inkey devid.key -in devid.pem -name "Wildware Feed Developer ID" \
+  -keypbe PBE-SHA1-3DES -certpbe PBE-SHA1-3DES -macalg sha1 -out devid.p12
+# 4. Store it, then delete devid.key, devid.p12 and devid.csr.
+base64 -w0 devid.p12 | gh secret set MACOS_CERT_P12_BASE64   # on a Mac: base64 -i devid.p12
+gh secret set MACOS_CERT_PASSWORD                            # paste the .p12 password
+```
+
+A run by hand of `desktop-release` then shows whether it worked: its Mac job fails if Gatekeeper
+would refuse the notarised `.dmg` or the app inside it.
 
 ### Android release key
 
