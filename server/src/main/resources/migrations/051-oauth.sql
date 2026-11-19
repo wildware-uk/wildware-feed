@@ -20,15 +20,18 @@ CREATE TABLE oauth_grants (
 	resource TEXT NOT NULL,
 	scope TEXT NOT NULL,
 	redirect_uri TEXT NOT NULL,
+	redirect_uri_given INTEGER NOT NULL,
 	code_hash TEXT NOT NULL UNIQUE,
 	code_challenge TEXT NOT NULL,
 	code_expires_at INTEGER NOT NULL,
 	code_used_at INTEGER,
 	created_at INTEGER NOT NULL,
+	last_used_at INTEGER,
 	revoked_at INTEGER
 ) STRICT;
 
 CREATE INDEX oauth_grants_client ON oauth_grants (client_id);
+CREATE INDEX oauth_grants_agent ON oauth_grants (agent_id);
 
 CREATE TABLE oauth_tokens (
 	seq INTEGER PRIMARY KEY AUTOINCREMENT,

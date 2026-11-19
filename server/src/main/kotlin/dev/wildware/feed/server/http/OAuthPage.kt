@@ -74,6 +74,10 @@ object OAuthPage {
                 <button type="submit" name="action" value="allow" class="primary">Allow</button>
               </div>
             </form>
+            <form method="post" action="/oauth/authorize" class="signout">
+              ${hidden(request)}
+              <button type="submit" name="action" value="sign_out" class="link">Sign out of this page</button>
+            </form>
             """,
         )
     }
@@ -86,8 +90,8 @@ object OAuthPage {
             uri != null && scheme == "http" && OAuth.isLoopbackHost(uri.host) ->
                 "an app on this computer (${uri.host}${if (uri.port == -1) "" else ":${uri.port}"})" to
                     "Allow it only if you just started connecting it yourself."
-            uri != null && scheme == "https" -> (uri.host ?: request.redirectUri) to "Allow it only if you know this site."
-            else -> "the app that opens $scheme:// links" to "Allow it only if you just started connecting it yourself."
+            uri != null && scheme == "https" -> request.redirectUri to "Allow it only if you know this site."
+            else -> "the app that opens $scheme: links (${request.redirectUri})" to "Allow it only if you just started connecting it yourself."
         }
         return """<p class="where">Afterwards you go back to <strong>${esc(where)}</strong>. The name above is what the app calls itself. ${esc(note)}</p>"""
     }
@@ -141,6 +145,8 @@ button{font:inherit;font-weight:600;padding:9px 18px;border-radius:7px;border:1p
 button.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
 :focus-visible{outline:2px solid var(--focus);outline-offset:2px}
 .error{color:var(--error);margin:10px 0 0}
+.signout{margin-top:14px;text-align:right}
+button.link{border:0;padding:0;background:none;color:var(--muted);font-weight:500;font-size:13px;text-decoration:underline}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 </style>
 </head>

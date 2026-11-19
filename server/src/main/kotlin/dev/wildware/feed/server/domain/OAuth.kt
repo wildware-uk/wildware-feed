@@ -33,11 +33,16 @@ class OAuth(private val db: Database, private val tokenSecret: String, private v
         val resource: String,
         val scope: String,
         val redirectUri: String,
+        /** Whether the authorize request named the redirect URI: then the token request must too. */
+        val redirectUriGiven: Boolean,
         val codeChallenge: String,
         val codeExpiresAt: Long,
         val codeUsedAt: Long?,
         val revokedAt: Long?,
     )
+
+    /** One client the owner allowed as an agent, for the owner's list. */
+    data class Connection(val id: String, val clientName: String, val redirectUri: String, val createdAt: Long, val lastUsedAt: Long?)
 
     /** What the token endpoint hands over. */
     data class Issued(val accessToken: String, val refreshToken: String, val expiresInS: Long, val scope: String)
@@ -53,7 +58,7 @@ class OAuth(private val db: Database, private val tokenSecret: String, private v
         for (uri in redirectUris) redirectProblem(uri)?.let { throw Refused("invalid_redirect_uri", it) }
         val cleanName = name?.jsTrim()?.takeIf { it.isNotEmpty() }?.let {
             if (it.length > NAME_MAX) throw Refused("invalid_client_metadata", "client_name is at most $NAME_MAX characters")
-            it.filter { c -> !c.isISOControl() }
+            displayable(it).jsTrim().ifEmpty { null }
         } ?: "An MCP client"
         val cleanUri = clientUri?.jsTrim()?.takeIf { it.isNotEmpty() }?.also {
             if (it.length > URI_MAX || !it.startsWith("https://") && !it.startsWith("http://")) {
@@ -62,8 +67,15 @@ class OAuth(private val db: Database, private val tokenSecret: String, private v
         }
         sweep()
         val now = clock()
+        // Full of clients nobody allowed: the oldest makes room, so filling it never locks real clients out.
         val waiting = db.one("SELECT count(*) FROM oauth_clients WHERE approved_at IS NULL") { it.getInt(1) } ?: 0
-        if (waiting >= MAX_UNAPPROVED_CLIENTS) throw Refused("temporarily_unavailable", "too many clients are registered and not yet allowed; try again later", 503)
+        if (waiting >= MAX_UNAPPROVED_CLIENTS) {
+            val oldest = db.query(
+                "SELECT id FROM oauth_clients WHERE approved_at IS NULL AND id NOT IN (SELECT client_id FROM oauth_grants) ORDER BY seq LIMIT ?",
+                waiting - MAX_UNAPPROVED_CLIENTS + 1,
+            ) { it.getString(1) }
+            for (old in oldest) db.update("DELETE FROM oauth_clients WHERE id = ?", old)
+        }
         val id = Tokens.random()
         db.update(
             "INSERT INTO oauth_clients (id, name, client_uri, redirect_uris, address, created_at) VALUES (?, ?, ?, ?, ?, ?)",
@@ -87,6 +99,7 @@ class OAuth(private val db: Database, private val tokenSecret: String, private v
     fun redirectFor(client: Client, asked: String?): String? {
         if (asked == null) return client.redirectUris.singleOrNull()
         if (asked in client.redirectUris) return asked
+        if (redirectProblem(asked) != null) return null
         val askedLoop = loopback(asked) ?: return null
         return asked.takeIf { client.redirectUris.any { loopback(it) == askedLoop } }
     }
@@ -97,18 +110,47 @@ class OAuth(private val db: Database, private val tokenSecret: String, private v
      * The owner allowed [client] as the agent [agentId]: a grant with a one-time code, which this
      * returns (it is never stored). The code is good for [CODE_MS], once.
      */
-    fun allow(client: Client, agentId: String, resource: String, scope: String, redirectUri: String, codeChallenge: String): String {
+    fun allow(client: Client, agentId: String, resource: String, scope: String, redirectUri: String, redirectUriGiven: Boolean, codeChallenge: String): String {
         val code = Tokens.random()
         val now = clock()
         db.transaction { _ ->
             db.update(
-                "INSERT INTO oauth_grants (id, client_id, agent_id, resource, scope, redirect_uri, code_hash, code_challenge, code_expires_at, created_at) " +
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                Ulid.next(now), client.id, agentId, resource, scope, redirectUri, hash(code), codeChallenge, now + CODE_MS, now,
+                "INSERT INTO oauth_grants (id, client_id, agent_id, resource, scope, redirect_uri, redirect_uri_given, code_hash, code_challenge, " +
+                    "code_expires_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                Ulid.next(now), client.id, agentId, resource, scope, redirectUri, if (redirectUriGiven) 1 else 0, hash(code), codeChallenge,
+                now + CODE_MS, now,
             )
             db.update("UPDATE oauth_clients SET approved_at = ? WHERE id = ? AND approved_at IS NULL", now, client.id)
         }
         return code
+    }
+
+    /**
+     * The live agents an earlier, unrevoked grant allowed for this same redirect target ([redirectKey]):
+     * the only ones the page may offer first. A client's name is its own claim; where it sends the
+     * answer is not.
+     */
+    fun agentsAllowedFor(redirectUri: String): Set<String> {
+        val key = redirectKey(redirectUri) ?: return emptySet()
+        return db.query("SELECT agent_id, redirect_uri FROM oauth_grants WHERE revoked_at IS NULL AND code_used_at IS NOT NULL") {
+            it.getString(1) to it.getString(2)
+        }.filter { redirectKey(it.second) == key }.map { it.first }.toSet()
+    }
+
+    /** The owner's list of [agentId]'s live connections, newest first. */
+    fun connections(agentId: String): List<Connection> = db.query(
+        "SELECT g.id, c.name, g.redirect_uri, g.created_at, g.last_used_at FROM oauth_grants g JOIN oauth_clients c ON c.id = g.client_id " +
+            "WHERE g.agent_id = ? AND g.revoked_at IS NULL AND g.code_used_at IS NOT NULL ORDER BY g.seq DESC",
+        agentId,
+    ) { Connection(it.getString(1), it.getString(2), it.getString(3), it.getLong(4), it.longOrNull("last_used_at")) }
+
+    /** The owner revokes one connection of [agentId]'s. True when this call revoked it. */
+    fun revokeConnection(agentId: String, grantId: String): Boolean {
+        val grant = grantBy("id", grantId)?.takeIf { it.agentId == agentId && it.codeUsedAt != null }
+            ?: throw notFound("no such connection: $grantId")
+        if (grant.revokedAt != null) return false
+        revokeGrant(grant.id)
+        return true
     }
 
     // ── The token endpoint ────────────────────────────────────────────────────────────────────────
@@ -127,15 +169,21 @@ class OAuth(private val db: Database, private val tokenSecret: String, private v
             throw bad
         }
         if (grant.codeExpiresAt <= clock() || grant.revokedAt != null) throw bad
+        if (redirectUri == null && grant.redirectUriGiven) throw Refused("invalid_request", "redirect_uri is required: the authorize request sent one")
         if (redirectUri != null && redirectUri != grant.redirectUri) throw bad
         if (!pkceMatches(verifier, grant.codeChallenge)) throw Refused("invalid_grant", "code_verifier does not match the code_challenge")
         if (resource != null && resource != grant.resource) throw Refused("invalid_target", "resource is not the one this code was issued for")
         if (!agentLive(grant.agentId)) throw Refused("invalid_grant", "the agent this was allowed as has been revoked")
-        return db.transaction { _ ->
+        val issued = db.transaction { _ ->
             val marked = db.update("UPDATE oauth_grants SET code_used_at = ? WHERE id = ? AND code_used_at IS NULL", clock(), grant.id)
-            if (marked != 1) throw bad
-            issue(grant)
+            if (marked == 1) issue(grant, spent = null) else null
         }
+        if (issued == null) {
+            // Lost a race with another use of the same code: as for any second use, revoke the grant.
+            revokeGrant(grant.id)
+            throw bad
+        }
+        return issued
     }
 
     /**
@@ -162,7 +210,7 @@ class OAuth(private val db: Database, private val tokenSecret: String, private v
         return db.transaction { _ ->
             val spent = db.update("UPDATE oauth_tokens SET used_at = ? WHERE token_hash = ? AND used_at IS NULL", clock(), hash(token))
             if (spent != 1) throw bad
-            issue(grant)
+            issue(grant, spent = hash(token))
         }
     }
 
@@ -174,8 +222,17 @@ class OAuth(private val db: Database, private val tokenSecret: String, private v
         if (grant.clientId == clientId) revokeGrant(grant.id)
     }
 
-    private fun issue(grant: Grant): Issued {
+    /**
+     * A new pair for [grant]. A grant holds one access token and one live refresh token at a time:
+     * the earlier access token goes, and of the spent refresh tokens only the one just spent ([spent])
+     * is kept, to catch it coming back.
+     */
+    private fun issue(grant: Grant, spent: String?): Issued {
         val now = clock()
+        db.update(
+            "DELETE FROM oauth_tokens WHERE grant_id = ? AND (kind = 'access' OR (kind = 'refresh' AND used_at IS NOT NULL AND token_hash <> ?))",
+            grant.id, spent ?: "",
+        )
         val access = Tokens.random()
         val refresh = Tokens.random()
         db.update(
@@ -192,7 +249,7 @@ class OAuth(private val db: Database, private val tokenSecret: String, private v
     private fun grantBy(column: String, value: String): Grant? = db.one("SELECT * FROM oauth_grants WHERE $column = ?", value) { rs ->
         Grant(
             rs.getString("id"), rs.getString("client_id"), rs.getString("agent_id"), rs.getString("resource"), rs.getString("scope"),
-            rs.getString("redirect_uri"), rs.getString("code_challenge"), rs.getLong("code_expires_at"), rs.longOrNull("code_used_at"),
+            rs.getString("redirect_uri"), rs.getInt("redirect_uri_given") == 1, rs.getString("code_challenge"), rs.getLong("code_expires_at"), rs.longOrNull("code_used_at"),
             rs.longOrNull("revoked_at"),
         )
     }
@@ -201,7 +258,7 @@ class OAuth(private val db: Database, private val tokenSecret: String, private v
 
     /**
      * Expired tokens, grants that are revoked, whose code was never used or whose tokens have all
-     * expired, and clients registered a day ago that the owner never allowed, are deleted.
+     * expired, and clients registered an hour ago that the owner never allowed, are deleted.
      */
     fun sweep() {
         val now = clock()
@@ -230,7 +287,7 @@ class OAuth(private val db: Database, private val tokenSecret: String, private v
         const val ACCESS_MS = 60 * 60_000L
         const val REFRESH_MS = 90L * 24 * 60 * 60_000L
         const val REUSE_GRACE_MS = 60_000L
-        const val UNAPPROVED_KEEP_MS = 24 * 60 * 60_000L
+        const val UNAPPROVED_KEEP_MS = 60 * 60_000L
         const val SWEEP_INTERVAL_MS = 10 * 60_000L
 
         /** Schemes that can never be a client's redirect: script, data and local files, or the web without TLS. */
@@ -277,6 +334,33 @@ class OAuth(private val db: Database, private val tokenSecret: String, private v
             val parsed = runCatching { URI(uri) }.getOrNull() ?: return null
             if (parsed.scheme?.lowercase() != "http" || !isLoopbackHost(parsed.host)) return null
             return "http://${parsed.host.lowercase()}${parsed.rawPath.orEmpty()}${parsed.rawQuery?.let { "?$it" }.orEmpty()}"
+        }
+
+        /**
+         * [s] without what could hide or reorder text on the page: control characters, Unicode format
+         * characters (bidirectional overrides, zero-width joiners and spaces, tags) and line separators.
+         */
+        fun displayable(s: String): String = buildString {
+            s.codePoints().forEach { cp ->
+                val type = Character.getType(cp)
+                val hidden = Character.isISOControl(cp) || type == Character.FORMAT.toInt() ||
+                    type == Character.LINE_SEPARATOR.toInt() || type == Character.PARAGRAPH_SEPARATOR.toInt()
+                if (!hidden) appendCodePoint(cp)
+            }
+        }
+
+        /**
+         * What makes two redirect URIs the same place, for offering an agent first: an https origin,
+         * or an app scheme's whole URI. Loopback has none: any program on the computer can listen there.
+         */
+        fun redirectKey(uri: String): String? {
+            val u = runCatching { URI(uri) }.getOrNull() ?: return null
+            return when (val scheme = u.scheme?.lowercase()) {
+                null -> null
+                "https" -> u.host?.let { "https://${it.lowercase()}${if (u.port == -1 || u.port == 443) "" else ":${u.port}"}" }
+                "http" -> null
+                else -> "$scheme:${u.rawSchemeSpecificPart.substringBefore('?')}"
+            }
         }
 
         /** RFC 7636: a 43-128 character verifier whose base64url SHA-256 is the challenge. */

@@ -77,18 +77,19 @@ class Agents(private val db: Database, private val tokenSecret: String, private 
      */
     private fun oauthAccess(hash: String): Pair<Agent?, Refusal?> {
         val found = db.one(
-            "SELECT t.token_hash AS hash, t.expires_at AS token_expires, g.revoked_at AS grant_revoked, a.* FROM oauth_tokens t " +
+            "SELECT t.token_hash AS hash, t.expires_at AS token_expires, g.revoked_at AS grant_revoked, g.id AS grant_id, a.* FROM oauth_tokens t " +
                 "JOIN oauth_grants g ON g.id = t.grant_id JOIN agents a ON a.id = g.agent_id WHERE t.token_hash = ? AND t.kind = 'access'",
             hash,
-        ) { Triple(it.getString("hash"), it.getLong("token_expires") to it.longOrNull("grant_revoked"), row(it)) }
+        ) { Triple(it.getString("hash"), Triple(it.getLong("token_expires"), it.longOrNull("grant_revoked"), it.getString("grant_id")), row(it)) }
         if (found == null || !Tokens.same(found.first, hash)) return null to Refusal("unknown_token", "unknown bearer token: no agent holds it")
-        val (expires, grantRevoked) = found.second
+        val (expires, grantRevoked, grantId) = found.second
         val agent = found.third
         if (agent.revokedAt != null || grantRevoked != null) {
             return null to Refusal("revoked_token", "revoked bearer token: sign in again, or ask the dashboard owner to allow this client again")
         }
         if (expires <= clock()) return null to Refusal("expired_token", "expired access token: use your refresh token, or sign in again")
         db.update("UPDATE agents SET last_seen_at = ${db.greatest("coalesce(last_seen_at, 0)", "?")} WHERE id = ?", clock(), agent.id)
+        db.update("UPDATE oauth_grants SET last_used_at = ${db.greatest("coalesce(last_used_at, 0)", "?")} WHERE id = ?", clock(), grantId)
         return agent to null
     }
 

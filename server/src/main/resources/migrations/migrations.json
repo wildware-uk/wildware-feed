@@ -354,6 +354,6 @@
   "name": "oauth",
   "file": "051-oauth.sql",
   "rebuildsTables": false,
-  "checksum": "3056f263fdad58dad8d31800c5457aabb8968c35a10b1ec02f4d7033a7fc8ed9"
+  "checksum": "512d226797c16c7b25916c54e0be6329fa90352a496c00783481b3625218d12f"
  }
 ]

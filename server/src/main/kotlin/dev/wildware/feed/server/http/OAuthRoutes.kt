@@ -95,8 +95,35 @@ fun Route.oauthRoutes(app: App) {
             when (form["action"]) {
                 "sign_in" -> signIn(app, call, request, form["password"])
                 "allow", "deny" -> decide(app, call, request, form)
+                "sign_out" -> call.respondRedirect303("/oauth/authorize?${request.query()}", "Set-Cookie" to OwnerSession.clear(app), *NO_STORE)
                 else -> call.page(400, OAuthPage.problem("That was not a choice this page offers. Start again from the app you are connecting."))
             }
+        },
+    )
+
+    // The owner's side (behind the guard, like every /api route): an agent's connections, and revoking one.
+    endpoint(
+        "/api/agents/{id}/connections",
+        HttpMethod.Get to {
+            val agent = app.agents.find(call.parameters["id"].orEmpty()) ?: throw dev.wildware.feed.server.domain.notFound("no such agent")
+            call.respondOwner(200, buildJsonObject {
+                put("connections", JsonArray(app.oauth.connections(agent.id).map { c ->
+                    buildJsonObject {
+                        put("id", c.id)
+                        put("clientName", c.clientName)
+                        put("redirectOrigin", formTarget(c.redirectUri)?.removeSuffix(":") ?: c.redirectUri)
+                        put("createdAt", Wire.isoOf(c.createdAt))
+                        put("lastUsedAt", c.lastUsedAt?.let { JsonPrimitive(Wire.isoOf(it)) } ?: JsonNull)
+                    }
+                }))
+            })
+        },
+    )
+    endpoint(
+        "/api/agents/{id}/connections/{connection}",
+        HttpMethod.Delete to {
+            val revoked = app.oauth.revokeConnection(call.parameters["id"].orEmpty(), call.parameters["connection"].orEmpty())
+            call.respondOwner(200, buildJsonObject { put("revoked", revoked) })
         },
     )
 
@@ -211,6 +238,9 @@ class AuthRequest(
     val scope: String,
     private val asked: Map<String, String>,
 ) {
+    /** Whether the request named its redirect URI: then the token request must name it too (RFC 6749 §4.1.3). */
+    val redirectUriGiven: Boolean get() = "redirect_uri" in asked
+
     /** The request's own parameters, to carry through the page's forms and back to GET. */
     val hidden: List<Pair<String, String>> get() = asked.toList()
 
@@ -289,6 +319,10 @@ object OwnerSession {
         return "${cookieName(app)}=$value; Path=/; Max-Age=${TTL_MS / 1000}; HttpOnly; SameSite=Lax" + if (secure(app)) "; Secure" else ""
     }
 
+    /** A Set-Cookie header that ends the session. */
+    fun clear(app: App): String =
+        "${cookieName(app)}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax" + if (secure(app)) "; Secure" else ""
+
     /** The session's nonce, or null when there is no valid session. */
     fun read(app: App, call: ApplicationCall): String? {
         val raw = call.request.cookies.rawCookies[cookieName(app)] ?: return null
@@ -303,16 +337,24 @@ object OwnerSession {
         Tokens.base64url(Tokens.hmac(app.config.sessionSecret, "oauth-csrf:v1:$nonce:${request.binding}"))
 }
 
-private fun consent(app: App, request: AuthRequest, nonce: String, error: String?, name: String? = null, chosen: String? = null): String {
+/**
+ * The Allow page. A new agent is the default. An existing agent is offered first only when the
+ * owner allowed this same redirect target for it before ([OAuth.agentsAllowedFor]); never because of
+ * the client's name, which anyone registering a client can choose.
+ */
+private fun consent(app: App, request: AuthRequest, nonce: String, error: String?, name: String? = null): String {
     val agents = app.agents.list(includeRevoked = false)
     val suggested = (name ?: request.client.name).take(OAuth.NAME_MAX)
-    // Reconnecting a client the owner has an agent for already: offer that agent first.
-    val existing = chosen ?: agents.firstOrNull { it.name.equals(suggested, ignoreCase = true) }?.id
+    val before = app.oauth.agentsAllowedFor(request.redirectUri)
+    val existing = agents.lastOrNull { it.id in before }?.id
     return OAuthPage.consent(request, agents, OwnerSession.csrf(app, nonce, request), suggested, existing, error)
 }
 
 private suspend fun signIn(app: App, call: ApplicationCall, request: AuthRequest, password: String?) {
-    when (val result = app.checkPassword(password, call.addressOrNull(app) ?: "unknown")) {
+    val address = call.addressOrNull(app)
+        ?: return call.page(400, OAuthPage.problem("This server cannot tell where your request came from, so it will not check a password. Ask whoever runs it to fix ADDRESS_HEADER."))
+    // Loopback stays as it is, so a desktop host's own exemption from the lockout still applies.
+    when (val result = app.checkPassword(password, if (isLoopback(address)) address else rateKey(address))) {
         is PasswordCheck.Refused -> {
             val headers = result.retryAfterS?.let { arrayOf("Retry-After" to it.toString()) } ?: emptyArray()
             call.page(result.status, OAuthPage.signIn(request, result.message), extra = headers)
@@ -346,7 +388,7 @@ private suspend fun decide(app: App, call: ApplicationCall, request: AuthRequest
                 if (taken != null) {
                     return call.page(
                         409,
-                        consent(app, request, nonce, "An agent is already called \"$clean\". Choose it under \"An agent you already have\", or pick another name.", clean, taken.id),
+                        consent(app, request, nonce, "An agent is already called \"$clean\". Choose it under \"An agent you already have\", or pick another name.", clean),
                         request.redirectUri,
                     )
                 }
@@ -356,7 +398,7 @@ private suspend fun decide(app: App, call: ApplicationCall, request: AuthRequest
     } catch (e: DomainError) {
         return call.page(400, consent(app, request, nonce, "The name ${e.message.removePrefix("name ")}.", name), request.redirectUri)
     }
-    val code = app.oauth.allow(request.client, agent.id, request.resource, request.scope, request.redirectUri, request.codeChallenge)
+    val code = app.oauth.allow(request.client, agent.id, request.resource, request.scope, request.redirectUri, request.redirectUriGiven, request.codeChallenge)
     call.respondRedirect303(AuthRequest.answerUrl(request.redirectUri, listOf("code" to code, "state" to request.state, "iss" to issuer)), *NO_STORE)
 }
 
@@ -453,8 +495,31 @@ private fun ApplicationCall.sameOrigin(app: App): Boolean {
 
 private fun ApplicationCall.addressOrNull(app: App): String? = runCatching { clientAddress(app.config) }.getOrNull()
 
+/**
+ * The key an address is limited under: an IPv4 address as it is, an IPv6 one by its /64, since one
+ * home or server usually holds a whole /64 and could otherwise rotate through it.
+ */
+internal fun rateKey(address: String): String {
+    val a = address.removePrefix("[").removeSuffix("]").substringBefore('%')
+    if (!a.contains(':') || !Regex("^[0-9A-Fa-f:.]+$").matches(a)) return address
+    val bytes = runCatching { java.net.InetAddress.getByName(a).address }.getOrNull() ?: return address
+    if (bytes.size != 16) return address
+    return bytes.take(8).chunked(2).joinToString(":") { "%02x%02x".format(it[0], it[1]) } + "::/64"
+}
+
+/**
+ * One from [limiter] for this client's address, or the refusal sent. With no address to go on (the
+ * configured address header is missing) it refuses rather than share one bucket with everyone.
+ */
 private suspend fun ApplicationCall.allowedOAuth(limiter: SlidingLimiter, app: App, page: Boolean = false): Boolean {
-    val verdict = limiter.take(addressOrNull(app) ?: "unknown")
+    val address = addressOrNull(app)
+    if (address == null) {
+        val why = "this server cannot tell where the request came from (its address header is missing)"
+        if (page) page(400, OAuthPage.problem("This server cannot tell where your request came from. Ask whoever runs it to fix ADDRESS_HEADER."))
+        else respondJson(400, oauthBody("invalid_request", why), Wire.JSON_UTF8, *CORS)
+        return false
+    }
+    val verdict = limiter.take(rateKey(address))
     if (verdict.allowed) return true
     val s = verdict.retryAfterSeconds
     if (page) page(429, OAuthPage.problem("Too many tries from this address. Wait $s seconds and start again."), extra = arrayOf("Retry-After" to s.toString()))

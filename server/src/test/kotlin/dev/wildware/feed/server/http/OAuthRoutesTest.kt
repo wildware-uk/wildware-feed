@@ -7,6 +7,7 @@ import dev.wildware.feed.server.auth.Tokens
 import dev.wildware.feed.server.db.Database
 import dev.wildware.feed.server.domain.OAuth
 import io.ktor.client.HttpClient
+import io.ktor.client.request.delete
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.options
@@ -404,19 +405,51 @@ class OAuthRoutesTest {
     }
 
     @Test
-    fun `the page offers the agent of the same name, and a taken name is refused`() = withApp {
+    fun `a new agent is the default, whatever the client calls itself, and a taken name is refused`() = withApp {
+        // An attacker registers "Cursor" to take over the owner's Cursor agent with one click on Allow.
         val (agent, _) = app.agents.mint("Cursor")
-        val clientId = newClient("Cursor")
-        val query = authorizeQuery(clientId, challenge(verifier()))
+        val clientId = newClient("Cursor", redirect = "https://evil.example.com/cb")
+        val query = authorizeQuery(clientId, challenge(verifier()), redirect = "https://evil.example.com/cb")
         signIn(query)
         val html = page(query).bodyAsText()
-        assertTrue(html.contains("value=\"existing\" checked"))
-        assertTrue(html.contains("<option value=\"${agent.id}\" selected>Cursor</option>"))
+        assertTrue(html.contains("value=\"new\" checked"))
+        assertFalse(html.contains(" selected>"))
+        assertTrue(html.contains("https://evil.example.com/cb"), "the full redirect URI is shown")
         val r = post("/oauth/authorize", "$query&${form("action" to "allow", "csrf" to csrfOf(html), "choice" to "new", "name" to "cursor")}")
         assertEquals(409, r.status.value)
-        assertTrue(r.bodyAsText().contains("already called"))
+        val again = r.bodyAsText()
+        assertTrue(again.contains("already called"))
+        assertTrue(again.contains("value=\"new\" checked") && !again.contains(" selected>"), "the clash does not preselect the agent either")
         val blank = post("/oauth/authorize", "$query&${form("action" to "allow", "csrf" to csrfOf(html), "choice" to "new", "name" to "  ")}")
         assertEquals(400, blank.status.value)
+        assertEquals(listOf(agent.id), app.agents.list(false).map { it.id })
+    }
+
+    @Test
+    fun `an agent is offered first only when it was allowed before for the same redirect target`() = withApp {
+        val target = "https://app.example.com/oauth/cb"
+        val first = newClient("Some app", redirect = target)
+        val v1 = verifier()
+        val q1 = authorizeQuery(first, challenge(v1), redirect = target)
+        signIn(q1)
+        val made = post("/oauth/authorize", "$q1&${form("action" to "allow", "csrf" to csrfOf(page(q1).bodyAsText()), "choice" to "new", "name" to "web-agent")}")
+        assertEquals(303, made.status.value)
+        val agent = app.agents.list(false).single()
+        // Only a grant whose code was used counts as a connection.
+        assertTrue(app.oauth.agentsAllowedFor(target).isEmpty())
+        val code = parseQueryString(made.headers["Location"]!!.substringAfter('?'))["code"]!!
+        assertEquals(200, token("grant_type" to "authorization_code", "code" to code, "client_id" to first, "redirect_uri" to target, "code_verifier" to v1).status.value)
+
+        val second = newClient("Some app", redirect = target)
+        val q2 = authorizeQuery(second, challenge(verifier()), redirect = target)
+        val html = page(q2).bodyAsText()
+        assertTrue(html.contains("value=\"existing\" checked"))
+        assertTrue(html.contains("<option value=\"${agent.id}\" selected>web-agent</option>"))
+
+        // Another site, same name: not offered.
+        val other = newClient("Some app", redirect = "https://other.example.com/cb")
+        val q3 = authorizeQuery(other, challenge(verifier()), redirect = "https://other.example.com/cb")
+        assertFalse(page(q3).bodyAsText().contains(" selected>"))
     }
 
     @Test
@@ -473,5 +506,115 @@ class OAuthRoutesTest {
         assertNotNull(OAuth.redirectProblem("https://x.example.com/cb\n"))
         assertEquals("https://dashboard.example.com", OAuthUrls.canonical("HTTPS://Dashboard.Example.com:443/"))
         assertNull(URI("https://a.example.com").rawFragment)
+    }
+
+    @Test
+    fun `refreshing replaces the access token, keeps one spent refresh token, and the rate limit is per agent`() = withApp {
+        val tokens = connect("Busy")
+        val clientId = tokens.s("client_id")
+        var refresh = tokens.s("refresh_token")
+        var access = tokens.s("access_token")
+        val accesses = mutableListOf(access)
+        repeat(5) {
+            val next = token("grant_type" to "refresh_token", "refresh_token" to refresh, "client_id" to clientId).bodyAsText().json()
+            refresh = next.s("refresh_token"); access = next.s("access_token"); accesses += access
+        }
+        // One access, one live refresh, one spent refresh: refreshing does not pile up rows.
+        assertEquals(listOf("access" to 1, "refresh" to 2), app.db.query("SELECT kind, count(*) FROM oauth_tokens GROUP BY kind ORDER BY kind") { it.getString(1) to it.getInt(2) })
+        for (old in accesses.dropLast(1)) assertEquals(401, mcp(old).status.value)
+        assertEquals(200, mcp(access, "ping", "{}").status.value)
+
+        // Fresh tokens buy no more requests: 120 a minute for the agent, across all its tokens.
+        val agent = app.agents.list(false).single()
+        repeat(119) { assertEquals(200, mcp(access, "ping", "{}").status.value, "request $it") }
+        assertEquals(429, mcp(access, "ping", "{}").status.value)
+        val fresh = token("grant_type" to "refresh_token", "refresh_token" to refresh, "client_id" to clientId).bodyAsText().json().s("access_token")
+        assertEquals(429, mcp(fresh, "ping", "{}").status.value)
+        assertEquals("Busy", agent.name)
+    }
+
+    @Test
+    fun `a full registry makes room by dropping the oldest client nobody allowed`() = withApp {
+        val first = app.oauth.register("first", null, listOf(REDIRECT), "192.0.2.1")
+        repeat(OAuth.MAX_UNAPPROVED_CLIENTS - 1) { app.oauth.register("filler", null, listOf(REDIRECT), "192.0.2.1") }
+        val newest = app.oauth.register("real client", null, listOf(REDIRECT), "198.51.100.7")
+        assertNull(app.oauth.client(first.id))
+        assertNotNull(app.oauth.client(newest.id))
+        assertEquals(OAuth.MAX_UNAPPROVED_CLIENTS, app.db.one("SELECT count(*) FROM oauth_clients") { it.getInt(1) })
+        // And they are gone after an hour anyway.
+        now += OAuth.UNAPPROVED_KEEP_MS + 1
+        app.oauth.sweep()
+        assertEquals(0, app.db.one("SELECT count(*) FROM oauth_clients") { it.getInt(1) })
+    }
+
+    @Test
+    fun `IPv6 addresses are limited by their 64-bit prefix`() {
+        assertEquals("2001:0db8:0001:0002::/64", rateKey("2001:db8:1:2:aaaa::1"))
+        assertEquals(rateKey("2001:db8:1:2::1"), rateKey("[2001:db8:1:2:ffff:ffff:ffff:ffff]"))
+        assertEquals("192.0.2.7", rateKey("192.0.2.7"))
+    }
+
+    @Test
+    fun `a client name loses characters that hide or reorder text`() = withApp {
+        val r = register("""{"client_name":"Cur\u202esor\u200b\u2066 App\u0007\uDB40\uDC41","redirect_uris":["$REDIRECT"]}""")
+        assertEquals("Cursor App", r.bodyAsText().json().s("client_name"))
+        assertEquals("An MCP client", register("""{"client_name":"\u200b\u202e","redirect_uris":["$REDIRECT"]}""").bodyAsText().json().s("client_name"))
+    }
+
+    @Test
+    fun `the token request must repeat a redirect URI the authorize request sent`() = withApp {
+        val clientId = newClient()
+        val v = verifier()
+        val code = allow(authorizeQuery(clientId, challenge(v)), "choice" to "new", "name" to "strict")["code"]!!
+        val r = token("grant_type" to "authorization_code", "code" to code, "client_id" to clientId, "code_verifier" to v)
+        assertEquals("invalid_request", r.bodyAsText().json().s("error"))
+        // Without one in the authorize request, the client's only redirect URI is used and need not be repeated.
+        val v2 = verifier()
+        val code2 = allow(authorizeQuery(clientId, challenge(v2), redirect = null), "choice" to "new", "name" to "lenient")["code"]!!
+        assertEquals(200, token("grant_type" to "authorization_code", "code" to code2, "client_id" to clientId, "code_verifier" to v2).status.value)
+    }
+
+    @Test
+    fun `the loser of a race to use a code revokes the grant too`() = withApp {
+        val clientId = newClient()
+        val v = verifier()
+        val code = allow(authorizeQuery(clientId, challenge(v)), "choice" to "new", "name" to "race")["code"]!!
+        // The other use lands between this one's checks and its write.
+        val refused = runCatching {
+            app.oauth.redeem(code, clientId, REDIRECT, v, null) { app.db.update("UPDATE oauth_grants SET code_used_at = ?", now); true }
+        }.exceptionOrNull()
+        assertEquals("invalid_grant", (refused as OAuth.Refused).error)
+        assertNotNull(app.db.one("SELECT revoked_at FROM oauth_grants") { it.getLong(1).takeIf { _ -> !it.wasNull() } })
+    }
+
+    @Test
+    fun `the owner lists an agent's connections and revokes one`() = withApp {
+        val key = app.devices.mint("Phone").second
+        val tokens = connect("Claude Code")
+        val agent = app.agents.list(false).single()
+        mcp(tokens.s("access_token"), "ping", "{}")
+        assertEquals(401, http.get("/api/agents/${agent.id}/connections").status.value)
+        val listed = http.get("/api/agents/${agent.id}/connections") { header("Authorization", "Bearer $key") }.bodyAsText().json()
+        val row = listed["connections"]!!.jsonArray.single().jsonObject
+        assertEquals("Claude Code", row.s("clientName"))
+        assertEquals("http://127.0.0.1:33418", row.s("redirectOrigin"))
+        assertTrue(row.s("lastUsedAt").isNotEmpty())
+        val revoked = http.delete("/api/agents/${agent.id}/connections/${row.s("id")}") { header("Authorization", "Bearer $key") }
+        assertEquals("true", revoked.bodyAsText().json().s("revoked"))
+        assertEquals(401, mcp(tokens.s("access_token")).status.value)
+        assertTrue(http.get("/api/agents/${agent.id}/connections") { header("Authorization", "Bearer $key") }.bodyAsText().json()["connections"]!!.jsonArray.isEmpty())
+        assertEquals(404, http.delete("/api/agents/${agent.id}/connections/nope") { header("Authorization", "Bearer $key") }.status.value)
+    }
+
+    @Test
+    fun `signing out ends the page's session`() = withApp {
+        val query = authorizeQuery(newClient(), challenge(verifier()))
+        signIn(query)
+        assertTrue(page(query).bodyAsText().contains("Sign out of this page"))
+        val out = post("/oauth/authorize", "$query&${form("action" to "sign_out")}")
+        assertEquals(303, out.status.value)
+        assertTrue(out.headers["Set-Cookie"]!!.contains("Max-Age=0"))
+        cookie = null
+        assertTrue(page(query).bodyAsText().contains("type=\"password\""))
     }
 }

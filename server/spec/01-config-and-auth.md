@@ -466,7 +466,7 @@ Usage errors print `<message>`, a blank line, then the usage, to stderr: `no com
 4. **Blank password is `""` only.** A missing or non-string password costs a guess and says "That password is not right." (`src/http/auth/login.ts:102,116-119`). Blank is checked before the limiter, so it gets 400 even while locked out.
 5. **Device sign-in maps blank password to `"error":"wrong_password"`** with the message `Enter your password.` (any 400 from the check → `wrong_password`, `src/http/owner/devices.ts:134`).
 6. **Agent-route refusals differ by route**: `/mcp` → JSON-RPC envelope + `WWW-Authenticate` + `Retry-After`; `/api/agent/stream` → `{error,message}` with no `WWW-Authenticate`/`Retry-After` even on 429; `/api/agent/media` → 404 for everything, including rate-limit.
-7. **Three separate per-token limiters** (one per route), so the real ceiling is 120/min per route, not per token.
+7. **Three separate per-token limiters** (one per route), so the real ceiling is 120/min per route, not per token. The Kotlin server keys them per agent instead (spec/11-oauth.md §5).
 8. **Rate limit is spent before identity**, so a revoked token keeps eating its own bucket; a refused request is not recorded.
 9. **SvelteKit CSRF covers non-browser clients.** Any POST/PUT/PATCH/DELETE with `Content-Type: text/plain`, form-urlencoded or multipart and no matching `Origin` → 403, on every path. An agent `PUT /api/upload/<t>` with `Content-Type: text/plain` (a log file) and no `Origin` is refused before the app runs. `curl` login needs `-H 'Origin: <ORIGIN>'`.
 10. **adapter-node drops the body of any request without `Content-Type`** (`get_raw_body` returns null).

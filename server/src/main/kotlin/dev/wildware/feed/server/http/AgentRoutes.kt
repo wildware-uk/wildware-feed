@@ -71,14 +71,15 @@ private suspend fun ApplicationCall.agentFor(app: App, limiter: dev.wildware.fee
 
     val (token, refusal) = app.agents.parseBearer(request.headers["Authorization"])
     if (refusal != null) { refuse(401, refusal.code, refusal.message); return null }
-    val verdict = limiter.take(app.agents.hashOf(token!!))
+    val (agent, denied) = app.agents.authenticate(token!!)
+    if (denied != null) { refuse(401, denied.code, denied.message); return null }
+    // Counted per agent, not per token: an OAuth client refreshing for new tokens gets no more.
+    val verdict = limiter.take(agent!!.id)
     if (!verdict.allowed) {
         val s = verdict.retryAfterSeconds
         refuse(429, "rate_limited", "rate limit exceeded for this token: retry after ${s}s", s)
         return null
     }
-    val (agent, denied) = app.agents.authenticate(token)
-    if (denied != null) { refuse(401, denied.code, denied.message); return null }
     return agent
 }
 

@@ -33,11 +33,16 @@ JSON, at most 16 KiB. `redirect_uris` is required (1–10). Each must be `https`
 user info), `http` to a loopback host (`localhost`, `127.x.x.x`, `[::1]`), or a private-use scheme an
 app registers (`cursor:`, `vscode:`, …). Never `javascript:`, `data:`, `file:` and similar; never a
 fragment, whitespace or more than 2000 characters. `grant_types` ⊆ {authorization_code,
-refresh_token}; `response_types` ⊆ {code}. `client_name` (≤ 100, control characters dropped, default
+refresh_token}; `response_types` ⊆ {code}. `client_name` (≤ 100; control characters, Unicode format
+characters such as bidirectional overrides and zero-width ones, and line separators dropped; default
 "An MCP client") and `client_uri` are kept. Whatever `token_endpoint_auth_method` is asked, the answer
 is `none`: every client is public and proves itself with PKCE. 201 with `client_id` (43 random
 characters), `client_id_issued_at` and the metadata. Errors: 400 `invalid_redirect_uri` /
-`invalid_client_metadata`, 413, 503 when 500 clients are waiting unallowed. 20 an hour per address.
+`invalid_client_metadata`, 413. At most 500 clients nobody has allowed are kept: when full, the
+oldest goes to make room, and each is forgotten after an hour anyway. 20 an hour per address.
+
+Every limit here is per client address, an IPv6 one by its /64. A request whose address cannot be
+told (the configured `ADDRESS_HEADER` is missing) is refused, never counted under a shared key.
 
 ## 3. The authorize page — `/oauth/authorize`
 
@@ -57,10 +62,14 @@ plus `action`). Checks, in order:
    then 303 back to the GET. The signature is HMAC-SHA256 with `SESSION_SECRET` over the expiry, the
    nonce and a hash of the password hash, so a new password ends every session. The cookie signs in
    nothing but this page.
-4. Signed in: "<client name> wants to connect as an agent", where the answer will go (the
-   redirect host, or "an app on this computer" for loopback, or "the app that opens x:// links"),
-   a choice of a new agent (named after the client) or an existing one (preselected when one has the
-   client's name), and Deny / Allow. The form carries `csrf` = HMAC(`SESSION_SECRET`, nonce + client,
+4. Signed in: "<client name> wants to connect as an agent", where the answer will go (the full
+   https redirect URI, "an app on this computer" for loopback, or "the app that opens x: links" with
+   the URI), a choice of a new agent (named after the client) or an existing one, and Deny / Allow.
+   A new agent is the default. An existing agent is preselected only when an earlier connection
+   allowed it for the same redirect target: the same https origin, or the same app-scheme URI.
+   Never by name, since the client chooses its own name, and never for loopback, where any program
+   can listen. A name that clashes is refused on the page without preselecting anything.
+   `action=sign_out` (a button on the page) clears the cookie. The form carries `csrf` = HMAC(`SESSION_SECRET`, nonce + client,
    redirect URI, state, challenge, resource, scope).
 5. `action=allow|deny` needs the session cookie (else 401 and the password form) and that exact
    `csrf` (else 403). Every `POST` must be same-origin: `Sec-Fetch-Site: same-origin` when the browser
@@ -79,16 +88,18 @@ Form-encoded, at most 16 KiB; `client_id` in the body (or as HTTP Basic's user).
 `Cache-Control: no-store`. Errors are RFC 6749 §5.2 JSON `{error, error_description}`: 401
 `invalid_client` for an unknown client, else 400.
 
-- `authorization_code`: `code`, `code_verifier`, optional `redirect_uri` and `resource`. The code
-  must be this client's, unused, under 2 minutes old, for this redirect URI and resource, its
-  grant and agent unrevoked, and `base64url(sha256(code_verifier))` its challenge. A code used a
-  second time is refused and its grant revoked (what the first use made stops working).
+- `authorization_code`: `code`, `code_verifier`, `redirect_uri` (required when the authorize request
+  sent one, else `invalid_request`), optional `resource`. The code must be this client's, unused,
+  under 2 minutes old, for this redirect URI and resource, its grant and agent unrevoked, and
+  `base64url(sha256(code_verifier))` its challenge. A code used a second time, including the loser
+  of two uses at once, is refused and its grant revoked (what the first use made stops working).
 - `refresh_token`: `refresh_token`, optional `resource`. Rotates: the old refresh token is spent. A
   spent one presented again within 60 seconds is only refused (a client racing itself); later, the
   whole grant is revoked.
 - Answer: `{access_token, token_type: "Bearer", expires_in: 3600, refresh_token, scope: "agent"}`.
   Both tokens are 43-character random strings, the same shape as agent tokens. Refresh tokens last
-  90 days.
+  90 days. A grant holds one access token at a time: a refresh deletes the earlier one, and keeps
+  only the refresh token it just spent, to catch it coming back.
 
 `POST /oauth/revoke` (`token`, `client_id`): revokes the token's grant when it is that client's;
 200 with an empty body either way. The token endpoint's 60 a minute per address covers both.
@@ -99,13 +110,23 @@ An access token is accepted wherever an agent token is (`/mcp`, `/api/agent/stre
 `Agents.authenticate` looks in `agents` first, then `oauth_tokens` (kind `access`). It is that
 agent, exactly. Refusals add `expired_token` ("expired access token: use your refresh token, or sign
 in again") and use `revoked_token` when the grant or the agent is revoked. A refresh token is never
-an access token. Revoking the agent ends its OAuth tokens and refreshes.
+an access token. Revoking the agent ends its OAuth tokens and refreshes. The per-token rate
+limits (spec 01) count per agent on the Kotlin server, so new tokens never buy more requests.
 
-## 6. Storage (migration 051)
+## 6. The owner's side
+
+- `GET /api/agents/{id}/connections` → `{connections: [{id, clientName, redirectOrigin, createdAt,
+  lastUsedAt}]}`: the agent's live connections, newest first. `redirectOrigin` is the https or
+  loopback origin, or `scheme:` for an app scheme. `lastUsedAt` is the last request made with one of
+  its access tokens, or null.
+- `DELETE /api/agents/{id}/connections/{connection}` → `{revoked: true|false}`: revokes that one
+  connection; the agent and its other tokens keep working. 404 for a connection that is not that agent's.
+
+## 7. Storage (migration 051)
 
 `oauth_clients` (id, name, client_uri, redirect_uris JSON, address, created_at, approved_at),
-`oauth_grants` (one per Allow: client, agent, resource, scope, redirect URI, code hash, challenge,
-code expiry and use, revoked_at) and `oauth_tokens` (token hash, grant, kind, created, expires,
+`oauth_grants` (one per Allow: client, agent, resource, scope, redirect URI and whether the request
+named it, code hash, challenge, code expiry and use, last use, revoked_at) and `oauth_tokens` (token hash, grant, kind, created, expires,
 used_at for spent refresh tokens). Codes and tokens are stored only as HMAC-SHA256 with
 `TOKEN_SECRET`, like agent tokens. Every 10 minutes expired tokens, grants revoked, never redeemed or with no live token left,
-and clients never allowed after a day are deleted. Nothing logs a code or a token.
+and clients never allowed after an hour are deleted. Nothing logs a code or a token.

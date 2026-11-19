@@ -113,8 +113,8 @@ private suspend fun ApplicationCall.ownerUpload(app: App) {
 /** May this bearer fetch agent media? Any refusal is the same 404 (spec/07 §8). */
 private fun ApplicationCall.agentMayFetch(app: App): Boolean {
     val token = app.agents.parseBearer(request.headers["Authorization"]).first ?: return false
-    if (!app.agentMediaLimiter.take(app.agents.hashOf(token)).allowed) return false
-    return app.agents.authenticate(token).first != null
+    val agent = app.agents.authenticate(token).first ?: return false
+    return app.agentMediaLimiter.take(agent.id).allowed
 }
 
 private suspend fun ApplicationCall.mediaMiss() =
