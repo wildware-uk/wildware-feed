@@ -9,6 +9,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
@@ -109,6 +110,10 @@ class McpEdgeTest : ParityTest() {
         "id" to p["id"], "slug" to p["slug"], "name" to p["name"], "description" to p["description"],
         "status" to status, "pinned" to false, "created_at" to TS, "updated_at" to TS, "theme" to theme,
     )
+
+    /** A channel as list_projects shows it: the Kotlin server adds the project (group) it is in (spec/12). */
+    private fun listed(p: JsonObject, status: String = "active") =
+        if (Parity.kotlin) JsonObject(project(p, status) + ("group" to JsonNull)) else project(p, status)
 
     private fun update(id: String, projectId: String, agentId: String, bodyChars: Int, title: String? = null, level: String = "info", session: String? = null, edited: Boolean = false) = obj(
         "id" to id, "project_id" to projectId, "agent_id" to agentId, "session_id" to session, "title" to title,
@@ -355,10 +360,12 @@ class McpEdgeTest : ParityTest() {
         owner.patch("/api/projects/${p.slug}", obj("status" to "archived"))
         val archived = a.tool("list_projects", obj("status" to "archived"))
         val listed = archived.structured["projects"].arr
-        assertEquals(project(obj("id" to p.id, "slug" to p.slug, "name" to p.name, "description" to null), status = "archived"), stamped(listed.single { it["id"].s == p.id }))
+        assertEquals(listed(obj("id" to p.id, "slug" to p.slug, "name" to p.name, "description" to null), status = "archived"), stamped(listed.single { it["id"].s == p.id }))
         assertTrue(listed.all { it["status"].s == "archived" })
         val n = listed.size
-        whole(archived, "$n project${if (n == 1) "" else "s"}: ${listed.joinToString(", ") { it["slug"].s }}.", stamped(archived.structured) as JsonObject)
+        // The Kotlin server says channel, its word for what the TS server called a project.
+        val word = if (Parity.kotlin) "channel" else "project"
+        whole(archived, "$n $word${if (n == 1) "" else "s"}: ${listed.joinToString(", ") { it["slug"].s }}.", stamped(archived.structured) as JsonObject)
         assertTrue(a.ok("list_projects", obj("status" to "active"))["projects"].arr.none { it["id"].s == p.id })
         // An archived project still takes updates.
         assertEquals(p.id, a.ok("post_update", obj("project" to p.slug, "body" to "into the archive"))["update"]["project_id"].s)

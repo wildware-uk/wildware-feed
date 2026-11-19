@@ -77,6 +77,9 @@ Without these variables every test is skipped, so a plain `./gradlew build` stay
   or, at a path inside an existing tool, swaps one exact piece of text or replaces one value. With `PARITY_SERVER=kotlin` (set by `run-against-kotlin.sh`) the suite expects
   the TS payload with those changes applied, nothing more, so any other difference still fails. The
   Kotlin server serves `server/src/main/resources/mcp/tools-list.json`; change the two together.
+- `ReadParityTest` compares reads byte for byte. Keys the Kotlin server adds on purpose (a channel's
+  `groupId`, the snapshot's `groups`) are listed, each with why, in its `kotlinAdditions`; each pattern
+  matches only the empty value a TS-built database has.
 - A few other checks expect a different message from the Kotlin server where it accepts more (a
   `critical` priority, say); they ask `Parity.kotlin`.
 - Video tests need `ffmpeg` on the machine running the tests (they are skipped without it).

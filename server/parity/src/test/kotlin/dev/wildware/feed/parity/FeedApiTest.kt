@@ -48,8 +48,10 @@ class FeedApiTest : ParityTest() {
         val project = body["project"].o
         assertTrue(project["slug"].s.startsWith("cafe-deja-vu-"), project["slug"].s)
         assertEquals(true, body["created"].bool)
+        // The Kotlin server adds the project (group of channels) a channel is in (spec/12).
         assertEquals(
-            listOf("seq", "id", "slug", "name", "description", "status", "pinned", "createdAt", "updatedAt", "theme", "board"),
+            listOf("seq", "id", "slug", "name", "description", "status", "pinned", "createdAt", "updatedAt", "theme", "board") +
+                if (Parity.kotlin) listOf("groupId") else emptyList(),
             project.keys.toList(),
         )
 

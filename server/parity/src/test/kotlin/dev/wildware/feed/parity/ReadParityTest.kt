@@ -78,9 +78,20 @@ class ReadParityTest : ParityTest() {
     }
 
     /** The stream position and the clock differ between any two servers; everything else must not. */
-    private fun normalise(body: String) = withoutReader(body)
+    private fun normalise(body: String) = kotlinAdditions.fold(withoutReader(body)) { text, (_, pattern) -> pattern.replace(text, "") }
         .replaceFirst(Regex("^\\{\"seq\":\\d+,\"at\":\"[^\"]*\""), "{\"seq\":0,\"at\":\"\"")
         .replaceFirst(Regex("^\\{\"at\":\"[^\"]*\""), "{\"at\":\"\"")
+
+    /**
+     * Keys the Kotlin server adds on purpose, each with why, taken out before comparing. Each pattern
+     * matches only the empty value a TS-built database has, so a filled one still differs. The TS
+     * server is retired; add to this list rather than loosening the comparison.
+     */
+    private val kotlinAdditions: List<Pair<String, Regex>> = if (!Parity.kotlin) emptyList() else listOf(
+        // Channels and projects (spec/12): a channel names its group, and the snapshot lists the groups.
+        "a project row's groupId, its last key" to Regex(""","groupId":null(?=\})"""),
+        "the snapshot's groups" to Regex(""","groups":\[\](?=,"tags":)"""),
+    )
 
     /** `/api/devices` without the reader's own entry. */
     private fun withoutReader(body: String): String {
