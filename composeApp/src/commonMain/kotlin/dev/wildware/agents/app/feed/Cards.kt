@@ -5,6 +5,7 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.ui.semantics.selected
 import androidx.compose.runtime.Immutable
 import dev.wildware.agents.app.ProductName
@@ -521,7 +522,6 @@ fun QuestionCard(
                 if (showsProject() && !inThread) ProjectLabel(item.project)
             }
             TimeLeft(item.expiresAt, item.expiresIn)
-            fold?.let { IconAction(if (it.folded) Icons.ChevronRight else Icons.ChevronDown, it.label, Modifier.padding(start = 4.dp), onClick = it.toggle) }
         }
         val context = item.inReplyTo
         if (context != null && !inThread) {
@@ -529,12 +529,23 @@ fun QuestionCard(
             InReplyTo(context, item.threadId)
         }
         Spacer(Modifier.height(12.dp))
-        Text(
-            item.prompt,
-            Modifier.semantics { heading() },
-            color = colors.text,
-            style = type.title.copy(fontSize = type.title.fontSize * 1.08f),
-        )
+        // The fold arrow sits by the question, not in the header: there the agent, project and time
+        // left already fill a phone's width.
+        Row(verticalAlignment = Alignment.Top) {
+            Text(
+                item.prompt,
+                Modifier.weight(1f).semantics { heading() },
+                color = colors.text,
+                style = type.title.copy(fontSize = type.title.fontSize * 1.08f),
+            )
+            // As tall as the question's first line: its finger-sized target spills over, rather than
+            // pushing a one-line question's detail down.
+            fold?.let {
+                Box(Modifier.padding(start = 4.dp).size(44.dp, 28.dp).wrapContentSize(unbounded = true)) {
+                    IconAction(if (it.folded) Icons.ChevronRight else Icons.ChevronDown, it.label, onClick = it.toggle)
+                }
+            }
+        }
         Spacer(Modifier.height(6.dp))
         if (folded) {
             // Its header and question stay, so the owner still sees who waits and on what.
