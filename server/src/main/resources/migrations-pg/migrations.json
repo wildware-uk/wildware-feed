@@ -40,5 +40,11 @@
   "name": "channels-and-projects",
   "file": "053-channels-and-projects.sql",
   "checksum": "781625a14576bf1c639011a0bed0559746ede347fc00ca987473664268c7ea10"
+ },
+ {
+  "version": 54,
+  "name": "secrets",
+  "file": "054-secrets.sql",
+  "checksum": "363b57e99cc27617c4033bf34e504fa93a543a9196f52a5094cbf82612a20be4"
  }
 ]

@@ -68,6 +68,8 @@ data class NewRequest(
     /** In the order JavaScript would walk the object (integer-like keys first). */
     val optionMedia: List<Pair<String, String>>? = null,
     val embeds: List<NewEmbed>? = null,
+    /** For kind "secret" (`request_secret`): the name the value will be stored under. */
+    val secretName: String? = null,
 )
 
 data class NewEmbed(val type: String, val data: JsonElement?, val sourceUrl: String?)
@@ -183,12 +185,42 @@ class Requests(
     fun answer(requestId: String, value: JsonElement): OwnerRequest {
         val request = expireIfDue(mustFind(requestId))
         if (request.state != "pending") throw settledAlready(request)
+        if (request.kind == "secret") {
+            throw invalid("a secret request is answered with POST /api/requests/${request.id}/secret, so its value never sits on the request")
+        }
         val answer = validateAnswer(request, value)
         val answerValue = answer["value"]!!
         val state = if (request.kind == "confirm" && answerValue.jsBoolean == false) "rejected" else "approved"
         val row = decide(request.id, state, scalarOf(answerValue), jsonText(answer), clock())
             ?: throw settledAlready(mustFind(request.id))
         return settle(row, "answered")
+    }
+
+    /**
+     * Settle a `request_secret` once [Secrets.provide] has stored the value: the answer is the
+     * secret's name, never its value.
+     */
+    fun settleSecret(requestId: String, name: String): OwnerRequest = announceSecret(claimSecret(requestId, name))
+
+    /**
+     * The first half of [settleSecret]: the request is taken (so nobody else can answer, withdraw
+     * or time it out), but nobody is told yet. Then [announceSecret] once the value is stored, or
+     * [releaseSecret] if storing it failed.
+     */
+    fun claimSecret(requestId: String, name: String): JsonObject {
+        val request = expireIfDue(mustFind(requestId))
+        if (request.kind != "secret") throw invalid("request $requestId is not asking for a secret")
+        if (request.state != "pending") throw settledAlready(request)
+        val answer = buildJsonObject { put("kind", "secret"); put("value", name) }
+        return decide(request.id, "approved", name, jsonText(answer), clock()) ?: throw settledAlready(mustFind(request.id))
+    }
+
+    fun announceSecret(claimed: JsonObject): OwnerRequest = settle(claimed, "answered")
+
+    /** Undo [claimSecret]: the request waits again, as if it had never been answered. */
+    fun releaseSecret(claimed: JsonObject) {
+        val id = OwnerRequest(claimed).id
+        db.update("UPDATE approvals SET state = 'pending', decided_value = NULL, answer = NULL, decided_at = NULL WHERE id = ? AND state = 'approved'", id)
     }
 
     /** The owner dismisses (`DELETE /api/requests/:id`). Not idempotent: the second is a 409. */
@@ -223,6 +255,7 @@ class Requests(
         var config: LinkedHashMap<String, JsonElement>? = null
         val current = request.config
 
+        if (input.defaultGiven && request.kind == "secret") throw invalid("a secret request takes no default")
         if (input.defaultGiven) {
             val fallback = optionalText(input.default, "default", TEXT_ANSWER_MAX_LENGTH)
             if (fallback != null) {
@@ -376,7 +409,7 @@ class Requests(
     // ---- validation -------------------------------------------------------------------------------
 
     private fun assertKind(kind: String): String {
-        if (kind !in KINDS) throw invalid("kind must be one of ${KINDS.joinToString(", ")}")
+        if (kind !in KINDS && kind != "secret") throw invalid("kind must be one of ${KINDS.joinToString(", ")}")
         return kind
     }
 
@@ -410,7 +443,13 @@ class Requests(
             if (kind == "multi_choice") throw invalid("a multi_choice takes no default")
             if (kind == "confirm" && fallback != "true" && fallback != "false") throw invalid("the default for a confirm is \"true\" or \"false\"")
             if (options != null && kind != "form" && fallback !in options) throw invalid("the default must be one of the options")
+            if (kind == "secret") throw invalid("a secret request takes no default")
             config["default"] = JsonPrimitive(fallback)
+        }
+        if (kind == "secret") {
+            config["secretName"] = JsonPrimitive(input.secretName ?: throw invalid("a secret request names the secret it asks for"))
+        } else if (input.secretName != null) {
+            throw invalid("secretName is for a secret request")
         }
         if (input.min != null || input.max != null) {
             if (kind !in TEXTUAL && kind != "multi_choice") throw invalid("min and max are for a text, form or multi_choice request")
@@ -553,6 +592,7 @@ class Requests(
         fun answer(v: JsonElement) = buildJsonObject { put("kind", kind); put("value", v) }
 
         when (kind) {
+            "secret" -> throw invalid("a secret request is answered with its own route, never with a value on the request")
             "confirm" -> {
                 val b = value.jsBoolean ?: throw invalid("a confirm is answered true or false")
                 return answer(JsonPrimitive(b))

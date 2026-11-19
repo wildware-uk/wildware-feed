@@ -88,6 +88,7 @@ fun Application.feed(app: App) {
         sessionRoutes(app)
         mediaRoutes(app)
         pairingRoutes(app)
+        secretRoutes(app)
         oauthRoutes(app)
 
         // Anything else. Under /api the guard has already turned strangers away: the owner gets a

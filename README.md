@@ -213,6 +213,14 @@ The page asks whether to make a new agent or reuse one you have. Each client you
 agent, revoked the same way as any other. Tokens last an hour and renew themselves; a client you
 stop using is forgotten after 90 days.
 
+## Sharing secrets
+
+Agents and you can hand each other API keys and passwords without the value ever showing in an
+agent's conversation. Set `SECRETS_KEY` on the server (`openssl rand -base64 32`), then add
+secrets under Settings → Secrets in the app. An agent gets a one-time link from `secret_url` and
+downloads the value straight into a file; it asks you for one with `request_secret`, and hands
+one to you with `create_secret_upload`. Every use is logged. See [docs/SECRETS.md](docs/SECRETS.md).
+
 ## Turning on push
 
 Push needs a paid Apple developer account.

@@ -40,7 +40,14 @@ data class Config(
      * installed server, when it has one. Null: no web app; every page path answers 404.
      */
     val webDir: String? = null,
+    /** SECRETS_KEY and SECRETS_KEY_OLD: what seals shared secrets (docs/SECRETS.md). Null: secrets are off. */
+    val secretsKeys: SecretsKeys? = null,
 ) {
+    /** The key secrets are sealed under now, and older ones still accepted while they are re-sealed. [toString] leaves them out. */
+    class SecretsKeys(val current: String, val old: List<String> = emptyList()) {
+        override fun toString() = "SecretsKeys(${old.size} old)"
+    }
+
     /** A private S3-compatible bucket, addressed path-style. [toString] leaves the secret out. */
     data class S3(val endpoint: String, val bucket: String, val accessKeyId: String, val secretAccessKey: String, val region: String) {
         override fun toString() = "S3(endpoint=$endpoint, bucket=$bucket)"
@@ -132,6 +139,12 @@ data class Config(
                 else -> { issues += "MEDIA_STORE: MEDIA_STORE must be local or s3, not $store"; null }
             }
 
+            val secretsKey = get("SECRETS_KEY")
+            if (secretsKey != null && secretsKey.length < MIN_SECRET_LENGTH) issues += "SECRETS_KEY: SECRETS_KEY must be at least $MIN_SECRET_LENGTH characters"
+            val oldSecretsKeys = get("SECRETS_KEY_OLD")?.split(',')?.map { it.trim() }?.filter { it.isNotEmpty() }.orEmpty()
+            if (oldSecretsKeys.any { it.length < MIN_SECRET_LENGTH }) issues += "SECRETS_KEY_OLD: each old key must be at least $MIN_SECRET_LENGTH characters"
+            if (oldSecretsKeys.isNotEmpty() && secretsKey == null) issues += "SECRETS_KEY_OLD: SECRETS_KEY_OLD needs SECRETS_KEY, the key to re-seal under"
+
             if (issues.isNotEmpty()) throw Invalid(issues)
 
             val port = env["PORT"]?.takeIf { it.isNotBlank() }?.toIntOrNull() ?: 3000
@@ -159,6 +172,7 @@ data class Config(
                 ffmpegThreads = env["FFMPEG_THREADS"]?.toIntOrNull()?.takeIf { it > 0 },
                 deriveWorkers = env["DERIVE_WORKERS"]?.toIntOrNull()?.takeIf { it > 0 } ?: 2,
                 webDir = env["WEB_DIR"]?.takeIf { it.isNotBlank() } ?: dev.wildware.feed.server.http.WebApp.besideInstall(),
+                secretsKeys = secretsKey?.let { SecretsKeys(it, oldSecretsKeys.filter { old -> old != it }) },
             )
         }
 

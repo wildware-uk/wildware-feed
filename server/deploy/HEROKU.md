@@ -65,6 +65,11 @@ Crash reports are off unless you set `SENTRY_DSN` to a Sentry project's DSN
 A report carries the error's type and stack, the HTTP method and route pattern, and the server's
 version: never request contents, messages, users or addresses (`server/.../CrashReports.kt`).
 
+For shared secrets (docs/SECRETS.md) add `SECRETS_KEY` (`openssl rand -base64 32`). Keep a copy
+outside Heroku: without it the stored secrets cannot be opened, backups included. To change it, set
+the old one in `SECRETS_KEY_OLD`, restart, and remove `SECRETS_KEY_OLD` once the log says the rows
+were re-sealed.
+
 `TOKEN_SECRET` must be the old server's, or every agent token stops working. `PORT` is set by
 Heroku. The server prints `Database: Postgres` and `Media: bucket <name>` when it starts; check
 the log for both.

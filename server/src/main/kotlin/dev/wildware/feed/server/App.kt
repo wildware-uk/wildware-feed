@@ -15,6 +15,7 @@ import dev.wildware.feed.server.mcp.registerSessionTools
 import dev.wildware.feed.server.mcp.registerMediaTools
 import dev.wildware.feed.server.mcp.registerPairingTools
 import dev.wildware.feed.server.mcp.registerSubscriptionTools
+import dev.wildware.feed.server.mcp.registerSecretTools
 import dev.wildware.feed.server.push.startApplePush
 
 /**
@@ -65,6 +66,9 @@ class App(val config: Config, val db: Database, val clock: () -> Long = System::
     val oauthAuthorizeLimiter = SlidingLimiter(limit = 60, windowMs = 60_000, clock = clock)
     val oauthTokenLimiter = SlidingLimiter(limit = 60, windowMs = 60_000, clock = clock)
 
+    /** Secret links (`/api/agent/secret/<token>`), spent or not: 60 a minute per client address. */
+    val secretLinkLimiter = SlidingLimiter(limit = 60, windowMs = 60_000, clock = clock)
+
     /** Its own 120 a minute per agent token, apart from /mcp's (spec/07 §8). */
     val agentMediaLimiter = SlidingLimiter(limit = 120, windowMs = 60_000, clock = clock)
 
@@ -102,6 +106,12 @@ class App(val config: Config, val db: Database, val clock: () -> Long = System::
     /** Agents asking to join, and the owner allowing or denying them (migration 050). */
     val pairings = dev.wildware.feed.server.domain.Pairings(db, bus, config.tokenSecret, clock)
 
+    /** Secrets the owner and agents share, sealed under SECRETS_KEY (migration 054, docs/SECRETS.md). */
+    val secrets = dev.wildware.feed.server.domain.Secrets(
+        db, bus, config.secretsKeys?.let { dev.wildware.feed.server.auth.SecretBox(it.current, it.old) },
+        config.tokenSecret, config.publicBaseUrl, clock,
+    )
+
     /** MCP clients connecting over OAuth, allowed by the owner in the browser (migration 051). */
     val oauth = dev.wildware.feed.server.domain.OAuth(db, config.tokenSecret, clock)
 
@@ -131,12 +141,21 @@ class App(val config: Config, val db: Database, val clock: () -> Long = System::
 
     private var stopApplePush: () -> Unit = {}
 
+    /** After SECRETS_KEY changes: re-seal what is still under an old key, and say how it went (counts only). */
+    private fun resealSecrets() {
+        val (done, unopened) = secrets.reseal()
+        if (done > 0) println("secrets: re-sealed $done under the current SECRETS_KEY; SECRETS_KEY_OLD can go once nothing is left")
+        if (unopened > 0) System.err.println("secrets: $unopened are sealed under a key that is neither SECRETS_KEY nor in SECRETS_KEY_OLD")
+    }
+
     /** The background jobs (spec/08 §1). Called once when the server starts serving. */
     fun startJobs() {
         every(dev.wildware.feed.server.domain.Sessions.SWEEP_INTERVAL_MS, "presence sweep") { sessions.sweep() }
         every(dev.wildware.feed.server.domain.Requests.SWEEP_INTERVAL_MS, "request sweep") { requests.expireDue() }
         every(dev.wildware.feed.server.domain.Pairings.SWEEP_INTERVAL_MS, "pairing sweep") { pairings.expireDue() }
         every(dev.wildware.feed.server.domain.OAuth.SWEEP_INTERVAL_MS, "oauth sweep") { oauth.sweep() }
+        every(dev.wildware.feed.server.domain.Secrets.SWEEP_INTERVAL_MS, "secret sweep") { secrets.sweep() }
+        resealSecrets()
         every(dev.wildware.feed.server.media.Derive.WORKER_INTERVAL_MS, "media derive") { derive.tick() }
         every(15 * 60_000L, "media sweep") { uploads.sweep() }
         every(dev.wildware.feed.server.media.Retention.CHECK_INTERVAL_MS, "media retention") { retention.tick() }
@@ -151,6 +170,7 @@ class App(val config: Config, val db: Database, val clock: () -> Long = System::
         tools.registerMediaTools(this)
         tools.registerPairingTools(this)
         tools.registerSubscriptionTools(this)
+        tools.registerSecretTools(this)
     }
 
     override fun close() {

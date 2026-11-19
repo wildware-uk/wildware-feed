@@ -33,6 +33,8 @@ internal data class LocalServerSettings(
     /** argon2id of the owner password; only set once phones are let in. */
     val passwordHash: String? = null,
     val phoneAccess: Boolean = false,
+    /** What seals shared secrets (docs/SECRETS.md). Added on first run after secrets arrived. */
+    val secretsKey: String? = null,
 )
 
 /**
@@ -58,8 +60,12 @@ class LocalServer(
 
     internal fun settings(): LocalServerSettings {
         dir.mkdirs()
-        settingsFile.takeIf { it.isFile }?.let { return json.decodeFromString(LocalServerSettings.serializer(), it.readText()) }
-        val fresh = LocalServerSettings(tokenSecret = secret(), sessionSecret = secret(), port = freePort(preferredPort))
+        settingsFile.takeIf { it.isFile }?.let { file ->
+            val saved = json.decodeFromString(LocalServerSettings.serializer(), file.readText())
+            if (saved.secretsKey != null) return saved
+            return saved.copy(secretsKey = secret()).also(::save)
+        }
+        val fresh = LocalServerSettings(tokenSecret = secret(), sessionSecret = secret(), port = freePort(preferredPort), secretsKey = secret())
         save(fresh)
         return fresh
     }
@@ -93,6 +99,7 @@ class LocalServer(
                 host = host,
                 origin = base,
                 trustLoopback = true,
+                secretsKeys = settings.secretsKey?.let { Config.SecretsKeys(it) },
             )
             val app = App(config, Database.open(config.dataDir))
             val started = FeedServer(app).start()

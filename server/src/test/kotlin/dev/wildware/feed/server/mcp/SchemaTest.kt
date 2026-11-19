@@ -84,7 +84,7 @@ class SchemaTest {
             tool["inputSchema"]!!.jsonObject["properties"]!!.jsonObject["priority"]?.jsonObject?.get("enum")?.jsonArray
                 ?.any { it.jsonPrimitive.content == "critical" } == true
         }
-        assertEquals(listOf("post_update", "edit_update", "request_input"), critical.map { it["name"]!!.jsonPrimitive.content })
+        assertEquals(listOf("post_update", "edit_update", "request_input", "request_secret"), critical.map { it["name"]!!.jsonPrimitive.content })
         for (tool in critical) {
             val name = tool["name"]!!.jsonPrimitive.content
             val priority = tool["inputSchema"]!!.jsonObject["properties"]!!.jsonObject["priority"]!!.jsonObject

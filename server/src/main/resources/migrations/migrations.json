@@ -369,5 +369,12 @@
   "file": "053-channels-and-projects.sql",
   "rebuildsTables": false,
   "checksum": "77971e79f52f9916a824229b9dc5ecae478ce7a8cd152c2ecca5735472b97414"
+ },
+ {
+  "version": 54,
+  "name": "secrets",
+  "file": "054-secrets.sql",
+  "rebuildsTables": false,
+  "checksum": "3fd425603f1bec70955420c12aded8353a964fb7c572613de746f3812df43fcb"
  }
 ]

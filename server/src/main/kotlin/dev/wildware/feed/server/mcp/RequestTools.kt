@@ -103,11 +103,11 @@ internal fun requestResult(result: RequestResult): ToolResult {
     val request = requestView(result.request)
     val id = result.request.id
     return when (result.state) {
-        "answered" -> ToolResult.ok("Your owner answered: ${describe(result.response!!["value"]!!)}", buildJsonObject {
+        "answered" -> ToolResult.ok(answeredSummary(result), buildJsonObject {
             put("state", "answered")
             put("request_id", id)
             put("request", request)
-            put("response", result.response)
+            put("response", result.response!!)
             put("answered_at", Wire.isoOf(result.answeredAt))
         })
         "pending" -> ToolResult.ok(
@@ -128,6 +128,14 @@ internal fun requestResult(result: RequestResult): ToolResult {
             })
         }
     }
+}
+
+private fun answeredSummary(result: RequestResult): String {
+    val value = result.response!!["value"]!!
+    if (result.request.kind == "secret") {
+        return "Your owner saved the secret ${jsonStringifyJs(value)}. Fetch it with secret_url into a file; never print its value."
+    }
+    return "Your owner answered: ${describe(value)}"
 }
 
 /** `describe` (TS `src/mcp/results.ts:188`): the answer in one line of the summary. */

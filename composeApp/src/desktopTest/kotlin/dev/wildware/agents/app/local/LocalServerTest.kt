@@ -60,6 +60,22 @@ class LocalServerTest {
     }
 
     @Test
+    fun `this computer keeps secrets with a key made once, and adds one to settings from before secrets`() = runBlocking {
+        val host = LocalServer(dir, port)
+        val key = host.settings().secretsKey
+        assertTrue(key != null && key.length >= 32)
+        val signed = host.signInHere("Laptop")
+        assertTrue(get("${signed.server}/api/secrets", signed.token).body().contains("\"enabled\":true"))
+        host.stop()
+
+        val old = File(dir, "settings.json")
+        old.writeText(old.readText().replace(Regex(",\\s*\"secretsKey\":\\s*\"[^\"]+\""), ""))
+        val upgraded = LocalServer(dir, port).settings()
+        assertTrue(upgraded.secretsKey != null && upgraded.secretsKey != key)
+        assertEquals(upgraded, LocalServer(dir, port).settings())
+    }
+
+    @Test
     fun `a second copy of the app cannot host the same data`() = runBlocking {
         val one = LocalServer(dir, port)
         one.ensureRunning()
