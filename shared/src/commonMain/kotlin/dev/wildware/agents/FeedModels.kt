@@ -13,7 +13,10 @@ import kotlinx.serialization.json.JsonObject
  * Times are milliseconds since the epoch. Ids are strings. `seq` is the server's event counter.
  */
 
-/** A project, as the sidebar lists it. The server orders them: pinned first, then newest. */
+/**
+ * A channel, as the sidebar lists it (the dashboard still calls it a project). The server orders
+ * them: pinned first, then newest.
+ */
 @Serializable
 data class ProjectView(
     val id: String,
@@ -24,6 +27,24 @@ data class ProjectView(
     /** "active" or "archived". */
     val status: String = "active",
     val pinned: Boolean = false,
+    val createdAt: Long = 0,
+    val updatedAt: Long = 0,
+    val theme: ProjectTheme? = null,
+    /** The project (a named group of channels) this channel is in, or null for none. */
+    val groupId: String? = null,
+) {
+    val isArchived: Boolean get() = status == "archived"
+}
+
+/** A project: a named group of channels (`/api/groups`; the dashboard calls it a group). */
+@Serializable
+data class GroupView(
+    val id: String,
+    val seq: Long = 0,
+    val slug: String,
+    val name: String,
+    /** "active" or "archived". */
+    val status: String = "active",
     val createdAt: Long = 0,
     val updatedAt: Long = 0,
     val theme: ProjectTheme? = null,
@@ -336,6 +357,7 @@ data class FeedSnapshot(
     val seq: Long,
     val at: String = "",
     val projects: List<ProjectView>? = null,
+    val groups: List<GroupView>? = null,
     val tags: List<TagView>? = null,
     val cardTags: List<CardTagView>? = null,
     val cardFields: List<CardFieldView>? = null,
@@ -402,7 +424,12 @@ data class FollowsSnapshot(
     val at: String = "",
     val projects: List<ProjectNotifyView> = emptyList(),
     val threads: List<ThreadFollowView> = emptyList(),
+    val groups: List<GroupNotifyView> = emptyList(),
 )
+
+/** A project's (group's) notification level the owner chose, for its channels without their own. */
+@Serializable
+data class GroupNotifyView(val groupId: String, val level: String)
 
 /** A project's notification level the owner chose: `all`, `replies` or `muted`. */
 @Serializable
@@ -433,12 +460,24 @@ enum class NotifyLevel(val wire: String) {
  * project's level: followed when the project raises everything.
  */
 data class Follows(
+    /** The level the owner set on a channel itself, by channel id. */
     val levels: Map<String, NotifyLevel> = emptyMap(),
     /** By "kind:id": true followed, false unfollowed. */
     val threads: Map<String, Boolean> = emptyMap(),
     val loaded: Boolean = false,
+    /** The level the owner set on a project (a group of channels), by group id. */
+    val groupLevels: Map<String, NotifyLevel> = emptyMap(),
+    /** Which group each channel is in, so a channel without its own level takes its group's. */
+    val groupOf: Map<String, String> = emptyMap(),
 ) {
-    fun level(projectId: String?): NotifyLevel = projectId?.let { levels[it] } ?: NotifyLevel.All
+    /** The most specific setting wins: the channel's own, else its project's, else everything. */
+    fun level(projectId: String?): NotifyLevel =
+        projectId?.let { levels[it] ?: groupOf[it]?.let(groupLevels::get) } ?: NotifyLevel.All
+
+    /** The level set on the channel itself, or null when it follows its project. */
+    fun ownLevel(projectId: String): NotifyLevel? = levels[projectId]
+
+    fun groupLevel(groupId: String): NotifyLevel? = groupLevels[groupId]
 
     /** The owner's own choice about a thread, or null when they never made one. */
     fun chosen(kind: String, id: String): Boolean? = threads[key(kind, id)]
@@ -447,7 +486,12 @@ data class Follows(
 
     fun withThread(kind: String, id: String, following: Boolean) = copy(threads = threads + (key(kind, id) to following))
 
-    fun withLevel(projectId: String, level: NotifyLevel) = copy(levels = levels + (projectId to level))
+    /** Null clears the channel's own level, so it follows its project again. */
+    fun withLevel(projectId: String, level: NotifyLevel?) =
+        copy(levels = if (level == null) levels - projectId else levels + (projectId to level))
+
+    fun withGroupLevel(groupId: String, level: NotifyLevel?) =
+        copy(groupLevels = if (level == null) groupLevels - groupId else groupLevels + (groupId to level))
 
     companion object {
         fun key(kind: String, id: String) = "$kind:$id"
@@ -456,6 +500,7 @@ data class Follows(
             levels = snapshot.projects.associate { it.projectId to NotifyLevel.of(it.level) },
             threads = snapshot.threads.associate { key(it.kind, it.id) to it.following },
             loaded = true,
+            groupLevels = snapshot.groups.associate { it.groupId to NotifyLevel.of(it.level) },
         )
     }
 }

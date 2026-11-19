@@ -229,6 +229,10 @@ class Dashboard internal constructor(
     private val mutableWaiting = MutableStateFlow<List<RequestCard>>(emptyList())
     private val mutableOnline = MutableStateFlow<List<LiveAgentView>>(emptyList())
     private val mutableProjects = MutableStateFlow<List<ProjectSummary>>(emptyList())
+    private val mutableGroups = MutableStateFlow<List<GroupView>>(emptyList())
+
+    /** Projects: named groups of channels, by name. Each channel says which it is in ([ProjectView.groupId]). */
+    val groups: StateFlow<List<GroupView>> = mutableGroups.asStateFlow()
 
     /** Every question waiting on the owner, longest waiting first, wherever it was asked. */
     val waiting: StateFlow<List<RequestCard>> = mutableWaiting.asStateFlow()
@@ -268,11 +272,20 @@ class Dashboard internal constructor(
         }
     }
 
-    /** Sets how much of a project alerts the owner. Shown at once. */
-    fun setProjectNotify(projectId: String, slug: String, level: NotifyLevel) {
+    /** Sets how much of a channel alerts the owner; null follows its project. Shown at once. */
+    fun setProjectNotify(projectId: String, slug: String, level: NotifyLevel?) {
         confined.launch {
             follows.assume { it.withLevel(projectId, level) }
             runCatching { client.setProjectNotify(slug, level) }
+            follows.reread()
+        }
+    }
+
+    /** Sets how much of a project (a group of channels) alerts the owner; null clears it. Shown at once. */
+    fun setGroupNotify(groupId: String, slug: String, level: NotifyLevel?) {
+        confined.launch {
+            follows.assume { it.withGroupLevel(groupId, level) }
+            runCatching { client.setGroupNotify(slug, level) }
             follows.reread()
         }
     }
@@ -477,7 +490,11 @@ class Dashboard internal constructor(
         mutableProjects.value = summaries(everything.state.value)
         mutableNotifications.value = bell.list
         if (mutablePairings.value != joining.items) mutablePairings.value = joining.items
-        if (mutableFollows.value != follows.follows) mutableFollows.value = follows.follows
+        val groupOf = everything.projects().mapNotNull { p -> p.groupId?.let { p.id to it } }.toMap()
+        val followed = follows.follows.copy(groupOf = groupOf)
+        if (mutableFollows.value != followed) mutableFollows.value = followed
+        val groups = everything.groups().sortedBy { it.name.lowercase() }
+        if (mutableGroups.value != groups) mutableGroups.value = groups
         if (!mutableReady.value && requests.loaded && everything.state.value.loaded) mutableReady.value = true
     }
 
@@ -599,6 +616,7 @@ class Feed internal constructor(
     }
 
     internal fun projects(): List<ProjectView> = timeline.projects
+    internal fun groups(): List<GroupView> = timeline.groups
     internal fun agentNames(): Map<String, String> = timeline.agentNames
 
     // --- Building cards ---------------------------------------------------------------------

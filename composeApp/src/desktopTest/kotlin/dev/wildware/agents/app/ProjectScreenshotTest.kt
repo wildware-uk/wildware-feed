@@ -55,7 +55,7 @@ class ProjectScreenshotTest {
     fun phone() = runDesktopComposeUiTest(1170, 2532) {
         show(themed("#0f3d3e", "#ff7a59"), 3f, dark = true, SafeArea(top = 54.dp, bottom = 34.dp))
         save("phone-project-colours")
-        onNode(hasContentDescription("Project settings")).performClick()
+        onNode(hasContentDescription("Channel settings")).performClick()
         save("phone-project-settings")
     }
 
@@ -65,7 +65,7 @@ class ProjectScreenshotTest {
         onNode(hasContentDescription("Projects", substring = true)).performClick()
         waitForIdle()
         save("phone-drawer-new-project")
-        onNode(hasText("New project") and hasClickAction()).performScrollTo().performClick()
+        onNode(hasText("New channel") and hasClickAction()).performScrollTo().performClick()
         save("phone-new-project")
     }
 
@@ -73,7 +73,7 @@ class ProjectScreenshotTest {
     fun desktop() = runDesktopComposeUiTest(2880, 1800) {
         show(themed("#f3ead8", "#ff7a59"), 2f, dark = false, SafeArea())
         save("desktop-project-colours")
-        onNode(hasContentDescription("Project settings")).performClick()
+        onNode(hasContentDescription("Channel settings")).performClick()
         save("desktop-project-settings")
     }
 }

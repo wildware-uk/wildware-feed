@@ -65,12 +65,14 @@ private val AccentSwatches = listOf(
 )
 
 /**
- * Making a project, or one project's settings: its name, what it is for, its colours, and archiving
- * it. Names and descriptions are saved with a button and wait for the dashboard's say, as a name can
- * be refused; colours and archiving take effect as they are picked.
+ * Making a channel, or one channel's settings: its name, what it is for, its colours, its project,
+ * and archiving it. Names and descriptions are saved with a button and wait for the dashboard's say,
+ * as a name can be refused; colours, the project and archiving take effect as they are picked.
+ * (A project, a group of channels, has its own dialog: [GroupDialogView].)
  */
 @Composable
 fun ProjectDialogView(ui: FeedUi, dialog: ProjectDialog) {
+    if (dialog is ProjectDialog.NewGroup || dialog is ProjectDialog.GroupSettings) return GroupDialogView(ui, dialog)
     val project = (dialog as? ProjectDialog.Settings)?.let { s ->
         ui.projects.firstOrNull { it.id == s.projectId } ?: ui.state.current.takeIf { it.id == s.projectId }
     }
@@ -90,7 +92,7 @@ fun ProjectDialogView(ui: FeedUi, dialog: ProjectDialog) {
     val save = {
         val typed = name.text.toString().trim()
         when {
-            typed.isEmpty() -> problem = "A project needs a name."
+            typed.isEmpty() -> problem = "A channel needs a name."
             !busy -> {
                 busy = true
                 problem = null
@@ -108,10 +110,10 @@ fun ProjectDialogView(ui: FeedUi, dialog: ProjectDialog) {
         titleContentColor = colors.text,
         textContentColor = colors.textMuted,
         shape = AgentTheme.shapes.large,
-        title = { Text(if (project == null) "New project" else "Project settings", style = AgentTheme.type.title) },
+        title = { Text(if (project == null) "New channel" else "Channel settings", style = AgentTheme.type.title) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
-                BoxedField("Name", name, "Project name", "garden-game", onSubmit = save)
+                BoxedField("Name", name, "Channel name", "garden-game", onSubmit = save)
                 Spacer(Modifier.height(12.dp))
                 BoxedField("What it's for", description, "What it's for", "Optional", multiline = true)
                 problem?.let { Text(it, Modifier.padding(top = 10.dp), color = colors.error, style = AgentTheme.type.label) }
@@ -130,10 +132,12 @@ fun ProjectDialogView(ui: FeedUi, dialog: ProjectDialog) {
                     Spacer(Modifier.height(18.dp))
                     LogoPicker(ui, project, slug)
                     Spacer(Modifier.height(18.dp))
+                    GroupPicker(ui, project, slug)
+                    Spacer(Modifier.height(18.dp))
                     NotifyPicker(ui, project, slug)
                     Spacer(Modifier.height(18.dp))
                     AppButton(
-                        if (project.pinned) "Unpin project" else "Pin project",
+                        if (project.pinned) "Unpin channel" else "Pin channel",
                         ButtonTone.Secondary,
                         Modifier.fillMaxWidth(),
                         icon = Icons.Pin,
@@ -143,7 +147,7 @@ fun ProjectDialogView(ui: FeedUi, dialog: ProjectDialog) {
                     }
                     Spacer(Modifier.height(8.dp))
                     AppButton(
-                        if (project.archived) "Unarchive project" else "Archive project",
+                        if (project.archived) "Unarchive channel" else "Archive channel",
                         ButtonTone.Secondary,
                         Modifier.fillMaxWidth(),
                         icon = Icons.Inbox,
@@ -166,7 +170,7 @@ fun ProjectDialogView(ui: FeedUi, dialog: ProjectDialog) {
             AppButton(
                 when {
                     busy -> "Saving…"
-                    project == null -> "Create project"
+                    project == null -> "Create channel"
                     else -> "Save"
                 },
                 ButtonTone.Primary,
@@ -191,25 +195,201 @@ internal fun notifyHint(level: NotifyLevel): String = when (level) {
 }
 
 /**
- * How much of the project alerts the owner, on every device: the bell, pushes and desktop notices.
+ * How much of the channel alerts the owner, on every device: the bell, pushes and desktop notices.
  * Each device still picks which kinds of alert it takes. A thread followed or unfollowed by hand
- * keeps that choice whatever the level.
+ * keeps that choice whatever the level. A channel in a project can follow the project's setting.
  */
 @Composable
 private fun NotifyPicker(ui: FeedUi, project: Project, slug: String) {
     val colors = AgentTheme.colors
     val level = ui.follows.level(project.id)
+    val own = ui.follows.ownLevel(project.id)
+    val group = project.groupId?.let { id -> ui.state.groups.firstOrNull { it.id == id } }
+    Column {
+        Text("Notifications", color = colors.text, style = AgentTheme.type.label)
+        Spacer(Modifier.height(4.dp))
+        Column(Modifier.selectableGroup()) {
+            if (group != null) {
+                val inherited = NotifyChoices.first { it.first == (ui.follows.groupLevel(group.id) ?: NotifyLevel.All) }.second
+                RadioRow("Same as ${group.name} ($inherited)", selected = own == null, enabled = true) {
+                    if (own != null) ui.emit(FeedEvent.SetProjectNotify(project.id, slug, null))
+                }
+            }
+            for ((choice, label) in NotifyChoices) {
+                RadioRow(label, selected = (group == null || own != null) && level == choice, enabled = true) {
+                    if (own != choice) ui.emit(FeedEvent.SetProjectNotify(project.id, slug, choice))
+                }
+            }
+        }
+        Text(notifyHint(level), Modifier.padding(top = 2.dp), color = colors.textFaint, style = AgentTheme.type.meta)
+    }
+}
+
+/** Which project (group of channels) the channel is in, or none. Takes effect as it is picked. */
+@Composable
+private fun GroupPicker(ui: FeedUi, project: Project, slug: String) {
+    val colors = AgentTheme.colors
+    val groups = ui.state.groups.filter { !it.archived || it.id == project.groupId }
+    Column {
+        Text("Project", color = colors.text, style = AgentTheme.type.label)
+        Spacer(Modifier.height(4.dp))
+        if (groups.isEmpty()) {
+            Text("No projects yet. Make one to group channels together.", color = colors.textFaint, style = AgentTheme.type.meta)
+        } else {
+            Column(Modifier.selectableGroup()) {
+                RadioRow("None", selected = project.groupId == null, enabled = true) {
+                    if (project.groupId != null) ui.emit(FeedEvent.MoveChannel(slug, null))
+                }
+                for (g in groups) {
+                    RadioRow(g.name, selected = project.groupId == g.id, enabled = true) {
+                        if (project.groupId != g.id) ui.emit(FeedEvent.MoveChannel(slug, g.id))
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Making a project (a named group of channels), or one project's settings: its name, colour,
+ * channels and notifications, archiving it, and deleting it, which only ungroups its channels.
+ */
+@Composable
+private fun GroupDialogView(ui: FeedUi, dialog: ProjectDialog) {
+    val group = (dialog as? ProjectDialog.GroupSettings)?.let { s -> ui.state.groups.firstOrNull { it.id == s.groupId } }
+    if (dialog is ProjectDialog.GroupSettings && group == null) return run { ui.projectDialog = null }
+    val colors = AgentTheme.colors
+    val name = remember(dialog) { TextFieldState(group?.name.orEmpty()) }
+    var problem by remember(dialog) { mutableStateOf<String?>(null) }
+    var busy by remember(dialog) { mutableStateOf(false) }
+    var accent by remember(dialog) { mutableStateOf(group?.accent) }
+    var confirmDelete by remember(dialog) { mutableStateOf(false) }
+    val close = { ui.projectDialog = null }
+    val save = {
+        val typed = name.text.toString().trim()
+        when {
+            typed.isEmpty() -> problem = "A project needs a name."
+            group != null && typed == group.name -> close()
+            !busy -> {
+                busy = true
+                problem = null
+                val done: (String?) -> Unit = { refused ->
+                    busy = false
+                    if (refused == null) close() else problem = refused
+                }
+                ui.emit(if (group == null) FeedEvent.CreateGroup(typed, done) else FeedEvent.RenameGroup(group.slug, typed, done))
+            }
+        }
+    }
+    AlertDialog(
+        onDismissRequest = close,
+        containerColor = colors.surfaceRaised,
+        titleContentColor = colors.text,
+        textContentColor = colors.textMuted,
+        shape = AgentTheme.shapes.large,
+        title = { Text(if (group == null) "New project" else "Project settings", style = AgentTheme.type.title) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                BoxedField("Name", name, "Project name", "Garden game", onSubmit = save)
+                if (group == null) {
+                    Text(
+                        "A project groups channels. Add channels to it here once it is made, or from a channel's settings.",
+                        Modifier.padding(top = 8.dp),
+                        color = colors.textFaint,
+                        style = AgentTheme.type.meta,
+                    )
+                }
+                problem?.let { Text(it, Modifier.padding(top = 10.dp), color = colors.error, style = AgentTheme.type.label) }
+                if (group != null) {
+                    Spacer(Modifier.height(18.dp))
+                    SwatchRow("Colour", AccentSwatches, accent) {
+                        accent = it
+                        ui.emit(FeedEvent.SetGroupAccent(group.slug, it))
+                    }
+                    Spacer(Modifier.height(18.dp))
+                    Text("Channels", color = colors.text, style = AgentTheme.type.label)
+                    Spacer(Modifier.height(4.dp))
+                    val channels = ui.projects.filter { !it.archived || it.groupId == group.id }
+                    if (channels.isEmpty()) MetaText("No channels yet.")
+                    for (c in channels) {
+                        val inHere = c.groupId == group.id
+                        val elsewhere = c.groupId?.takeIf { !inHere }?.let { id -> ui.state.groups.firstOrNull { it.id == id }?.name }
+                        CheckRow(c.name + (elsewhere?.let { "  ·  in $it" } ?: ""), inHere, enabled = true) {
+                            c.slug?.let { ui.emit(FeedEvent.MoveChannel(it, if (inHere) null else group.id)) }
+                        }
+                    }
+                    Spacer(Modifier.height(18.dp))
+                    GroupNotifyPicker(ui, group)
+                    Spacer(Modifier.height(18.dp))
+                    AppButton(
+                        if (group.archived) "Unarchive project" else "Archive project",
+                        ButtonTone.Secondary,
+                        Modifier.fillMaxWidth(),
+                        icon = Icons.Inbox,
+                    ) {
+                        ui.emit(FeedEvent.ArchiveGroup(group.slug, !group.archived))
+                        close()
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    AppButton(
+                        if (confirmDelete) "Delete it: the channels stay" else "Delete project",
+                        ButtonTone.Secondary,
+                        Modifier.fillMaxWidth(),
+                        icon = Icons.Close,
+                    ) {
+                        if (!confirmDelete) {
+                            confirmDelete = true
+                        } else {
+                            ui.emit(FeedEvent.DeleteGroup(group.slug))
+                            close()
+                        }
+                    }
+                    Text(
+                        "Deleting a project only ungroups its channels. Nothing in them is deleted.",
+                        Modifier.padding(top = 6.dp),
+                        color = colors.textFaint,
+                        style = AgentTheme.type.meta,
+                    )
+                }
+            }
+        },
+        dismissButton = { AppButton(if (group == null) "Cancel" else "Close", ButtonTone.Secondary, onClick = close) },
+        confirmButton = {
+            AppButton(
+                when {
+                    busy -> "Saving…"
+                    group == null -> "Create project"
+                    else -> "Save"
+                },
+                ButtonTone.Primary,
+                enabled = !busy,
+                onClick = save,
+            )
+        },
+    )
+}
+
+/** How much of a project alerts the owner, for each of its channels that has no setting of its own. */
+@Composable
+private fun GroupNotifyPicker(ui: FeedUi, group: ProjectGroup) {
+    val colors = AgentTheme.colors
+    val level = ui.follows.groupLevel(group.id) ?: NotifyLevel.All
     Column {
         Text("Notifications", color = colors.text, style = AgentTheme.type.label)
         Spacer(Modifier.height(4.dp))
         Column(Modifier.selectableGroup()) {
             for ((choice, label) in NotifyChoices) {
                 RadioRow(label, selected = level == choice, enabled = true) {
-                    if (level != choice) ui.emit(FeedEvent.SetProjectNotify(project.id, slug, choice))
+                    if (level != choice) ui.emit(FeedEvent.SetGroupNotify(group.id, group.slug, choice))
                 }
             }
         }
-        Text(notifyHint(level), Modifier.padding(top = 2.dp), color = colors.textFaint, style = AgentTheme.type.meta)
+        Text(
+            notifyHint(level) + " A channel with its own setting keeps it.",
+            Modifier.padding(top = 2.dp),
+            color = colors.textFaint,
+            style = AgentTheme.type.meta,
+        )
     }
 }
 
@@ -256,7 +436,7 @@ private fun LogoPicker(ui: FeedUi, project: Project, slug: String) {
         Spacer(Modifier.height(8.dp))
         if (choices.isEmpty()) {
             Text(
-                "No pictures in this project yet. Post one, or have an agent set one with set_project_theme.",
+                "No pictures in this channel yet. Post one, or have an agent set one with set_project_theme.",
                 color = colors.textFaint,
                 style = AgentTheme.type.meta,
             )

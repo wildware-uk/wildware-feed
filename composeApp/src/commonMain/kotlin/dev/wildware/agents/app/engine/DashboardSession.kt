@@ -23,6 +23,7 @@ import dev.wildware.agents.ThreadLine
 import dev.wildware.agents.app.feed.Author
 import dev.wildware.agents.app.feed.FeedEvent
 import dev.wildware.agents.app.feed.FeedItem
+import dev.wildware.agents.app.feed.ProjectGroup
 import dev.wildware.agents.app.feed.MarkdownCache
 import dev.wildware.agents.app.feed.Threaded
 import dev.wildware.agents.app.feed.FeedState
@@ -115,7 +116,9 @@ class DashboardSession(
         .stateIn(scope, SharingStarted.Eagerly, emptySet())
 
     /** What the state adds on top of the feed: settings, the post target, devices and the known agents. */
-    private data class Side(val extras: Extras, val postTarget: String?, val devices: DeviceList, val known: List<dev.wildware.agents.AgentRecord>, val follows: dev.wildware.agents.Follows)
+    private data class Side(val extras: Extras, val postTarget: String?, val devices: DeviceList, val known: List<dev.wildware.agents.AgentRecord>,
+        val followsAndGroups: Pair<dev.wildware.agents.Follows, List<dev.wildware.agents.GroupView>>,
+    )
 
     /** This device's own key was revoked from its Devices sheet: it is signed out at once. */
     private val revokedHere = MutableStateFlow(false)
@@ -182,8 +185,11 @@ class DashboardSession(
         dashboard.everything.state,
         dashboard.projects,
         dashboard.notifications,
-        combine(combine(mutableAlerts, mutableRetention, mentionables, joining, mutableConnections, ::Extras), lastProject, mutableDevices, knownAgents, dashboard.followed, ::Side),
-    ) { shown, everything, projects, notifications, (extras, postTarget, devices, known, follows) ->
+        // What the owner follows rides with the projects (groups) whose levels it reads.
+        combine(combine(mutableAlerts, mutableRetention, mentionables, joining, mutableConnections, ::Extras), lastProject, mutableDevices, knownAgents,
+            combine(dashboard.followed, dashboard.groups, ::Pair), ::Side),
+    ) { shown, everything, projects, notifications, (extras, postTarget, devices, known, followsAndGroups) ->
+        val (follows, groups) = followsAndGroups
         val alerts = extras.alerts
         val retention = extras.retention
         val mentionable = extras.mentionable
@@ -192,7 +198,8 @@ class DashboardSession(
         // Parse what the feed will draw before handing it over, here off the UI thread, so a card
         // that scrolls into view (or arrives) finds its markdown ready instead of parsing mid-frame.
         shown.copy(searchIndex = searchEntriesOf(all.sections), bell = mapper.bell(notifications), alerts = alerts, retention = retention, mentionable = mentionable, postTarget = postTarget, devices = devices, joining = extras.joining, connections = extras.connections,
-            agents = withOffline(shown.agents, known), follows = follows).also { MarkdownCache.warm(markdownIn(it).asIterable()) }
+            agents = withOffline(shown.agents, known), follows = follows,
+            groups = groups.map { ProjectGroup(it.id, it.slug, it.name, accent = it.theme?.accent, archived = it.isArchived) }).also { MarkdownCache.warm(markdownIn(it).asIterable()) }
     }.stateIn(scope, SharingStarted.Eagerly, mapper.map(feed.state.value, emptyList(), emptyList(), emptyList(), null))
 
     /** True once the dashboard has stopped taking this device's key. */
@@ -556,6 +563,31 @@ class DashboardSession(
             }
             is FeedEvent.FollowThread -> cardRef(event.targetId)?.let { dashboard.followThread(it, event.following) }
             is FeedEvent.SetProjectNotify -> dashboard.setProjectNotify(event.projectId, event.slug, event.level)
+            is FeedEvent.CreateGroup -> changeNow(event.done) {
+                client.createGroup(event.name.trim())
+                dashboard.refresh()
+            }
+            is FeedEvent.RenameGroup -> changeNow(event.done) {
+                client.renameGroup(event.slug, event.name.trim())
+                dashboard.refresh()
+            }
+            is FeedEvent.SetGroupAccent -> changeNow {
+                client.setGroupAccent(event.slug, event.accent)
+                dashboard.refresh()
+            }
+            is FeedEvent.ArchiveGroup -> changeNow {
+                client.setGroupArchived(event.slug, event.archived)
+                dashboard.refresh()
+            }
+            is FeedEvent.DeleteGroup -> changeNow {
+                client.deleteGroup(event.slug)
+                dashboard.refresh()
+            }
+            is FeedEvent.MoveChannel -> changeNow {
+                client.setProjectGroup(event.slug, event.groupId)
+                dashboard.refresh()
+            }
+            is FeedEvent.SetGroupNotify -> dashboard.setGroupNotify(event.groupId, event.slug, event.level)
             is FeedEvent.PinProject -> changeNow {
                 client.setProjectPinned(event.slug, event.pinned)
                 dashboard.refresh()

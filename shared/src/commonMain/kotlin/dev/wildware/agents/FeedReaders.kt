@@ -206,6 +206,8 @@ internal class TimelineReader(
     onChange: () -> Unit,
 ) : FeedReader(scope, onChange) {
     var projects: List<ProjectView> = emptyList(); private set
+    /** Projects: named groups of channels. */
+    var groups: List<GroupView> = emptyList(); private set
     var tags: List<TagView> = emptyList(); private set
     var cardTags: List<CardTagView> = emptyList(); private set
     var cardFields: List<CardFieldView> = emptyList(); private set
@@ -224,7 +226,7 @@ internal class TimelineReader(
 
     override val watched = setOf(
         "update.created", "update.updated", "update.deleted", "media.ready", "media.removed",
-        "project.created", "project.updated", "tags.changed", "fields.changed", "apps.changed",
+        "project.created", "project.updated", "group.created", "group.updated", "group.deleted", "tags.changed", "fields.changed", "apps.changed",
         "agent.renamed", StreamEvent.Resync,
     )
 
@@ -240,7 +242,7 @@ internal class TimelineReader(
         key,
         FeedSnapshot(
             seq = seq,
-            projects = projects, tags = tags, cardTags = cardTags, cardFields = cardFields, cardApps = cardApps,
+            projects = projects, groups = groups, tags = tags, cardTags = cardTags, cardFields = cardFields, cardApps = cardApps,
             updates = UpdatesPage(pending + items, cursor, hasMore),
             agentNames = agentNames,
         ),
@@ -317,6 +319,7 @@ internal class TimelineReader(
 
     internal fun apply(snapshot: FeedSnapshot, replace: Boolean) {
         snapshot.projects?.let { projects = it }
+        snapshot.groups?.let { groups = it }
         // Replaced whole, not merged: a tag retired on the server must leave every card.
         snapshot.tags?.let { tags = it }
         snapshot.cardTags?.let { cardTags = it }

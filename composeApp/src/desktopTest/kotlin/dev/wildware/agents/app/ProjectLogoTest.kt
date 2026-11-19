@@ -65,7 +65,7 @@ class ProjectLogoTest {
     @Test
     fun pickingAPictureMakesItTheLogo() = runComposeUiTest {
         feed(withLogo(instead = false, logoId = null))
-        onNode(hasContentDescription("Project settings")).performClick()
+        onNode(hasContentDescription("Channel settings")).performClick()
         onNode(hasContentDescription("Use picture 2 as the logo")).performScrollTo().performClick()
         waitForIdle()
         assertEquals(listOf(FeedEvent.SetProjectLogo("agent-dashboard", "md2")), events.filterIsInstance<FeedEvent.SetProjectLogo>())
@@ -77,7 +77,7 @@ class ProjectLogoTest {
     @Test
     fun aLogoCanStandInForTheNameOrBeRemoved() = runComposeUiTest {
         feed(withLogo(instead = false))
-        onNode(hasContentDescription("Project settings")).performClick()
+        onNode(hasContentDescription("Channel settings")).performClick()
         onNode(hasText("Use the logo instead of the name")).performScrollTo().performClick()
         onNode(hasText("Remove logo")).performScrollTo().performClick()
         waitForIdle()
@@ -105,7 +105,7 @@ class ProjectLogoTest {
             }
         }
         if (settings) {
-            onNode(hasContentDescription("Project settings")).performClick()
+            onNode(hasContentDescription("Channel settings")).performClick()
             onNode(hasText("Use the logo instead of the name")).performScrollTo()
         }
         waitForIdle()

@@ -489,14 +489,14 @@ class EngineWiringTest {
     fun aNewProjectIsMadeOnTheServerAndArchivingSetsItsStatus() = runDesktopComposeUiTest(width = 1440, height = 900) {
         app()
         waitFor("Mega")
-        waitForNode(hasText("New project") and hasClickAction()).performScrollTo().performClick()
-        waitForNode(hasContentDescription("Project name") and hasSetTextAction()).performTextInput("harbor-app")
-        waitForNode(hasText("Create project")).performClick()
+        waitForNode(hasText("New channel") and hasClickAction()).performScrollTo().performClick()
+        waitForNode(hasContentDescription("Channel name") and hasSetTextAction()).performTextInput("harbor-app")
+        waitForNode(hasText("Create channel")).performClick()
         assertTrue("\"name\":\"harbor-app\"" in waitForWrite("POST", "/api/projects"))
 
         waitForNode(hasContentDescription("Mega,", substring = true)).performClick()
-        waitForNode(hasContentDescription("Project settings")).performClick()
-        waitForNode(hasText("Archive project")).performClick()
+        waitForNode(hasContentDescription("Channel settings")).performClick()
+        waitForNode(hasText("Archive channel")).performClick()
         assertEquals("""{"status":"archived"}""", waitForWrite("PATCH", "/api/projects/mega"))
     }
 
@@ -519,8 +519,8 @@ class EngineWiringTest {
         waitFor("Mega")
         waitForNode(hasContentDescription("Mega,", substring = true)).performClick()
         waitForLabel("Message")
-        waitForNode(hasContentDescription("All projects", substring = true)).performClick()
-        waitForNode(hasContentDescription("Posting to Mega. Choose a project"))
+        waitForNode(hasContentDescription("All channels", substring = true)).performClick()
+        waitForNode(hasContentDescription("Posting to Mega. Choose a channel"))
     }
 
     @Test
@@ -528,7 +528,7 @@ class EngineWiringTest {
         postTarget.write("other")
         app()
         waitFor("Fixed the unread counts")
-        waitForNode(hasContentDescription("Posting to Other. Choose a project")).performClick()
+        waitForNode(hasContentDescription("Posting to Other. Choose a channel")).performClick()
         waitForNode(hasContentDescription("Post to Mega")).performClick()
         onNodeWithContentDescription("Message").performTextInput("Over here")
         onNodeWithContentDescription("Send").performClick()

@@ -38,7 +38,7 @@ class ProjectLabelTest {
         }
     }
 
-    private fun ComposeUiTest.labels(project: String) = onAllNodesWithContentDescription("In project $project")
+    private fun ComposeUiTest.labels(project: String) = onAllNodesWithContentDescription("In channel $project")
 
     @Test
     fun aQuestionCardShowsItsProject() = runComposeUiTest {
@@ -49,19 +49,19 @@ class ProjectLabelTest {
     @Test
     fun anUpdateCardShowsItsProject() = runComposeUiTest {
         phone(FakeFeed.allProjects, startAt = "u3")
-        onNode(hasContentDescription("In project infra")).performScrollTo().assertExists()
+        onNode(hasContentDescription("In channel infra")).performScrollTo().assertExists()
     }
 
     @Test
     fun anOlderCardFarDownShowsItsProject() = runComposeUiTest {
         phone(FakeFeed.allProjects, startAt = "u4")
-        onNode(hasContentDescription("In project ios-companion")).performScrollTo().assertExists()
+        onNode(hasContentDescription("In channel ios-companion")).performScrollTo().assertExists()
     }
 
     @Test
     fun tappingTheLabelOpensThatProject() = runComposeUiTest {
         phone(FakeFeed.allProjects, startAt = "u3")
-        onNode(hasContentDescription("In project infra")).performScrollTo().performClick()
+        onNode(hasContentDescription("In channel infra")).performScrollTo().performClick()
         waitForIdle()
         assertEquals(listOf<FeedEvent>(FeedEvent.SelectProject("infra")), events)
     }
@@ -69,13 +69,13 @@ class ProjectLabelTest {
     @Test
     fun aVeryNarrowPhoneStillShowsTheLabel() = runComposeUiTest {
         phone(FakeFeed.allProjects, startAt = "u3", width = 320)
-        onNode(hasContentDescription("In project infra")).performScrollTo().assertExists()
+        onNode(hasContentDescription("In channel infra")).performScrollTo().assertExists()
     }
 
     @Test
     fun insideOneProjectTheLabelIsLeftOut() = runComposeUiTest {
         phone(FakeFeed.state)
-        assertEquals(0, onAllNodes(hasContentDescription("In project", substring = true)).fetchSemanticsNodes().size)
+        assertEquals(0, onAllNodes(hasContentDescription("In channel", substring = true)).fetchSemanticsNodes().size)
     }
 
     @Test
@@ -85,9 +85,9 @@ class ProjectLabelTest {
         onAllNodes(hasText("WAITING ON YOU", substring = true)).assertCountEquals(1)
         onAllNodes(hasContentDescription("waiting on you", substring = true, ignoreCase = true)).onFirst().assertExists()
         // The question's label is as wide as the same label on a post, where nothing squeezes it.
-        val onQuestion = onAllNodes(hasContentDescription("In project agent-dashboard")).onFirst().fetchSemanticsNode().size.width
+        val onQuestion = onAllNodes(hasContentDescription("In channel agent-dashboard")).onFirst().fetchSemanticsNode().size.width
         onAllNodes(hasScrollToNodeAction()).onFirst().performScrollToNode(hasText("Can someone find out", substring = true))
-        val all = onAllNodes(hasContentDescription("In project agent-dashboard")).fetchSemanticsNodes()
+        val all = onAllNodes(hasContentDescription("In channel agent-dashboard")).fetchSemanticsNodes()
         val onPost = all.last().size.width
         assertEquals(onPost, onQuestion, "the project name on the question is cut short")
     }

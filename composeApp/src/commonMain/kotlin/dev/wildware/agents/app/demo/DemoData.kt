@@ -22,8 +22,14 @@ internal class DemoData(private val now: Long) {
     private fun ago(minutes: Long) = now - minutes * 60_000
 
     val projects = listOf(
-        ProjectView(id = "demo-p1", slug = "garden-game", name = "garden-game", createdAt = ago(60 * 24 * 30)),
+        ProjectView(id = "demo-p1", slug = "garden-game", name = "garden-game", createdAt = ago(60 * 24 * 30), groupId = "demo-g1"),
         ProjectView(id = "demo-p2", slug = "harbor-app", name = "harbor-app", createdAt = ago(60 * 24 * 20)),
+        ProjectView(id = "demo-p3", slug = "garden-art", name = "garden-art", createdAt = ago(60 * 24 * 10), groupId = "demo-g1"),
+    )
+
+    /** Projects: named groups of channels. */
+    val groups = listOf(
+        dev.wildware.agents.GroupView(id = "demo-g1", slug = "garden", name = "Garden", createdAt = ago(60 * 24 * 30), theme = dev.wildware.agents.ProjectTheme(accent = "#3ddc97")),
     )
     private val garden = "demo-p1"
     private val harbor = "demo-p2"

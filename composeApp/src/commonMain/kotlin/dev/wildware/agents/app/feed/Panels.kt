@@ -154,7 +154,7 @@ internal fun NavRow(
     }
 }
 
-/** Projects, people and the way in to everything else. Desktop only; phones use the top bar. */
+/** Projects and their channels, people, and the way in to everything else. Desktop only; phones use the drawer. */
 @Composable
 fun Sidebar(
     ui: FeedUi,
@@ -189,11 +189,11 @@ fun Sidebar(
             SearchField { ui.commandOpen = true }
             Spacer(Modifier.height(14.dp))
             NavRow(
-                "All projects",
+                "All channels",
                 selected = state.current.slug == null && !ui.showingWaiting,
                 leading = { Icon(Icons.Inbox, null, tint = colors.textMuted, modifier = Modifier.size(18.dp)) },
                 trailing = { UnreadBadge(state.totalUnread) },
-                spoken = "All projects, ${state.totalUnread} unread",
+                spoken = "All channels, ${state.totalUnread} unread",
                 onClick = { ui.emit(FeedEvent.SelectProject(null)) },
             )
             NavRow(
@@ -207,23 +207,18 @@ fun Sidebar(
                 spoken = "Waiting on you, " + if (state.waitingTotal == 0) "nothing" else questions(state.waitingTotal),
             )
             Spacer(Modifier.height(22.dp))
-            SectionLabel("Projects", Modifier.padding(horizontal = 10.dp))
-            Spacer(Modifier.height(8.dp))
-            ui.projects.filter { !it.archived }.forEach { p ->
-                val selected = p.id == state.current.id
-                NavRow(
-                    p.name,
-                    selected = selected,
-                    leading = { ProjectGlyph(p) },
-                    trailing = {
-                        WaitingBadge(p.waiting, Modifier.padding(end = 6.dp))
-                        UnreadBadge(p.unread, emphasised = selected)
-                    },
-                    spoken = projectSpoken(p),
-                    onClick = { ui.emit(FeedEvent.SelectProject(p.slug)) },
-                )
+            val sections = ui.channelSections
+            if (sections.groups.isNotEmpty()) {
+                SectionLabel("Projects", Modifier.padding(horizontal = 10.dp))
+                Spacer(Modifier.height(8.dp))
+                ProjectGroups(ui) { p -> SidebarChannelRow(ui, p) }
+                Spacer(Modifier.height(14.dp))
             }
+            SectionLabel("Channels", Modifier.padding(horizontal = 10.dp))
+            Spacer(Modifier.height(8.dp))
+            sections.loose.forEach { p -> SidebarChannelRow(ui, p) }
             NewProjectRow(ui)
+            NewGroupRow(ui)
             ArchivedProjects(ui)
             if (showAgents) {
                 Spacer(Modifier.height(22.dp))
@@ -241,48 +236,82 @@ fun Sidebar(
     }
 }
 
-/** "+ New project", under the list of projects. */
+/** One channel in the sidebar, under its project or among the loose ones. */
+@Composable
+private fun SidebarChannelRow(ui: FeedUi, p: Project) {
+    val selected = p.id == ui.state.current.id
+    NavRow(
+        p.name,
+        selected = selected,
+        leading = { ProjectGlyph(p) },
+        trailing = {
+            WaitingBadge(p.waiting, Modifier.padding(end = 6.dp))
+            UnreadBadge(p.unread, emphasised = selected)
+        },
+        spoken = projectSpoken(p),
+        onClick = { ui.emit(FeedEvent.SelectProject(p.slug)) },
+    )
+}
+
+/** "+ New channel", under the list of channels. */
 @Composable
 internal fun NewProjectRow(ui: FeedUi) {
     val colors = AgentTheme.colors
     NavRow(
-        "New project",
+        "New channel",
         selected = false,
         leading = { Icon(Icons.Plus, null, tint = colors.textMuted, modifier = Modifier.size(18.dp)) },
         trailing = {},
-        spoken = "New project",
+        spoken = "New channel",
         onClick = { ui.projectDialog = ProjectDialog.New },
     )
 }
 
 /**
- * Archived projects, folded away under one row at the bottom of the list. They can share a name
- * with an active project, so they never sit among the active ones.
+ * Archived channels and projects, folded away under one row at the bottom of the list. They can
+ * share a name with an active one, so they never sit among the active ones. An archived project
+ * brings every channel in it.
  */
 @Composable
 internal fun ArchivedProjects(ui: FeedUi) {
-    val archived = ui.projects.filter { it.archived }
-    if (archived.isEmpty()) return
+    val sections = ui.channelSections
+    val count = sections.archivedChannels.size + sections.archivedGroups.size
+    if (count == 0) return
     val colors = AgentTheme.colors
     NavRow(
         "Archived",
         selected = false,
         leading = { Icon(if (ui.showArchived) Icons.ChevronDown else Icons.ChevronRight, null, tint = colors.textFaint, modifier = Modifier.size(15.dp)) },
-        trailing = { MetaText("${archived.size}") },
-        spoken = if (ui.showArchived) "Hide ${archived.size} archived projects" else "Show ${archived.size} archived projects",
+        trailing = { MetaText("$count") },
+        spoken = if (ui.showArchived) "Hide $count archived" else "Show $count archived",
         onClick = { ui.showArchived = !ui.showArchived },
     )
     if (ui.showArchived) {
-        archived.forEach { p ->
+        sections.archivedGroups.forEach { (g, channels) ->
             NavRow(
-                p.name,
-                selected = p.id == ui.state.current.id,
-                leading = { ProjectGlyph(p) },
-                spoken = "${p.name}, archived",
-                onClick = { ui.emit(FeedEvent.SelectProject(p.slug)) },
+                g.name,
+                selected = false,
+                leading = { Icon(Icons.Settings, null, tint = colors.textFaint, modifier = Modifier.size(15.dp)) },
+                spoken = "${g.name}, archived project, settings",
+                onClick = { ui.projectDialog = ProjectDialog.GroupSettings(g.id) },
             )
+            Column(Modifier.padding(start = 14.dp)) {
+                channels.forEach { p -> ArchivedChannelRow(ui, p) }
+            }
         }
+        sections.archivedChannels.forEach { p -> ArchivedChannelRow(ui, p) }
     }
+}
+
+@Composable
+private fun ArchivedChannelRow(ui: FeedUi, p: Project) {
+    NavRow(
+        p.name,
+        selected = p.id == ui.state.current.id,
+        leading = { ProjectGlyph(p) },
+        spoken = "${p.name}, archived",
+        onClick = { ui.emit(FeedEvent.SelectProject(p.slug)) },
+    )
 }
 
 @Composable
@@ -372,7 +401,16 @@ fun FeedHeader(ui: FeedUi, compact: Boolean, modifier: Modifier = Modifier) {
         if (ui.missingLink) MissingLink(Modifier.padding(bottom = 12.dp)) { ui.missingLink = false }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                MetaText(if (state.current.slug == null) "EVERYTHING" else "PROJECT", style = type.overline)
+                // A channel in a project says which: "MOBILE · CHANNEL".
+                val inGroup = state.current.groupId?.let { id -> state.groups.firstOrNull { it.id == id }?.name }
+                MetaText(
+                    when {
+                        state.current.slug == null -> "EVERYTHING"
+                        inGroup != null -> "${inGroup.uppercase()}  ·  CHANNEL"
+                        else -> "CHANNEL"
+                    },
+                    style = type.overline,
+                )
                 Spacer(Modifier.height(2.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     val logo = state.current.logo
@@ -387,7 +425,7 @@ fun FeedHeader(ui: FeedUi, compact: Boolean, modifier: Modifier = Modifier) {
                         overflow = TextOverflow.Ellipsis,
                     )
                     if (compact) {
-                        Icon(Icons.ChevronDown, "Switch project", tint = colors.textMuted, modifier = Modifier.padding(start = 4.dp).size(20.dp))
+                        Icon(Icons.ChevronDown, "Switch channel", tint = colors.textMuted, modifier = Modifier.padding(start = 4.dp).size(20.dp))
                     }
                 }
                 Spacer(Modifier.height(4.dp))
@@ -403,7 +441,7 @@ fun FeedHeader(ui: FeedUi, compact: Boolean, modifier: Modifier = Modifier) {
             }
             if (state.current.slug != null) {
                 val id = state.current.id
-                IconAction(Icons.Settings, "Project settings") { ui.projectDialog = ProjectDialog.Settings(id) }
+                IconAction(Icons.Settings, "Channel settings") { ui.projectDialog = ProjectDialog.Settings(id) }
                 Spacer(Modifier.width(if (compact) 0.dp else 10.dp))
             }
             if (!compact) {
@@ -859,7 +897,7 @@ fun PostToPicker(ui: FeedUi, target: Project, modifier: Modifier = Modifier) {
                 .clip(shape)
                 .background(colors.surfaceRaised)
                 .border(1.dp, colors.borderStrong, shape)
-                .pressable("Posting to ${target.name}. Choose a project", shape) { open = true }
+                .pressable("Posting to ${target.name}. Choose a channel", shape) { open = true }
                 .padding(start = 12.dp, end = 8.dp, top = 6.dp, bottom = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {

@@ -38,7 +38,7 @@ class PostFromAllTest {
     @Test
     fun itPostsToTheFirstProjectUntilAnotherIsPicked() = runComposeUiTest {
         feed(1440)
-        onNode(hasContentDescription("Posting to agent-dashboard. Choose a project")).assertExists()
+        onNode(hasContentDescription("Posting to agent-dashboard. Choose a channel")).assertExists()
         write("Morning, everyone")
         assertEquals(listOf<FeedEvent>(FeedEvent.Post("Morning, everyone", project = "agent-dashboard")), events.filterIsInstance<FeedEvent.Post>())
     }
@@ -50,7 +50,7 @@ class PostFromAllTest {
                 Box(Modifier.size(1440.dp, 900.dp)) { FeedScreen(FakeFeed.allProjects.copy(postTarget = "infra"), onEvent = { events += it }) }
             }
         }
-        onNode(hasContentDescription("Posting to infra. Choose a project")).assertExists()
+        onNode(hasContentDescription("Posting to infra. Choose a channel")).assertExists()
         write("Disk alarm again")
         assertEquals(listOf<FeedEvent>(FeedEvent.Post("Disk alarm again", project = "infra")), events.filterIsInstance<FeedEvent.Post>())
     }
@@ -60,7 +60,7 @@ class PostFromAllTest {
         feed(1440)
         onNode(hasContentDescription("Posting to", substring = true)).performClick()
         onNode(hasContentDescription("Post to website")).performClick()
-        onNode(hasContentDescription("Posting to website. Choose a project")).assertExists()
+        onNode(hasContentDescription("Posting to website. Choose a channel")).assertExists()
         write("New colours are up")
         assertEquals(listOf<FeedEvent>(FeedEvent.Post("New colours are up", project = "website")), events.filterIsInstance<FeedEvent.Post>())
     }

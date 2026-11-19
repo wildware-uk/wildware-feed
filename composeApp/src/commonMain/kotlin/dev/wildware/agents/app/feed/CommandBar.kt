@@ -130,7 +130,7 @@ fun CommandBar(ui: FeedUi, safeArea: SafeArea, panelModifier: Modifier = Modifie
                 TextInput(
                     query,
                     label = "Search or run a command",
-                    placeholder = "Search cards and replies, jump to a project, or run a command…",
+                    placeholder = "Search cards and replies, jump to a channel, or run a command…",
                     modifier = Modifier.weight(1f).padding(start = 10.dp).focusRequester(focus),
                 )
                 MetaText("esc", Modifier.padding(start = 8.dp))
@@ -189,12 +189,18 @@ private fun commandsFor(ui: FeedUi, query: String, extra: List<AppCommand>, cras
     val state = ui.state
     val actions = buildList {
         if (wanted("Mark all read")) add(Command("Actions", "Mark all read", "Clear every unread badge", Icons.Check, done { ui.emit(FeedEvent.MarkAllRead) }))
-        if (wanted("New project", "create project")) {
-            add(Command("Actions", "New project", "Make a project to post and work in", Icons.Plus, done { ui.projectDialog = ProjectDialog.New }))
+        if (wanted("New channel", "create channel")) {
+            add(Command("Actions", "New channel", "Make a channel to post and work in", Icons.Plus, done { ui.projectDialog = ProjectDialog.New }))
         }
-        if (state.current.slug != null && wanted("Project settings", "rename archive colour colours")) {
+        if (wanted("New project", "create project", "group")) {
+            add(Command("Actions", "New project", "Group channels together", Icons.Plus, done { ui.projectDialog = ProjectDialog.NewGroup }))
+        }
+        if (state.current.slug != null && wanted("Channel settings", "rename archive colour colours project")) {
             val id = state.current.id
-            add(Command("Actions", "Project settings", "Rename ${state.current.name}, set its colours or archive it", Icons.Settings, done { ui.projectDialog = ProjectDialog.Settings(id) }))
+            add(Command("Actions", "Channel settings", "Rename ${state.current.name}, set its colours, its project, or archive it", Icons.Settings, done { ui.projectDialog = ProjectDialog.Settings(id) }))
+        }
+        state.groups.filter { !it.archived && wanted(it.name, "project settings") }.forEach { g ->
+            add(Command("Actions", "${g.name} settings", "Rename the project, colour it, pick its channels", Icons.Settings, done { ui.projectDialog = ProjectDialog.GroupSettings(g.id) }))
         }
         val postTarget = if (state.current.slug == null) ui.postProject else state.current
         if (postTarget != null && wanted("New post", "write")) {
@@ -225,9 +231,12 @@ private fun commandsFor(ui: FeedUi, query: String, extra: List<AppCommand>, cras
         if (wanted("Sign out")) add(Command("Actions", "Sign out", "Forget this device's key", Icons.SignOut, done { ui.emit(FeedEvent.SignOut) }))
     }
     val projects = buildList {
-        if (wanted("All projects")) add(Command("Projects", "All projects", "Every project's feed", Icons.Inbox, done { ui.emit(FeedEvent.SelectProject(null)) }))
-        state.projects.filter { !it.archived && wanted(it.name) }.forEach { p ->
-            add(Command("Projects", p.name, if (p.unread > 0) "${p.unread} unread" else "", Icons.Hash, done { ui.emit(FeedEvent.SelectProject(p.slug)) }))
+        if (wanted("All channels")) add(Command("Channels", "All channels", "Every channel's feed", Icons.Inbox, done { ui.emit(FeedEvent.SelectProject(null)) }))
+        val groupNames = state.groups.associate { it.id to it.name }
+        state.projects.filter { !it.archived && wanted(it.name, it.groupId?.let(groupNames::get).orEmpty()) }.forEach { p ->
+            val where = p.groupId?.let(groupNames::get)
+            val detail = listOfNotNull(where, if (p.unread > 0) "${p.unread} unread" else null).joinToString(" · ")
+            add(Command("Channels", p.name, detail, Icons.Hash, done { ui.emit(FeedEvent.SelectProject(p.slug)) }))
         }
     }
     val found = if (q.isEmpty()) emptyList() else ui.searchEntries.filter { it.matches(q) }.take(25).map { hit ->

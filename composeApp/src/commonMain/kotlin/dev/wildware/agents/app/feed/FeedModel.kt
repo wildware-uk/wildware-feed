@@ -91,6 +91,23 @@ data class Project(
     val logoMediaId: String? = null,
     /** The logo stands in for the name above the feed: a wordmark. */
     val logoInsteadOfName: Boolean = false,
+    /** The project ([ProjectGroup]) this channel is in, or null for none. */
+    val groupId: String? = null,
+)
+
+/**
+ * A project: a named group of channels. ([Project] is a channel; the dashboard still calls channels
+ * projects, and calls these groups.)
+ */
+@Immutable
+data class ProjectGroup(
+    val id: String,
+    val slug: String,
+    val name: String,
+    /** Its own colour, #rrggbb, or null. */
+    val accent: String? = null,
+    /** Finished with: it and its channels list under Archived. */
+    val archived: Boolean = false,
 )
 
 /** A picture already posted into a project, offered as its logo. */
@@ -523,6 +540,8 @@ data class FeedState(
     val connections: ConnectionList = ConnectionList(),
     /** Agents asking to join, oldest first: each waits on the owner to allow or deny it. */
     val joining: List<JoinRequest> = emptyList(),
+    /** Projects: named groups of channels, by name. */
+    val groups: List<ProjectGroup> = emptyList(),
 ) {
     fun item(id: String): FeedItem? = sections.firstNotNullOfOrNull { s -> s.items.firstOrNull { it.id == id } }
 }

@@ -58,10 +58,10 @@ class ProjectManagementTest {
     @Test
     fun aNewProjectIsMadeFromTheSidebar() = runComposeUiTest {
         feed(1440)
-        onNode(hasText("New project") and hasClickAction()).performScrollTo().performClick()
-        field("Project name").performTextInput("harbor-app")
+        onNode(hasText("New channel") and hasClickAction()).performScrollTo().performClick()
+        field("Channel name").performTextInput("harbor-app")
         field("What it's for").performTextInput("Ferry times")
-        onNode(hasText("Create project")).performClick()
+        onNode(hasText("Create channel")).performClick()
         waitForIdle()
         assertEquals(listOf("harbor-app" to "Ferry times"), events.filterIsInstance<FeedEvent.CreateProject>().map { it.name to it.description })
         assertTrue(onAllNodes(isDialog()).fetchSemanticsNodes().isEmpty(), "closes once made")
@@ -71,12 +71,12 @@ class ProjectManagementTest {
     fun aRefusedNameSaysWhyAndStaysOpen() = runComposeUiTest {
         answer = "That name is too long."
         feed(1440)
-        onNode(hasText("New project") and hasClickAction()).performScrollTo().performClick()
-        field("Project name").performTextInput("x".repeat(90))
-        onNode(hasText("Create project")).performClick()
+        onNode(hasText("New channel") and hasClickAction()).performScrollTo().performClick()
+        field("Channel name").performTextInput("x".repeat(90))
+        onNode(hasText("Create channel")).performClick()
         waitForIdle()
         onNode(hasText("That name is too long.")).assertExists()
-        onNode(hasText("Create project")).assertExists()
+        onNode(hasText("Create channel")).assertExists()
     }
 
     @Test
@@ -84,9 +84,9 @@ class ProjectManagementTest {
         feed(390)
         onNode(hasContentDescription("Projects", substring = true)).performClick()
         waitForIdle()
-        onNode(hasText("New project") and hasClickAction()).performScrollTo().performClick()
-        field("Project name").performTextInput("garden-game")
-        onNode(hasText("Create project")).performClick()
+        onNode(hasText("New channel") and hasClickAction()).performScrollTo().performClick()
+        field("Channel name").performTextInput("garden-game")
+        onNode(hasText("Create channel")).performClick()
         waitForIdle()
         assertEquals(listOf("garden-game"), events.filterIsInstance<FeedEvent.CreateProject>().map { it.name })
     }
@@ -94,8 +94,8 @@ class ProjectManagementTest {
     @Test
     fun settingsRenameAndRedescribeTheOpenProject() = runComposeUiTest {
         feed(1440)
-        onNode(hasContentDescription("Project settings")).performClick()
-        field("Project name").performTextReplacement("dashboard")
+        onNode(hasContentDescription("Channel settings")).performClick()
+        field("Channel name").performTextReplacement("dashboard")
         field("What it's for").performTextReplacement("The status wall")
         onNode(hasText("Save")).performClick()
         waitForIdle()
@@ -110,14 +110,14 @@ class ProjectManagementTest {
         setContent {
             AgentTheme(dark = true) { Box(Modifier.size(1440.dp, 900.dp)) { FeedScreen(shown, onEvent = { events += it }) } }
         }
-        onNode(hasContentDescription("Project settings")).performClick()
+        onNode(hasContentDescription("Channel settings")).performClick()
         // Below the notification level: scrolled to, as the owner would.
-        onNode(hasText("Archive project")).performScrollTo().performClick()
+        onNode(hasText("Archive channel")).performScrollTo().performClick()
         waitForIdle()
         shown.value = archived
         waitForIdle()
-        onNode(hasContentDescription("Project settings")).performClick()
-        onNode(hasText("Unarchive project")).performScrollTo().performClick()
+        onNode(hasContentDescription("Channel settings")).performClick()
+        onNode(hasText("Unarchive channel")).performScrollTo().performClick()
         waitForIdle()
         assertEquals(
             listOf(FeedEvent.ArchiveProject("agent-dashboard", true), FeedEvent.ArchiveProject("agent-dashboard-v1", false)),
@@ -128,7 +128,7 @@ class ProjectManagementTest {
     @Test
     fun pickingColoursSetsThem() = runComposeUiTest {
         feed(1440)
-        onNode(hasContentDescription("Project settings")).performClick()
+        onNode(hasContentDescription("Channel settings")).performClick()
         onNode(hasContentDescription("Page colour Harbour")).performScrollTo().performClick()
         onNode(hasContentDescription("Accent colour Coral")).performScrollTo().performClick()
         onNode(hasContentDescription("Page colour None")).performScrollTo().performClick()

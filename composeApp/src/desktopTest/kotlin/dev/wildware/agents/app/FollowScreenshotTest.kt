@@ -65,7 +65,7 @@ class FollowScreenshotTest {
     }
 
     private fun ComposeUiTest.settings() {
-        onNode(hasContentDescription("Project settings")).performClick()
+        onNode(hasContentDescription("Channel settings")).performClick()
         waitForIdle()
         onNode(hasText("Replies and mentions")).performScrollTo()
     }
@@ -105,7 +105,7 @@ class FollowScreenshotTest {
         setContent {
             AgentTheme(dark = false) { Box(Modifier.size(390.dp, 844.dp)) { FeedScreen(state, onEvent = { events += it }) } }
         }
-        onNode(hasContentDescription("Project settings")).performClick()
+        onNode(hasContentDescription("Channel settings")).performClick()
         waitForIdle()
         onNode(hasText("Muted")).performScrollTo().performClick()
         waitForIdle()

@@ -70,6 +70,8 @@ class DemoServer(private val now: () -> Long = { Clock.System.now().toEpochMilli
 
     private val data = DemoData(now())
     private var projects = data.projects
+    private var groups = data.groups
+    private var groupLevels = mapOf<String, String>()
     private var updates = data.updates
     private var messages = data.messages
     private var reactions = data.messageReactions
@@ -128,6 +130,7 @@ class DemoServer(private val now: () -> Long = { Clock.System.now().toEpochMilli
                         FeedSnapshot(
                             seq = seq,
                             projects = projects,
+                            groups = groups,
                             tags = tags,
                             cardTags = cardTags,
                             cardFields = fields,
@@ -149,6 +152,7 @@ class DemoServer(private val now: () -> Long = { Clock.System.now().toEpochMilli
                         seq,
                         projects = levels.map { (id, level) -> ProjectNotifyView(id, level) },
                         threads = followed.map { (key, on) -> ThreadFollowView(key.first, key.second, on) },
+                        groups = groupLevels.map { (id, level) -> dev.wildware.agents.GroupNotifyView(id, level) },
                     ),
                 ),
             )
@@ -192,8 +196,41 @@ class DemoServer(private val now: () -> Long = { Clock.System.now().toEpochMilli
             }
             path.startsWith("api/projects/") && path.endsWith("/subscription") && method == HttpMethod.Put -> {
                 val project = projects.firstOrNull { it.slug == parts[2] } ?: return ok("{\"error\":\"not_found\",\"message\":\"No such project.\"}", HttpStatusCode.NotFound)
-                levels = levels + (project.id to (input.text("level") ?: "all"))
+                val level = input.text("level")
+                levels = if (level == null) levels - project.id else levels + (project.id to level)
                 ok("{}")
+            }
+            path.startsWith("api/groups/") && path.endsWith("/subscription") && method == HttpMethod.Put -> {
+                val group = groups.firstOrNull { it.slug == parts[2] || it.id == parts[2] } ?: return bad("No such project.")
+                val level = input.text("level")
+                groupLevels = if (level == null) groupLevels - group.id else groupLevels + (group.id to level)
+                ok("{}")
+            }
+            path == "api/groups" && method == HttpMethod.Post -> {
+                val name = input.text("name")?.trim().orEmpty()
+                if (name.isEmpty()) return bad("A project needs a name.")
+                val slug = name.lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-').ifEmpty { "group-${ids + 1}" }
+                val existing = groups.firstOrNull { it.slug == slug }
+                val group = existing ?: dev.wildware.agents.GroupView(id = "demo-g-${++ids}", slug = slug, name = name, createdAt = now(), updatedAt = now())
+                    .also { made -> groups = (groups + made).sortedBy { it.name.lowercase() } }
+                ok("""{"group":${json.encodeToString(group)},"created":${existing == null}}""", if (existing == null) HttpStatusCode.Created else HttpStatusCode.OK)
+            }
+            path.startsWith("api/groups/") && method == HttpMethod.Delete -> {
+                val group = groups.firstOrNull { it.slug == parts[2] || it.id == parts[2] } ?: return bad("No such project.")
+                groups = groups - group
+                projects = projects.map { if (it.groupId == group.id) it.copy(groupId = null) else it }
+                ok("""{"deleted":true,"groupId":"${group.id}"}""")
+            }
+            path.startsWith("api/groups/") && method == HttpMethod.Patch -> {
+                val before = groups.firstOrNull { it.slug == parts[2] || it.id == parts[2] } ?: return bad("No such project.")
+                var after = before.copy(updatedAt = now())
+                input.text("name")?.let { after = after.copy(name = it) }
+                input.text("status")?.let { after = after.copy(status = it) }
+                (input["theme"] as? JsonObject)?.let { theme ->
+                    if ("accent" in theme) after = after.copy(theme = theme.text("accent")?.let { ProjectTheme(accent = it) })
+                }
+                groups = groups.map { if (it.id == before.id) after else it }.sortedBy { it.name.lowercase() }
+                ok("""{"group":${json.encodeToString(after)}}""")
             }
             path == "api/devices/current/alert-prefs" -> {
                 alertPrefs = input["prefs"] ?: JsonNull
@@ -225,6 +262,7 @@ class DemoServer(private val now: () -> Long = { Clock.System.now().toEpochMilli
                 if ("description" in input) after = after.copy(description = input.text("description"))
                 input.text("status")?.let { after = after.copy(status = it) }
                 input["pinned"]?.jsonPrimitive?.booleanOrNull?.let { after = after.copy(pinned = it) }
+                if ("groupId" in input) after = after.copy(groupId = input.text("groupId")?.let { ref -> groups.firstOrNull { it.id == ref || it.slug == ref }?.id })
                 (input["theme"] as? JsonObject)?.let { theme ->
                     val was = after.theme ?: ProjectTheme()
                     val logo = if ("logoMediaId" in theme) theme.text("logoMediaId") else was.logoMediaId

@@ -80,8 +80,29 @@ sealed interface FeedEvent {
     /** Follow or unfollow the thread a card is in: whether its replies alert the owner. */
     data class FollowThread(val targetId: String, val following: Boolean) : FeedEvent
 
-    /** How much of a project alerts the owner, on every device. */
-    data class SetProjectNotify(val projectId: String, val slug: String, val level: dev.wildware.agents.NotifyLevel) : FeedEvent
+    /** How much of a channel alerts the owner, on every device; null follows its project's setting. */
+    data class SetProjectNotify(val projectId: String, val slug: String, val level: dev.wildware.agents.NotifyLevel?) : FeedEvent
+
+    /** Make a project (a named group of channels). [done] as for [CreateProject]. */
+    data class CreateGroup(val name: String, val done: (problem: String?) -> Unit = {}) : FeedEvent
+
+    /** Rename project [slug]. [done] as for [CreateProject]. */
+    data class RenameGroup(val slug: String, val name: String, val done: (problem: String?) -> Unit = {}) : FeedEvent
+
+    /** Give project [slug] its own colour (#rrggbb), or take it off with null. */
+    data class SetGroupAccent(val slug: String, val accent: String?) : FeedEvent
+
+    /** Archive project [slug] (with its channels, in the list), or bring it back. */
+    data class ArchiveGroup(val slug: String, val archived: Boolean) : FeedEvent
+
+    /** Delete project [slug]. Its channels stay, in no project. */
+    data class DeleteGroup(val slug: String) : FeedEvent
+
+    /** Put channel [slug] in project [groupId], or in none with null. */
+    data class MoveChannel(val slug: String, val groupId: String?) : FeedEvent
+
+    /** How much of project [slug] alerts the owner, for its channels without their own; null clears it. */
+    data class SetGroupNotify(val groupId: String, val slug: String, val level: dev.wildware.agents.NotifyLevel?) : FeedEvent
 
     /** Archive project [slug], or bring it back. */
     data class ArchiveProject(val slug: String, val archived: Boolean) : FeedEvent
@@ -801,8 +822,14 @@ internal fun List<Reaction>.withMine(emoji: String, on: Boolean): List<Reaction>
 
 /** Which project dialog is open: making a new one, or the settings of one already there. */
 sealed interface ProjectDialog {
+    /** A new channel. */
     data object New : ProjectDialog
+    /** A channel's settings. */
     data class Settings(val projectId: String) : ProjectDialog
+    /** A new project (a group of channels). */
+    data object NewGroup : ProjectDialog
+    /** A project's settings. */
+    data class GroupSettings(val groupId: String) : ProjectDialog
 }
 
 /** The kind of thread a card heads, as the dashboard names it. */

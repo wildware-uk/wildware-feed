@@ -104,7 +104,7 @@ internal class FeedMapper(
         val viewProjects = projects.map { it.toView(media) }
         val byId = viewProjects.associateBy { it.id }
         val current = when (selectedSlug) {
-            null -> Project("all", "All projects", unread = projects.sumOf { it.unread }, waiting = projects.sumOf { it.waiting }, hue = 0)
+            null -> Project("all", "All channels", unread = projects.sumOf { it.unread }, waiting = projects.sumOf { it.waiting }, hue = 0)
             else -> viewProjects.firstOrNull { it.slug == selectedSlug }
                 ?: Project(selectedSlug, feed.project?.name ?: selectedSlug, unread = 0, hue = hue(selectedSlug), slug = selectedSlug)
         }
@@ -197,6 +197,7 @@ internal class FeedMapper(
             logo = logoId?.let { id -> logo(id, project.name, pictures.firstOrNull { it.id == id }) },
             logoMediaId = logoId,
             logoInsteadOfName = logoId != null && project.theme?.logoReplacesName == true,
+            groupId = project.groupId,
         )
     }
 

@@ -258,7 +258,7 @@ object FakeFeed {
             }
         },
         agents = state.agents,
-        current = Project("all", "All projects", unread = 19, waiting = 3, hue = 0),
+        current = Project("all", "All channels", unread = 19, waiting = 3, hue = 0),
         sections = listOf(
             FeedSection("Waiting on you", listOf(threadQuestion, question.copy(expiresAt = Now + 42 * 60_000), pictureQuestion.copy(project = website))),
             FeedSection(

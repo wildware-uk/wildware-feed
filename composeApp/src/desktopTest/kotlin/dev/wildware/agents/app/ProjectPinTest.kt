@@ -52,8 +52,8 @@ class ProjectPinTest {
     @Test
     fun pinningFromTheSettingsPinsIt() = runComposeUiTest {
         feed(1440, FakeFeed.state)
-        onNode(hasContentDescription("Project settings")).performClick()
-        onNode(hasText("Pin project")).performScrollTo().performClick()
+        onNode(hasContentDescription("Channel settings")).performClick()
+        onNode(hasText("Pin channel")).performScrollTo().performClick()
         waitForIdle()
         assertEquals(listOf(FeedEvent.PinProject("agent-dashboard", true)), events.filterIsInstance<FeedEvent.PinProject>())
     }
@@ -62,8 +62,8 @@ class ProjectPinTest {
     fun aPinnedProjectSaysSoAndOffersUnpin() = runComposeUiTest {
         feed(1440, pinned)
         onNode(hasContentDescription("${pinned.current.name}, pinned", substring = true)).assertExists()
-        onNode(hasContentDescription("Project settings")).performClick()
-        onNode(hasText("Unpin project")).performScrollTo().performClick()
+        onNode(hasContentDescription("Channel settings")).performClick()
+        onNode(hasText("Unpin channel")).performScrollTo().performClick()
         waitForIdle()
         assertEquals(listOf(FeedEvent.PinProject("agent-dashboard", false)), events.filterIsInstance<FeedEvent.PinProject>())
     }

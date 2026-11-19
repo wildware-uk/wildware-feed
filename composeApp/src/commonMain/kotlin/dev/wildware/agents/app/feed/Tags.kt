@@ -166,7 +166,7 @@ fun TagPicker(ui: FeedUi, cardId: String) {
             Column {
                 Column(Modifier.heightIn(max = 320.dp).verticalScroll(rememberScrollState())) {
                     if (words.isEmpty()) {
-                        MetaText("This project has no tags yet. Make the first one below.", color = colors.textMuted)
+                        MetaText("This channel has no tags yet. Make the first one below.", color = colors.textMuted)
                     }
                     words.forEach { tag ->
                         val on = wearing.any { it.id == tag.id || it.name.equals(tag.name, ignoreCase = true) }

@@ -201,14 +201,62 @@ class DashboardClient(
         }.requireSuccess()
     }
 
-    /** How much of a project alerts the owner. */
+    /** How much of a channel alerts the owner; null clears it, so the channel follows its project. */
     @Throws(Exception::class)
-    suspend fun setProjectNotify(slug: String, level: NotifyLevel) {
+    suspend fun setProjectNotify(slug: String, level: NotifyLevel?) {
         http.put("api/projects/${slug.encodeURLPathPart()}/subscription") {
             authorise()
-            jsonBody(buildJsonObject { put("level", level.wire) })
+            jsonBody(buildJsonObject { put("level", level?.wire?.let(::JsonPrimitive) ?: JsonNull) })
         }.requireSuccess()
     }
+
+    /** How much of a project (a group of channels) alerts the owner; null clears it. */
+    @Throws(Exception::class)
+    suspend fun setGroupNotify(slug: String, level: NotifyLevel?) {
+        http.put("api/groups/${slug.encodeURLPathPart()}/subscription") {
+            authorise()
+            jsonBody(buildJsonObject { put("level", level?.wire?.let(::JsonPrimitive) ?: JsonNull) })
+        }.requireSuccess()
+    }
+
+    /** Makes a project (a named group of channels), or gives back the one with that name's slug. */
+    @Throws(Exception::class)
+    suspend fun createGroup(name: String): GroupView =
+        http.post("api/groups") {
+            authorise()
+            jsonBody(buildJsonObject { put("name", name) })
+        }.decoded<GroupBody>().group
+
+    /** Renames a project. */
+    @Throws(Exception::class)
+    suspend fun renameGroup(slug: String, name: String): GroupView = patchGroup(slug, buildJsonObject { put("name", name) })
+
+    /** A project's accent colour, #rrggbb, or null to take it off. */
+    @Throws(Exception::class)
+    suspend fun setGroupAccent(slug: String, accent: String?): GroupView =
+        patchGroup(slug, buildJsonObject { put("theme", buildJsonObject { put("accent", accent?.let(::JsonPrimitive) ?: JsonNull) }) })
+
+    /** Archives a project (it and its channels list under Archived), or brings it back. */
+    @Throws(Exception::class)
+    suspend fun setGroupArchived(slug: String, archived: Boolean): GroupView =
+        patchGroup(slug, buildJsonObject { put("status", if (archived) "archived" else "active") })
+
+    /** Deletes a project. Its channels stay, in no project. */
+    @Throws(Exception::class)
+    suspend fun deleteGroup(slug: String) {
+        http.delete("api/groups/${slug.encodeURLPathPart()}") { authorise() }.requireSuccess()
+    }
+
+    /** Puts a channel in a project (by group id or slug), or in none with null. */
+    @Throws(Exception::class)
+    suspend fun setProjectGroup(slug: String, groupId: String?): ProjectView =
+        patchProject(slug, buildJsonObject { put("groupId", groupId?.let(::JsonPrimitive) ?: JsonNull) })
+
+    private suspend fun patchGroup(slug: String, body: JsonObject): GroupView =
+        http.patch("api/groups/${slug.encodeURLPathPart()}") {
+            authorise()
+            jsonBody(body)
+        }.decoded<GroupBody>().group
 
     /** Pins a card above the feed, or unpins it. Says which, so sending it twice does no harm. */
     @Throws(Exception::class)
@@ -710,6 +758,9 @@ internal data class ConnectionsBody(val connections: List<AgentConnection> = emp
 
 @kotlinx.serialization.Serializable
 internal data class ProjectBody(val project: ProjectView)
+
+@kotlinx.serialization.Serializable
+internal data class GroupBody(val group: GroupView)
 
 @kotlinx.serialization.Serializable
 internal data class AlertPrefsBody(val prefs: AlertPrefs? = null)

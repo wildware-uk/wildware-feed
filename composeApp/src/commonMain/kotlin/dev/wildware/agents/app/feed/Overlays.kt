@@ -516,16 +516,34 @@ fun ProjectsDrawer(ui: FeedUi, progress: EdgeProgress, widthPx: Float, safeArea:
             Spacer(Modifier.height(12.dp))
             DrawerWaitingRow(ui, close)
             Spacer(Modifier.height(12.dp))
+            val sections = ui.channelSections
+            if (sections.groups.isNotEmpty()) {
+                SectionLabel("Projects", Modifier.padding(horizontal = 10.dp))
+                Spacer(Modifier.height(6.dp))
+                ProjectGroups(ui) { p ->
+                    DrawerProjectRow(p, selected = p.id == ui.state.current.id, dragging = false, grip = false) {
+                        ui.emit(FeedEvent.SelectProject(p.slug))
+                        close()
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
+            }
             Row(Modifier.padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                SectionLabel("Projects", Modifier.weight(1f))
-                MetaText("Hold to reorder")
+                SectionLabel("Channels", Modifier.weight(1f))
+                if (sections.loose.size > 1) MetaText("Hold to reorder")
             }
             Spacer(Modifier.height(6.dp))
+            // Moves count among every active channel, so the loose ones' places are turned into theirs.
+            val active = ui.projects.filter { !it.archived }
             ReorderableColumn(
-                items = ui.projects.filter { !it.archived },
+                items = sections.loose,
                 keyOf = { it.id },
                 label = { it.name },
-                onMove = { from, to -> ui.emit(FeedEvent.MoveProject(from, to)) },
+                onMove = { from, to ->
+                    val a = active.indexOfFirst { it.id == sections.loose[from].id }
+                    val b = active.indexOfFirst { it.id == sections.loose[to].id }
+                    if (a >= 0 && b >= 0) ui.emit(FeedEvent.MoveProject(a, b))
+                },
             ) { p, dragging ->
                 DrawerProjectRow(p, selected = p.id == ui.state.current.id, dragging = dragging) {
                     ui.emit(FeedEvent.SelectProject(p.slug))
@@ -533,6 +551,7 @@ fun ProjectsDrawer(ui: FeedUi, progress: EdgeProgress, widthPx: Float, safeArea:
                 }
             }
             NewProjectRow(ui)
+            NewGroupRow(ui)
             ArchivedProjects(ui)
             Spacer(Modifier.height(20.dp))
             SectionLabel("Agents", Modifier.padding(horizontal = 10.dp))
@@ -600,7 +619,7 @@ private fun DrawerWaitingRow(ui: FeedUi, close: () -> Unit) {
 }
 
 @Composable
-private fun DrawerProjectRow(p: Project, selected: Boolean, dragging: Boolean, onClick: () -> Unit) {
+private fun DrawerProjectRow(p: Project, selected: Boolean, dragging: Boolean, grip: Boolean = true, onClick: () -> Unit) {
     val colors = AgentTheme.colors
     val shape = AgentTheme.shapes.medium
     Row(
@@ -635,7 +654,7 @@ private fun DrawerProjectRow(p: Project, selected: Boolean, dragging: Boolean, o
         if (p.pinned) Icon(Icons.Pin, null, tint = colors.accent, modifier = Modifier.padding(end = 8.dp).size(14.dp))
         WaitingBadge(p.waiting, Modifier.padding(end = 6.dp))
         UnreadBadge(p.unread, emphasised = selected)
-        Icon(Icons.Grip, null, tint = colors.textFaint, modifier = Modifier.padding(start = 10.dp).size(18.dp))
+        if (grip) Icon(Icons.Grip, null, tint = colors.textFaint, modifier = Modifier.padding(start = 10.dp).size(18.dp))
     }
 }
 

@@ -60,7 +60,7 @@ class PolishTest {
         val archived = state.projects.first().copy(id = "old", archived = true, unread = 0, waiting = 0)
         desktop(state.copy(projects = state.projects + archived, openThread = null))
         onAllNodes(hasContentDescription("agent-dashboard,", substring = true)).assertCountEquals(1)
-        onNodeWithContentDescription("Show 2 archived projects").performClick()
+        onNodeWithContentDescription("Show 2 archived").performClick()
         onNodeWithContentDescription("agent-dashboard, archived").assertExists()
     }
 

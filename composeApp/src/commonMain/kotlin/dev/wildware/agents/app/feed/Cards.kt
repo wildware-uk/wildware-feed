@@ -300,7 +300,7 @@ private fun ProjectLabel(project: Project, modifier: Modifier = Modifier) {
         modifier
             .clip(shape)
             .focusRing(shape)
-            .semantics(mergeDescendants = true) { contentDescription = "In project ${project.name}" }
+            .semantics(mergeDescendants = true) { contentDescription = "In channel ${project.name}" }
             .then(
                 if (ui != null && slug != null) {
                     Modifier.clickable(role = Role.Button, onClickLabel = "Open ${project.name}") {
