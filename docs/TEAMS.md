@@ -2,6 +2,12 @@
 
 Status: proposal. Nothing here is built yet.
 
+**Updated 2026-11-19 after the owner's decisions.** Hosting is now many teams on one shared,
+stateless server, designed in [HOSTING.md](HOSTING.md). That changes this document in five places,
+each marked "(changed)": one server holds many teams; a login is an account with a membership in
+each team; people are alerted through what they follow; there is no viewer role for now; and the
+migrations are numbered from 055. Where the two disagree, HOSTING.md wins.
+
 Today a server has exactly one person, "the owner". This document turns that into a team: several
 people, each with their own sign-in, role and phones, sharing one set of projects and agents. It
 lives in the open-source server because self-hosters with teams want it too. Billing, signup and
@@ -10,7 +16,8 @@ server only gives that service a small, generic admin surface (section 7).
 
 The short version:
 
-- **One server is one team.** No multi-tenancy: there is no `team_id` on every row.
+- **(changed) A server holds many teams.** A self-hosted server has one, the home team, and looks
+  like today. The hosted one has many, each with a `team_id` on every row (HOSTING.md §2).
 - **A team of one looks exactly like today.** Same wire format, same agent output, same sign-in.
   The existing parity suite keeps passing unchanged.
 - **People stay `"human"` to agents.** Every person's messages keep `author: "human"`, so every
@@ -19,11 +26,14 @@ The short version:
 
 ## 1. The model
 
-**User.** Email (unique, lower-cased), display name, password hash (argon2id, as today), role, and
-whether they see all projects. A user is never hard-deleted: removing someone sets `removed_at`
-and keeps the row, so "Alex answered this" still reads right a year later.
+**User (changed: account plus membership).** An account is an email (unique, lower-cased), display
+name and password hash (argon2id, as today). A membership puts an account in one team with a role
+and an @mention handle. On a self-hosted server every account has one membership, so "user" below
+means both. A membership is never hard-deleted: removing someone sets `removed_at` and keeps the
+row, so "Alex answered this" still reads right a year later. See HOSTING.md §5.
 
-**Roles.** One role per user, for the whole team.
+**Roles (changed: no viewer for now).** One role per membership, for the whole team. The viewer
+column below is kept for later; it is not built.
 
 | Can… | owner | admin | member | viewer |
 |---|---|---|---|---|
@@ -36,7 +46,9 @@ and keeps the row, so "Alex answered this" still reads right a year later.
 | Sign out their own devices | yes | yes | yes | yes |
 | Sign out someone else's devices | yes | yes (not an owner's) | no | no |
 
-**Project access.** Each user either sees **all projects** (the default, and always true for owners
+**Project access (deferred).** For now everyone in a team sees every project; what reaches
+each person is decided by what they follow (section 4). Chosen projects, as below, come later.
+Each user either sees **all projects** (the default, and always true for owners
 and admins) or **chosen projects** (a list). A new project an agent creates is visible to
 all-projects users only, until an admin adds it to someone's list. Cards with no project are
 visible to all-projects users only.
@@ -50,8 +62,10 @@ visible to all-projects users only.
   universal links.
 - **Passkeys.** Later, hosted only (section 11). A passkey is tied to a domain the app must list
   in its own entitlements, which a self-hosted address can never be.
-- **A grant from the control plane.** Hosted only, slice 2 (section 7): the hosted "Log in" signs
-  the person in on the control plane, which hands the app a one-time grant for their team's server.
+- **(changed) Account sign-in with a ticket.** Hosted only. Accounts live in the same database as
+  the teams, so the hosted "Log in" signs in on `feed.wildware.dev` itself and gets a short-lived
+  ticket that each team's address trades for a device key (HOSTING.md §5). The signed grants from
+  the control plane that this section used to describe are dropped.
 
 Without mail, nothing breaks: invites and password resets become links an admin copies and sends
 however they like (chat, text message).
@@ -60,7 +74,9 @@ however they like (chat, text message).
 
 Nothing is copied or rewritten in bulk, and every key keeps working.
 
-1. Migration 048 adds the new tables and nullable columns (section 9). It touches no existing data.
+1. Migration 055 (changed from 048, which is taken) adds the new tables and nullable columns
+   (section 9), and the `teams` table with its one row, the home team (HOSTING.md §2). It touches no
+   existing data.
 2. On boot, if `users` is empty and `ADMIN_PASSWORD_HASH` is set, the server creates the
    **founding owner**: role owner, name "Owner", no email, `founder = 1`, and no password hash of its
    own (it keeps using `ADMIN_PASSWORD_HASH` until the person sets a password in the app).
@@ -79,8 +95,7 @@ no user, no `ADMIN_PASSWORD_HASH`, and no way to make one (it then prints the `c
 command to run).
 
 **One-way door.** The TypeScript server refuses any database with a migration it does not know.
-After 048 runs, it can no longer open the file. Ship teams only after the Kotlin cut-over, or port
-048 to the TypeScript server first (open question 1).
+It was retired at the move to the Kotlin server, so this closes no door that is still open.
 
 ## 3. Attribution: who did this
 
@@ -110,11 +125,17 @@ the session restarts) decides "is this the owner?" with `author === 'human'`, an
 is the right behaviour for authority, and new bridges can say `from="owner" by="Sam"`.
 
 **What agents are told.** The MCP instructions change "your owner" to "your owner (any person on
-your team)". Any member's answer counts as the team's answer. Viewers cannot answer, so that is
-safe. If two people answer the same request, the second gets `409 conflict` with "Sam already
+your team)". Any member's answer counts as the team's answer. If two people answer the same request, the second gets `409 conflict` with "Sam already
 answered this", because answering is already one conditional `UPDATE … WHERE state = 'pending'`.
 
 ## 4. Notifications
+
+**(changed) People hear what they follow.** The owner decided: each person subscribes to the
+groups, channels and threads relevant to them, and is alerted when mentioned; a teammate's message
+reaches others only through those follows. This uses the follow system on master (migrations 052
+and 053, `domain/Subscriptions.kt`) per person, subscriber `member:<membership id>`. The full rule
+is in HOSTING.md §6; it replaces the "can see the project" rule below, and answers what were open
+questions 3 and 4.
 
 **Devices belong to users.** `owner_devices.user_id` says whose phone it is. The per-device
 settings that exist today keep working as they are: alert projects (`alert_project_ids`) and alert
@@ -122,23 +143,22 @@ prefs (`alert_prefs`).
 
 **Who gets an alert about a project.** A device gets an APNs alert when all of these hold:
 
-1. its user can see the project (section 1);
+1. its user follows what the event is about, or was mentioned (HOSTING.md §6);
 2. its alert projects include the project (unchanged rule);
 3. its alert prefs allow the type, level and priority (unchanged rule);
 4. its user did not cause the event (Sam does not get a push for Sam's own reply).
 
-Requests go to everyone who can see the project. Whether a request should go only to some people
-is open question 3.
+Requests reach whoever follows them by the same rule.
 
 **Live Activities and the summary.** `GET /api/summary` and the Live Activity content are worked
-out per user, over the projects that user can see. On a team of one, and for every all-projects
+out per user, over the projects that user has not muted. On a team of one, and for every all-projects
 user, that is exactly today's summary. When anyone answers a request, every device's Live Activity
 updates as today. The summary gains `suspended` (section 7) and nothing else, so the iOS contract
 stays add-only.
 
 **The bell.** `notifications.seen_at` is one value for the whole server today. It becomes a
-per-user read cursor (`notification_reads`, section 9). The bell lists only notifications in
-projects the user can see.
+per-user read cursor (`notification_reads`, section 9). The bell gets a row per person who hears
+the event, so each person's bell is their own.
 
 **Mail (optional).** `SMTP_URL` (`smtp://` or `smtps://`, user and password in the URL) and
 `MAIL_FROM`. Unset means no mail: email codes are switched off and invites are links only. The
@@ -186,7 +206,7 @@ one-time reset link for a member (24 hours); the owner's own recovery is the CLI
 Still one pool per team: any agent token can post to any project, as today. Owners and admins
 mint, rename and revoke them from the app (`POST /api/agents`, `PATCH /api/agents/:id`,
 `DELETE /api/agents/:id`); the token is shown once, as the CLI does. The CLI commands stay.
-`agents.created_by` records who minted each one. Members and viewers see the agent list (name,
+`agents.created_by` records who minted each one. Members see the agent list (name,
 last seen, online) but not mint controls. Revoking closes the agent's streams, as today.
 
 Limiting an agent to some projects is out of scope.
@@ -194,6 +214,11 @@ Limiting an agent to some projects is out of scope.
 ## 7. Admin surface for the control plane
 
 Small and generic, so a self-hoster can use it too. No billing, no plans, no prices.
+
+**(changed)** With many teams per server, the admin API works per team: create a team, read its
+usage, set its limits, suspend it, delete it, export it. HOSTING.md §7 has the full list. The CLI,
+the token rules and suspension below still hold, per team. The sign-in grants are dropped
+(section 1, "Sign-in methods").
 
 **CLI, `feed-server create-owner --email <e> --name <n>`.** Creates an owner (or fails if that
 email exists). With `--password-stdin` it sets the password; otherwise it prints a one-time setup
@@ -215,27 +240,6 @@ routes, and no other credential is accepted here.
 Seats = users not removed. Storage = media plus derivatives bytes. The control plane decides what
 any of it costs.
 
-**Sign-in grants** (slice 2). The hosted service's "Log in" happens on the control plane, not on
-the team's server: the person signs in there (email and password, or a magic link), and the
-control plane answers the app with their team server's address and a **grant**, a short-lived
-statement it signs: "this person may sign in to this server once". The app then trades the grant
-for a device key on the team server, exactly as a password sign-in would. The open server needs
-nothing hosted-specific beyond checking that signature:
-
-- `GRANT_PUBLIC_KEY`: the control plane's Ed25519 public key (base64 of the 32 raw bytes). Unset
-  means grants are off and the route below answers 404, as on any self-hosted server.
-- The grant is `<base64url payload>.<base64url signature>`, the signature over the payload bytes.
-  The payload is JSON `{"aud": "<this server's PUBLIC_BASE_URL>", "email": "…", "jti": "<random>",
-  "exp": <unix seconds>}`.
-- `POST /api/devices/grant` `{grant, name}` → 201 with the same body as password sign-in. Refused
-  (401 `grant_refused`, one message for every reason) when the signature is bad, `aud` is not this
-  server, it has expired (at most 5 minutes after issue, small clock skew allowed), its `jti` was
-  used before, or no current user has that email. A grant never creates a user: the control plane
-  provisions people through `create-owner` and invites, like anyone else.
-- One use: the `jti` is stored in `auth_codes` (purpose `grant`, hashed, kept until `exp`), the
-  same table as every other one-time secret, so no extra table.
-- The same rate limits as password sign-in, keyed on the client address.
-
 **`PUT /admin/suspended`** `{"suspended":true,"reason":"…"}`. Also `feed-server suspend` and
 `unsuspend` for self-hosters. While suspended the server is **read-only**:
 
@@ -256,28 +260,26 @@ Shared code (`composeApp` common, `shared`) does most of it, on phone and deskto
 
 - Sign-in: see "The sign-in screen" below.
 - Settings, "You": name, email, password, sign out other devices, leave team.
-- Settings, "Team" (owner and admin only): people with role and project access, pending invites
-  with copy and revoke, invite sheet (role, email, all or chosen projects), remove person.
+- Settings, "Team" (owner and admin only): people with their role, pending invites
+  with copy and revoke, invite sheet (role, email), remove person.
 - Settings, "Agents": list for everyone; mint, rename and revoke for owners and admins.
 - Settings, "Devices": your devices; admins can also see and sign out others'.
 - Cards and threads: "who did this" labels on human replies, answered requests ("Answered by
   Sam"), reactions (names on long-press or hover), tags and fields set by a person.
-- Hide controls a viewer cannot use (reply box, answer buttons, react) rather than letting them
-  fail.
 - A read-only banner while the server is suspended.
 - Team of one: none of the labels show, so the feed looks as it does today.
 
 **The sign-in screen.** Two clear ways in, on every platform, plus the desktop's own server:
 
-- **Log in**: the hosted service. Email and password or a magic link on the control plane, which
-  answers with the team server's address and a grant (section 7); the app trades the grant for a
-  device key and opens the feed. Until the control plane exists it is hidden behind a build flag, or
+- **Log in** (changed): the hosted service. Email and password on `feed.wildware.dev`, which
+  answers with the account's teams and a short-lived ticket; the app trades the ticket for a device
+  key on the chosen team's address and opens the feed (HOSTING.md §5). Until the control plane exists it is hidden behind a build flag, or
   shown as "coming soon".
 - **Connect to a host**: someone's own server, in two steps.
   1. *Address.* The app asks the public `GET /api/server` and checks it is a Wildware Feed server:
      `{"product": "wildware-feed", "version": "…", "signIn": ["password"], "team": false}`, where
      `signIn` lists what the server offers (`password` today, the owner's password;
-     `email-password`, `email-code` and `grant` as the slices land) and `team` says whether it has
+     `email-password` and `email-code` as the slices land) and `team` says whether it has
      people. Anything else gets a friendly "That address isn't a Wildware Feed server" (with "check
      the address, or that it starts with https://"), and an unreachable one "Couldn't reach that
      address". A server too old to have `/api/server` but answering `/api/summary` with a 401 JSON
@@ -307,25 +309,27 @@ devices, so the invite sheet warns when `PUBLIC_BASE_URL` is a loopback address.
 
 ## 9. Database
 
-Migrations use the numbers **048** and **049**, reserved for this work. (**050** is already taken by
-media retention; the runner applies any version it has not applied yet, in order, so 048 and 049
-can still land after it.) Each one ships as a pair under the
-same version and name: `server/src/main/resources/migrations/048-people.sql` for SQLite and
-`server/src/main/resources/migrations-pg/048-people.sql` for Postgres, each listed with its own
+**(changed)** 048 to 053 were taken by other work, and 054 by the secrets PR (#153), so this work
+starts at **055**, numbered in order with HOSTING.md's migrations and checked against master again
+just before each lands. Each one ships as a pair under the
+same version and name: `server/src/main/resources/migrations/055-people.sql` for SQLite and
+`server/src/main/resources/migrations-pg/055-people.sql` for Postgres, each listed with its own
 checksum in its folder's `migrations.json`. Both are add-only: new tables, new nullable columns, and
 index swaps. No table rebuild. The `migrate` (SQLite to Postgres) and `export` (Postgres to SQLite)
 tools learn the new tables.
 
-**048-people** (slice 1):
+**055-people** (slice 1):
 
-- `users`: `id`, `email` (unique among not-removed rows), `name`, `password_hash`, `role`
-  (CHECK owner, admin, member, viewer), `all_projects` (0/1, default 1), `founder` (0/1, at most one),
-  `created_at`, `removed_at`.
+- `teams`: one row, the home team (HOSTING.md §2).
+- `users` (accounts): `id`, `email` (unique), `name`, `password_hash`, `created_at`.
+- `memberships`: `id`, `team_id`, `user_id`, `role` (CHECK owner, admin, member), `handle`,
+  `founder` (0/1, at most one per team), `created_at`, `removed_at`. The `user_id` columns below
+  point at a membership.
 - `invites`: `id`, `email`, `role`, `all_projects`, `project_ids` (JSON), `token_hash` (unique),
   `created_by`, `created_at`, `expires_at`, `accepted_at`, `accepted_by`, `revoked_at`.
 - `auth_codes`: `id`, `user_id`, `purpose` (email sign-in, password reset, setup), `code_hash`,
   `created_at`, `expires_at`, `used_at`, `attempts`. One table for every one-time secret.
-- `server_state`: a single row: `team_name`, `suspended_at`, `suspended_reason`.
+- (changed) No `server_state` row: the team's name and its suspended flag live on `teams`.
 - New nullable columns: `owner_devices.user_id`, `messages.user_id`, `approvals.decided_by`,
   `reactions.user_id`, `card_tags.user_id`, `card_fields.user_id`, `media.user_id`,
   `app_views.user_id`, `agents.created_by`.
@@ -333,10 +337,10 @@ tools learn the new tables.
   `(card, actor, emoji)`. Two people are both `actor = "human"`, so the four unique indexes are
   replaced by `(card, actor, coalesce(user_id, ''), emoji)`.
 
-**049-project-access** (slice 3):
+**Later, with per-project access** (deferred): `project_access`: `user_id`, `project_id`,
+`created_at`; unique pair.
 
-- `project_access`: `user_id`, `project_id`, `created_at`; unique pair.
-- `notification_reads`: `user_id` (unique), `seen_through_seq`. The old `notifications.seen_at`
+**Also in 055:** `notification_reads`: `user_id` (unique), `seen_through_seq`. The old `notifications.seen_at`
   stays and is read only as the founder's starting point.
 
 ## 10. Security
@@ -355,7 +359,8 @@ obvious feed routes:
 
 Agents are not affected: agent tokens see every project, as today.
 
-**Rate limits** (in memory, sliding windows, like today's limiter):
+**Rate limits** (changed: the sign-in, invite and code limits are kept in Postgres, so they hold
+across several web servers; HOSTING.md §3):
 
 | What | Key | Limit |
 |---|---|---|
@@ -384,53 +389,41 @@ user, also closes that device's open streams.
   against SQLite and Postgres. That is the proof that old apps and agents are unaffected.
 - A migration test: open a database fixture at 047, boot, check the founder exists, an old device
   key works, an old agent token works, legacy sign-in works, every human row has a `user_id`.
-- An access matrix (Kotlin only): every owner route, called as owner, admin, member, viewer, a
-  member without the project, and a removed user. The route list is read from the router, so a new
+- An access matrix (Kotlin only): every owner route, called as owner, admin, member and a removed
+  user. The route list is read from the router, so a new
   route with no rule fails the build.
-- Stream and media leak tests: a chosen-projects member must never receive an event, media file,
-  summary count or push about a hidden project.
+- The two-team leak suite (HOSTING.md §2): nothing from another team ever reaches an answer, a
+  stream, a media URL or a push.
 - Agent output: team of one is byte-identical; team of two adds exactly the documented keys.
 - Last-owner rules, invite expiry and single use, suspension (writes refused, reads fine).
 
 ## 11. Phasing
 
-**Slice 1: a second person with full access.** The smallest thing worth having.
+**(changed)** The slices now live in HOSTING.md §9, which orders this document's work with the
+multi-team work. In short:
 
-- Migration 048; founding owner on boot; email and password sign-in; legacy sign-in kept.
-- Roles owner, admin and member; everyone sees all projects.
-- Invite by link (no mail); accept in the app; people list; remove a person (devices revoked,
-  streams closed); last-owner rules; `create-owner` and `reset-password` on the CLI.
-- Attribution in the app and to agents (section 3).
-- Push to every user's devices, minus the person who acted.
-- App: the host's email-and-password login (step 2 of "Connect to a host"), invite accept, "You"
-  and "Team" settings, "who did this" labels.
+1. **A second person in today's team**: migration 055, accounts and memberships, roles owner, admin
+   and member, invite by link, email and password sign-in, attribution, follows and the bell per
+   person, `create-owner` and `reset-password` on the CLI. Everyone sees all projects.
+2. **Run on two dynos**, still one team.
+3. **`team_id` everywhere**, shipped dark.
+4. **Many teams**: per-team addresses, the admin API, limits, suspension, agent tokens minted in
+   the app.
+5. **One login, several teams**: the hosted "Log in".
+6. **Later**: mail (`SMTP_URL`, invite emails, email codes), passkeys on the hosted domain,
+   per-project access, a viewer role if wanted.
 
-**Before slice 1: the two-step sign-in.** `GET /api/server`, and the sign-in screen's "Log in"
-(hidden) and "Connect to a host" (address, then the host's login). Small, and useful on its own.
-
-**Slice 2: the hosted hooks.** `ADMIN_API_TOKEN`, `/admin/usage`, suspension, agent tokens minted
-and revoked in the app, admin reset links, and sign-in grants (`GRANT_PUBLIC_KEY`,
-`POST /api/devices/grant`).
-
-**Slice 3: chosen projects and viewers.** Migration 049, the viewer role, per-project access, the
-filtered stream, media, summary, bell and pushes, and the leak tests. This is the riskiest slice.
-
-**Slice 4: mail.** `SMTP_URL`, invite emails, email-code sign-in and its rate limits.
-
-**Slice 5: passkeys** on the hosted domain only.
-
-**The riskiest part** is slice 3: one missed read path (an event on the stream, a media URL, a
-count in the summary, a push) leaks a hidden project. The deny-by-default access matrix and the
-leak tests exist for that. Slice 1 avoids the risk by giving everyone every project.
+`GET /api/server` and the two-step "Connect to a host" are already on master.
 
 ## 12. Open questions for the owner
 
-1. ~~Is the TypeScript server retired before slice 1 ships?~~ Settled: it was retired at the move
-   to the Kotlin server, so migration 048 closes no door that is still open.
-2. Hosted: one server per team (this design), or many teams on one server? Many teams means a
-   team id on every row, which is a much bigger change; better decided now.
-3. Should a request alert everyone who can see its project, or only some people (for example,
-   whoever is "on call" for that project)?
-4. Should a person's message notify the other people on the team (the bell and a push), or only
-   agent messages, as today?
-5. Do viewers earn their place, or are three roles enough for now?
+All five are settled:
+
+1. ~~Is the TypeScript server retired before slice 1 ships?~~ Yes, at the move to the Kotlin server.
+2. ~~One server per team, or many teams on one server?~~ Many teams on one stateless server
+   (HOSTING.md).
+3. ~~Who does a request alert?~~ Whoever follows it, or is mentioned (HOSTING.md §6).
+4. ~~Does a person's message notify the others?~~ Only through what they follow.
+5. ~~Viewers?~~ Not for now: owner, admin, member.
+
+New questions are in HOSTING.md §11.
