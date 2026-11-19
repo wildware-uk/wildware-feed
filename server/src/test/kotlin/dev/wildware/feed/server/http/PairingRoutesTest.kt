@@ -3,6 +3,7 @@ package dev.wildware.feed.server.http
 import dev.wildware.feed.server.App
 import dev.wildware.feed.server.Config
 import dev.wildware.feed.server.db.Database
+import dev.wildware.feed.server.domain.tableNames
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.post
@@ -137,7 +138,7 @@ class PairingRoutesTest {
                 token = poll(id, secret).bodyAsText().json().s("token")
                 assertEquals(token, poll(id, secret).bodyAsText().json().s("token"))
             }
-            val everything = app.db.query("SELECT name FROM sqlite_master WHERE type = 'table'") { it.getString(1) }.flatMap { table ->
+            val everything = app.db.tableNames().flatMap { table ->
                 app.db.query("SELECT * FROM \"$table\"") { rs -> (1..rs.metaData.columnCount).joinToString("|") { rs.getString(it).orEmpty() } }
             }
             assertTrue(everything.isNotEmpty())

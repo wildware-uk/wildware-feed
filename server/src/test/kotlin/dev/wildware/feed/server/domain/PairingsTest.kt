@@ -1,6 +1,7 @@
 package dev.wildware.feed.server.domain
 
 import dev.wildware.feed.server.db.Database
+import dev.wildware.feed.server.db.Dialect
 import dev.wildware.feed.server.events.Bus
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
@@ -103,7 +104,8 @@ class PairingsTest {
         pairings.approve(started.pairing.id, null)
         val token = assertNotNull(pairings.await(started.pairing.id, started.secret, 0).token)
         // Every column of every table: neither the token nor the poll secret it is made from.
-        val tables = db.query("SELECT name FROM sqlite_master WHERE type = 'table'") { it.getString(1) }
+        val tables = db.tableNames()
+        assertTrue("agent_pairings" in tables && "agents" in tables, tables.toString())
         val everything = tables.flatMap { t -> db.query("SELECT * FROM \"$t\"") { rs -> (1..rs.metaData.columnCount).joinToString("|") { rs.getString(it).orEmpty() } } }
         assertTrue(everything.none { token in it || started.secret in it })
     }
@@ -185,3 +187,8 @@ class PairingsTest {
         assertTrue(System.currentTimeMillis() - at < 5_000)
     }
 }
+
+/** Every table in this test's database, on SQLite or Postgres. */
+internal fun Database.tableNames(): List<String> =
+    if (dialect == Dialect.SQLITE) query("SELECT name FROM sqlite_master WHERE type = 'table'") { it.getString(1) }
+    else query("SELECT table_name FROM information_schema.tables WHERE table_schema = current_schema() AND table_type = 'BASE TABLE'") { it.getString(1) }
