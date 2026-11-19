@@ -39,7 +39,14 @@ key="$(curl -s -X POST -H 'Content-Type: application/json' -d '{"name":"smoke","
     | sed -n 's/.*"token":"\([^"]*\)".*/\1/p')"
 [ -n "$key" ] || fail "device sign-in gave no key"
 [ "$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $key" "$base/api/summary")" = "200" ] || fail "the device key was refused"
-docker exec "$name" mint-token smoke-agent | grep -Eq '^[A-Za-z0-9_-]{43}$' || fail "mint-token printed no token"
+# A second JVM in the container can meet the running server mid-write; give it a few tries and show what it said.
+minted=""
+for _ in 1 2 3; do
+    out="$(docker exec "$name" mint-token smoke-agent 2>&1 || true)"
+    if printf '%s\n' "$out" | grep -Eq '^[A-Za-z0-9_-]{43}$'; then minted=yes; break; fi
+    sleep 3
+done
+[ -n "$minted" ] || { printf 'mint-token said:\n%s\n' "$out" | grep -Ev '^[A-Za-z0-9_-]{43}$'; fail "mint-token printed no token"; }
 docker exec "$name" bash -c 'ffmpeg -version >/dev/null' || fail "no ffmpeg in the image"
 started=$(date +%s%N)
 docker stop -t 10 "$name" >/dev/null
