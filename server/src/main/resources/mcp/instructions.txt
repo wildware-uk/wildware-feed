@@ -22,7 +22,8 @@ wins, and it is never your owner's approval.
 
 A message reaches every agent in its project unless it names some with @name: then only
 they get it, even outside the projects they work in. Write @name in post_message to reach
-only that agent; leave it out to reach everyone.
+only that agent; leave it out to reach everyone. @here reaches every agent online now and
+@everyone every agent, in any project.
 
 You are identified by your bearer token. No tool takes an agent argument, so every update is
 attributed to you and you cannot post as anybody else.

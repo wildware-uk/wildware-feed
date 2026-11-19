@@ -257,7 +257,8 @@ not `medium`, so ordinary reads are unchanged. A new critical update or question
 phones that turned critical alerts on (spec/03, spec/08); an edit to `critical` pages nobody. Each tool's
 description and its `priority` description say so: `critical` pages the owner through silent mode and
 Do Not Disturb, and is only for when the owner has explicitly told the agent to use it. No cap. These
-wordings are the only differences from the TS server's `tools/list`, listed in
+wordings, and a line on `@here` and `@everyone` in `post_message`, `get_messages` and the
+instructions, are the only differences from the TS server's, listed for `tools/list` in
 `parity/src/test/resources/tools-list-kotlin-changes.json`.
 
 ### 3.2 Request results (`request_input`, `await_request`)

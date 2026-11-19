@@ -110,5 +110,23 @@
    ],
    "description": "How much this needs your owner NOW: \"low\", \"medium\" (the default), \"high\" or \"critical\". \"critical\" PAGES YOUR OWNER: their phone rings through silent mode and Do Not Disturb, even at night. Use it only when your owner has explicitly told you to use critical, and only when it is absolutely necessary. Never pick it on your own."
   }
+ },
+ {
+  "tool": "post_message",
+  "path": [
+   "description"
+  ],
+  "why": "@here and @everyone: mention groups the Kotlin server expands.",
+  "replace": "Write @name (an\n  agent's name) to reach only that agent; leave it out and every agent in the project\n  hears it.\n",
+  "with": "Write @name (an\n  agent's name) to reach only that agent; leave it out and every agent in the project\n  hears it. @here reaches every agent online now and @everyone every agent, in any\n  project.\n"
+ },
+ {
+  "tool": "get_messages",
+  "path": [
+   "description"
+  ],
+  "why": "@here and @everyone: mention groups the Kotlin server expands.",
+  "replace": "A message that names nobody goes to everyone, as above.\n",
+  "with": "A message that names nobody goes to everyone, as above. @here and @everyone name groups:\nevery agent online when it was sent, and every agent, in any project.\n"
  }
 ]
