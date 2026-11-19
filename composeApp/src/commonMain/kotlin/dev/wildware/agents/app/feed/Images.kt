@@ -55,6 +55,11 @@ fun AttachmentImage(attachment: Attachment, modifier: Modifier, contentScale: Co
         RemovedMediaTile(days, modifier)
         return
     }
+    // Still being made, or never will be: say which where it will be, and ask for nothing.
+    attachment.notReady?.let { why ->
+        NotReadyMediaTile(why, modifier)
+        return
+    }
     val url = attachment.url
     if (url == null) {
         SceneArt(attachment.scene, modifier)

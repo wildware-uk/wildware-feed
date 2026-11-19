@@ -60,6 +60,37 @@ fun RemovedMediaTile(afterDays: Int, modifier: Modifier = Modifier) {
     }
 }
 
+/**
+ * Where a picture or video will be once the dashboard has made it ("Processing…"), or where it
+ * would have been had it been readable ("Media unavailable"). Same shape as [RemovedMediaTile], so
+ * the card doesn't jump when the picture arrives.
+ */
+@Composable
+fun NotReadyMediaTile(why: NotReady, modifier: Modifier = Modifier) {
+    val colors = AgentTheme.colors
+    BoxWithConstraints(
+        modifier
+            .background(colors.surfaceSunken)
+            .clearAndSetSemantics {
+                contentDescription = why.words
+                role = Role.Image
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        val roomy = maxWidth >= 96.dp && maxHeight >= 56.dp
+        Column(Modifier.padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+            when (why) {
+                NotReady.Processing -> Icon(Icons.Image, null, tint = colors.textFaint, modifier = Modifier.size(if (roomy) 20.dp else 16.dp))
+                NotReady.Failed -> Icon(Icons.Warning, null, tint = colors.error, modifier = Modifier.size(if (roomy) 20.dp else 16.dp))
+            }
+            if (roomy) {
+                Spacer(Modifier.height(6.dp))
+                Text(why.words, color = colors.textMuted, style = AgentTheme.type.meta, textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            }
+        }
+    }
+}
+
 /** A removed sound or file, in the row its player or download chip took. */
 @Composable
 fun RemovedMediaRow(afterDays: Int, modifier: Modifier = Modifier) {

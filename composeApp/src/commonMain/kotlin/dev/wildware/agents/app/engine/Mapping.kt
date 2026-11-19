@@ -11,6 +11,7 @@ import dev.wildware.agents.Outbox
 import dev.wildware.agents.OutboxItem
 import dev.wildware.agents.OutboxKind
 import dev.wildware.agents.app.feed.Unsent
+import dev.wildware.agents.app.feed.NotReady
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -400,10 +401,10 @@ internal class FeedMapper(
     private fun List<MediaView>.images() = filter { it.kind == "image" && it.isReady }
 
     /**
-     * Pictures and videos share the grid, as on the website; what isn't ready yet stays hidden.
-     * Removed media keeps its place, as a placeholder.
+     * Pictures and videos share the grid, as on the website. What is still being made, what failed
+     * and what was removed each keep their place, as a placeholder saying so.
      */
-    private fun List<MediaView>.tiles() = filter { (it.kind == "image" || it.kind == "video") && (it.isRemoved || it.isReady && it.variants.isNotEmpty()) }
+    private fun List<MediaView>.tiles() = filter { (it.kind == "image" || it.kind == "video") && (!it.isReady || it.isRemoved || it.variants.isNotEmpty()) }
 
     private fun url(media: MediaView, variant: String) = serverUrl.trimEnd('/') + "/" + media.path(variant)
 
@@ -424,8 +425,20 @@ internal class FeedMapper(
         )
     }
 
+    /** A picture or video the dashboard hasn't made yet, or couldn't: no address, so nothing loads. */
+    private fun notReadyTile(media: MediaView): Attachment {
+        val why = if (media.status == "failed") NotReady.Failed else NotReady.Processing
+        return Attachment(
+            title = media.filename ?: if (media.kind == "video") "Video" else "Image",
+            altText = why.words,
+            aspect = aspectOf(media),
+            notReady = why,
+        )
+    }
+
     private fun tile(media: MediaView): Attachment {
         if (media.isRemoved) return removedTile(media)
+        if (!media.isReady) return notReadyTile(media)
         if (media.kind != "video") return image(media)
         val w = media.width
         val h = media.height

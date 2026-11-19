@@ -130,7 +130,7 @@ It doesn't, beyond oldest first.
 | 82 | Video | Done | media-chrome player, frame step, fullscreen (`VideoPlayer.svelte`) | Yes: Video (PR #21) | Yes | — | P0 |
 | 83 | Sounds | Done | `<audio>`, one at a time (`MediaSounds.svelte`) | Yes: Sounds (PR #21) | Yes | — | P1 |
 | 84 | Files | Done | Name, size, download (`MediaFiles.svelte`) | Yes: Files (PR #21) | Yes | — | P1 |
-| 85 | Processing / failed tiles | Open | "Processing…", "Media unavailable" (`MediaTile.svelte`) | No (not-ready media hidden) | No | Card shows nothing until ready | P2 |
+| 85 | Processing / failed tiles | Done | "Processing…", "Media unavailable" (`MediaTile.svelte`) | Yes: a picture or video still being made says "Processing…" in its place; one that failed says "Media unavailable" | Yes | — | P2 |
 | **Markdown** |||||||
 | 86 | Markdown body | Done | markdown-it, linkify, line breaks, tables scroll | Yes (`Content.kt` MarkdownBody) | Yes | Tables/link handling not verified | P2 |
 | 87 | Code blocks | Done | Highlight, language label, Copy | Yes (`Content.kt` CodeBlock) | Yes | — | — |

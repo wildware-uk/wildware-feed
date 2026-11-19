@@ -124,8 +124,22 @@ data class Attachment(
     val video: VideoSource? = null,
     /** The owner's media retention removed it this many days on: a quiet placeholder shows, and nothing loads. */
     val removedAfterDays: Int? = null,
+    /** Not ready to show: the dashboard is still making it, or never could. A placeholder says which. */
+    val notReady: NotReady? = null,
 ) {
     val isRemoved: Boolean get() = removedAfterDays != null
+
+    /** Holds a placeholder rather than a picture or video: nothing to load, open or play. */
+    val isPlaceholder: Boolean get() = isRemoved || notReady != null
+}
+
+/** Why a picture or video has nothing to show yet, in the words its placeholder uses. */
+enum class NotReady(val words: String) {
+    /** The dashboard is still making its thumbnails; it shows itself when ready. */
+    Processing("Processing…"),
+
+    /** The dashboard couldn't read it, so it never will. */
+    Failed("Media unavailable"),
 }
 
 /** Pictures to look through full size, starting at [index]. */

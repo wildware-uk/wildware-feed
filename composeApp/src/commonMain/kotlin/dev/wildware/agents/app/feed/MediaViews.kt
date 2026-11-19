@@ -75,10 +75,10 @@ fun rememberTileOpener(attachments: List<Attachment>): (Int) -> Unit {
         { i ->
             val tile = attachments[i]
             val video = tile.video
-            // The viewer looks through pictures that are still there; removed ones have nothing to show.
-            val pictures = attachments.filter { it.video == null && !it.isRemoved }
+            // The viewer looks through pictures that are there; placeholders have nothing to show.
+            val pictures = attachments.filter { it.video == null && !it.isPlaceholder }
             when {
-                tile.isRemoved -> if (pictures.isNotEmpty()) ui?.viewer = Gallery(pictures, 0)
+                tile.isPlaceholder -> if (pictures.isNotEmpty()) ui?.viewer = Gallery(pictures, 0)
                 video == null -> ui?.viewer = Gallery(pictures, pictures.indexOf(tile))
                 playsVideoInApp -> ui?.inlineVideo = video.url
                 handler != null -> scope.launch {
@@ -141,7 +141,7 @@ internal fun VideoFace(tile: Attachment, modifier: Modifier, small: Boolean = fa
 
 /** What a screen reader hears for one tile. */
 internal fun tileLabel(tile: Attachment, index: Int, total: Int): String {
-    if (tile.isRemoved) return "${tile.altText}, ${index + 1} of $total"
+    if (tile.isPlaceholder) return "${tile.altText}, ${index + 1} of $total"
     val video = tile.video ?: return "Picture ${index + 1} of $total: ${tile.altText}"
     return "Play video ${index + 1} of $total" + (video.duration?.let { ", $it" } ?: "")
 }

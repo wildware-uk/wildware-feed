@@ -13,6 +13,7 @@ import dev.wildware.agents.OutboxItem
 import dev.wildware.agents.OutboxKind
 import dev.wildware.agents.app.engine.unsent
 import dev.wildware.agents.app.feed.Unsent
+import dev.wildware.agents.app.feed.NotReady
 import dev.wildware.agents.ProjectSummary
 import dev.wildware.agents.ProjectView
 import dev.wildware.agents.ReactionView
@@ -435,12 +436,17 @@ class MappingTest {
                 media("snd", "audio", listOf("original"), durationMs = 9_000, mime = "audio/mpeg"),
                 media("doc", "file", listOf("original"), filename = "build.log", bytes = 1536, mime = "text/plain"),
                 media("wip", "video", emptyList(), status = "pending"),
+                media("bad", "image", emptyList(), status = "failed"),
             )))
         }
         val item = mapper.map(feed(listOf(card)), listOf(mega), emptyList(), emptyList(), null)
             .sections.single().items.single() as FeedItem.Update
 
-        assertEquals(listOf(null, "https://dash.test/media/vid/video", "https://dash.test/media/raw/original"), item.attachments.map { it.video?.url })
+        assertEquals(listOf(null, "https://dash.test/media/vid/video", "https://dash.test/media/raw/original", null, null), item.attachments.map { it.video?.url })
+        // Not made yet, or never will be: each keeps its place and says so, with nothing to load.
+        assertEquals(listOf(null, null, null, NotReady.Processing, NotReady.Failed), item.attachments.map { it.notReady })
+        assertEquals(listOf("Processing…", "Media unavailable"), item.attachments.drop(3).map { it.altText })
+        assertEquals(listOf(null, null), item.attachments.drop(3).map { it.url })
         assertEquals("https://dash.test/media/vid/poster", item.attachments[1].url)
         assertEquals(null, item.attachments[2].url, "no poster yet: the tile draws its own")
         assertEquals("0:42", item.attachments[1].video?.duration)

@@ -379,9 +379,9 @@ fun AttachmentView(attachment: Attachment, modifier: Modifier = Modifier, onOpen
                 .clip(shape)
                 .border(1.dp, colors.border, shape)
                 .then(
-                    // Removed media has nothing to open: the placeholder says what happened.
+                    // A placeholder has nothing to open: it says what happened.
                     // Playing, the player's own controls take the taps.
-                    if (attachment.isRemoved || inline) {
+                    if (attachment.isPlaceholder || inline) {
                         Modifier
                     } else {
                         Modifier.pressable(
@@ -393,7 +393,7 @@ fun AttachmentView(attachment: Attachment, modifier: Modifier = Modifier, onOpen
                     },
                 ),
         ) {
-            val video = attachment.video?.takeUnless { attachment.isRemoved }
+            val video = attachment.video?.takeUnless { attachment.isPlaceholder }
             when {
                 video != null && inline -> InlineVideo(video, Modifier.fillMaxSize())
                 video != null -> VideoFace(attachment, Modifier.fillMaxSize())
@@ -506,11 +506,11 @@ private fun GridTile(images: List<Attachment>, index: Int, modifier: Modifier, o
     val image = images[index]
     val spoken = tileLabel(image, index, images.size) + if (more > 0) ", and $more more" else ""
     val inline = playingInline(image.video)
-    // A removed tile opens nothing, unless it is the "+N more" one, which still opens the rest.
-    val opens = (!image.isRemoved || more > 0) && !inline
+    // A placeholder opens nothing, unless it is the "+N more" one, which still opens the rest.
+    val opens = (!image.isPlaceholder || more > 0) && !inline
     val press = if (opens) Modifier.pressable(spoken, RectangleShape, role = if (image.video != null) Role.Button else Role.Image) { onOpen(index) } else Modifier
     Box(modifier.then(press)) {
-        val video = image.video?.takeUnless { image.isRemoved }
+        val video = image.video?.takeUnless { image.isPlaceholder }
         when {
             video != null && inline -> InlineVideo(video, Modifier.fillMaxSize())
             video != null -> VideoFace(image, Modifier.fillMaxSize(), small = true)
