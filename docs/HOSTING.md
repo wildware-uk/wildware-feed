@@ -92,8 +92,10 @@ lookup by id alone is still a leak: `SELECT … FROM approvals WHERE id = ?` mus
 an id it saw in a link.
 
 **Unique rules that change** (today unique across the server, then unique within a team):
-`projects.slug`, `project_groups.slug`, `embed_types.slug`, `apps.uri`, `server_settings.key`, and
-`oauth_clients` registration. Two teams can both have a project called `web`. Rules on random
+`projects.slug`, `project_groups.slug`, `embed_types.slug`, `apps.uri`, `server_settings.key`,
+`oauth_clients` registration, and agent names (unique only in code today: `domain/Pairings.kt`,
+the OAuth consent page). The bell's three unique indexes (`notifications_update`, `_message`,
+`_request`: one row per card) become one row per person per card (section 6). Two teams can both have a project called `web`. Rules on random
 tokens (`token_hash`, `code_hash`, `secret_hash`) stay server-wide: a key must find exactly one row.
 
 **Links between rows** get the team in them where it is cheap: `messages (team_id, project_id)`
@@ -114,14 +116,21 @@ refuses a message in team A that points at a project in team B.
    look-alike data (same project slugs, same agent names, same media bytes) sits in the same
    database. Afterwards: B's rows are unchanged, and no B id, slug, name or byte appeared in any
    answer, stream frame or push A received.
-4. **Row-level security on Postgres**, as a backstop in production. Each team-owned table gets
+4. **Row-level security on Postgres**, as a backstop in multi-team mode. Each team-owned table gets
    `ENABLE` and `FORCE ROW LEVEL SECURITY` and a policy
    `team_id = current_setting('feed.team_id', true)`. A connection taken from the pool sets
    `feed.team_id` for its request and resets it when returned. A forgotten filter then returns
-   nothing instead of another team's rows; an insert into the wrong team fails. Background jobs that
-   work across teams use a separate setting the policy also accepts (`feed.all_teams = on`), set
-   only by the job runner. `FORCE` matters: Heroku's database user owns the tables, and owners skip
+   nothing instead of another team's rows; an insert into the wrong team fails. Both settings are set
+   with `SET LOCAL`, inside the request's transaction, so they vanish when it ends and can't leak
+   to the next user of a pooled connection. Code that must read across teams says so with
+   `db.allTeams { … }`, which sets `feed.all_teams = on` the same way. The full list: the job
+   runner, the event dispatcher and effects runner (section 3), account sign-in on the bare address
+   (section 5) and the admin API (section 7). The lint's allow-list is exactly the `allTeams`
+   blocks. Sweeps that run inline in a request today (for example `pairings.expireDue()` inside the
+   pairing poll, `domain/Pairings.kt`) become scoped to that request's team. `FORCE` matters: Heroku's database user owns the tables, and owners skip
    row security without it. SQLite has no such feature; it never holds more than one team.
+   Row security is switched on by the last tenancy migration, after the data has moved; any later
+   migration that changes data sets `feed.all_teams` for itself.
 
 ### Moving today's data into one team
 
@@ -139,9 +148,32 @@ starts at **055**, and each number is checked against master again just before i
    turns on row security. Without that step a forgotten `team_id` on insert would quietly land a
    row in the home team. SQLite keeps the default: it has one team forever.
 
+**SQLite does less.** Its unique rules are written into the table definitions, and it can't add a
+composite foreign key with `ALTER TABLE`; both would need a table rebuild. It doesn't need them:
+a SQLite database holds one team, so "unique in the server" and "unique in the team" are the same.
+So the SQLite twin of each migration adds the `team_id` columns and skips the unique swaps and the
+team-aware links. The two schemas then differ only in constraints, never in columns, so `migrate`
+(SQLite to Postgres) and `export` (Postgres to SQLite), which copy column by column, keep working.
+
+**Before or after the deploy.** Heroku runs migrations in the release phase while the old dynos are
+still serving, so every step is labelled:
+
+- *Safe before the deploy* (old code still works): new tables, new nullable or defaulted columns,
+  new indexes.
+- *Only after every dyno runs the new code*: swapping a unique rule that old code names in
+  `ON CONFLICT (key)` (`media/Retention.kt`, `domain/EmbedTypes.kt`, `domain/Apps.kt`), dropping
+  defaults, turning on row security. These go in the *next* release's migration, never the same
+  one.
+
+Old code also refuses a database with a migration it doesn't know (`db/Database.kt`), so a rollback
+past a migration means restoring a backup. Releases that add a migration say so in their notes.
+
 Old device keys, agent tokens and OAuth tokens keep working: their rows are now in the home team.
 
 ## 3. Statelessness: everything the server holds in memory today
+
+Two things change at once: a **pool of connections** instead of one, and **several processes**
+instead of one. The first breaks things even on a single dyno, so it comes first.
 
 Today one process holds a lot that a second process would not see. Heroku also restarts every dyno
 at least once a day, and the server forgets all of it then. Here is all of it, found by grepping
@@ -149,38 +181,86 @@ for maps, timers, executors and `@Volatile`, and where each piece goes.
 
 | What | Where today | What goes wrong with two dynos | Where it goes |
 |---|---|---|---|
-| **The one database connection.** All requests share one JDBC connection behind a lock. | `db/Database.kt` (`connection`, `lock`) | Every request on a dyno waits in one line. | A pool of connections (HikariCP) on Postgres. SQLite keeps one connection. The "never publish while holding the lock" check (`App.kt`, `bus.beforePublish`) becomes "never publish inside a transaction". |
+| **The one database connection.** All requests share one JDBC connection behind a lock. | `db/Database.kt` (`connection`, `lock`) | Every request on a dyno waits in one line. | A pool of connections (HikariCP) on Postgres. SQLite keeps one connection. See "Transactions on a pool" below: this is the hardest part of the list. |
+| **Transactions lean on that one connection.** Code inside `db.transaction { _ -> … }` ignores the connection it is handed and calls `db.update` / `db.one`, which only works because there is one connection. | e.g. `domain/Pairings.kt` (approve), `domain/AgentWork.kt` (`recordDelivery`), `domain/OAuth.kt`, `domain/Devices.kt`, `domain/Mentions.kt`, `domain/Tags.kt`, `media/Uploads.kt`, `media/Retention.kt` | With a pool, those statements run on other connections, outside the transaction. | The transaction's connection is carried in the coroutine context, and `db.update` / `db.one` use it when there is one. |
+| **Every write is serialised by that lock**, so "look, then write" code never races. | e.g. `domain/AgentWork.kt` `recordDelivery` (a select, then an insert keyed on a nullable `client_id`), `domain/Sessions.kt` (online before, write, announce) | Two connections both look, both write: double deliveries, double presence announcements. | A per-team write lock (below). |
+| **`seq` order is taken as commit order.** Readers page with `WHERE seq > ?` and remember the highest seen. | `domain/Messages.kt` (agent read cursors), `domain/AgentWork.kt`, `domain/Subscriptions.kt` (`now()` = `max(seq)`, `after_seq`) | On Postgres, with two connections, seq 12 can commit before seq 11. A reader that saw 12 never sees 11: an agent silently misses a message. | The per-team write lock makes a team's writes commit one at a time, so within a team seq order is commit order again. Reads never need cross-team order. |
 | **The event bus**: seq counter, boot id, a ring of the last 500 events, the listeners. | `events/Bus.kt` | An event published on dyno 1 never reaches a stream on dyno 2. Every restart changes the boot id, so every client resyncs. | An `events` table (team, seq, type, payload, time) plus Postgres `LISTEN/NOTIFY`. See "The event bus" below. |
-| **Waits on the bus**: `await_request`/`request_input` holding for an answer, an agent's pairing poll. | `domain/Requests.kt` `waitForSettle`, `domain/Pairings.kt` `await` | The answer lands on another dyno; the wait runs to its timeout. | Unchanged code, on the new bus: they hear events from every dyno. |
+| **Waits on the bus**: `await_request`/`request_input` holding for an answer, an agent's pairing poll. | `domain/Requests.kt` `waitForSettle` (takes `bus.lastSeq`, replays from the ring), `domain/Pairings.kt` `await` | The answer lands on another dyno; the wait runs to its timeout. | The new bus, with `lastSeq` and replay read from the team's events, not the process. |
+| **Snapshot stamps**: snapshots carry the bus's current seq so a stream can resume from them. | `http/ReadRoutes.kt`, `http/FeedRoutes.kt`, `http/PairingRoutes.kt` (`bus.lastSeq`) | Each dyno has its own seq. | The team's `last_seq`. |
 | **Owner and agent streams.** | `http/StreamRoutes.kt`, `http/AgentStream.kt` | Same as above. | The new bus. Each stream's own "already sent" set (`AgentStream.kt`, `sent`) is per connection and stays. |
-| **Revocation checks**: each open stream asks the database every 5 s whether its key still works. | `http/Sse.kt` (`checkEveryMs = 5_000`) | Not wrong, but at 1000 teams × 5 streams that is 1000 queries a second doing nothing. | Revoking a key publishes `device.revoked` / `agent.revoked`; streams close on it. The poll stays as a slow backstop (60 s). |
-| **Side effects of events**: the bell recorder, iOS alerts, Live Activity updates, all bus listeners. | `domain/Notifications.kt` `startRecorder`, `push/Apns.kt` `start`, `push/LiveActivity.kt` `start` | If every dyno hears every event, every dyno sends the push: duplicates. | They stop being listeners. The `events` table is also a work queue: one dyno claims each event (`FOR UPDATE SKIP LOCKED`) and runs its effects once. If that dyno dies first, another claims it later. |
-| **Live Activity memory**: `lastSent` and `startedAt` maps, `wasBusy`, `idleSince`, `newRequestId`, the 2 s coalescing timer and the 1 min refresh. | `push/LiveActivity.kt` | Two dynos push the same update, or neither knows what was sent; every restart forgets and resends. | A row per device (`live_activity_sent_hash`, `push_to_start_at`) and per team (`la_busy`, `la_idle_since`, `la_due_at`). An update is sent only if `UPDATE … SET sent_hash = ? WHERE sent_hash IS DISTINCT FROM ?` changed a row, so two dynos can't both send it. The timers become one job (below) that runs due teams. |
+| **Revocation checks**: each open stream asks the database every 5 s whether its key still works, and an agent's check also **writes** `last_seen_at`, unthrottled, as does every MCP call. | `http/Sse.kt` (`checkEveryMs = 5_000`), `domain/Agents.kt` `authenticate` | Not wrong, but at 1000 teams × 5 streams that is 1000 queries a second, many of them writes. | Revoking a key publishes `device.revoked` / `agent.revoked`; streams close on it. The poll stays as a slow backstop (60 s). `last_seen_at` is written at most once a minute, as device keys already do (`domain/Devices.kt`). |
+| **Listeners run on the dispatching thread**, and some query and publish there (the agent stream counts work per event per stream; delivery and the bell publish more events). | `http/AgentStream.kt`, `domain/AgentWork.kt` `markDelivered`, `domain/Notifications.kt` `record` | With one dispatcher per dyno, one slow team holds up every team's events. | One dispatch queue per team, so teams don't wait on each other. The agent stream's recount is coalesced (at most one per stream per 250 ms). |
+| **Side effects of events**: the bell recorder, iOS alerts, Live Activity updates, all bus listeners. | `domain/Notifications.kt` `startRecorder`, `push/Apns.kt` `start` (sends on a thread pool), `push/LiveActivity.kt` `start` | If every dyno hears every event, every dyno sends the push: duplicates. | They stop being listeners and become **effects**, run from the `events` table. See "Effects" below. |
+| **Live Activity memory**: `lastSent` and `startedAt` maps, `wasBusy`, `idleSince`, `newRequestId` (one slot: a second request inside the 2 s window overwrites the first), the 2 s coalescing timer and the 1 min refresh. | `push/LiveActivity.kt` | Two dynos push the same update, or neither knows what was sent; every restart forgets and resends. | Rows: per device `la_sent_hash`, `la_push_to_start_at`; per team `la_busy`, `la_idle_since`, `la_due_at`, and `la_new_requests` (a list, not one slot). A `request.created` effect sets `la_due_at = now + 2 s` if it is unset. A job runs due teams, **one dyno per team at a time** (a transaction-scoped advisory lock on the team): it works out the state, sends, and records `la_sent_hash` only after Apple says 200, as today. So a failed send is retried next run, and an older state can never be sent after a newer one. |
 | **iOS sender threads and the signed APNs token.** | `push/Apns.kt` (`sender`, `ProviderToken.cached`) | Nothing: each dyno signs its own token every 50 minutes, which Apple allows. | Stays. |
-| **Scheduled jobs**: presence sweep (1 min), request sweep (30 s), pairing sweep (30 s), OAuth sweep (10 min), media derive (1 s), media sweep (15 min), media retention (10 min). | `App.kt` `startJobs`, `every` | Every dyno runs every job. Retention deletes files twice; presence announces twice. | Each job takes a Postgres advisory lock (`pg_try_advisory_lock`) for its run; whoever doesn't get it skips. Sweeps then work across all teams in one statement, and publish each row's event into its own team. |
-| **Media derive queue**: a set of ids being worked on. | `media/Derive.kt` (`queued`, `pool`) | Two dynos transcode the same video. | Claim in the database: `UPDATE media SET derive_claimed_at = now … WHERE id = (SELECT … FOR UPDATE SKIP LOCKED)`. A claim older than 15 minutes is taken as dead and retried. |
-| **Rate limits**: ten sliding-window limiters (sign-in, MCP, agent stream, upload, pairing start and poll, three OAuth, agent media). | `App.kt`, `auth/SlidingLimiter.kt` | Each dyno counts alone: N dynos let N times as much through. For sign-in lockout that is a security hole. | Split. **Security limits** (sign-in, pairing start, OAuth register, invite accept) move to a Postgres counter table, one fixed window per key: low traffic, must be exact. **Throughput limits** (MCP, streams, uploads) stay in memory per dyno: they are about fairness, and a little loose is fine. Per-team limits are added (section 7). |
-| **Presence and heartbeats.** | `domain/Sessions.kt` | Nothing: already in the `sessions` table. | Stays. Only its sweep needs the job lock. |
-| **Caches**: S3 object sizes (LRU, 20,000 entries). | `media/MediaStore.kt` (`S3MediaStore.sizes`) | Nothing: objects never change once written. | Stays. Keys gain a team prefix (below). |
+| **Scheduled jobs**: presence sweep (1 min), request sweep (30 s), pairing sweep (30 s), OAuth sweep (10 min), media derive (1 s), media sweep (15 min), media retention (10 min). | `App.kt` `startJobs`, `every` | Every dyno runs every job. Retention deletes files twice; presence announces twice. | A `job_runs` table: one row per job with `next_run_at`. A dyno runs a job only if `UPDATE job_runs SET next_run_at = now + period WHERE name = ? AND next_run_at <= now` changed the row, so no lock has to outlive a transaction. Sweeps work across all teams in batches of 500 (inside `allTeams`, with their own 5-minute statement limit), and publish each row's event into its own team. |
+| **Retention's last-run time** is kept in `server_settings`. | `media/Retention.kt` | Server-wide job state in a table that becomes per team. | Moves to `job_runs`. |
+| **Media derive queue**: a set of ids being worked on. | `media/Derive.kt` (`queued`, `pool`) | Two dynos transcode the same video. | Claim in the database: `UPDATE media SET derive_claimed_at = now … WHERE id = (SELECT … FOR UPDATE SKIP LOCKED)`. A claim older than 15 minutes is taken as dead and retried. The claim is the only guard derive needs; it doesn't also take the job lock. |
+| **Rate limits**: ten sliding-window limiters (sign-in, MCP, agent stream, upload, pairing start and poll, three OAuth, agent media). | `App.kt`, `auth/SlidingLimiter.kt` | Each dyno counts alone: N dynos let N times as much through. For sign-in lockout that is a security hole. | Split. **Security limits** (sign-in, pairing start, OAuth register, invite accept) move to a Postgres table of hit times per key, read and written in one statement: low traffic, must be exact. They keep today's rules, including sign-in counting only failures and clearing on success (`http/AuthRoutes.kt`). **Throughput limits** (MCP, streams, uploads) stay in memory per dyno: they are about fairness, and a little loose is fine. Per-team limits are added (section 7). |
+| **Presence and heartbeats.** | `domain/Sessions.kt` | The data is already in the `sessions` table, but "online before? write; announce if changed" races across connections: double or missing announcements. | The per-team write lock covers it; the sweep runs as a job. |
+| **Caches**: S3 object sizes (LRU, 20,000 entries). | `media/MediaStore.kt` (`S3MediaStore.sizes`), read by `media/Serve.kt` | Objects do change: a delete clears only the deleting dyno's cache, and re-deriving rewrites the same keys (`media/Derive.kt`). Other dynos then serve a stale size. | Cache only originals (written once, never rewritten); ask the bucket for derivatives. A delete removes the media row first, so a stale cached size never gets served. |
+| **The OAuth consent cookie** (`__Host-feed_owner`): proves the owner signed in on the consent page. Signed with `SESSION_SECRET` over a hash of `ADMIN_PASSWORD_HASH`. | `http/OAuthRoutes.kt` (`OwnerSession`) | With accounts and teams, the value says nothing about which person or team: a member of team A could replay it on team B's consent page. | It signs the membership id and the team id, and is refused on any other team's address or once that membership is removed. |
 | **Local disk**: upload temp files, S3 fetch area, ffmpeg work files under `DATA_DIR/tmp`; on-disk media store. | `media/Uploads.kt` (`tempRoot`, `workRoot`), `App.kt` (`tmp/fetch`), `media/MediaStore.kt` (`LocalMediaStore`) | Temp files: nothing, each lives for one request or one job. The on-disk store: a second dyno can't see the files. | Temp stays. Multi-team mode refuses to start without `MEDIA_STORE=s3`. |
 | **Media dedupe**: an upload whose bytes match an earlier one links to it. | `media/Uploads.kt` `place` (`WHERE sha256 = ?`) | Across teams this is a leak: the answer's `deduped` flag tells team A whether team B holds a given file. | Look for twins within the team only. |
 | **Media keys**: `<id[0:2]>/<id>/<name>` in the bucket. | `media/Uploads.kt` `originalKey`, `media/MediaStore.kt` | Can't list, measure or delete one team's files. | New teams' media go under `t/<team id>/…`; the home team keeps today's keys, so self-hosters move nothing. |
-| **Settings**: retention days, and the one bell "seen" time. | `media/Retention.kt` (`server_settings`), `domain/Notifications.kt` | One value for the whole server. | Per team (`server_settings.team_id`), and the bell's read cursor per person ([TEAMS.md](TEAMS.md)). |
-| **Id order**: ULIDs are "each the last plus one" within a millisecond, per process. | `db/Ulid.kt` | Two dynos' ids in one millisecond aren't in order. | Nothing to do: no query orders by id (they order by `seq`). Write it down as a rule. |
-| **Migrations at boot**, with no lock. | `db/Database.kt` (`Migrations.run`, `PostgresMigrations.run`) | Two dynos booting together both try to migrate. | Run them once per release in Heroku's release phase, and take an advisory lock in `run` for everyone else. |
+| **Settings**: retention days; the bell's `seen_at` on each row. | `media/Retention.kt` (`server_settings`), `domain/Notifications.kt` | One owner's values. | Retention per team (`server_settings.team_id`). The bell gets a row per person, each with its own `seen_at` (section 6). |
+| **Id order**: ULIDs are "each the last plus one" within a millisecond, per process. | `db/Ulid.kt` | Two dynos' ids in one millisecond aren't in order. | Harmless: queries order by `seq` or a time, and use `id` only to break ties (`domain/Cards.kt`, `domain/Reads.kt`). Write down the rule: never order by id alone. |
+| **Migrations at boot**, with no lock. | `db/Database.kt` (`Migrations.run`, `PostgresMigrations.run`) | Two dynos booting together both try to migrate. | A new `feed-server migrate-schema` command (plain `migrate` already means "copy SQLite to Postgres", `Main.kt`) run in Heroku's release phase (a `release` process type in `heroku.yml`, beside `web` and `worker`). `run` also takes a transaction advisory lock, for anyone who boots without the release phase. See "Before or after the deploy" in section 2. |
 | **The owner's password** in config. | `Config.kt` (`ADMIN_PASSWORD_HASH`), `http/AuthRoutes.kt`, `http/OAuthRoutes.kt` | One password for the whole server. | Accounts in the database ([TEAMS.md](TEAMS.md), section 5 here). |
 | **SQLite-only code**: `Dialect.SQLITE` branches, `greatest`, `asciiFold`, the SQLite twin migrations. | `db/Database.kt`, `media/Uploads.kt` (`logoIds`, `embedStrings`), `media/Retention.kt` (`logoIds`) | Nothing: hosted runs Postgres only. | Stays for self-hosting and the desktop app, always one team. Multi-team mode refuses to start on SQLite. Every new migration still ships as a pair. |
 | **Static things**: the MCP tool list, the web app's files, the server version, the crash-report switch. | `mcp/Tools.kt`, `http/WebApp.kt`, `http/ServerInfo.kt`, `CrashReports.kt` | Nothing. | Stay. |
+
+### Transactions on a pool
+
+Today the one connection's lock means every write in the server happens one at a time. Plenty of
+code quietly relies on that (the table above names the places found so far). Rather than hunt down
+every "look, then write" and hope, keep the guarantee where it matters:
+
+- **Every write runs in `team.write { … }`.** It opens a transaction, takes the team's row lock
+  (`SELECT … FROM teams WHERE id = ? FOR UPDATE`), sets `feed.team_id`, runs the block, and
+  publishes the block's events in the same transaction. Writes in one team happen one at a time, as
+  today; different teams don't wait for each other. One team's writes are a handful a second, so
+  the queue is short.
+- **Reads run in `team.read { … }`**: a transaction with `feed.team_id` set, no lock, in parallel.
+- **The transaction's connection travels in the coroutine context**, so code inside the block that
+  calls `db.update` / `db.one` uses it. Outside a block, those calls fail in tests (another lint).
+- **SQLite** keeps one connection; `team.write` is just its transaction.
+
+This also makes seq order commit order within a team (the table above), and lets events be written
+in the same transaction as the change they describe, so a crash can no longer save the change and
+lose its event.
+
+### Effects
+
+Effects are what used to be bus listeners with outside consequences: the bell, iOS alerts, Live
+Activity scheduling.
+
+- Each `events` row has an `effects_done_at` column. Every dyno runs an effects loop, woken by the
+  same `NOTIFY` and by a 5 s poll for anything missed. It claims up to 50 pending events with
+  `FOR UPDATE SKIP LOCKED`, so no two dynos take the same one.
+- An event's effects run in a fixed order (bell rows, then alerts, then the Live Activity mark).
+  The claim is held until all of them finish, **including the Apple sends**: no "fire and forget"
+  to a thread pool as `push/Apns.kt` does now. Then it sets `effects_done_at` and commits.
+- If a dyno dies mid-way, the claim lapses and another dyno runs the event again. Bell rows are
+  idempotent (unique per person per card). A repeated alert is possible and harmless: alerts carry
+  a collapse id, so the phone shows one.
+- **Every event carries its actor** (`actor: {kind: "member" | "agent", id}`), so effects can skip
+  the person who acted (section 6).
+- **Read-your-own-writes:** the bell row now appears a moment after the post, not in the same
+  instant. The parity suite gets a short "wait until" for bell checks, and the app already learns
+  of bell rows from `notification.created` on its stream.
 
 ### The event bus
 
 The bus is the biggest change, so here is how it works.
 
-- **Publishing** writes a row into `events` and calls `NOTIFY feed_events, '<team>:<seq>'`, in one
-  short transaction, right after the write it describes, as today. The seq comes from
-  `UPDATE teams SET last_seq = last_seq + 1 … RETURNING last_seq` in the same transaction. That row
-  lock makes a team's events commit in seq order, so a reader never sees seq 12 before seq 11.
-  Different teams don't wait for each other.
+- **Publishing** writes a row into `events` and calls `NOTIFY feed_events, '<team>:<seq>'`. The seq
+  comes from `UPDATE teams SET last_seq = last_seq + 1 … RETURNING last_seq`. Because the team's
+  row is locked for the whole write, a team's events commit in seq order, so a reader never sees
+  seq 12 before seq 11. Different teams don't wait for each other.
+- **Inside the write**: the event row is written in the same `team.write` transaction as the change,
+  after taking the team lock, so the seq and the commit order agree.
 - **Listening**: each dyno holds one extra connection doing `LISTEN feed_events`. On a notice for a
   team that has a stream or a wait on this dyno, it reads that team's new rows in order and hands
   them to its local listeners. If the listening connection drops, it reconnects and reads what it
@@ -234,15 +314,44 @@ What changes, piece by piece:
   that team. On the bare `feed.wildware.dev` they answer 404.
 - **iOS alerts.** A device row belongs to one membership, so one phone signed in to two teams has
   two rows with the same APNs token, one per team. Each alert gains a `team` key (add-only, so the
-  iOS app's contract holds) and a `thread-id` prefixed with the team slug, because two teams can
-  both have a project called `web`.
-- **The bare address** `feed.wildware.dev` serves the account sign-in (section 5), `/api/server`
-  (saying `"teams": true`), and the admin API for the control plane (section 7). Nothing else.
+  iOS app's contract holds); the app routes a tapped alert by that key, falling back to the link's
+  host. The `thread-id` gets a team-slug prefix, because two teams can both have a project called
+  `web`, **except for the home team**, so self-hosters' notification grouping doesn't change.
+- **Live Activity on a phone in two teams.** One phone shows one Live Activity. The app registers
+  its Live Activity and push-to-start tokens only with the team it is showing, and clears them on
+  the others, so two teams never write over each other on the lock screen.
+- **The bare address** `feed.wildware.dev` serves the account sign-in (section 5), `/api/server`,
+  and the admin API for the control plane (section 7). Nothing else. Its `/api/server` says
+  `"signIn": ["account"]` and `"directory": true`, so the app knows this address lists teams and
+  is not itself a feed. A team's address answers as in TEAMS.md §8, with `"team": true`.
+- **An unknown subdomain** answers every path with `404 {"error":"no_such_team"}`. A team that is
+  being deleted answers the same.
+- **New public routes** (`/api/account/sign-in`, `/api/devices/ticket`, `/join/…`) join the guard's
+  public list (`http/Guard.kt`). `/admin` has its own token check and is public to the guard.
+- **Today's live server** becomes the home team at its current address: `PUBLIC_BASE_URL` stays the
+  home team's address, and nothing about it moves to a subdomain. Hosted customers' teams get
+  subdomains.
+- **Renaming a team's address** keeps the old one as a permanent alias of the same team, not a
+  redirect: device keys, agent configs, MCP URLs, OAuth tokens and open streams keep working on it.
+  The new one is used for new links. A slug can't be taken by another team while it is an alias.
 
 **TLS for wildcard addresses** is the practical catch. Heroku's free certificates (ACM) do not
 cover wildcards. Either put Cloudflare in front (it already holds the bucket; a certificate for
 `*.feed.wildware.dev` needs its paid Advanced Certificate Manager, about $10 a month, to verify), or
 upload a wildcard certificate to Heroku by hand and renew it. Open question 1.
+
+Cloudflare in front changes three things, all to verify:
+
+- **Media must not be cached at the edge.** The server checks access, then answers media with
+  `Cache-Control: public, max-age=31536000, immutable` (`http/MediaRoutes.kt`). A shared cache
+  would then hand that file to anyone with the URL. It becomes `private, max-age=31536000,
+  immutable` (browsers and the apps still cache it), plus a Cloudflare rule to bypass the cache
+  for `/media`, `/apps`, `/api` and `/mcp`.
+- **Request bodies over 100 MB are refused** on Cloudflare's Free and Pro plans, and video uploads
+  allow 200 MB (`Config.kt`, `MAX_VIDEO_BYTES`). Either cap hosted videos at 100 MB or let large
+  uploads go straight to the bucket with a signed upload URL.
+- **The client address** comes from `CF-Connecting-IP`, so `ADDRESS_HEADER` changes with it, or
+  every sign-in lockout counts Cloudflare's addresses instead of the real ones.
 
 ## 5. Identity: accounts and memberships
 
@@ -269,6 +378,9 @@ database as the teams, so the sign-in grants of TEAMS.md §7 are not needed):
    key, the same answer as a password sign-in, and opens the feed.
 4. Signing in to another team later: the same two steps.
 
+The founding owner of a migrated server has no email (TEAMS.md §2) until they set one in the app;
+account sign-in can't find them before that, and the app asks for one at their next sign-in.
+
 Sign-in on the team's own address ("Connect to a host" → `acme.feed.wildware.dev` → email and
 password) also works and goes straight to step 3's result. Same rate limits as today's sign-in, by
 client address and by email (section 3, security limits).
@@ -294,10 +406,12 @@ message reaches others only through what they follow. This is the follow system 
   channel at `all`, or the thread. Sam never hears his own post.
 - **Requests** follow the same per-person rule as today's owner (`ownerHearsRequest`). Anyone in
   the team may answer; the first answer wins (TEAMS.md §3).
-- **The bell** gets a row per person who hears the event (`notifications.member_id`), so each
-  person's bell is their own.
+- **The bell** gets a row per person who hears the event (`notifications.member_id`, unique per
+  person per card), each with its own `seen_at` as today's rows have. This replaces the
+  per-person read cursor TEAMS.md §9 once proposed (`notification_reads`).
 - **Phones** then apply their own preferences (`alert_project_ids`, `alert_prefs`), as now.
-- **Live Activity** shows the requests in channels the person has not muted.
+- **Live Activity** shows the requests in channels the person has not muted, so its content is
+  worked out per device (per person), while "is anything busy" stays per team.
 
 ## 7. Limits, fairness, and the admin API
 
@@ -307,8 +421,8 @@ Stored on the `teams` row, set by the control plane, enforced by the server:
 
 | Limit | Team plan | How it is enforced |
 |---|---|---|
-| Logins (seats) | 5 | Active memberships plus pending invites. The sixth invite is refused with `seat_limit`. |
-| Storage | 25 GB | Media and derivative bytes, kept as a running total on the team (`teams.storage_bytes`, changed on upload, derive and delete; corrected nightly from the bucket listing under the team's prefix). An upload that would pass the limit is refused at reserve time with `storage_full`. |
+| Logins (seats) | 5 | Active memberships plus pending invites, checked inside `team.write`, so two invites at once can't both take the last seat. The sixth is refused with `seat_limit`. |
+| Storage | 25 GB | Media and derivative bytes, kept as a running total on the team (`teams.storage_bytes`), changed in one statement: `UPDATE teams SET storage_bytes = storage_bytes + ? WHERE id = ? AND storage_bytes + ? <= storage_limit`. No row changed means `storage_full`. Reserve adds the declared size; landing corrects it to the real size; delete subtracts. Corrected nightly from the media rows (the home team's keys sit at the bucket root, so its total comes from rows, not a listing). |
 | Agents | no limit | Rate limited instead (below). |
 | Suspended | – | Read-only, as TEAMS.md §7: reads and exports work, writes answer `403 suspended`. |
 
@@ -317,8 +431,11 @@ Stored on the `teams` row, set by the control plane, enforced by the server:
 - **Requests:** a per-team ceiling on top of the per-token one: 1,200 MCP calls a minute across all
   of a team's agents (in memory, per dyno, so loose; fine for fairness).
 - **Open connections:** at most 50 streams and 50 held waits (`request_input`, pairing polls) per
-  team per dyno. The 51st gets `429` with `Retry-After`.
-- **Database:** `statement_timeout` of 10 s on the pool. A query that slow is a bug, not a workload.
+  team per dyno, so about 50 × the number of dynos in all, since the router spreads connections at
+  random. The 51st gets `429` with `Retry-After`, which the apps and the channel bridge must honour
+  with a growing delay, not an instant reconnect.
+- **Database:** `statement_timeout` of 10 s for requests. A query that slow is a bug, not a
+  workload. Jobs that sweep every team get 5 minutes and work in batches.
 - **Transcoding:** ffmpeg is the heaviest thing the server does (it is why a Basic dyno needs
   `FFMPEG_THREADS=1`, see `server/deploy/HEROKU.md`). The derive job takes the oldest pending media
   **per team in turn**, at most one at a time per team, so one team's 50 videos don't hold up
@@ -329,7 +446,8 @@ Stored on the `teams` row, set by the control plane, enforced by the server:
 
 ### The admin API the control plane calls
 
-On the bare address only, behind `ADMIN_API_TOKEN` (as TEAMS.md §7: unset means 404; constant-time
+On the bare address in multi-team mode; on a self-hosted server, on its own address with the one
+team called `home`, so a self-hoster can use it too. Behind `ADMIN_API_TOKEN` (as TEAMS.md §7: unset means 404; constant-time
 check; its own rate limit; no other credential accepted). It knows teams and numbers, never prices.
 
 | Call | What it does |
@@ -339,9 +457,9 @@ check; its own rate limit; no other credential accepted). It knows teams and num
 | `GET /admin/usage?since=` | The same for every team changed since a time, for billing runs. |
 | `PUT /admin/teams/{id}/limits` | Seats and storage bytes. |
 | `PUT /admin/teams/{id}/suspended` `{suspended, reason}` | Read-only on and off. |
-| `PUT /admin/teams/{id}/slug` | Rename the address (old address answers with a redirect for 30 days). |
+| `PUT /admin/teams/{id}/slug` | Rename the address; the old one stays an alias (section 4). |
 | `DELETE /admin/teams/{id}` | Marks the team for deletion. A job removes its rows in batches and its bucket prefix. A deleted team's slug can't be reused for 30 days. |
-| `POST /admin/teams/{id}/export` | Starts an export: the existing `feed-server export` (Postgres to SQLite, `Export.kt`) gains `--team`, producing a file any self-hosted server can open. A hosted team can always leave. |
+| `POST /admin/teams/{id}/export` | Starts an export: the existing `feed-server export` (Postgres to SQLite, `Export.kt`) gains `--team`, producing a file any self-hosted server can open. It rewrites `team_id` to `home` and copies the team's media from `t/<team id>/…` to the root layout a self-hosted server expects. A hosted team can always leave. |
 
 ## 8. Cost
 
@@ -384,10 +502,11 @@ self-hosters working.
    and the `user_id` columns. Roles owner, admin, member. Invite by link, email and password
    sign-in, remove a person, attribution ("Sam replied"). Follows and the bell per person
    (section 6). Self-hosters get teams of people; nothing hosted yet.
-2. **Run on two dynos.** Still one team. A connection pool; jobs under advisory locks; derive claims
-   in the database; migrations in the release phase; security limits in Postgres. Then the
-   `events` table with `LISTEN/NOTIFY`, effects claimed from it once, Live Activity state in rows,
-   revocation by event. Proven by running the parity suite against two server processes sharing
+2. **Run on two dynos.** Still one team. First the pool: transactions in the coroutine context,
+   `team.write` and `team.read`, the lints. Then jobs in `job_runs`; derive claims; migrations in
+   the release phase; security limits in Postgres. Then the `events` table with `LISTEN/NOTIFY`,
+   events written inside the write, effects claimed once, Live Activity state in rows, revocation by
+   event, `private` media caching. Proven by running the parity suite against two server processes sharing
    one Postgres. Pays off at once: the live server scales to two dynos, deploys stop dropping
    everyone, and restarts stop forcing a resync.
 3. **`team_id` everywhere, switched off.** Migration adding the column with the home team as
@@ -407,9 +526,10 @@ self-hosters working.
 1. **A missed filter shows one team another team's data.** About 326 SQL call sites today, plus
    media keys, dedupe, events, pushes and links. The lint, the two-team suite and row security each
    catch what the others miss; slice 3 ships dark until all three pass.
-2. **Many dynos change timing.** Today everything happens in one process in one order. Across dynos:
-   duplicate pushes, events in the wrong order, waits that miss an answer. The parity suite only
-   tests one process, so slice 2 adds a two-process run of it.
+2. **A pool and many dynos change timing.** Today every write happens one at a time, in one
+   process. With a pool and several dynos: agents missing messages (seq order), double deliveries,
+   duplicate pushes, waits that miss an answer. The per-team write lock keeps today's order within a
+   team; the parity suite only tests one process, so slice 2 adds a two-process run of it.
 3. **One team slows everyone.** Shared Postgres, shared ffmpeg, shared bandwidth through the dynos.
    Per-team limits and fair derive help; a heavy team may need its own worker or an upgrade to a
    bigger database sooner than the cost table says.

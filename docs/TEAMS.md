@@ -156,9 +156,8 @@ user, that is exactly today's summary. When anyone answers a request, every devi
 updates as today. The summary gains `suspended` (section 7) and nothing else, so the iOS contract
 stays add-only.
 
-**The bell.** `notifications.seen_at` is one value for the whole server today. It becomes a
-per-user read cursor (`notification_reads`, section 9). The bell gets a row per person who hears
-the event, so each person's bell is their own.
+**The bell.** `notifications.seen_at` is one value for the whole server today. (Changed.) The bell gets a row per person who hears the event, each with its own `seen_at`, so
+each person's bell is their own (HOSTING.md §6). No separate read cursor.
 
 **Mail (optional).** `SMTP_URL` (`smtp://` or `smtps://`, user and password in the URL) and
 `MAIL_FROM`. Unset means no mail: email codes are switched off and invites are links only. The
@@ -167,7 +166,7 @@ public `GET /api/server` (section 8) tells the app what to offer.
 ## 5. Invites and lifecycle
 
 **Invite.** An admin or owner creates an invite with a role, an optional email, and project access.
-The server returns a link `PUBLIC_BASE_URL/join/<token>` (43-char random token, stored as an HMAC
+The server returns a link `<the team's address>/join/<token>` (`PUBLIC_BASE_URL` on a self-hosted server) (43-char random token, stored as an HMAC
 like device keys). Valid 7 days, single use, revocable. With mail set up and an email given, the
 server also emails it.
 
@@ -325,9 +324,9 @@ tools learn the new tables.
 - `memberships`: `id`, `team_id`, `user_id`, `role` (CHECK owner, admin, member), `handle`,
   `founder` (0/1, at most one per team), `created_at`, `removed_at`. The `user_id` columns below
   point at a membership.
-- `invites`: `id`, `email`, `role`, `all_projects`, `project_ids` (JSON), `token_hash` (unique),
+- `invites`: `id`, `team_id`, `email`, `role`, `all_projects`, `project_ids` (JSON), `token_hash` (unique),
   `created_by`, `created_at`, `expires_at`, `accepted_at`, `accepted_by`, `revoked_at`.
-- `auth_codes`: `id`, `user_id`, `purpose` (email sign-in, password reset, setup), `code_hash`,
+- `auth_codes`: `id`, `user_id` (the account, not a membership: a password reset is per account), `purpose` (email sign-in, password reset, setup), `code_hash`,
   `created_at`, `expires_at`, `used_at`, `attempts`. One table for every one-time secret.
 - (changed) No `server_state` row: the team's name and its suspended flag live on `teams`.
 - New nullable columns: `owner_devices.user_id`, `messages.user_id`, `approvals.decided_by`,
@@ -340,8 +339,8 @@ tools learn the new tables.
 **Later, with per-project access** (deferred): `project_access`: `user_id`, `project_id`,
 `created_at`; unique pair.
 
-**Also in 055:** `notification_reads`: `user_id` (unique), `seen_through_seq`. The old `notifications.seen_at`
-  stays and is read only as the founder's starting point.
+**Also in 055:** `notifications.member_id`, with the bell's unique rules changed to one row per
+person per card; existing rows go to the founder (HOSTING.md §6).
 
 ## 10. Security
 
