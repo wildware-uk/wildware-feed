@@ -52,7 +52,22 @@ object SignIn {
     private val json = Json { ignoreUnknownKeys = true }
 
     @Throws(SignInException::class, CancellationException::class)
-    suspend fun signIn(server: String, password: String, deviceName: String, engine: HttpClientEngine): SignedIn {
+    suspend fun signIn(server: String, password: String, deviceName: String, engine: HttpClientEngine): SignedIn =
+        request(server, password, deviceName, engine, cookie = false)
+
+    /**
+     * The web app's sign-in, to the server that served it. The device key comes back as a cookie the
+     * page's code can't read, and the browser sends it with every request to that server from then
+     * on. [SignedIn.token] is [CookieSession]: there is no key to keep.
+     */
+    @Throws(SignInException::class, CancellationException::class)
+    suspend fun signInWithCookie(server: String, password: String, deviceName: String, engine: HttpClientEngine): SignedIn =
+        request(server, password, deviceName, engine, cookie = true)
+
+    /** The token a cookie session keeps: none. [DashboardClient] sends no key for it; the browser sends the cookie. */
+    const val CookieSession: String = ""
+
+    private suspend fun request(server: String, password: String, deviceName: String, engine: HttpClientEngine, cookie: Boolean): SignedIn {
         val base = normalise(server)
         val http = HttpClient(engine) { expectSuccess = false }
         try {
@@ -62,6 +77,7 @@ object SignIn {
                     setBody(buildJsonObject {
                         put("password", password)
                         put("name", deviceName.trim().ifEmpty { "Wildware Feed app" }.take(100))
+                        if (cookie) put("cookie", true)
                     }.toString())
                 }
             } catch (cancelled: CancellationException) {
@@ -74,7 +90,7 @@ object SignIn {
             if (status == 201 || status == 200) {
                 val registration = runCatching { json.decodeFromString(DeviceRegistration.serializer(), text) }.getOrNull()
                     ?: throw SignInException(SignInFailure.NotADashboard, "$base answered, but not like a Wildware Feed server.", status)
-                return SignedIn(base, registration.token, registration.device)
+                return SignedIn(base, if (cookie) CookieSession else registration.token, registration.device)
             }
             val error = runCatching { json.decodeFromString(ErrorBody.serializer(), text) }.getOrNull()
             throw when {

@@ -72,8 +72,11 @@ class DashboardClient(
         defaultRequest { url(serverUrl) }
     }
 
-    /** The header a media request needs: images and files are behind the owner's key too. */
-    val authorizationHeader: String? get() = deviceToken?.let { "Bearer $it" }
+    /**
+     * The header a media request needs: images and files are behind the owner's key too. Null for a
+     * cookie session ([SignIn.CookieSession]), where the browser sends the cookie instead.
+     */
+    val authorizationHeader: String? get() = deviceToken?.takeIf { it != SignIn.CookieSession }?.let { "Bearer $it" }
 
     // --- Reading the feed -------------------------------------------------------------------
 
@@ -545,6 +548,8 @@ class DashboardClient(
 
     internal fun HttpRequestBuilder.authorise() {
         val token = deviceToken ?: throw DashboardException(401, "unauthenticated", "This phone is not linked to the dashboard yet.")
+        // A cookie session: the browser sends the cookie with the request itself.
+        if (token == SignIn.CookieSession) return
         header(HttpHeaders.Authorization, "Bearer $token")
     }
 

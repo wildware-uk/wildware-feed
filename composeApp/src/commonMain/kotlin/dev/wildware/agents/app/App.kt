@@ -42,7 +42,10 @@ import dev.wildware.agents.app.feed.ScreenPreview
 import dev.wildware.agents.app.feed.agentsImageLoader
 import dev.wildware.agents.app.feed.AppNavigator
 import dev.wildware.agents.app.session.AppPlatform
+import dev.wildware.agents.app.signin.ConnectState
 import dev.wildware.agents.app.signin.SignInScreen
+import dev.wildware.agents.HostCheck
+import dev.wildware.agents.SignInMethod
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -103,6 +106,11 @@ fun AgentsApp(
             when (val screen = model.screen.collectAsState().value) {
                 is AppScreen.SigningIn -> {
                     val hostProblem = platform.localServer?.state?.collectAsState()?.value?.problem
+                    // Served by the dashboard itself (the web app): that is the host, so step 1 is done.
+                    val home = platform.homeServer
+                    val connect = remember(home) {
+                        if (home == null) ConnectState() else ConnectState(home, HostCheck.Feed(home, listOf(SignInMethod.Password)))
+                    }
                     SignInScreen(
                         deviceName = model.deviceName,
                         notice = screen.notice,
@@ -112,6 +120,8 @@ fun AgentsApp(
                         checkHost = model::checkHost,
                         signIn = model::signIn,
                         tryDemo = model::enterDemo,
+                        connect = connect,
+                        hostFixed = home != null,
                     )
                 }
                 is AppScreen.Signed -> {

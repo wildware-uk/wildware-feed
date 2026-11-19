@@ -54,6 +54,11 @@ class AppPlatform(
     val pushAlerts: Boolean = false,
     /** A server this app can run itself ("This computer"), or null where it can't (phones). */
     val localServer: dev.wildware.agents.app.local.LocalServerHost? = null,
+    /**
+     * The dashboard this app was served from (the web app), or null. Sign-in goes straight to its
+     * password, and the session rides on a cookie the page can't read rather than a key the app keeps.
+     */
+    val homeServer: String? = null,
 ) {
     companion object {
         /** Everything in memory: for tests and previews. */

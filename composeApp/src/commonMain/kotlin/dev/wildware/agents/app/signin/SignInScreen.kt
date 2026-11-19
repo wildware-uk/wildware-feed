@@ -24,6 +24,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -156,6 +159,8 @@ fun SignInScreen(
     startWith: SignInChoice = defaultSignInChoice(signInHere != null),
     /** Where "Connect to a host" starts; screenshots set it to show step 2 or a problem. */
     connect: ConnectState = remember { ConnectState() },
+    /** The host can't be changed: the web app signs in to the server that served it. */
+    hostFixed: Boolean = false,
     /** Step 1: whether an address is a Wildware Feed server, and how it signs in. */
     checkHost: suspend (address: String) -> HostCheck,
     signIn: suspend (server: String, password: String, device: String) -> Unit,
@@ -269,6 +274,7 @@ fun SignInScreen(
                     choice == SignInChoice.LogIn -> "Sign in to your ${dev.wildware.agents.app.ProductName} account."
                     here -> "Your feed runs right here, on this computer. No address or password needed."
                     host == null -> "Type the address of your ${dev.wildware.agents.app.ProductName} server."
+                    hostFixed -> "The password is used once; this browser then stays signed in."
                     else -> "The password is used once; this device keeps its own key."
                 },
                 color = colors.textMuted,
@@ -338,17 +344,23 @@ fun SignInScreen(
                     }
                 }
                 else -> {
-                    HostCard(host.server, enabled = !busy) {
-                        connect.host = null
-                        problem = null
-                    }
+                    HostCard(host.server, enabled = !busy, onChange = if (hostFixed) null else {
+                        {
+                            connect.host = null
+                            problem = null
+                        }
+                    })
                     Spacer(Modifier.height(18.dp))
                     // Only what this host offers. A team server will add email and password here.
                     if (SignInMethod.Password in host.signIn) {
                         LabelledField(
                             "Owner password", password, problem.takeIf { it?.field == Field.Password }?.message,
                             secret = true,
-                            keyboard = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Next),
+                            keyboard = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = if (hostFixed) ImeAction.Go else ImeAction.Next),
+                            // In a browser tab, where the host is fixed, the password is all there is to
+                            // type: it has the keyboard from the start, and Enter signs in.
+                            onSubmit = if (hostFixed) submitPassword else null,
+                            focusFirst = hostFixed,
                         )
                         Spacer(Modifier.height(14.dp))
                         LabelledField(
@@ -381,9 +393,9 @@ fun SignInScreen(
     }
 }
 
-/** Step 2's reminder of which host this is, with the way back to step 1. */
+/** Step 2's reminder of which host this is, with the way back to step 1 unless [onChange] is null. */
 @Composable
-private fun HostCard(server: String, enabled: Boolean, onChange: () -> Unit) {
+private fun HostCard(server: String, enabled: Boolean, onChange: (() -> Unit)?) {
     val colors = AgentTheme.colors
     val shape = AgentTheme.shapes.medium
     Row(
@@ -403,7 +415,7 @@ private fun HostCard(server: String, enabled: Boolean, onChange: () -> Unit) {
                 maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
             )
         }
-        AppButton("Change", ButtonTone.Quiet, enabled = enabled, onClick = onChange)
+        if (onChange != null) AppButton("Change", ButtonTone.Quiet, enabled = enabled, onClick = onChange)
     }
 }
 
@@ -456,9 +468,13 @@ private fun LabelledField(
     hint: String? = null,
     keyboard: KeyboardOptions = KeyboardOptions.Default,
     onSubmit: (() -> Unit)? = null,
+    /** Takes the keyboard as soon as it shows. */
+    focusFirst: Boolean = false,
 ) {
     val colors = AgentTheme.colors
     val shape = AgentTheme.shapes.medium
+    val focus = remember { FocusRequester() }
+    if (focusFirst) LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
     Column {
         MetaText(label.uppercase(), style = AgentTheme.type.overline, color = colors.textMuted)
         Spacer(Modifier.height(6.dp))
@@ -477,7 +493,7 @@ private fun LabelledField(
                 secret = secret,
                 keyboard = keyboard,
                 onSubmit = onSubmit,
-                modifier = Modifier.fillMaxWidth().semantics { if (error != null) error(error) },
+                modifier = Modifier.fillMaxWidth().focusRequester(focus).semantics { if (error != null) error(error) },
             )
         }
         if (error != null) {
