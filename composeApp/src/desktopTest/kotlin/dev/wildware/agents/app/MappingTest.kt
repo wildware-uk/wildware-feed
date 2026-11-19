@@ -41,6 +41,9 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import dev.wildware.agents.FeedState as EngineFeed
+import dev.wildware.agents.app.feed.Author
+import dev.wildware.agents.app.feed.PersonRow
+import dev.wildware.agents.app.feed.TeamState
 
 class MappingTest {
     // 2026-11-18 12:00 UTC.
@@ -657,5 +660,46 @@ class MappingTest {
         val low = update("u2", noon - 1, "Other", "").let { it.copy(update = it.update.copy(priority = "low")) }
         val items = mapper.map(feed(listOf(high, low)), listOf(mega), emptyList(), emptyList(), null).sections.flatMap { it.items }
         assertEquals(mapOf("u1" to true, "u2" to false), items.filterIsInstance<FeedItem.Update>().associate { it.id to it.high })
+    }
+
+    // ---- people (migration 055) ------------------------------------------------------------------
+
+    private fun person(id: String, userId: String?) = ThreadLine(
+        MessageView(id = id, author = "human", body = "Line $id", createdAt = noon, updateId = "u1", userId = userId),
+        authorName = "You", answersName = null, media = emptyList(), embeds = emptyList(),
+        reactions = listOf(ReactionView("r$id", card = CardRef(CardKinds.Message, id), actor = "human", emoji = "👀", userId = userId)),
+        acks = emptyList(), deliveries = emptyList(), questions = emptyList(),
+    )
+
+    private fun team(me: String) = TeamState(
+        me = PersonRow(me, if (me == "founder") "Sam" else "Priya", "x", "owner", you = true),
+        people = listOf(PersonRow("founder", "Sam", "sam", "owner", founder = true, you = me == "founder"), PersonRow("p2", "Priya", "priya", "member", you = me == "p2")),
+        team = true,
+        loaded = true,
+    )
+
+    @Test
+    fun onATeamOtherPeoplesWordsCarryTheirNamesAndYoursStayYours() {
+        val card = update("u1", noon, "T", "B", replies = listOf(person("m1", null), person("m2", "p2")))
+        mapper.team = team("founder")
+        val asSam = (mapper.map(feed(listOf(card)), listOf(mega), emptyList(), emptyList(), null).sections.single().items.single() as FeedItem.Update).replies
+        assertTrue(asSam[0].author is Author.Owner)
+        assertEquals(Author.Person("Priya", "priya", dev.wildware.agents.app.engine.hue("p2")), asSam[1].author)
+        assertTrue(asSam[0].reactions.single().mine)
+        assertTrue(!asSam[1].reactions.single().mine, "Priya's reaction isn't Sam's")
+        mapper.team = team("p2")
+        val asPriya = (mapper.map(feed(listOf(card)), listOf(mega), emptyList(), emptyList(), null).sections.single().items.single() as FeedItem.Update).replies
+        assertEquals("Sam", asPriya[0].author.name)
+        assertTrue(asPriya[1].author is Author.Owner)
+        mapper.team = TeamState()
+    }
+
+    @Test
+    fun aTeamOfOneIsAllYou() {
+        val card = update("u1", noon, "T", "B", replies = listOf(person("m1", null)))
+        mapper.team = TeamState()
+        val replies = (mapper.map(feed(listOf(card)), listOf(mega), emptyList(), emptyList(), null).sections.single().items.single() as FeedItem.Update).replies
+        assertTrue(replies.single().author is Author.Owner)
+        assertTrue(replies.single().reactions.single().mine)
     }
 }

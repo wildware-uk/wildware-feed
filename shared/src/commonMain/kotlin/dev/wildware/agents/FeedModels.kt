@@ -127,8 +127,13 @@ data class ReactionView(
     val actor: String,
     val emoji: String,
     val createdAt: Long = 0,
+    /** Which person, on a team (migration 055); left out for the founder. */
+    val userId: String? = null,
 ) {
     val isOwner: Boolean get() = actor == HumanAuthor
+
+    /** The person who reacted, or null for an agent. */
+    val personId: String? get() = if (isOwner) userId ?: FounderId else null
 }
 
 /** An agent saying "thinking", "read" or "done" about a message without words. */
@@ -263,9 +268,14 @@ data class MessageView(
     val status: String? = null,
     val statusAt: Long? = null,
     val editedAt: Long? = null,
+    /** Which person wrote it, on a team (migration 055); left out for the founder. */
+    val userId: String? = null,
 ) {
     val isPost: Boolean get() = updateId == null && taskId == null && replyTo == null && requestId == null
     val isOwner: Boolean get() = author == HumanAuthor
+
+    /** The person who wrote it, or null for an agent. */
+    val personId: String? get() = if (isOwner) userId ?: FounderId else null
     val agentId: String? get() = author.takeIf { it.startsWith(AgentPrefix) }?.removePrefix(AgentPrefix)
 }
 
@@ -314,7 +324,12 @@ data class RequestView(
     /** How much it needs the owner now; "critical" pages their phones. */
     val priority: String = "medium",
     val reactions: List<ReactionView> = emptyList(),
+    /** Who answered, on a team (migration 055); left out for the founder. */
+    val answeredBy: String? = null,
 ) {
+    /** The person who answered it, or null while it isn't answered. */
+    val answeredByPerson: String? get() = if (state == "answered") answeredBy ?: FounderId else null
+
     /** Null for a kind this app doesn't know yet: show it, and send the owner to the website to answer it. */
     val requestKind: RequestKind? get() = RequestKind.fromWire(kind)
 
@@ -366,6 +381,8 @@ data class FeedSnapshot(
     val cardApps: List<AppView>? = null,
     val updates: UpdatesPage = UpdatesPage(),
     val agentNames: Map<String, String>? = null,
+    /** Everyone who has been in the team, only once there is more than one person (migration 055). */
+    val people: List<Person>? = null,
 )
 
 /** `GET /api/messages`: every thread in scope, oldest first. */
@@ -579,6 +596,9 @@ object CardKinds {
 
 /** The owner's author string on messages and reactions. */
 const val HumanAuthor = "human"
+
+/** The founding owner's membership id (migration 055): a person's row with no userId is theirs. */
+const val FounderId = "founder"
 internal const val AgentPrefix = "agent:"
 
 @Serializable

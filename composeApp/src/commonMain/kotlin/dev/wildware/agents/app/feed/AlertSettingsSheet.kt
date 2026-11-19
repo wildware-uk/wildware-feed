@@ -132,6 +132,7 @@ fun AlertSettingsSheet(ui: FeedUi, safeArea: SafeArea) {
             KeepMediaEntry(ui)
             SecretsEntry(ui)
             DevicesEntry(ui)
+            PeopleEntry(ui)
         }
     }
 }

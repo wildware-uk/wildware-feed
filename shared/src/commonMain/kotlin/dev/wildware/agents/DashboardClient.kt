@@ -600,6 +600,59 @@ class DashboardClient(
         }.requireSuccess()
     }
 
+    // ---- people (a team, on a server with migration 055) ---------------------------------------
+
+    /** Who this device belongs to, and whether the team has more than one person. Null on a server from before teams. */
+    @Throws(Exception::class)
+    suspend fun me(): MeBody? {
+        val response = http.get("api/me") { authorise() }
+        if (response.status.value == 404) return null
+        return response.decoded()
+    }
+
+    /** Everyone who has been in the team, removed people too (marked). Emails only for owners and admins. */
+    @Throws(Exception::class)
+    suspend fun people(): List<Person> = http.get("api/people") { authorise() }.decoded<PeopleBody>().people
+
+    /** Invites still waiting. Owners and admins only. */
+    @Throws(Exception::class)
+    suspend fun invites(): List<Invite> = http.get("api/invites") { authorise() }.decoded<InvitesBody>().invites
+
+    /** A new invite for [role] ("member", "admin" or "owner"), optionally for one [email]. Its code is shown once. */
+    @Throws(Exception::class)
+    suspend fun createInvite(role: String, email: String?): CreatedInvite = http.post("api/invites") {
+        authorise()
+        jsonBody(buildJsonObject {
+            put("role", role)
+            if (!email.isNullOrBlank()) put("email", email.trim())
+        })
+    }.decoded()
+
+    @Throws(Exception::class)
+    suspend fun revokeInvite(inviteId: String) {
+        http.delete("api/invites/${inviteId.encodeURLPathPart()}") { authorise() }.requireSuccess()
+    }
+
+    /** Owners only: someone else's role. */
+    @Throws(Exception::class)
+    suspend fun setRole(personId: String, role: String): Person = http.patch("api/people/${personId.encodeURLPathPart()}") {
+        authorise()
+        jsonBody(buildJsonObject { put("role", role) })
+    }.decoded<PersonBody>().person
+
+    /** Removes someone from the team (or, with your own id, leaves it). Their keys stop working at once. */
+    @Throws(Exception::class)
+    suspend fun removePerson(personId: String) {
+        http.delete("api/people/${personId.encodeURLPathPart()}") { authorise() }.requireSuccess()
+    }
+
+    /** Changes your own name. */
+    @Throws(Exception::class)
+    suspend fun rename(name: String): Person = http.patch("api/me") {
+        authorise()
+        jsonBody(buildJsonObject { put("name", name) })
+    }.decoded<PersonBody>().person
+
     /** Swaps the web view's login cookie for a long-lived device key. */
     @Throws(Exception::class)
     suspend fun registerDevice(name: String, sessionCookie: String): DeviceRegistration =
@@ -860,3 +913,46 @@ internal data class GroupBody(val group: GroupView)
 
 @kotlinx.serialization.Serializable
 internal data class AlertPrefsBody(val prefs: AlertPrefs? = null)
+
+/** A person in the team (migration 055). [role] is "owner", "admin" or "member". */
+@Serializable
+data class Person(
+    val id: String,
+    val name: String,
+    val handle: String = "",
+    val role: String = "member",
+    val founder: Boolean = false,
+    val email: String? = null,
+    val createdAt: String = "",
+    val removedAt: String? = null,
+) {
+    val removed: Boolean get() = removedAt != null
+}
+
+/** `GET /api/me`: you, and whether the team has ever had more than one person. */
+@Serializable
+data class MeBody(val person: Person, val team: Boolean = false)
+
+/** An invite still waiting to be used. */
+@Serializable
+data class Invite(
+    val id: String,
+    val email: String? = null,
+    val role: String = "member",
+    val createdBy: String = "",
+    val createdAt: String = "",
+    val expiresAt: String = "",
+)
+
+/** A new invite: [link] opens the join page; [token] is the code to paste. Shown once. */
+@Serializable
+data class CreatedInvite(val invite: Invite, val token: String, val link: String)
+
+@Serializable
+internal data class PeopleBody(val people: List<Person> = emptyList())
+
+@Serializable
+internal data class PersonBody(val person: Person)
+
+@Serializable
+internal data class InvitesBody(val invites: List<Invite> = emptyList())

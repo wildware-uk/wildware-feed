@@ -64,7 +64,7 @@ import dev.wildware.agents.app.feed.windowBackground
 import kotlinx.coroutines.launch
 
 /** Which box a sign-in problem belongs under, so the message sits where the fix is. */
-private enum class Field { Server, Password, Device, General }
+private enum class Field { Server, Password, Device, General, Email, Invite, Name }
 
 private data class Problem(val field: Field, val message: String)
 
@@ -79,6 +79,7 @@ private fun SignInException.problem(): Problem = when (failure) {
     )
     SignInFailure.NotSetUp -> Problem(Field.General, "This dashboard has no owner password yet. Set one on the server first.")
     SignInFailure.Refused -> Problem(Field.Device, message ?: "The dashboard turned that down.")
+    SignInFailure.BadInvite -> Problem(Field.Invite, message ?: "That invite has expired, was used already, or isn't right. Ask for a new one.")
 }
 
 /**
@@ -163,12 +164,22 @@ fun SignInScreen(
     hostFixed: Boolean = false,
     /** Step 1: whether an address is a Wildware Feed server, and how it signs in. */
     checkHost: suspend (address: String) -> HostCheck,
+    /** A person's sign-in on a team server, with their email (migration 055); null where it isn't wired. */
+    signInWithEmail: (suspend (server: String, email: String, password: String, device: String) -> Unit)? = null,
+    /** Joins a team with an invite's link or code; null where it isn't wired. */
+    acceptInvite: (suspend (server: String, invite: String, name: String, email: String, password: String, device: String) -> Unit)? = null,
+    /** Opens on "I have an invite", with this link or code filled in. */
+    startInvite: String? = null,
     signIn: suspend (server: String, password: String, device: String) -> Unit,
 ) {
     val colors = AgentTheme.colors
     val type = AgentTheme.type
     val scope = rememberCoroutineScope()
     val password = rememberTextFieldState()
+    val email = rememberTextFieldState()
+    val inviteCode = rememberTextFieldState(startInvite ?: "")
+    val personName = rememberTextFieldState()
+    var inviting by remember { mutableStateOf(startInvite != null && acceptInvite != null) }
     val device = rememberTextFieldState(deviceName)
     var busy by remember { mutableStateOf(false) }
     var problem by remember { mutableStateOf<Problem?>(null) }
@@ -223,15 +234,48 @@ fun SignInScreen(
     val submitPassword: () -> Unit = submit@{
         val server = host?.server
         if (busy || server == null) return@submit
+        val typedEmail = email.text.toString().trim()
         if (password.text.isEmpty()) {
-            problem = Problem(Field.Password, "Type the owner password.")
+            problem = Problem(Field.Password, if (typedEmail.isEmpty()) "Type the owner password." else "Type your password.")
             return@submit
         }
         busy = true
         problem = null
         scope.launch {
             try {
-                signIn(server, password.text.toString(), device.text.toString())
+                if (typedEmail.isNotEmpty() && signInWithEmail != null) signInWithEmail(server, typedEmail, password.text.toString(), device.text.toString())
+                else signIn(server, password.text.toString(), device.text.toString())
+            } catch (failed: SignInException) {
+                problem = failed.problem()
+            } finally {
+                busy = false
+            }
+        }
+    }
+
+    val submitInvite: () -> Unit = submit@{
+        val join = acceptInvite ?: return@submit
+        if (busy) return@submit
+        val code = inviteCode.text.toString().trim()
+        // The host already chosen wins: a link that points somewhere else is refused, never followed,
+        // so a password is only ever sent to the server the screen shows.
+        val linked = dev.wildware.agents.SignIn.serverOfInvite(code)?.let(dev.wildware.agents.SignIn::normalise)
+        val server = host?.server ?: linked
+            ?: connect.address.text.toString().trim().takeIf { it.isNotEmpty() }?.let(dev.wildware.agents.SignIn::normalise)
+        problem = when {
+            code.isEmpty() -> Problem(Field.Invite, "Paste the invite link, or its code.")
+            host != null && linked != null && linked != host.server -> Problem(Field.Invite, "That invite is for $linked, not ${host.server}.")
+            server == null -> Problem(Field.Invite, "That's a code without an address: type the host's address first, or paste the whole link.")
+            personName.text.isBlank() -> Problem(Field.Name, "Type your name, as the team will see it.")
+            email.text.isBlank() -> Problem(Field.Email, "Type your email. You sign in with it.")
+            password.text.length < 8 -> Problem(Field.Password, "Choose a password of at least 8 characters.")
+            else -> null
+        }
+        if (problem != null || server == null) return@submit
+        busy = true
+        scope.launch {
+            try {
+                join(server, code, personName.text.toString(), email.text.toString(), password.text.toString(), device.text.toString())
             } catch (failed: SignInException) {
                 problem = failed.problem()
             } finally {
@@ -256,7 +300,8 @@ fun SignInScreen(
         Column(Modifier.widthIn(max = 420.dp).fillMaxWidth().padding(top = lift)) {
             AppMark(52.dp)
             Spacer(Modifier.height(20.dp))
-            Text("Sign in", Modifier.semantics { heading() }, color = colors.text, style = type.display)
+            val joining = inviting && acceptInvite != null && !here && choice != SignInChoice.LogIn
+            Text(if (joining) "Join a team" else "Sign in", Modifier.semantics { heading() }, color = colors.text, style = type.display)
             if (choices.size > 1) {
                 Spacer(Modifier.height(16.dp))
                 ChoiceTabs(choices, choice) {
@@ -271,6 +316,7 @@ fun SignInScreen(
             }
             Text(
                 when {
+                    joining -> "Paste the invite you were sent and make your account. This device keeps its own key."
                     choice == SignInChoice.LogIn -> "Sign in to your ${dev.wildware.agents.app.ProductName} account."
                     here -> "Your feed runs right here, on this computer. No address or password needed."
                     host == null -> "Type the address of your ${dev.wildware.agents.app.ProductName} server."
@@ -286,6 +332,56 @@ fun SignInScreen(
             }
             Spacer(Modifier.height(24.dp))
             when {
+                // Joining a team with an invite: its link or code, and a new account (migration 055).
+                inviting && acceptInvite != null && !here && choice != SignInChoice.LogIn -> {
+                    // Where the account is made: the host chosen, else the one the pasted link names.
+                    (host?.server ?: dev.wildware.agents.SignIn.serverOfInvite(inviteCode.text.toString())?.let(dev.wildware.agents.SignIn::normalise))?.let {
+                        HostCard(it, enabled = false, onChange = null)
+                        Spacer(Modifier.height(18.dp))
+                    }
+                    LabelledField(
+                        "Invite link or code", inviteCode, problem.takeIf { it?.field == Field.Invite }?.message,
+                        placeholder = "https://…/join/…",
+                        hint = "The link you were sent, or the code from it.",
+                        keyboard = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Next),
+                        focusFirst = startInvite == null,
+                    )
+                    Spacer(Modifier.height(14.dp))
+                    LabelledField("Your name", personName, problem.takeIf { it?.field == Field.Name }?.message, hint = "How the team sees you.", keyboard = KeyboardOptions(imeAction = ImeAction.Next))
+                    Spacer(Modifier.height(14.dp))
+                    LabelledField("Email", email, problem.takeIf { it?.field == Field.Email }?.message, keyboard = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next))
+                    Spacer(Modifier.height(14.dp))
+                    LabelledField(
+                        "Choose a password", password, problem.takeIf { it?.field == Field.Password }?.message, secret = true,
+                        hint = "At least 8 characters. You sign in with your email and this.",
+                        keyboard = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Next),
+                    )
+                    Spacer(Modifier.height(14.dp))
+                    LabelledField(
+                        "Name for this device", device, null,
+                        keyboard = KeyboardOptions(imeAction = ImeAction.Go),
+                        onSubmit = submitInvite,
+                    )
+                    // What the server refused (an email the invite isn't for, say) isn't about one box here.
+                    problem?.takeIf { it.field == Field.General || it.field == Field.Server || it.field == Field.Device }?.let {
+                        Spacer(Modifier.height(16.dp))
+                        Banner(it.message, isError = true)
+                    }
+                    Spacer(Modifier.height(22.dp))
+                    AppButton(
+                        if (busy) "Joining…" else "Join the team",
+                        ButtonTone.Primary,
+                        modifier = Modifier.fillMaxWidth(),
+                        icon = if (busy) Icons.Clock else null,
+                        enabled = !busy,
+                        onClick = submitInvite,
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    AppButton("Back to sign in", ButtonTone.Quiet, modifier = Modifier.fillMaxWidth(), enabled = !busy, onClick = {
+                        inviting = false
+                        problem = null
+                    })
+                }
                 // The hosted service isn't built yet; HostedLogin keeps this out of sight.
                 choice == SignInChoice.LogIn -> Banner("Coming soon.", isError = false)
                 here -> {
@@ -325,6 +421,10 @@ fun SignInScreen(
                         enabled = !busy,
                         onClick = submitAddress,
                     )
+                    InviteLink(acceptInvite != null, !busy) {
+                        inviting = true
+                        problem = null
+                    }
                     if (tryDemo != null) {
                         Spacer(Modifier.height(18.dp))
                         AppButton(
@@ -353,14 +453,25 @@ fun SignInScreen(
                     Spacer(Modifier.height(18.dp))
                     // Only what this host offers. A team server will add email and password here.
                     if (SignInMethod.Password in host.signIn) {
+                        // A team server also takes a person's email and password (migration 055).
+                        val withEmail = SignInMethod.EmailPassword in host.signIn && signInWithEmail != null
+                        if (withEmail) {
+                            LabelledField(
+                                "Email", email, problem.takeIf { it?.field == Field.Email }?.message,
+                                hint = "Leave it empty to sign in with the owner password.",
+                                keyboard = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next),
+                                focusFirst = hostFixed,
+                            )
+                            Spacer(Modifier.height(14.dp))
+                        }
                         LabelledField(
-                            "Owner password", password, problem.takeIf { it?.field == Field.Password }?.message,
+                            if (withEmail) "Password" else "Owner password", password, problem.takeIf { it?.field == Field.Password }?.message,
                             secret = true,
                             keyboard = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = if (hostFixed) ImeAction.Go else ImeAction.Next),
                             // In a browser tab, where the host is fixed, the password is all there is to
                             // type: it has the keyboard from the start, and Enter signs in.
                             onSubmit = if (hostFixed) submitPassword else null,
-                            focusFirst = hostFixed,
+                            focusFirst = hostFixed && !withEmail,
                         )
                         Spacer(Modifier.height(14.dp))
                         LabelledField(
@@ -383,6 +494,10 @@ fun SignInScreen(
                             enabled = !busy,
                             onClick = submitPassword,
                         )
+                        InviteLink(acceptInvite != null, !busy) {
+                            inviting = true
+                            problem = null
+                        }
                     } else {
                         Banner("This host signs in a way this app doesn't know yet. Update the app, then try again.", isError = true)
                     }
@@ -391,6 +506,14 @@ fun SignInScreen(
         }
     }
     }
+}
+
+/** "I have an invite": the way to join a team instead of signing in. */
+@Composable
+private fun InviteLink(shown: Boolean, enabled: Boolean, onClick: () -> Unit) {
+    if (!shown) return
+    Spacer(Modifier.height(10.dp))
+    AppButton("I have an invite", ButtonTone.Quiet, modifier = Modifier.fillMaxWidth(), enabled = enabled, onClick = onClick)
 }
 
 /** Step 2's reminder of which host this is, with the way back to step 1 unless [onChange] is null. */

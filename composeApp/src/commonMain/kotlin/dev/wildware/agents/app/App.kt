@@ -121,6 +121,8 @@ fun AgentsApp(
                         hostProblem = hostProblem,
                         checkHost = model::checkHost,
                         signIn = model::signIn,
+                        signInWithEmail = model::signInWithEmail,
+                        acceptInvite = model::acceptInvite,
                         tryDemo = model::enterDemo,
                         connect = connect,
                         hostFixed = home != null,

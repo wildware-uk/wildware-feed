@@ -92,4 +92,44 @@ class SignInTest {
     fun `a server error is worth trying again`() = runTest {
         assertEquals(SignInFailure.Unreachable, failure { respond("oops", HttpStatusCode.BadGateway) }.failure)
     }
+
+    // ---- people (migration 055) ------------------------------------------------------------------
+
+    @Test
+    fun `a person signs in with their email and the old form is unchanged`() = runTest {
+        SignIn.signInWithEmail("https://dash.test", " sam@example.com ", "hunter2", "Phone", engine {
+            json("""{"device":{"id":"d1","name":"Phone","createdAt":"2026-11-18T10:00:00.000Z"},"token":"k"}""", HttpStatusCode.Created)
+        })
+        assertEquals("""{"email":"sam@example.com","password":"hunter2","name":"Phone"}""", seen.single().second)
+    }
+
+    @Test
+    fun `joining with an invite sends the code and a new account in one request`() = runTest {
+        val signed = SignIn.acceptInvite("https://dash.test", "https://dash.test/join/abc", "Priya", "priya@example.com", "a long password", "Laptop", engine {
+            json("""{"device":{"id":"d2","name":"Laptop","createdAt":"2026-11-18T10:00:00.000Z"},"token":"k2","person":{"id":"p2","name":"Priya"}}""", HttpStatusCode.Created)
+        }, cookie = false)
+        assertEquals("k2", signed.token)
+        val (request, body) = seen.single()
+        assertEquals("https://dash.test/api/invite/accept", request.url.toString())
+        assertEquals("""{"token":"https://dash.test/join/abc","name":"Priya","email":"priya@example.com","password":"a long password","deviceName":"Laptop"}""", body)
+    }
+
+    @Test
+    fun `a used or wrong invite says so`() = runTest {
+        val failure = assertFailsWith<SignInException> {
+            SignIn.acceptInvite("https://dash.test", "nope", "P", "p@example.com", "a long password", "Laptop", engine {
+                json("""{"error":"invalid_invite","message":"That invite has expired."}""", HttpStatusCode.BadRequest)
+            }, cookie = false)
+        }
+        assertEquals(SignInFailure.BadInvite, failure.failure)
+    }
+
+    @Test
+    fun `an invite link names its server and a bare code does not`() {
+        val code = "A".repeat(43)
+        assertEquals("https://feed.example.com", SignIn.serverOfInvite("https://feed.example.com/join/$code"))
+        assertEquals("http://192.0.2.10:4317", SignIn.serverOfInvite("http://192.0.2.10:4317/join/$code"))
+        assertEquals("https://feed.example.com", SignIn.serverOfInvite("agents://invite?server=https%3A%2F%2Ffeed.example.com&token=$code"))
+        assertNull(SignIn.serverOfInvite(code))
+    }
 }

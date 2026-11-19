@@ -122,6 +122,9 @@ sealed interface Author {
     }
 
     data class Owner(override val name: String) : Author
+
+    /** Another person on the team (migration 055): [handle] is how an @mention names them. */
+    data class Person(override val name: String, val handle: String, val hue: Int) : Author
 }
 
 @Immutable
@@ -549,6 +552,8 @@ data class FeedState(
     val joining: List<JoinRequest> = emptyList(),
     /** Projects: named groups of channels, by name. */
     val groups: List<ProjectGroup> = emptyList(),
+    /** The people of the team, and you among them. */
+    val team: TeamState = TeamState(),
 ) {
     fun item(id: String): FeedItem? = sections.firstNotNullOfOrNull { s -> s.items.firstOrNull { it.id == id } }
 }
@@ -742,3 +747,48 @@ data class JoinRequest(
 /** Something marked critical, for the red banner on desktop: who, and what, in one line. */
 @Immutable
 data class CriticalNotice(val id: String, val agent: String, val text: String, val question: Boolean)
+
+/**
+ * The people of the team (a server with migration 055), read when the session starts and when the
+ * People sheet opens. [supported] is false on a server from before teams: there is no one but you.
+ */
+@Immutable
+data class TeamState(
+    val me: PersonRow? = null,
+    val people: List<PersonRow> = emptyList(),
+    val invites: List<InviteRow> = emptyList(),
+    /** More than one person has been in the team: names show on what people wrote. */
+    val team: Boolean = false,
+    val supported: Boolean = true,
+    val loaded: Boolean = false,
+    /** The person or invite being changed, while the dashboard is asked. */
+    val busy: String? = null,
+    val problem: String? = null,
+    /** The invite just made: its link and code, shown once. */
+    val created: CreatedInviteRow? = null,
+) {
+    /** You can invite and remove people. */
+    val canManage: Boolean get() = me?.role == "owner" || me?.role == "admin"
+
+    /** You can change roles. */
+    val isOwner: Boolean get() = me?.role == "owner"
+}
+
+@Immutable
+data class PersonRow(
+    val id: String,
+    val name: String,
+    val handle: String,
+    /** "owner", "admin" or "member". */
+    val role: String,
+    val email: String? = null,
+    val you: Boolean = false,
+    val removed: Boolean = false,
+    val founder: Boolean = false,
+)
+
+@Immutable
+data class InviteRow(val id: String, val role: String, val email: String?, val expires: String)
+
+@Immutable
+data class CreatedInviteRow(val link: String, val code: String, val role: String, val email: String?)

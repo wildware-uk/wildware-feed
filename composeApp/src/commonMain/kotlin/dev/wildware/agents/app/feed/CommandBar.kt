@@ -210,6 +210,7 @@ private fun commandsFor(ui: FeedUi, query: String, extra: List<AppCommand>, cras
         if (wanted("Alerts on this device", "notifications", "settings")) add(Command("Actions", "Alerts on this device", "Which alerts this device gets", Icons.Sliders, done { ui.alertsOpen = true }))
         if (wanted("Devices", "devices", "phones", "sign out", "revoke", "lost", "settings")) {
             add(Command("Actions", "Devices", "Every device signed in to this dashboard; revoke a lost one", Icons.Phone, done { ui.devicesOpen = true }))
+            add(Command("Actions", "People", "Who is in the team; invite someone, change roles", Icons.People, done { ui.peopleOpen = true }))
         }
         if (state.retention.allowed && wanted("Keep media", "retention", "delete", "media", "settings")) {
             add(Command("Actions", "Keep media", "How long the dashboard keeps pictures and files", Icons.Clock, done { ui.retentionOpen = true }))

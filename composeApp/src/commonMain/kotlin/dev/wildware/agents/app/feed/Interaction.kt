@@ -158,6 +158,19 @@ sealed interface FeedEvent {
     data object ReadDevices : FeedEvent
     /** Revoke a device's key, so it can't read or answer anything more. The sheet has already asked. */
     data class RevokeDevice(val deviceId: String) : FeedEvent
+    /** Read the people of the team and the waiting invites, for the People sheet. */
+    data object ReadPeople : FeedEvent
+    /** Make an invite for [role], optionally for one [email]; its link and code show once. */
+    data class InvitePerson(val role: String, val email: String?) : FeedEvent
+    /** Forget the invite just made, once its link has been copied. */
+    data object DismissInvite : FeedEvent
+    data class RevokeInvite(val inviteId: String) : FeedEvent
+    /** An owner changes someone else's role. */
+    data class SetRole(val personId: String, val role: String) : FeedEvent
+    /** Remove someone from the team; with your own id, leave it. The sheet has already asked. */
+    data class RemovePerson(val personId: String) : FeedEvent
+    /** Change your own name, as the team sees it. */
+    data class Rename(val name: String) : FeedEvent
     /** Remove an agent: revoke it, so it and every app signed in as it stop working. The dialog has already asked. */
     data class RemoveAgent(val agentId: String, val done: (String?) -> Unit = {}) : FeedEvent
     /** Read the MCP clients signed in as this agent over OAuth, for its dialog. */
@@ -300,6 +313,8 @@ data class ScreenPreview(
     val retentionDraft: RetentionForm? = null,
     /** The Devices sheet, open. */
     val devicesOpen: Boolean = false,
+    /** The People sheet, open. */
+    val peopleOpen: Boolean = false,
     /** An agent's dialog, open, by agent id. */
     val agentOpen: String? = null,
     /** The Secrets sheet, open, on this secret (null: the list) or adding one. */
@@ -368,6 +383,8 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
      */
     private fun mentionFor(author: Author): String? = when (author) {
         is Author.Owner -> null
+        // Another person on the team: their @handle reaches them (migration 055).
+        is Author.Person -> author.handle
         is Author.AgentAuthor -> state.mentionable.firstOrNull { it.kind == MentionKind.Agent && it.id == author.agent.id }?.name
             ?: author.agent.name
     }
@@ -409,6 +426,9 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
     var devicesOpen by mutableStateOf(preview.devicesOpen)
     /** The Secrets sheet: what the dashboard keeps for agents, and who has used it. */
     var secretsOpen by mutableStateOf(preview.secretsOpen)
+
+    /** The People sheet: who is in the team, inviting, roles and removing. */
+    var peopleOpen by mutableStateOf(preview.peopleOpen)
     val composerFocus = FocusRequester()
 
     /** A message box has the cursor (on a phone, the keyboard is up). Back closes it first. */
