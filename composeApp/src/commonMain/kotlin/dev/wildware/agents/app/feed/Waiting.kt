@@ -143,6 +143,10 @@ fun HeadQuestions(item: Threaded) {
 /** "1 question" or "3 questions", for spoken labels. */
 internal fun questions(count: Int) = if (count == 1) "1 question" else "$count questions"
 
+/** A project in a list as a screen reader says it: name, pinned, unread, and what waits on the owner there. */
+internal fun projectSpoken(p: Project): String =
+    p.name + (if (p.pinned) ", pinned" else "") + ", ${p.unread} unread" + if (p.waiting > 0) ", ${questions(p.waiting)} waiting on you" else ""
+
 /**
  * "In reply to forge: …" on a question asked inside a thread, with a way to that thread. The
  * question is answered right here all the same.

@@ -189,6 +189,7 @@ class DemoServer(private val now: () -> Long = { Clock.System.now().toEpochMilli
                 input.text("name")?.let { after = after.copy(name = it) }
                 if ("description" in input) after = after.copy(description = input.text("description"))
                 input.text("status")?.let { after = after.copy(status = it) }
+                input["pinned"]?.jsonPrimitive?.booleanOrNull?.let { after = after.copy(pinned = it) }
                 (input["theme"] as? JsonObject)?.let { theme ->
                     val was = after.theme ?: ProjectTheme()
                     val next = was.copy(
@@ -197,7 +198,8 @@ class DemoServer(private val now: () -> Long = { Clock.System.now().toEpochMilli
                     )
                     after = after.copy(theme = next.takeIf { it != ProjectTheme() })
                 }
-                projects = projects.map { if (it.slug == slug) after else it }
+                // Pinned first, as the dashboard lists them.
+                projects = projects.map { if (it.slug == slug) after else it }.sortedByDescending { it.pinned }
                 ok("""{"project":${json.encodeToString(after)}}""")
             }
             path == "api/media" -> ok(

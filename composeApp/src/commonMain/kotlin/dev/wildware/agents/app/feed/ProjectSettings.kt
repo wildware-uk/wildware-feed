@@ -126,6 +126,16 @@ fun ProjectDialogView(ui: FeedUi, dialog: ProjectDialog) {
                     }
                     Spacer(Modifier.height(18.dp))
                     AppButton(
+                        if (project.pinned) "Unpin project" else "Pin project",
+                        ButtonTone.Secondary,
+                        Modifier.fillMaxWidth(),
+                        icon = Icons.Pin,
+                    ) {
+                        ui.emit(FeedEvent.PinProject(slug, !project.pinned))
+                        close()
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    AppButton(
                         if (project.archived) "Unarchive project" else "Archive project",
                         ButtonTone.Secondary,
                         Modifier.fillMaxWidth(),

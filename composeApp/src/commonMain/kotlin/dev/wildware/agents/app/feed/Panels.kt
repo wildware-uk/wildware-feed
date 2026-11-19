@@ -213,7 +213,7 @@ fun Sidebar(
                         WaitingBadge(p.waiting, Modifier.padding(end = 6.dp))
                         UnreadBadge(p.unread, emphasised = selected)
                     },
-                    spoken = "${p.name}, ${p.unread} unread" + if (p.waiting > 0) ", ${questions(p.waiting)} waiting on you" else "",
+                    spoken = projectSpoken(p),
                     onClick = { ui.emit(FeedEvent.SelectProject(p.slug)) },
                 )
             }
@@ -282,7 +282,9 @@ internal fun ArchivedProjects(ui: FeedUi) {
 @Composable
 private fun ProjectGlyph(p: Project) {
     val colors = AgentTheme.colors
-    Icon(Icons.Hash, null, tint = colors.textFaint, modifier = Modifier.size(15.dp))
+    // A pinned project wears a pin in the accent where the others have a hash, as on the website.
+    if (p.pinned) Icon(Icons.Pin, null, tint = colors.accent, modifier = Modifier.size(15.dp))
+    else Icon(Icons.Hash, null, tint = colors.textFaint, modifier = Modifier.size(15.dp))
 }
 
 @Composable

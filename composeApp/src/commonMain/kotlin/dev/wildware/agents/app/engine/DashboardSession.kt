@@ -339,6 +339,10 @@ class DashboardSession(
                 client.renameProject(event.slug, event.name.trim(), event.description?.trim())
                 dashboard.refresh()
             }
+            is FeedEvent.PinProject -> changeProject {
+                client.setProjectPinned(event.slug, event.pinned)
+                dashboard.refresh()
+            }
             is FeedEvent.ArchiveProject -> changeProject {
                 client.setProjectArchived(event.slug, event.archived)
                 dashboard.refresh()

@@ -330,6 +330,15 @@ class DashboardClientTest {
     }
 
     @Test
+    fun `pinning and unpinning a project say which`() = runTest {
+        val c = client { json("""{"project":{"id":"p9","slug":"harbor-app","name":"harbor-app","pinned":true}}""") }
+        c.setProjectPinned("harbor-app", true)
+        c.setProjectPinned("harbor-app", false)
+
+        assertEquals(listOf("""{"pinned":true}""", """{"pinned":false}"""), seen.map { it.second })
+    }
+
+    @Test
     fun `colours are set and a missing one is cleared`() = runTest {
         client { json("""{"project":{"id":"p9","slug":"harbor-app","name":"harbor-app"}}""") }.setProjectColours("harbor-app", "#0f3d3e", null)
 

@@ -212,6 +212,11 @@ class DashboardClient(
             put("description", description?.takeIf { it.isNotBlank() }?.let(::JsonPrimitive) ?: JsonNull)
         })
 
+    /** Pins a project to the top of the project list, or unpins it. */
+    @Throws(Exception::class)
+    suspend fun setProjectPinned(slug: String, pinned: Boolean): ProjectView =
+        patchProject(slug, buildJsonObject { put("pinned", pinned) })
+
     /** Archives a project (listed apart, finished with) or brings it back. */
     @Throws(Exception::class)
     suspend fun setProjectArchived(slug: String, archived: Boolean): ProjectView =

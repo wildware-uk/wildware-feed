@@ -83,6 +83,8 @@ data class Project(
     /** Its own page colour and accent, #rrggbb; null for the app's own. */
     val background: String? = null,
     val accent: String? = null,
+    /** Pinned to the top of the project list. */
+    val pinned: Boolean = false,
 )
 
 sealed interface Author {

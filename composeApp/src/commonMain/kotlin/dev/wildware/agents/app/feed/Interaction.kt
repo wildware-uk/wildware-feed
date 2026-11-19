@@ -60,6 +60,9 @@ sealed interface FeedEvent {
     /** Rename project [slug] and say what it is for. [done] as for [CreateProject]. */
     data class EditProject(val slug: String, val name: String, val description: String?, val done: (problem: String?) -> Unit = {}) : FeedEvent
 
+    /** Pin project [slug] to the top of the project list, or unpin it. */
+    data class PinProject(val slug: String, val pinned: Boolean) : FeedEvent
+
     /** Archive project [slug], or bring it back. */
     data class ArchiveProject(val slug: String, val archived: Boolean) : FeedEvent
 

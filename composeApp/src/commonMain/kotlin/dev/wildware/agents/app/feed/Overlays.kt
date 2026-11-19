@@ -608,7 +608,7 @@ private fun DrawerProjectRow(p: Project, selected: Boolean, dragging: Boolean, o
             )
             .then(if (dragging) Modifier.border(1.dp, colors.borderStrong, shape) else Modifier)
             .pressable(
-                "${p.name}, ${p.unread} unread" + if (p.waiting > 0) ", ${questions(p.waiting)} waiting on you" else "",
+                projectSpoken(p),
                 shape,
                 role = Role.Tab,
                 onClick = onClick,
@@ -623,6 +623,7 @@ private fun DrawerProjectRow(p: Project, selected: Boolean, dragging: Boolean, o
             color = if (selected) colors.text else colors.textMuted,
             style = AgentTheme.type.label,
         )
+        if (p.pinned) Icon(Icons.Pin, null, tint = colors.accent, modifier = Modifier.padding(end = 8.dp).size(14.dp))
         WaitingBadge(p.waiting, Modifier.padding(end = 6.dp))
         UnreadBadge(p.unread, emphasised = selected)
         Icon(Icons.Grip, null, tint = colors.textFaint, modifier = Modifier.padding(start = 10.dp).size(18.dp))

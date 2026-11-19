@@ -172,7 +172,7 @@ internal class FeedMapper(
         Project(
             project.id, project.name, unread = unread, waiting = waiting, hue = hue(project.id), slug = project.slug,
             archived = project.isArchived, description = project.description,
-            background = project.theme?.background, accent = project.theme?.accent,
+            background = project.theme?.background, accent = project.theme?.accent, pinned = project.pinned,
         )
 
     /**

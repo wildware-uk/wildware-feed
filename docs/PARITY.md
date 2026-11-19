@@ -140,7 +140,7 @@ It doesn't, beyond oldest first.
 | 90 | Search | Done | None | Yes command bar (`CommandBar.kt`, `Search.kt`) | Yes, Cmd/Ctrl+K | App only | — |
 | **Projects** |||||||
 | 91 | Project list + switch | Done | Sidebar/drawer, server order (pinned first) | Yes drawer | Yes sidebar | — | — |
-| 92 | Pinned project glyph / pin project | Open | Pin icon; Pin/Unpin in menu (`ProjectActions.svelte`) | No | No | Order honoured, no glyph or action | P2 |
+| 92 | Pinned project glyph / pin project | Done | Pin icon; Pin/Unpin in menu (`ProjectActions.svelte`) | Yes: "Pin project" / "Unpin project" in the project's settings; a pin by its name in the drawer | Yes: same, and the pin takes the hash's place in the sidebar | — | P2 |
 | 93 | Reorder projects | App only | — | Yes, hold to drag (device-local) | Event exists; no drag in sidebar | App only | — |
 | 94 | Archived section | Done | "Archived (N)" collapsed | Yes (`Panels.kt` ArchivedProjects) | Yes | — | — |
 | 95 | New project | Open | Inline form name + description (`NewProject.svelte`) | **No** | **No** | Port | P1 |
