@@ -606,10 +606,10 @@ class Reads(private val db: Database, private val clock: () -> Long = System::cu
 
     // ---- notifications and push -----------------------------------------------------------------
 
-    /** The bell, newest first, each with its project and the path it opens. */
-    fun notifications(unseenOnly: Boolean, limit: Int): List<JsonObject> = db.query(
-        "SELECT ${Rows.NOTIFICATION} FROM notifications WHERE (? = 0 OR seen_at IS NULL) ORDER BY seq DESC LIMIT ?",
-        if (unseenOnly) 1 else 0, limit,
+    /** [member]'s bell (migration 055), newest first, each with its project and the path it opens. */
+    fun notifications(unseenOnly: Boolean, limit: Int, member: String = People.FOUNDER): List<JsonObject> = db.query(
+        "SELECT ${Rows.NOTIFICATION} FROM notifications WHERE member_id = ? AND (? = 0 OR seen_at IS NULL) ORDER BY seq DESC LIMIT ?",
+        member, if (unseenOnly) 1 else 0, limit,
     ) { Rows.notification(it) }.map { n ->
         val project = n.str("projectId")?.takeIf { it.isNotEmpty() }?.let { id ->
             db.one("SELECT slug, name FROM projects WHERE id = ?", id) { it.getString(1) to it.getString(2) }
@@ -625,7 +625,8 @@ class Reads(private val db: Database, private val clock: () -> Long = System::cu
         )
     }
 
-    fun unseenNotifications(): Long = db.one("SELECT count(*) AS n FROM notifications WHERE seen_at IS NULL") { it.getLong(1) } ?: 0
+    fun unseenNotifications(member: String = People.FOUNDER): Long =
+        db.one("SELECT count(*) AS n FROM notifications WHERE member_id = ? AND seen_at IS NULL", member) { it.getLong(1) } ?: 0
 
     companion object {
         const val WORKING_MAX = 3

@@ -77,6 +77,6 @@ fun ToolRegistry.registerSecretTools(app: App) {
             priority = a["priority"].jsString,
             secretName = name,
         )
-        requestResult(app.requests.requestInput(call.agent.id, input))
+        requestResult(app.requests.requestInput(call.agent.id, input), app.db)
     }
 }

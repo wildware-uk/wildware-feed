@@ -73,21 +73,27 @@ class Cards(private val feed: Feed) {
     fun reactions(card: CardRef): List<ReactionRow> =
         db.query("SELECT ${Rows.REACTION} FROM reactions WHERE ${card.anchor} IN (?) ORDER BY seq", card.id) { ReactionRow(Rows.reaction(it)) }
 
-    /** `reactToCard`: the card is checked before the emoji; omitting [on] toggles. */
-    fun react(card: CardRef, actor: String, emoji: String, on: Boolean?): Pair<List<ReactionRow>, Boolean> = feed.op {
+    /**
+     * `reactToCard`: the card is checked before the emoji; omitting [on] toggles. A person reacts as
+     * actor `human` with their [userId] (migration 055), so each person has their own.
+     */
+    fun react(card: CardRef, actor: String, emoji: String, on: Boolean?, userId: String? = null): Pair<List<ReactionRow>, Boolean> = feed.op {
         val row = resolve(card)
         val clean = Emoji.assert(emoji)
-        val already = reactions(card).any { it.actor == actor && it.emoji == clean }
+        val person = if (actor == Messages.HUMAN) userId ?: People.FOUNDER else ""
+        val already = reactions(card).any { it.actor == actor && it.emoji == clean && (it.userId ?: "") == person }
         val wanted = on ?: !already
         var changed = false
         if (wanted && !already) {
             changed = db.update(
-                "INSERT INTO reactions (id, ${card.anchor}, actor, emoji, created_at) VALUES (?, ?, ?, ?, ?) " +
-                    "ON CONFLICT (${card.anchor}, actor, emoji) WHERE ${card.anchor} IS NOT NULL DO NOTHING",
-                Ulid.next(), card.id, actor, clean, feed.now(),
+                "INSERT INTO reactions (id, ${card.anchor}, actor, emoji, created_at, user_id) VALUES (?, ?, ?, ?, ?, ?) " +
+                    "ON CONFLICT (${card.anchor}, actor, user_id, emoji) WHERE ${card.anchor} IS NOT NULL DO NOTHING",
+                Ulid.next(), card.id, actor, clean, feed.now(), person,
             ) > 0
         } else if (!wanted && already) {
-            changed = db.update("DELETE FROM reactions WHERE ${card.anchor} = ? AND actor = ? AND emoji = ?", card.id, actor, clean) > 0
+            changed = db.update(
+                "DELETE FROM reactions WHERE ${card.anchor} = ? AND actor = ? AND user_id = ? AND emoji = ?", card.id, actor, person, clean,
+            ) > 0
         }
         if (changed) {
             feed.publish("reaction.updated", buildJsonObject {
@@ -97,6 +103,7 @@ class Cards(private val feed: Feed) {
                 put("actor", actor)
                 put("emoji", clean)
                 put("on", wanted)
+                person.takeIf { it.isNotEmpty() && it != People.FOUNDER }?.let { put("userId", it) }
             })
         }
         reactions(card) to wanted

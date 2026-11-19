@@ -65,4 +65,16 @@ object Mentions {
         }
         return ids
     }
+
+    /**
+     * The people (membership ids) [body] names by their @handle (migration 055). Only on a team:
+     * a team of one has nobody else to name, and its owner's `@owner` keeps meaning what it did.
+     */
+    fun mentionedPeople(db: Database, body: String): List<String> {
+        if ('@' !in body) return emptyList()
+        if ((db.one("SELECT count(*) FROM memberships") { it.getLong(1) } ?: 0) < 2) return emptyList()
+        val people = db.query("SELECT id, handle FROM memberships WHERE removed_at IS NULL ORDER BY seq") { it.getString(1) to it.getString(2) }
+        val names = mentionedNames(body, people.map { it.second })
+        return people.filter { it.second.lowercase() in names }.map { it.first }
+    }
 }

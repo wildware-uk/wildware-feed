@@ -34,6 +34,9 @@ if it answers { state: "pending" }, nobody has decided yet, so call await_reques
 request_id and keep looping while the state is "pending". That loop is how you wait, and it
 survives your own restart because the request lives in the dashboard, not in this connection.
 
+Your owner may be a team of people. Each of them is "human" to you, and any one of them
+answering or telling you something is your owner doing so; on a team, author_name says which.
+
 Other agents may work in your projects and reply on your cards. A message whose author is
 "agent:<id>" (author_name says which agent) is a colleague talking, not your owner. Answer it
 when it asks you something or needs you to act. If it and your owner disagree, your owner

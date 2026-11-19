@@ -43,6 +43,10 @@ class Cli(private val env: Map<String, String>, private val out: (String) -> Uni
         |  list-tokens [--revoked]             List agents and when they were last seen. Tokens are not recoverable.
         |  rename-token <agent-id> <name>      Give an agent a different display name. The token keeps working.
         |  revoke-token <agent-id>             Switch an agent token off for good.
+        |  list-users                          List the people of the team, with their roles.
+        |  create-owner --email <e> --name <n> Add an owner (or make that account one again). Reads the password from stdin.
+        |  reset-password --email <e>          Set an account's password. Reads it from stdin.
+        |  reset-password --founder            Set the founding owner's password (no email needed). Reads it from stdin.
         |  help                                Print this usage.
         |
         |Configuration is read from the environment; see .env.example.
@@ -59,6 +63,17 @@ class Cli(private val env: Map<String, String>, private val out: (String) -> Uni
         val config = Config.load(env)
         return Database.open(config).use { db -> block(Agents(db, config.tokenSecret)) }
     }
+
+    private fun <T> people(block: (dev.wildware.feed.server.domain.People) -> T): T {
+        val config = Config.load(env)
+        return Database.open(config).use { db -> block(dev.wildware.feed.server.domain.People(db, config.tokenSecret, config.adminPasswordHash)) }
+    }
+
+    /** `--flag value` from [rest], or null. */
+    private fun option(rest: List<String>, flag: String): String? = rest.indexOf(flag).takeIf { it >= 0 }?.let { rest.getOrNull(it + 1) }
+
+    /** A password from stdin, never from the command line (where it would sit in shell history). */
+    private fun stdinPassword(): String = System.`in`.readBytes().toString(Charsets.UTF_8).removeSuffix("\n").removeSuffix("\r")
 
     fun run(args: List<String>): Int {
         val name = args.firstOrNull()
@@ -110,6 +125,33 @@ class Cli(private val env: Map<String, String>, private val out: (String) -> Uni
                     val id = rest.firstOrNull()
                     if (id.isNullOrEmpty()) return usageError("revoke-token needs an agent id (see list-tokens)")
                     out(if (agents { it.revoke(id) }) "revoked $id" else "$id was already revoked")
+                    0
+                }
+                "list-users" -> {
+                    for (p in people { it.list() }) {
+                        val gone = if (p.removedAt != null) "  REMOVED" else ""
+                        out("${p.id}  ${p.role.wire}  ${p.name}  ${p.email ?: "(no email)"}  @${p.handle}$gone")
+                    }
+                    0
+                }
+                "create-owner" -> {
+                    val email = option(rest, "--email")
+                    val ownerName = option(rest, "--name")
+                    if (email.isNullOrEmpty() || ownerName.isNullOrEmpty()) return usageError("create-owner needs --email and --name, and the password on stdin")
+                    val person = people { it.createOwner(email, ownerName, stdinPassword()) }
+                    out("${person.id}  ${person.name} <${person.email}> is an owner. Sign in with that email and password.")
+                    0
+                }
+                "reset-password" -> {
+                    if ("--founder" in rest) {
+                        val person = people { it.setFounderPassword(stdinPassword()) }
+                        out("Set a new password for ${person.name}, the founding owner. Their devices stay signed in.")
+                        return 0
+                    }
+                    val email = option(rest, "--email")
+                    if (email.isNullOrEmpty()) return usageError("reset-password needs --email (or --founder), and the new password on stdin")
+                    val person = people { it.setPassword(email, stdinPassword()) }
+                    out("Set a new password for ${person.name} <${person.email}>. Their devices stay signed in.")
                     0
                 }
                 else -> usageError("unknown command: $name")

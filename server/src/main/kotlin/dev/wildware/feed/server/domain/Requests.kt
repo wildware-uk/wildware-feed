@@ -41,6 +41,9 @@ class OwnerRequest(val json: JsonObject) {
     val editedAt get() = l("editedAt")
     /** Reads leave out "medium", so a request with none is medium. */
     val priority get() = s("priority") ?: "medium"
+
+    /** Who answered (migration 055): reads leave out the founder, so an answered one without it is theirs. */
+    val answeredBy: String? get() = s("answeredBy") ?: People.FOUNDER.takeIf { state == "answered" }
 }
 
 /** What a wait hands back, whichever tool called it (TS `RequestResult`). */
@@ -181,8 +184,11 @@ class Requests(
 
     // ---- settling ---------------------------------------------------------------------------------
 
-    /** The owner answers (`POST /api/requests/:id/answer`). */
-    fun answer(requestId: String, value: JsonElement): OwnerRequest {
+    /** Names people for "Sam already answered this" (migration 055); set by the app. */
+    var people: People? = null
+
+    /** A person answers (`POST /api/requests/:id/answer`); [by] is their membership. The first answer wins. */
+    fun answer(requestId: String, value: JsonElement, by: String = People.FOUNDER): OwnerRequest {
         val request = expireIfDue(mustFind(requestId))
         if (request.state != "pending") throw settledAlready(request)
         if (request.kind == "secret") {
@@ -191,7 +197,7 @@ class Requests(
         val answer = validateAnswer(request, value)
         val answerValue = answer["value"]!!
         val state = if (request.kind == "confirm" && answerValue.jsBoolean == false) "rejected" else "approved"
-        val row = decide(request.id, state, scalarOf(answerValue), jsonText(answer), clock())
+        val row = decide(request.id, state, scalarOf(answerValue), jsonText(answer), clock(), by)
             ?: throw settledAlready(mustFind(request.id))
         return settle(row, "answered")
     }
@@ -200,19 +206,19 @@ class Requests(
      * Settle a `request_secret` once [Secrets.provide] has stored the value: the answer is the
      * secret's name, never its value.
      */
-    fun settleSecret(requestId: String, name: String): OwnerRequest = announceSecret(claimSecret(requestId, name))
+    fun settleSecret(requestId: String, name: String, by: String = People.FOUNDER): OwnerRequest = announceSecret(claimSecret(requestId, name, by))
 
     /**
      * The first half of [settleSecret]: the request is taken (so nobody else can answer, withdraw
      * or time it out), but nobody is told yet. Then [announceSecret] once the value is stored, or
      * [releaseSecret] if storing it failed.
      */
-    fun claimSecret(requestId: String, name: String): JsonObject {
+    fun claimSecret(requestId: String, name: String, by: String = People.FOUNDER): JsonObject {
         val request = expireIfDue(mustFind(requestId))
         if (request.kind != "secret") throw invalid("request $requestId is not asking for a secret")
         if (request.state != "pending") throw settledAlready(request)
         val answer = buildJsonObject { put("kind", "secret"); put("value", name) }
-        return decide(request.id, "approved", name, jsonText(answer), clock()) ?: throw settledAlready(mustFind(request.id))
+        return decide(request.id, "approved", name, jsonText(answer), clock(), by) ?: throw settledAlready(mustFind(request.id))
     }
 
     fun announceSecret(claimed: JsonObject): OwnerRequest = settle(claimed, "answered")
@@ -220,14 +226,14 @@ class Requests(
     /** Undo [claimSecret]: the request waits again, as if it had never been answered. */
     fun releaseSecret(claimed: JsonObject) {
         val id = OwnerRequest(claimed).id
-        db.update("UPDATE approvals SET state = 'pending', decided_value = NULL, answer = NULL, decided_at = NULL WHERE id = ? AND state = 'approved'", id)
+        db.update("UPDATE approvals SET state = 'pending', decided_value = NULL, answer = NULL, decided_at = NULL, decided_by = NULL WHERE id = ? AND state = 'approved'", id)
     }
 
-    /** The owner dismisses (`DELETE /api/requests/:id`). Not idempotent: the second is a 409. */
-    fun cancel(requestId: String): OwnerRequest {
+    /** A person dismisses (`DELETE /api/requests/:id`). Not idempotent: the second is a 409. */
+    fun cancel(requestId: String, by: String = People.FOUNDER): OwnerRequest {
         val request = expireIfDue(mustFind(requestId))
         if (request.state != "pending") throw settledAlready(request)
-        val row = decide(requestId, "cancelled", null, null, clock()) ?: throw settledAlready(mustFind(requestId))
+        val row = decide(requestId, "cancelled", null, null, clock(), by) ?: throw settledAlready(mustFind(requestId))
         return settle(row, "cancelled")
     }
 
@@ -382,9 +388,9 @@ class Requests(
         return settle(row, "timeout")
     }
 
-    private fun decide(id: String, state: String, value: String?, answer: String?, at: Long): JsonObject? = db.one(
-        "UPDATE approvals SET state = ?, decided_value = ?, answer = ?, decided_at = ? WHERE id = ? AND state = 'pending' RETURNING ${Rows.APPROVAL}",
-        state, value, answer, at, id,
+    private fun decide(id: String, state: String, value: String?, answer: String?, at: Long, by: String? = null): JsonObject? = db.one(
+        "UPDATE approvals SET state = ?, decided_value = ?, answer = ?, decided_at = ?, decided_by = ? WHERE id = ? AND state = 'pending' RETURNING ${Rows.APPROVAL}",
+        state, value, answer, at, by, id,
     ) { Rows.request(it) }
 
     private fun mustFind(requestId: String): OwnerRequest = find(requestId) ?: throw notFound("no such request: $requestId")
@@ -403,6 +409,9 @@ class Requests(
             "withdrawn" -> "was withdrawn"
             else -> "is still pending"
         }
+        // On a team, the second person to answer hears who was first.
+        val first = people?.takeIf { request.state == "answered" && it.isTeam() }?.nameOf(request.answeredBy)
+        if (first != null) return conflict("$first already answered this (request ${request.id})")
         return conflict("request ${request.id} $said")
     }
 

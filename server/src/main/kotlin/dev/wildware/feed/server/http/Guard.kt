@@ -11,9 +11,11 @@ object Guard {
      * `/api/pair` is where an agent with no token asks to join (the owner's side is `/api/pairings`).
      * `/.well-known` and `/oauth` are OAuth for MCP clients: the authorize page signs the owner in itself.
      * `/api/devices/sign-out` clears the web app's cookie even when its key is already revoked.
+     * `/api/invite` and `/join` are for someone with an invite, who has no key yet (migration 055).
      */
     private val PUBLIC = listOf(
         "/api/devices/sign-in", "/api/devices/sign-out", "/api/server", "/api/pair", "/.well-known", "/oauth",
+        "/api/invite", "/join",
     )
 
     fun normalise(path: String): String = if (path == "/") path else path.trimEnd('/').ifEmpty { "/" }
@@ -40,7 +42,7 @@ object Guard {
     }
 
     /** What the server answers itself, under the site's root. */
-    private val SERVER_ROUTES = listOf("/api", "/mcp", "/media", "/apps", "/oauth", "/.well-known")
+    private val SERVER_ROUTES = listOf("/api", "/mcp", "/media", "/apps", "/oauth", "/.well-known", "/join")
 
     /** `Authorization: Bearer <one token>` (case-insensitive), else null. */
     fun bearer(header: String?): String? =

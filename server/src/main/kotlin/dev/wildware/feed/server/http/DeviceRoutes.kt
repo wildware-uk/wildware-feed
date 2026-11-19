@@ -2,6 +2,7 @@ package dev.wildware.feed.server.http
 
 import dev.wildware.feed.server.App
 import dev.wildware.feed.server.domain.Devices
+import dev.wildware.feed.server.domain.People
 import dev.wildware.feed.server.domain.invalid
 import io.ktor.http.HttpMethod
 import io.ktor.server.application.ApplicationCall
@@ -36,14 +37,20 @@ fun Route.deviceRoutes(app: App) {
             val name = nameOf(body)
             dev.wildware.feed.server.domain.requiredText(name, "name", 100)
             val password = (body["password"] as? JsonPrimitive)?.takeIf { it.isString }?.content
-            when (val result = app.checkPassword(password, call.clientAddress(app.config))) {
+            // With an email, that person's sign-in; without, today's: the founding owner's password.
+            val email = if ("email" in body) {
+                (body["email"] as? JsonPrimitive)?.takeIf { it.isString }?.content ?: throw invalid("email must be a string")
+            } else {
+                null
+            }
+            when (val result = app.checkPassword(password, call.clientAddress(app.config), email)) {
                 is PasswordCheck.Refused -> {
                     val code = if (result.status == 429) "rate_limited" else "wrong_password"
                     val headers = result.retryAfterS?.let { arrayOf("Retry-After" to it.toString()) } ?: emptyArray()
                     call.respondJson(result.status, Wire.error(code, result.message), Wire.JSON_UTF8, "Cache-Control" to "no-store", *headers)
                 }
-                PasswordCheck.Ok -> {
-                    val (device, token) = app.devices.mint(name)
+                is PasswordCheck.Ok -> {
+                    val (device, token) = app.devices.mint(name, result.person.id)
                     // The web app asks for its key as a cookie its code can't read, and is never shown it.
                     if ((body["cookie"] as? JsonPrimitive)?.let { !it.isString && it.content == "true" } == true) {
                         call.response.headers.append("Set-Cookie", OwnerCookie.set(token, app.config, call))
@@ -71,20 +78,30 @@ fun Route.deviceRoutes(app: App) {
     endpoint(
         "/api/devices",
         HttpMethod.Get to {
+            // Your own devices: each person's phones are theirs.
             val slugs = app.reads.projectSlugsById()
             call.respondOwner(200, buildJsonObject {
-                put("devices", JsonArray(app.devices.list().map { d -> deviceView(d, slugs) }))
+                put("devices", JsonArray(app.devices.listFor(call.person.id).map { d -> deviceView(d, slugs) }))
             })
         },
         HttpMethod.Post to {
-            val (device, token) = app.devices.mint(nameOf(call.jsonObjectBody()))
+            val (device, token) = app.devices.mint(nameOf(call.jsonObjectBody()), call.person.id)
             call.respondOwner(201, minted(device, token))
         },
     )
     endpoint(
         "/api/devices/{id}",
         HttpMethod.Delete to {
-            call.respondOwner(200, buildJsonObject { put("removed", JsonPrimitive(app.devices.remove(call.parameters["id"]!!))) })
+            // Your own; an owner signs out anyone's, an admin a member's (admins never touch owners or admins).
+            // Someone else's device you may not touch answers as if it were not there.
+            val id = call.parameters["id"]!!
+            val me = call.person
+            val holder = app.devices.find(id)?.let { app.people.find(it.userId) }
+            val allowed = holder != null && (
+                holder.id == me.id || me.role == People.Role.OWNER ||
+                    (me.role == People.Role.ADMIN && holder.role == People.Role.MEMBER)
+                )
+            call.respondOwner(200, buildJsonObject { put("removed", JsonPrimitive(allowed && app.devices.remove(id))) })
         },
     )
     endpoint(

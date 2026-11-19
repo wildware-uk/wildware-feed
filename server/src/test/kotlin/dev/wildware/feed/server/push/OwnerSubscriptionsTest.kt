@@ -60,9 +60,9 @@ class OwnerSubscriptionsTest {
         assertEquals(listOf("new card", "a comment"), bell())
         assertEquals(true, pushed("update.created", "updateId", u.id))
         assertEquals(true, pushed("message.created", "messageId", c.id))
-        assertEquals(null, subs.threadState(Subscriptions.OWNER, Subscriptions.Thread("update", u.id)))
+        assertEquals(null, subs.threadState(FOUNDER_SUB, Subscriptions.Thread("update", u.id)))
         ownerSays("thanks", updateId = u.id)
-        assertEquals(true, subs.threadState(Subscriptions.OWNER, Subscriptions.Thread("update", u.id)))
+        assertEquals(true, subs.threadState(FOUNDER_SUB, Subscriptions.Thread("update", u.id)))
     }
 
     @Test
@@ -71,7 +71,7 @@ class OwnerSubscriptionsTest {
         val followed = update("followed card")
         ownerSays("I'm watching this", updateId = followed.id)
         bell()
-        subs.setOwnerLevel(p, Subscriptions.MUTED)
+        subs.setLevel(FOUNDER_SUB, p, Subscriptions.MUTED)
         val u = update("quiet card")
         val c = agentSays("quiet comment", updateId = u.id)
         val f = agentSays("reply where the owner spoke", updateId = followed.id)
@@ -89,7 +89,7 @@ class OwnerSubscriptionsTest {
         val post = ownerSays("Owner's question in p")
         val u = update("a card")
         bell()
-        subs.setOwnerLevel(p, Subscriptions.REPLIES)
+        subs.setLevel(FOUNDER_SUB, p, Subscriptions.REPLIES)
         agentSays("answering the owner", replyTo = post.id)
         agentSays("someone else's thread", updateId = u.id)
         agentSays("@owner have a look", updateId = u.id)
@@ -106,18 +106,21 @@ class OwnerSubscriptionsTest {
         ownerSays("me too", updateId = u.id)
         bell()
         val thread = Subscriptions.Thread("update", u.id)
-        subs.setOwnerFollow(thread, p, following = false)
+        subs.setFollow(FOUNDER_SUB, thread, p, following = false)
         agentSays("after unfollowing", updateId = u.id)
         assertEquals(emptyList(), bell())
         ownerSays("back in", updateId = u.id)
         agentSays("posting follows it again", updateId = u.id)
         assertEquals(listOf("posting follows it again"), bell())
 
-        subs.setOwnerLevel(p, Subscriptions.MUTED)
+        subs.setLevel(FOUNDER_SUB, p, Subscriptions.MUTED)
         val other = update("muted card")
-        subs.setOwnerFollow(Subscriptions.Thread("update", other.id), p, following = true)
+        subs.setFollow(FOUNDER_SUB, Subscriptions.Thread("update", other.id), p, following = true)
         bell()
         agentSays("chosen", updateId = other.id)
         assertEquals(listOf("chosen"), bell())
     }
 }
+
+/** The founding owner, as a subscriber (migration 055). */
+private const val FOUNDER_SUB = "member:founder"

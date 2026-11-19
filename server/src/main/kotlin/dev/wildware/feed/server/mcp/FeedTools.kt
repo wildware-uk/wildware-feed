@@ -242,13 +242,17 @@ fun ToolRegistry.registerFeedTools(app: App) {
         ToolResult.ok(summary, buildJsonObject {
             put("messages", JsonArray(page.messages.map { message ->
                 val parent = messages.quoted(message)
-                val name = messages.authorName(message.author)
+                val name = messages.authorName(message.author, message.userId)
                 buildJsonObject {
                     FeedViews.message(message).forEach { (k, v) -> put(k, v) }
                     if (name != null) put("author_name", name)
+                    // On a team, which person (migration 055); a team of one adds nothing.
+                    if (name != null && message.author == Messages.HUMAN) put("author_user_id", message.userId)
                     if (parent != null) {
                         put("in_reply_to", buildJsonObject {
-                            put("id", parent.id); put("author", parent.author); put("body", parent.body); put("truncated", parent.truncated)
+                            put("id", parent.id); put("author", parent.author)
+                            if (parent.author == Messages.HUMAN) messages.authorName(parent.author, parent.userId)?.let { put("author_name", it) }
+                            put("body", parent.body); put("truncated", parent.truncated)
                         })
                     }
                     attachments.views[message.id]?.let { put("attachments", JsonArray(it)) }

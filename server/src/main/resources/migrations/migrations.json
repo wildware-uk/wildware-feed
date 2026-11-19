@@ -376,5 +376,12 @@
   "file": "054-secrets.sql",
   "rebuildsTables": false,
   "checksum": "3fd425603f1bec70955420c12aded8353a964fb7c572613de746f3812df43fcb"
+ },
+ {
+  "version": 55,
+  "name": "people",
+  "file": "055-people.sql",
+  "rebuildsTables": false,
+  "checksum": "307a65ac32c6b1d8e1fdb85f1c83a5a47bbf1a7688482ed90cf16009e065b67a"
  }
 ]

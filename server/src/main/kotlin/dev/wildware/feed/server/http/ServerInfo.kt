@@ -22,16 +22,20 @@ object ServerInfo {
         ServerInfo::class.java.getResource("/feed-server-version.txt")?.readText()?.trim()?.ifEmpty { null } ?: "dev"
     }
 
-    fun json(): JsonObject = buildJsonObject {
+    /**
+     * What the sign-in step can offer: the founding owner's password always, and email and password
+     * once anyone has an email (migration 055). [team]: more than one person is in it.
+     */
+    fun json(emailSignIn: Boolean = false, team: Boolean = false): JsonObject = buildJsonObject {
         put("product", PRODUCT)
         put("version", version)
-        // What the sign-in step can offer: today only the owner's password. Teams adds
-        // email-password, email-code and grant.
-        put("signIn", JsonArray(listOf(JsonPrimitive("password"))))
-        put("team", false)
+        put("signIn", JsonArray(listOfNotNull(JsonPrimitive("password"), JsonPrimitive("email-password").takeIf { emailSignIn })))
+        put("team", team)
     }
 }
 
-fun Route.serverInfoRoute(@Suppress("UNUSED_PARAMETER") app: App) {
-    endpoint("/api/server", HttpMethod.Get to { call.respondJson(200, ServerInfo.json(), Wire.JSON, "Cache-Control" to "no-store") })
+fun Route.serverInfoRoute(app: App) {
+    endpoint("/api/server", HttpMethod.Get to {
+        call.respondJson(200, ServerInfo.json(app.people.anyEmail(), app.people.activeCount() > 1), Wire.JSON, "Cache-Control" to "no-store")
+    })
 }

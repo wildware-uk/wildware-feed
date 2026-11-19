@@ -137,13 +137,17 @@ private fun messageItem(app: App, m: AgentWork.Line): JsonObject {
             buildJsonObject {
                 put("id", JsonPrimitive(parent.id))
                 put("author", JsonPrimitive(parent.author))
+                // On a team, which person (migration 055); never for an agent, as before.
+                if (parent.author == "human") app.work.authorName(parent.author, parent.userId)?.let { put("author_name", JsonPrimitive(it)) }
                 put("body", JsonPrimitive(body))
                 put("truncated", JsonPrimitive(truncated))
             }
         } ?: JsonNull)
         put("request_id", str(m.requestId))
         put("author", JsonPrimitive(m.author))
-        put("author_name", str(app.work.authorName(m.author)))
+        val authorName = app.work.authorName(m.author, m.userId)
+        put("author_name", str(authorName))
+        if (m.author == "human" && authorName != null) put("author_user_id", JsonPrimitive(m.userId))
         put("body", JsonPrimitive(m.body))
         put("created_at", JsonPrimitive(Wire.isoOf(m.createdAt)))
         put("media", JsonArray(media))
@@ -163,6 +167,8 @@ private fun answerFrame(app: App, agentId: String, subscribed: Subscription, pay
     val value: JsonElement = r.answer?.let { (Wire.json.parseToJsonElement(it) as? JsonObject)?.get("value") }
         ?: if (r.state == "approved" || r.state == "rejected") JsonPrimitive(r.state == "approved") else JsonNull
     val (slug, name) = projectNames(app, r.projectId)
+    val by = if (state == "answered") app.db.one("SELECT decided_by FROM approvals WHERE id = ?", requestId) { it.getString(1) } else null
+    val byName = dev.wildware.feed.server.domain.People.teamName(app.db, by)
     return Frames.named("answer", buildJsonObject {
         put("type", JsonPrimitive("answer"))
         put("request_id", JsonPrimitive(requestId))
@@ -174,6 +180,8 @@ private fun answerFrame(app: App, agentId: String, subscribed: Subscription, pay
         put("project_name", name)
         put("update_id", str(r.updateId))
         put("answered_at", r.decidedAt?.let { JsonPrimitive(Wire.isoOf(it)) } ?: JsonNull)
+        // On a team, who answered (migration 055).
+        if (byName != null) put("answered_by", buildJsonObject { put("user_id", JsonPrimitive(by)); put("name", JsonPrimitive(byName)) })
     })
 }
 
@@ -198,5 +206,10 @@ private fun reactionFrame(app: App, agentId: String, subscribed: Subscription, p
         put("update_id", str(m.updateId))
         put("task_id", str(m.taskId))
         put("body", JsonPrimitive(m.body.replace(Regex("\\s+"), " ").trim().take(160)))
+        // On a team, who reacted (migration 055).
+        val by = (payload["userId"] as? JsonPrimitive)?.content ?: dev.wildware.feed.server.domain.People.FOUNDER
+        dev.wildware.feed.server.domain.People.teamName(app.db, by)?.let { who ->
+            put("by", buildJsonObject { put("user_id", JsonPrimitive(by)); put("name", JsonPrimitive(who)) })
+        }
     })
 }

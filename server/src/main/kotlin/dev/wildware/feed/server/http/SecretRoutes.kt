@@ -101,7 +101,7 @@ fun Route.secretRoutes(app: App) {
         HttpMethod.Post to {
             val body = call.jsonObjectBody()
             val value = valueOf(body) ?: throw invalid("value is required")
-            val secret = secrets.provide(app.requests, call.parameters["id"].orEmpty(), value, body.optionalString("note"), call.owner(app))
+            val secret = secrets.provide(app.requests, call.parameters["id"].orEmpty(), value, body.optionalString("note"), call.owner(app), call.person.id)
             call.respondOwner(200, buildJsonObject {
                 put("secret", secrets.ownerJson(secret, agentNames(app)))
                 put("request", app.requests.find(call.parameters["id"].orEmpty())?.json ?: JsonNull)

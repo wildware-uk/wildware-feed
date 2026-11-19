@@ -25,6 +25,9 @@ import dev.wildware.feed.server.push.startApplePush
 class App(val config: Config, val db: Database, val clock: () -> Long = System::currentTimeMillis) : AutoCloseable {
     val agents = Agents(db, config.tokenSecret, clock)
     val devices = Devices(db, config.tokenSecret, clock)
+
+    /** The people of the team and their invites (migration 055). */
+    val people = dev.wildware.feed.server.domain.People(db, config.tokenSecret, config.adminPasswordHash, clock)
     val reads = Reads(db, clock)
 
     /** The web app's bundle, served at the root, when this server has one ([Config.webDir]). */
@@ -43,6 +46,12 @@ class App(val config: Config, val db: Database, val clock: () -> Long = System::
 
     /** Shared by the login form and device sign-in: 5 wrong guesses in 15 minutes per address. */
     val loginLimiter = SlidingLimiter(limit = 5, windowMs = 900_000, clock = clock)
+
+    /** Ten wrong passwords an hour per email, from anywhere (docs/TEAMS.md §10). */
+    val emailLimiter = SlidingLimiter(limit = 10, windowMs = 3_600_000, clock = clock)
+
+    /** Invites looked at or accepted: 20 an hour per address. */
+    val inviteLimiter = SlidingLimiter(limit = 20, windowMs = 3_600_000, clock = clock)
 
     /** 120 requests a minute per agent token, one limiter per route as in the TS server. */
     val mcpLimiter = SlidingLimiter(limit = 120, windowMs = 60_000, clock = clock)
@@ -99,7 +108,7 @@ class App(val config: Config, val db: Database, val clock: () -> Long = System::
     val serve = dev.wildware.feed.server.media.Serve(db, mediaPaths)
 
     /** Owner requests, the bell, push subscriptions and app state (the request area). */
-    val requests = Requests(db, bus, reads, clock) { config.holdSeconds * 1000L }
+    val requests = Requests(db, bus, reads, clock) { config.holdSeconds * 1000L }.also { it.people = people }
     val notifications = Notifications(db, bus, clock)
     val appState = AppState(db, clock)
 

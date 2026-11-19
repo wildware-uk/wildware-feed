@@ -57,7 +57,8 @@ class SqliteToPostgres(private val log: (String) -> Unit = {}) {
      */
     fun copy(source: Connection, target: Database): List<TableReport> {
         val tables = tables(source)
-        val seeds = PostgresMigrations.all.first().sql
+        // Rows a migration inserts itself (the baseline's, the home team and its founder): the source has them too.
+        val seeds = PostgresMigrations.all.joinToString("\n") { it.sql }
         return target.transaction { pg ->
             for ((table, _) in tables) {
                 val rows = pg.createStatement().use { st -> st.executeQuery("SELECT count(*) FROM \"$table\"").use { it.next(); it.getLong(1) } }

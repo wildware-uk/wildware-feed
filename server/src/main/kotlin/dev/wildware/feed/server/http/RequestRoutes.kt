@@ -27,14 +27,14 @@ fun Route.requestRoutes(app: App) {
         HttpMethod.Post to {
             val body = call.jsonObjectBody()
             val value = body["value"] ?: throw invalid("an answer must carry a value")
-            val request = app.requests.answer(call.parameters["id"] ?: "", value)
+            val request = app.requests.answer(call.parameters["id"] ?: "", value, call.person.id)
             call.respondOwner(200, buildJsonObject { put("request", request.json) })
         },
     )
     endpoint(
         "/api/requests/{id}",
         HttpMethod.Delete to {
-            val request = app.requests.cancel(call.parameters["id"] ?: "")
+            val request = app.requests.cancel(call.parameters["id"] ?: "", call.person.id)
             call.respondOwner(200, buildJsonObject { put("request", request.json) })
         },
     )
@@ -48,10 +48,10 @@ fun Route.requestRoutes(app: App) {
             if (ids != null && ids !is JsonArray) {
                 throw invalid("ids must be a list of notification ids, or left out to clear them all")
             }
-            val changed = app.notifications.markSeen((ids as JsonArray?)?.mapNotNull { it.jsString })
+            val changed = app.notifications.markSeen((ids as JsonArray?)?.mapNotNull { it.jsString }, call.person.id)
             call.respondOwner(200, buildJsonObject {
                 put("changed", changed)
-                put("unseen", app.notifications.unseen())
+                put("unseen", app.notifications.unseen(call.person.id))
             })
         },
     )
@@ -61,10 +61,10 @@ fun Route.requestRoutes(app: App) {
         "/api/notifications/cards-seen",
         HttpMethod.Post to {
             val cards = idList(call.lenientObjectBody()["cards"], "cards", "card ids")
-            val changed = app.notifications.markCardsSeen(cards)
+            val changed = app.notifications.markCardsSeen(cards, member = call.person.id)
             call.respondOwner(200, buildJsonObject {
                 put("changed", changed)
-                put("unseen", app.notifications.unseen())
+                put("unseen", app.notifications.unseen(call.person.id))
             })
         },
     )
@@ -75,7 +75,7 @@ fun Route.requestRoutes(app: App) {
         HttpMethod.Post to {
             val tags = idList(call.lenientObjectBody()["tags"], "tags", "alert tags")
             call.respondOwner(200, buildJsonObject {
-                put("handled", JsonArray(app.notifications.handled(tags).map(::JsonPrimitive)))
+                put("handled", JsonArray(app.notifications.handled(tags, call.person.id).map(::JsonPrimitive)))
             })
         },
     )

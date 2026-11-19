@@ -201,7 +201,7 @@ class Secrets(
      * (replacing it if there is one), the asking agent may now read it, and the request is settled
      * with the name only. The request row never sees the value.
      */
-    fun provide(requests: Requests, requestId: String, value: ByteArray, note: String?, actor: Actor): Secret {
+    fun provide(requests: Requests, requestId: String, value: ByteArray, note: String?, actor: Actor, by: String = People.FOUNDER): Secret {
         sealer()
         val request = requests.find(requestId) ?: throw notFound("no such request: $requestId")
         if (request.kind != "secret") throw invalid("request $requestId is not asking for a secret")
@@ -214,7 +214,7 @@ class Secrets(
         }
         // Claim the request first (this also times it out if it is past due), so a value is only
         // stored for a request that was still waiting.
-        val claimed = requests.claimSecret(requestId, name)
+        val claimed = requests.claimSecret(requestId, name, by)
         val secret = try {
             if (existing == null) {
                 create(name, value, note, allAgents = false, agentIds = listOf(request.agentId), actor = actor)

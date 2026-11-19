@@ -46,5 +46,11 @@
   "name": "secrets",
   "file": "054-secrets.sql",
   "checksum": "363b57e99cc27617c4033bf34e504fa93a543a9196f52a5094cbf82612a20be4"
+ },
+ {
+  "version": 55,
+  "name": "people",
+  "file": "055-people.sql",
+  "checksum": "64247c99d4ffc2048cfcf08bf9624cf7fea63ae02a8dfa0044dd83533651fe01"
  }
 ]

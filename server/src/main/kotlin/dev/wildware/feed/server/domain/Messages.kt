@@ -25,11 +25,13 @@ class Messages(private val feed: Feed) {
         val mediaIds: List<String>? = null,
         val embeds: List<FeedAttachments.EmbedInput>? = null,
         val apps: List<FeedAttachments.AppInput>? = null,
+        /** Which person, for a `human` author (migration 055); the founder when left out. */
+        val userId: String? = null,
     )
 
     class Page(val messages: List<MessageRow>, val cursor: String, val unread: Long, val markedRead: Boolean)
 
-    class Quoted(val id: String, val author: String, val body: String, val truncated: Boolean)
+    class Quoted(val id: String, val author: String, val body: String, val truncated: Boolean, val userId: String? = null)
 
     fun find(id: String): MessageRow? = db.one("SELECT ${Rows.MESSAGE} FROM messages WHERE id = ?", id) { MessageRow(Rows.message(it)) }
 
@@ -101,15 +103,14 @@ class Messages(private val feed: Feed) {
         val answersId = answered?.id ?: if (inThread) target?.id else null
 
         val id = Ulid.next()
+        val person = if (author == HUMAN) input.userId ?: People.FOUNDER else null
         db.update(
-            "INSERT INTO messages (id, project_id, update_id, task_id, author, body, created_at, reply_to, answers, request_id) " +
-                "VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?)",
-            id, projectId, updateId, author, body, feed.now(), if (request) null else anchor, answersId, requestId,
+            "INSERT INTO messages (id, project_id, update_id, task_id, author, body, created_at, reply_to, answers, request_id, user_id) " +
+                "VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?)",
+            id, projectId, updateId, author, body, feed.now(), if (request) null else anchor, answersId, requestId, person,
         )
         val message = find(id)!!
-        if (subscriptions.afterPost(message, Mentions.record(db, message.id, message.body, message.author, feed.now()))) {
-            feed.publish("subscriptions.updated", buildJsonObject { put("subscriber", Subscriptions.OWNER) })
-        }
+        followed(subscriptions.afterPost(message, Mentions.record(db, message.id, message.body, message.author, feed.now()), Mentions.mentionedPeople(db, message.body)))
 
         val agentId = if (author.startsWith(AGENT_PREFIX)) author.removePrefix(AGENT_PREFIX).ifEmpty { null } else null
         if (mediaIds.isNotEmpty()) FeedAttachments.attachMedia(db, mediaIds, "message_id", id, "author", author)
@@ -121,8 +122,14 @@ class Messages(private val feed: Feed) {
             put("projectId", message.projectId)
             put("author", message.author)
             threadKeys(message)
+            message.json["userId"]?.let { put("userId", it) }
         })
         message
+    }
+
+    /** `subscriptions.updated` for each person who now follows a thread, so their apps catch up. */
+    private fun followed(people: List<String>) {
+        for (id in people) feed.publish("subscriptions.updated", People.followsChanged(db, id))
     }
 
     /** Only the author may edit a live message; its mentions are worked out again. */
@@ -134,9 +141,7 @@ class Messages(private val feed: Feed) {
         val clean = requiredText(body, "body", BODY_MAX)
         db.update("UPDATE messages SET body = ?, edited_at = ? WHERE id = ? AND deleted_at IS NULL", clean, feed.now(), message.id)
         val saved = find(message.id)!!
-        if (subscriptions.afterPost(saved, Mentions.record(db, saved.id, saved.body, saved.author, feed.now()))) {
-            feed.publish("subscriptions.updated", buildJsonObject { put("subscriber", Subscriptions.OWNER) })
-        }
+        followed(subscriptions.afterPost(saved, Mentions.record(db, saved.id, saved.body, saved.author, feed.now()), Mentions.mentionedPeople(db, saved.body)))
         feed.publish("message.updated", buildJsonObject {
             put("messageId", saved.id)
             put("projectId", saved.projectId)
@@ -147,14 +152,18 @@ class Messages(private val feed: Feed) {
     }
 
     /**
-     * Soft delete. The owner may unsend anything, an agent only its own; a feed post takes its live
-     * replies with it. Already deleted is a quiet success for anyone.
+     * Soft delete. An agent may unsend only its own; a person their own, and an owner or admin
+     * anything ([person] null: the founder, as the one owner always could). A feed post takes its
+     * live replies with it. Already deleted is a quiet success for anyone.
      */
-    fun delete(messageId: String, by: String): MessageRow = feed.op {
+    fun delete(messageId: String, by: String, person: People.Person? = null): MessageRow = feed.op {
         val message = find(messageId) ?: throw notFound("no such message: $messageId")
         if (message.deletedAt != null) return@op message
         checkAuthor(by)
         if (by != HUMAN && by != message.author) throw invalid("that message was posted by somebody else")
+        if (by == HUMAN && person != null && person.role.rank < People.Role.ADMIN.rank && message.userId != person.id) {
+            throw forbidden("only an owner or an admin can unsend someone else's message")
+        }
         val at = feed.now()
         val replies = if (message.replyTo == null) {
             db.query("SELECT id FROM messages WHERE reply_to = ? AND deleted_at IS NULL ORDER BY seq ASC", message.id) { it.getString(1) }
@@ -179,11 +188,15 @@ class Messages(private val feed: Feed) {
         if (parent.deletedAt != null) return null
         val full = parent.body
         val truncated = full.length > QUOTED_MAX
-        return Quoted(parent.id, parent.author, if (truncated) JsText.trimEnd(full.substring(0, QUOTED_MAX)) + "…" else full, truncated)
+        return Quoted(parent.id, parent.author, if (truncated) JsText.trimEnd(full.substring(0, QUOTED_MAX)) + "…" else full, truncated, parent.userId)
     }
 
-    /** The agent's name for an `agent:<id>` author (revoked agents too), else null. */
-    fun authorName(author: String): String? {
+    /**
+     * The agent's name for an `agent:<id>` author (revoked agents too); on a team (migration 055),
+     * the person's name for a `human` one with their [userId]; else null.
+     */
+    fun authorName(author: String, userId: String? = null): String? {
+        if (author == HUMAN) return People.teamName(db, userId)
         if (!author.startsWith(AGENT_PREFIX)) return null
         val id = author.removePrefix(AGENT_PREFIX).ifEmpty { return null }
         return db.one("SELECT name FROM agents WHERE id = ?", id) { it.getString(1) }

@@ -79,6 +79,7 @@ fun Application.feed(app: App) {
     routing {
         serverInfoRoute(app)
         deviceRoutes(app)
+        peopleRoutes(app)
         // No event bus yet (phase 2): every snapshot is stamped seq 0.
         readRoutes(app, lastSeq = { app.bus.lastSeq })
         agentRoutes(app)
@@ -112,9 +113,14 @@ fun Application.feed(app: App) {
  * The owner: a device key, as `Authorization: Bearer` (the apps) or the web app's cookie
  * ([OwnerCookie]). The TS server's web session cookie is not taken: its website is retired.
  */
-fun App.isOwner(call: ApplicationCall): Boolean {
-    val key = call.ownerKey() ?: return false
-    return devices.authenticate(key) != null
+fun App.isOwner(call: ApplicationCall): Boolean = callerOf(call) != null
+
+/** The device and person behind the call's key, or null when it opens nothing. */
+fun App.callerOf(call: ApplicationCall): Caller? {
+    val key = call.ownerKey() ?: return null
+    val device = devices.authenticate(key) ?: return null
+    val person = people.find(device.userId)?.takeIf { it.active } ?: return null
+    return Caller(device, person)
 }
 
 /**
@@ -126,10 +132,12 @@ private suspend fun guardRefused(call: ApplicationCall, app: App): Boolean {
     val path = call.request.path()
     if (!Guard.requiresSession(path)) return false
     if (app.web != null && Guard.isWebApp(path)) return false
-    if (!app.isOwner(call)) {
+    val caller = app.callerOf(call)
+    if (caller == null) {
         call.respondRaw(401, """{"error":"unauthenticated"}""", Wire.JSON)
         return true
     }
+    call.attributes.put(CallerKey, caller)
     if (call.keyIsCookie() && !call.cookieRequestAllowed(app.config)) {
         call.respondRaw(403, """{"error":"forbidden","message":"this request did not come from the dashboard's own page"}""", Wire.JSON)
         return true
@@ -154,6 +162,7 @@ fun ApplicationCall.clientAddress(config: dev.wildware.feed.server.Config): Stri
  * `Allow` listing what there is.
  */
 fun Route.endpoint(path: String, vararg handlers: Pair<HttpMethod, suspend RoutingContext.() -> Unit>) {
+    for ((method, _) in handlers) registeredEndpoints += "${method.value} $path"
     val table = endpointTables.getOrPut(this) { HashMap() }
     val methods = table[path]
     if (methods != null) {
@@ -175,6 +184,15 @@ fun Route.endpoint(path: String, vararg handlers: Pair<HttpMethod, suspend Routi
                 call.respondRaw(405, "${m.value} method not allowed", "text/plain;charset=utf-8", "Allow" to allowed.joinToString(", "))
                 return@handle
             }
+            // Behind the guard, each route needs the role Access names; a route it doesn't name is no one's.
+            if (Guard.requiresSession(path)) {
+                val needs = Access.rule(m.value, path)
+                val caller = call.attributes.getOrNull(CallerKey)
+                if (needs == null || caller == null || caller.person.role.rank < needs.rank) {
+                    call.respondOwner(403, Wire.error("forbidden", if (needs == null) "nobody may call this route" else "this needs an ${needs.wire} of the team"))
+                    return@handle
+                }
+            }
             try {
                 h()
             } catch (e: DomainError) {
@@ -186,5 +204,8 @@ fun Route.endpoint(path: String, vararg handlers: Pair<HttpMethod, suspend Routi
 
 /** The pattern a request matched (`/api/cards/{id}`), not its path: a crash report names the route, never the ids in it. */
 private val RoutePattern = io.ktor.util.AttributeKey<String>("RoutePattern")
+
+/** Every `METHOD /pattern` any server has registered, for the test that every owner route has a rule. */
+val registeredEndpoints: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()
 
 private val endpointTables = java.util.WeakHashMap<Route, HashMap<String, LinkedHashMap<HttpMethod, suspend RoutingContext.() -> Unit>>>()

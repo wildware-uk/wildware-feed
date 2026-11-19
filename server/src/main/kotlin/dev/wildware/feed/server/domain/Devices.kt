@@ -20,28 +20,36 @@ class Devices(private val db: Database, private val tokenSecret: String, private
         val liveActivityToken: String?,
         val alertProjectIds: List<String>?,
         val alertPrefs: kotlinx.serialization.json.JsonObject? = null,
+        /** Whose device: a membership (migration 055). */
+        val userId: String = People.FOUNDER,
     )
 
-    fun mint(name: String): Pair<Device, String> {
+    /** A new key for [userId]'s new device, shown once. */
+    fun mint(name: String, userId: String = People.FOUNDER): Pair<Device, String> {
         val clean = requiredText(name, "name", 100)
         val key = Tokens.random()
         val id = Ulid.next()
         val now = clock()
         db.update(
-            "INSERT INTO owner_devices (id, name, token_hash, created_at) VALUES (?, ?, ?, ?)",
-            id, clean, Tokens.hash(key, tokenSecret), now,
+            "INSERT INTO owner_devices (id, name, token_hash, created_at, user_id) VALUES (?, ?, ?, ?, ?)",
+            id, clean, Tokens.hash(key, tokenSecret), now, userId,
         )
         return find(id)!! to key
     }
 
     fun find(id: String): Device? = db.one("SELECT * FROM owner_devices WHERE id = ?", id) { row(it) }
 
-    /** The device a key belongs to, stamping last-seen at most once a minute; null for any other key. */
+    /**
+     * The device a key belongs to, stamping last-seen at most once a minute; null for any other key,
+     * and for a key whose person has left the team (removing them deletes their keys too).
+     */
     fun authenticate(key: String): Device? {
         val trimmed = key.jsTrim()
         if (!Tokens.wellFormed(trimmed)) return null
         val hash = Tokens.hash(trimmed, tokenSecret)
-        val found = db.one("SELECT * FROM owner_devices WHERE token_hash = ?", hash) { it.getString("token_hash") to row(it) } ?: return null
+        val found = db.one(
+            "SELECT d.* FROM owner_devices AS d JOIN memberships AS m ON m.id = d.user_id WHERE d.token_hash = ? AND m.removed_at IS NULL", hash,
+        ) { it.getString("token_hash") to row(it) } ?: return null
         if (!Tokens.same(found.first, hash)) return null
         val now = clock()
         db.update(
@@ -52,6 +60,9 @@ class Devices(private val db: Database, private val tokenSecret: String, private
     }
 
     fun list(): List<Device> = db.query("SELECT * FROM owner_devices ORDER BY seq") { row(it) }
+
+    /** [userId]'s devices. */
+    fun listFor(userId: String): List<Device> = db.query("SELECT * FROM owner_devices WHERE user_id = ? ORDER BY seq", userId) { row(it) }
 
     fun remove(id: String): Boolean = db.update("DELETE FROM owner_devices WHERE id = ?", id) == 1
 
@@ -127,6 +138,7 @@ class Devices(private val db: Database, private val tokenSecret: String, private
             (Json.parseToJsonElement(text) as? JsonArray)?.map { it.jsonPrimitive.content }
         },
         alertPrefs = rs.getString("alert_prefs")?.let { Json.parseToJsonElement(it) as? kotlinx.serialization.json.JsonObject },
+        userId = rs.getString("user_id") ?: People.FOUNDER,
     )
 
     /** `PUT /api/devices/current/alert-prefs`: checked prefs, or null for every alert. */
