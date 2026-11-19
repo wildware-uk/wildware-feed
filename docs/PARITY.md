@@ -68,7 +68,7 @@ It doesn't, beyond oldest first.
 | 26 | Pinned section | Done | Pinned cards above day groups, newest created first (`Timeline.svelte:851-868`) | Yes (`Mapping.kt:47`) | Yes | Shown only; can't pin (row 44) | — |
 | 27 | Day separators | Done | Sticky "Today/Yesterday/Monday 3 August" (`days.ts:27-81`) | Yes: sticky; weekday then "3 August", with the year when it isn't this year | Yes | — | P2 |
 | 28 | Card time label | Done | Relative "5m ago", "updated …", tooltip with exact times (`days.ts:119-155`) | Yes: "5m ago", "updated 5m ago"; exact times read out | Yes, plus the exact times on hover | — | P2 |
-| 29 | "N new updates" pill | Open | Holds live arrivals while scrolled down (`Timeline.svelte:686-707`) | No (arrivals insert live; engine supports hold, unused) | No | Works differently; low risk | P2 |
+| 29 | "N new updates" pill | Done | Holds live arrivals while scrolled down (`Timeline.svelte:686-707`) | Yes: away from the top, new updates wait; the top pill says "3 new updates" and takes you up to them | Yes | — | P2 |
 | 30 | Back to top | Done | Round ↑ after one screen | Yes pill + status-bar tap | Yes pill + Home key | — | — |
 | 31 | Collapse a card / fold memory | Done | Chevron or header click; remembered (500) (`CardActions.svelte:89-113`, `collapse.svelte.ts`) | Yes: chevron folds a card; remembered (500) across restarts (#62) | Yes | — | P1 |
 | 32 | Long body clamp | Done | 420 px with fade, "Show the whole update" (`Clamp.svelte`) | Yes: Folds at 420 dp with "Show more" (`app/feed/Clamp.kt`) | Yes | — | P1 |

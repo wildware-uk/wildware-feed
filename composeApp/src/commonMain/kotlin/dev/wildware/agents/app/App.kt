@@ -129,7 +129,7 @@ fun AgentsApp(
                         LocalDemo provides screen.demo,
                         LocalOpenSettings provides openSettings,
                     ) {
-                        FeedScreen(state, safeArea, navigator = navigator) { event ->
+                        FeedScreen(state, safeArea, navigator = navigator, onAwayFromTop = session::holdArrivals) { event ->
                             when (event) {
                                 is FeedEvent.SignOut -> model.signOut()
                                 is FeedEvent.ToggleTheme -> model.toggleTheme(showingDark = isDark)

@@ -206,6 +206,11 @@ data class ScreenPreview(
  */
 @Stable
 class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var onEvent: (FeedEvent) -> Unit) {
+    /**
+     * Told whether the owner is away from the top of the feed. A view's place, not something the owner
+     * did, so it is kept out of [onEvent].
+     */
+    var onAwayFromTop: (Boolean) -> Unit = {}
     /** The engine's latest. Each reader is redrawn when it changes, and nothing else is. */
     val state: FeedState get() = source.value
     private val initial = source.value

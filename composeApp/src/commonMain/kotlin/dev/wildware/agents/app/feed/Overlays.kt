@@ -811,9 +811,12 @@ fun ThreadComposer(ui: FeedUi?, threadId: String, modifier: Modifier = Modifier,
     }
 }
 
-/** [BackToTop] while [shown] says so, dropping in from above and lifting away again. */
+/**
+ * [BackToTop] while [shown] says so, dropping in from above and lifting away again. While [newCount]
+ * updates wait above, it says "3 new updates" instead.
+ */
 @Composable
-fun BackToTopPill(shown: () -> Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
+fun BackToTopPill(shown: () -> Boolean, modifier: Modifier = Modifier, newCount: () -> Int = { 0 }, onClick: () -> Unit) {
     val motion = AgentTheme.motion
     // Read here, not by the caller, so the pill coming and going redraws only the pill.
     Presence(
@@ -821,26 +824,31 @@ fun BackToTopPill(shown: () -> Boolean, modifier: Modifier = Modifier, onClick: 
         fadeIn(motion.fast()) + slideInVertically(motion.pop()) { -it } + scaleIn(motion.pop(), initialScale = 0.8f),
         fadeOut(motion.fast()) + slideOutVertically(motion.fast()) { -it / 2 },
         modifier,
-    ) { BackToTop(onClick = onClick) }
+    ) { BackToTop(newCount = newCount(), onClick = onClick) }
 }
 
 /** A pill that appears once the feed is scrolled, to jump back to the top. */
 @Composable
-fun BackToTop(modifier: Modifier = Modifier, onClick: () -> Unit) {
+fun BackToTop(modifier: Modifier = Modifier, newCount: Int = 0, onClick: () -> Unit) {
     val colors = AgentTheme.colors
     val shape = AgentTheme.shapes.pill
+    val label = when (newCount) {
+        0 -> "Back to top"
+        1 -> "1 new update"
+        else -> "$newCount new updates"
+    }
     Row(
         modifier
             .lift(AgentTheme.elevation.raised, shape)
             .clip(shape)
             .background(if (colors.isDark) colors.accent else colors.text)
-            .pressable("Back to top", shape, labelIsShown = true, onClick = onClick)
+            .pressable(label, shape, labelIsShown = true, onClick = onClick)
             .padding(horizontal = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         val fg = if (colors.isDark) colors.onAccent else colors.background
         Icon(Icons.ArrowUp, null, tint = fg, modifier = Modifier.size(16.dp))
-        Text("Back to top", Modifier.padding(start = 6.dp), color = fg, style = AgentTheme.type.label)
+        Text(label, Modifier.padding(start = 6.dp), color = fg, style = AgentTheme.type.label)
     }
 }
 

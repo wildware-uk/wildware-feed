@@ -771,6 +771,17 @@ class ScreenshotTest {
         }
     }
 
+    /** Reading further down while three updates arrived: they wait, and the pill says so. */
+    @Test
+    fun newUpdatesPill() {
+        val state = FakeFeed.state.copy(newCount = 3)
+        for (dark in listOf(false, true)) {
+            val mode = if (dark) "dark" else "light"
+            shoot("phone-$mode-new-updates", Size.Phone, dark) { AgentsPreview(dark = dark, state = state, safeArea = Size.Phone.safeArea, startAt = "u2") }
+            shoot("desktop-$mode-new-updates", Size.Desktop, dark) { AgentsPreview(dark = dark, state = state, safeArea = Size.Desktop.safeArea, startAt = "o1") }
+        }
+    }
+
     /** Increase Contrast on, in both themes, and the largest common text size. */
     @Test
     fun accessibilityVariants() {

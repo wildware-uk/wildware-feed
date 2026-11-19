@@ -424,6 +424,8 @@ data class FeedState(
     val loading: Boolean = false,
     /** There are older cards to read further down. */
     val hasMore: Boolean = false,
+    /** New updates waiting while the owner is away from the top: "3 new updates". */
+    val newCount: Int = 0,
     /** What search looks through: every project's loaded cards, not only the one on screen. Empty means "what's on screen". */
     val searchIndex: List<SearchEntry> = emptyList(),
     /** Every word the projects on screen use for their cards, for the tag picker. */

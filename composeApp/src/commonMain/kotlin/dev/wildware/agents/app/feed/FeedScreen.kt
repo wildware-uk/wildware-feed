@@ -1,5 +1,6 @@
 package dev.wildware.agents.app.feed
 
+import kotlinx.coroutines.flow.distinctUntilChanged
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
@@ -176,8 +177,10 @@ fun FeedScreen(
     preview: ScreenPreview = ScreenPreview(),
     /** Where notifications, widgets and search ask the feed to go. */
     navigator: AppNavigator? = null,
+    /** Whether the owner is away from the top, so new updates can wait for them. */
+    onAwayFromTop: (Boolean) -> Unit = {},
     onEvent: (FeedEvent) -> Unit = {},
-) = FeedScreen(rememberUpdatedState(state), safeArea, startAt, preview, navigator, onEvent)
+) = FeedScreen(rememberUpdatedState(state), safeArea, startAt, preview, navigator, onAwayFromTop, onEvent)
 
 /**
  * The feed over a live [state], as the engine's flow gives it. Read where it is used, so a new
@@ -191,11 +194,14 @@ fun FeedScreen(
     preview: ScreenPreview = ScreenPreview(),
     /** Where notifications, widgets and search ask the feed to go. */
     navigator: AppNavigator? = null,
+    /** Whether the owner is away from the top, so new updates can wait for them. */
+    onAwayFromTop: (Boolean) -> Unit = {},
     onEvent: (FeedEvent) -> Unit = {},
 ) {
     val colors = AgentTheme.colors
     val ui = remember(state) { FeedUi(preview, state, onEvent) }
     ui.onEvent = onEvent
+    ui.onAwayFromTop = onAwayFromTop
     val scope = rememberCoroutineScope()
     BoxWithConstraints(Modifier.fillMaxSize().windowBackground(colors)) {
         val phone = maxWidth < PhoneBreakpoint
@@ -294,8 +300,8 @@ private fun DesktopColumns(ui: FeedUi, showRail: Boolean, startAt: String?) {
             LoadOlderWhenNearEnd(ui, list)
             ScrollToRevealed(ui, list, itemsBefore = 1)
             ScrollToTopWhenAsked(ui, list)
-            val scrolled by remember { derivedStateOf { list.firstVisibleItemIndex > 3 } }
-            BackToTopPill({ scrolled }, Modifier.align(Alignment.TopCenter).padding(top = 14.dp), toTop)
+            HoldArrivalsWhileAway(ui, list)
+            NewOrBackToTop(ui, list, scrolledPast = 3, Modifier.align(Alignment.TopCenter).padding(top = 14.dp), toTop)
             // "All projects" has no one place to post to, so the box shows once a project is open.
             if (state.current.slug != null) Box(
                 Modifier
@@ -404,8 +410,8 @@ private fun PhoneFeed(ui: FeedUi, safeArea: SafeArea, startAt: String?, widthPx:
                 .pointerInput(Unit) { detectTapGestures { toTop() } }
                 .clearAndSetSemantics { },
         )
-        val scrolled by remember { derivedStateOf { list.firstVisibleItemIndex > 4 } }
-        BackToTopPill({ scrolled }, Modifier.align(Alignment.TopCenter).padding(top = safeArea.top + 8.dp), toTop)
+        HoldArrivalsWhileAway(ui, list)
+        NewOrBackToTop(ui, list, scrolledPast = 4, Modifier.align(Alignment.TopCenter).padding(top = safeArea.top + 8.dp), toTop)
         if (state.current.slug != null) Column(
             Modifier
                 .align(Alignment.BottomCenter)
@@ -567,6 +573,38 @@ private fun ScrollToRevealed(ui: FeedUi, list: LazyListState, itemsBefore: Int) 
 }
 
 /** The sections and their cards, hung off a timeline rail. */
+/**
+ * "Back to top" once the owner is [scrolledPast] a few cards, or "3 new updates" as soon as updates
+ * wait above them. Its reads are its own, so an engine publish redraws the pill only when its words change.
+ */
+@Composable
+private fun NewOrBackToTop(ui: FeedUi, list: LazyListState, scrolledPast: Int, modifier: Modifier, toTop: () -> Unit) {
+    val newCount by remember(ui) { derivedStateOf { ui.state.newCount } }
+    val shown by remember(list) { derivedStateOf { list.firstVisibleItemIndex > scrolledPast || newCount > 0 && list.awayFromTop() } }
+    BackToTopPill({ shown }, modifier, { newCount }, toTop)
+}
+
+/** How far down the owner may be and still count as at the top, as the website allows. */
+private val AtTopSlack = 48.dp
+
+/** Whether the owner has scrolled away from the top of the feed. */
+private fun LazyListState.awayFromTop(slackPx: Int = 0): Boolean =
+    firstVisibleItemIndex > 0 || firstVisibleItemScrollOffset > slackPx
+
+/**
+ * While the owner is away from the top, new updates wait rather than land above what they are
+ * reading; the pill counts them, and going back to the top lets them in.
+ */
+@Composable
+private fun HoldArrivalsWhileAway(ui: FeedUi, list: LazyListState) {
+    val slack = with(LocalDensity.current) { AtTopSlack.roundToPx() }
+    LaunchedEffect(list, ui) {
+        snapshotFlow { list.awayFromTop(slack) }
+            .distinctUntilChanged()
+            .collect { ui.onAwayFromTop(it) }
+    }
+}
+
 /** Reads further into the past once the end of the list comes into view. */
 @Composable
 private fun LoadOlderWhenNearEnd(ui: FeedUi, list: LazyListState) {

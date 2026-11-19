@@ -322,10 +322,23 @@ class DashboardSession(
         }
     }
 
+    /** The owner is away from the top of the feed, so new updates wait for them. Carried to the next feed shown. */
+    private var holding = false
+
+    /**
+     * Whether the owner is away from the top of the feed. While they are, new updates wait (counted in
+     * [FeedState.newCount]) instead of arriving above what they are reading, as on the website.
+     */
+    fun holdArrivals(away: Boolean) {
+        holding = away
+        feed.hold(away)
+    }
+
     private fun select(slug: String?) {
         if (slug == feed.projectSlug) return
         val old = feed
         feed = dashboard.feed(slug)
+        feed.hold(holding)
         feeds.value = feed
         selected.value = slug
         old.close()

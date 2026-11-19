@@ -139,6 +139,7 @@ internal class FeedMapper(
             loaded = feed.loaded || feed.cached,
             loading = feed.loading,
             hasMore = feed.hasMore,
+            newCount = feed.newCount,
             tags = feed.tags.map { it.toCardTag() },
             critical = criticalNotices(inScope, feed),
         )

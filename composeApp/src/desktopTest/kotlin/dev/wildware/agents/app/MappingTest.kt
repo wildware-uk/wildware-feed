@@ -70,6 +70,12 @@ class MappingTest {
         EngineFeed(null, null, status, true, false, false, waiting, emptyList(), cards, 0, false, emptyList())
 
     @Test
+    fun updatesWaitingAboveAreCounted() {
+        val state = mapper.map(feed(listOf(update("u1", noon, "T", "B"))).copy(newCount = 3), listOf(mega), emptyList(), emptyList(), null)
+        assertEquals(3, state.newCount)
+    }
+
+    @Test
     fun cardTimesSayHowLongAgo() {
         val minute = 60_000L
         assertEquals("now", mapper.relativeLabel(noon - 5_000))
