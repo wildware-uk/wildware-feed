@@ -58,6 +58,11 @@ class AppPlatform(
     val crashReports: dev.wildware.agents.app.crash.CrashReportSetting? = null,
     /** The iPhone's Live Activities, for the settings sheet; null where there are none. */
     val liveActivities: LiveActivityStatus? = null,
+    /**
+     * The dashboard this app was served from (the web app), or null. Sign-in goes straight to its
+     * password, and the session rides on a cookie the page can't read rather than a key the app keeps.
+     */
+    val homeServer: String? = null,
 ) {
     companion object {
         /** Everything in memory: for tests and previews. */

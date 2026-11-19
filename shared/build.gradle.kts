@@ -1,3 +1,4 @@
+import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
 import org.jetbrains.kotlin.gradle.plugin.mpp.apple.XCFramework
 
 plugins {
@@ -36,6 +37,13 @@ kotlin {
         }
     }
 
+    // The web app (composeApp's wasmJs). The tests run in Node, which needs no browser.
+    @OptIn(ExperimentalWasmDsl::class)
+    wasmJs {
+        browser()
+        nodejs()
+    }
+
     sourceSets {
         commonMain.dependencies {
             implementation(libs.ktor.client.core)
@@ -47,6 +55,9 @@ kotlin {
         // appleMain is iPhone and watch together: both use Apple's own networking.
         appleMain.dependencies {
             implementation(libs.ktor.client.darwin)
+        }
+        wasmJsMain.dependencies {
+            implementation(libs.ktor.client.js)
         }
         commonTest.dependencies {
             implementation(kotlin("test"))

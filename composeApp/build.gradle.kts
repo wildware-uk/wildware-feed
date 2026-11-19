@@ -1,4 +1,5 @@
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
+import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
 
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
@@ -98,6 +99,17 @@ kotlin {
         }
     }
 
+    // The web app: the same screens in a browser, served by the server itself at its root.
+    // `wasmJsBrowserDistribution` builds it into build/dist/wasmJs/productionExecutable.
+    @OptIn(ExperimentalWasmDsl::class)
+    wasmJs {
+        outputModuleName = "feed"
+        browser {
+            commonWebpackConfig { outputFileName = "feed.js" }
+        }
+        binaries.executable()
+    }
+
     sourceSets {
         commonMain {
             kotlin.srcDir(generateCrashReportingBuild)
@@ -155,6 +167,9 @@ kotlin {
         }
         androidMain.dependencies {
             implementation(libs.androidx.activity.compose)
+        }
+        wasmJsMain.dependencies {
+            implementation(libs.ktor.client.js)
         }
         iosMain.dependencies {
             // `api` so the framework can export it to Swift.
@@ -223,6 +238,11 @@ compose.desktop {
 // Only the PNG is needed at run time; the .icns and .ico are for the installers.
 tasks.named<ProcessResources>("desktopProcessResources") {
     exclude("*.icns", "*.ico")
+}
+
+// The web page's icon is the installers' picture too.
+tasks.named<ProcessResources>("wasmJsProcessResources") {
+    from("packaging/icons/agents.png") { rename { "icon.png" } }
 }
 
 // The screenshot test writes one PNG per size, theme and state here.

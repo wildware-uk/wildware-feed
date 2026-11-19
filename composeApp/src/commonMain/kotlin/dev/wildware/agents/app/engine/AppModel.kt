@@ -90,7 +90,8 @@ class AppModel(private val platform: AppPlatform, private val scope: CoroutineSc
     /** Signs in and opens the feed. Throws [SignInException] with what went wrong. */
     @Throws(SignInException::class, kotlin.coroutines.cancellation.CancellationException::class)
     suspend fun signIn(server: String, password: String, deviceName: String) {
-        val signed = SignIn.signIn(server, password, deviceName, platform.httpEngine())
+        val signed = if (platform.homeServer != null) SignIn.signInWithCookie(server, password, deviceName, platform.httpEngine())
+        else SignIn.signIn(server, password, deviceName, platform.httpEngine())
         val saved = SavedSession(signed.server, signed.token, signed.device.name, signed.device.id)
         platform.sessions.save(saved)
         open(saved)
