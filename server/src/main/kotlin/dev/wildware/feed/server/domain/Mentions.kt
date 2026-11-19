@@ -51,8 +51,8 @@ object Mentions {
         return (named + group.filter { it != sender }).distinct()
     }
 
-    /** Replace the message's mentions with what its body says now. [author] is never mentioned by a group. */
-    fun record(db: Database, messageId: String, body: String, author: String? = null, now: Long = System.currentTimeMillis()) {
+    /** Replace the message's mentions with what its body says now, and answer who they are. [author] is never mentioned by a group. */
+    fun record(db: Database, messageId: String, body: String, author: String? = null, now: Long = System.currentTimeMillis()): List<String> {
         val ids = mentionedAgentIds(db, body, author, now)
         db.transaction {
             db.update("DELETE FROM message_mentions WHERE message_id = ?", messageId)
@@ -63,5 +63,6 @@ object Mentions {
                 )
             }
         }
+        return ids
     }
 }

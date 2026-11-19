@@ -11,6 +11,7 @@ import kotlinx.serialization.json.put
  */
 class Messages(private val feed: Feed) {
     private val db get() = feed.db
+    private val subscriptions get() = Subscriptions(feed.db, feed.clock)
 
     /** Optional keys are null when left out; an empty string is still "given" where the TS checks `!= null`. */
     class Post(
@@ -106,7 +107,9 @@ class Messages(private val feed: Feed) {
             id, projectId, updateId, author, body, feed.now(), if (request) null else anchor, answersId, requestId,
         )
         val message = find(id)!!
-        Mentions.record(db, message.id, message.body, message.author, feed.now())
+        if (subscriptions.afterPost(message, Mentions.record(db, message.id, message.body, message.author, feed.now()))) {
+            feed.publish("subscriptions.updated", buildJsonObject { put("subscriber", Subscriptions.OWNER) })
+        }
 
         val agentId = if (author.startsWith(AGENT_PREFIX)) author.removePrefix(AGENT_PREFIX).ifEmpty { null } else null
         if (mediaIds.isNotEmpty()) FeedAttachments.attachMedia(db, mediaIds, "message_id", id, "author", author)
@@ -131,7 +134,9 @@ class Messages(private val feed: Feed) {
         val clean = requiredText(body, "body", BODY_MAX)
         db.update("UPDATE messages SET body = ?, edited_at = ? WHERE id = ? AND deleted_at IS NULL", clean, feed.now(), message.id)
         val saved = find(message.id)!!
-        Mentions.record(db, saved.id, saved.body, saved.author, feed.now())
+        if (subscriptions.afterPost(saved, Mentions.record(db, saved.id, saved.body, saved.author, feed.now()))) {
+            feed.publish("subscriptions.updated", buildJsonObject { put("subscriber", Subscriptions.OWNER) })
+        }
         feed.publish("message.updated", buildJsonObject {
             put("messageId", saved.id)
             put("projectId", saved.projectId)
@@ -186,44 +191,27 @@ class Messages(private val feed: Feed) {
 
     // ---- reading (get_messages) ------------------------------------------------------------------
 
-    /** The projects an agent works in: its updates, its tasks, its live messages. Null means "none yet, so all". */
-    fun projectsForAgent(agentId: String): List<String>? {
-        val ids = db.query(
-            "SELECT DISTINCT project_id FROM updates WHERE agent_id = ? UNION " +
-                "SELECT DISTINCT project_id FROM tasks WHERE agent_id = ? AND project_id IS NOT NULL UNION " +
-                "SELECT DISTINCT project_id FROM messages WHERE author = ? AND project_id IS NOT NULL AND deleted_at IS NULL",
-            agentId, agentId, AGENT_PREFIX + agentId,
-        ) { it.getString(1) }
-        return ids.ifEmpty { null }
-    }
+    /** The projects an agent follows (migration 052). Null means it has never followed one, so all. */
+    fun projectsForAgent(agentId: String): List<String>? = subscriptions.followedProjects(agentId)
 
-    private class Scope(val projectIds: List<String>?, val reader: String?, val mentionsAnywhere: Boolean)
+    /** Who reads ([reader], or nobody in particular) and what reaches them. */
+    private class Scope(val reach: Subscriptions.Reach, val reader: String?)
 
-    /** `readerScope`: the project filter and the @mention audience, as SQL and its parameters. */
+    /** `readerScope`: the reach and the @mention audience, as SQL and its parameters. */
     private fun readerScope(scope: Scope, params: MutableList<Any?>): String {
-        var inProjects = ""
-        val ids = scope.projectIds
-        if (ids != null) {
-            inProjects = if (ids.isEmpty()) "0" else "m.project_id IN (${ids.joinToString(", ") { "?" }})"
-        }
         if (scope.reader == null) {
-            if (inProjects.isEmpty()) return ""
-            params.addAll(ids!!)
-            return " AND $inProjects"
+            val reach = scope.reach
+            if (reach !is Subscriptions.Reach.Projects) return ""
+            params.addAll(reach.ids)
+            return if (reach.ids.isEmpty()) " AND 0 = 1" else " AND m.project_id IN (${reach.ids.joinToString(", ") { "?" }})"
         }
         val namesAnyone = "EXISTS (SELECT 1 FROM message_mentions AS mm WHERE mm.message_id = m.id)"
         val namesReader = "EXISTS (SELECT 1 FROM message_mentions AS mm WHERE mm.message_id = m.id AND mm.agent_id = ?)"
         params.add(scope.reader)
-        val audience = " AND (NOT $namesAnyone OR $namesReader)"
-        if (inProjects.isEmpty()) return audience
-        params.addAll(ids!!)
-        if (!scope.mentionsAnywhere) return "$audience AND $inProjects"
-        params.add(scope.reader)
-        return "$audience AND ($inProjects OR $namesReader)"
+        return " AND (NOT $namesAnyone OR $namesReader)" + subscriptions.reachSql(scope.reader, scope.reach, params)
     }
 
     private fun listAfter(afterSeq: Long, excludeAuthor: String, limit: Int, scope: Scope): List<MessageRow> {
-        if (scope.projectIds?.isEmpty() == true && !scope.mentionsAnywhere) return emptyList()
         val params = mutableListOf<Any?>(afterSeq, excludeAuthor)
         val where = readerScope(scope, params)
         params.add(limit)
@@ -238,7 +226,7 @@ class Messages(private val feed: Feed) {
         params.add(excludeAuthor)
         var where = " FROM messages AS m LEFT JOIN read_cursors AS rc ON rc.agent_id = ? AND rc.project_id = coalesce(m.project_id, '') " +
             "WHERE m.seq > coalesce(rc.last_seen_message_seq, 0) AND m.deleted_at IS NULL AND m.author <> ?"
-        where += readerScope(Scope(scope.projectIds, agentId, scope.mentionsAnywhere), params)
+        where += readerScope(Scope(scope.reach, agentId), params)
         if (within != null) {
             where += " AND coalesce(m.project_id, '') = ?"
             params.add(within)
@@ -247,16 +235,15 @@ class Messages(private val feed: Feed) {
     }
 
     private fun listUnread(agentId: String, excludeAuthor: String, limit: Int, scope: Scope, within: String? = null): List<MessageRow> {
-        if (scope.projectIds?.isEmpty() == true && !scope.mentionsAnywhere) return emptyList()
         val params = mutableListOf<Any?>()
         val where = unreadWhere(agentId, excludeAuthor, scope, within, params)
         params.add(limit)
         return db.query("SELECT ${columns()}$where ORDER BY m.seq ASC LIMIT ?", *params.toTypedArray()) { MessageRow(Rows.message(it)) }
     }
 
-    /** `countUnreadMessages`: the agent's own scope, mentions anywhere, never its own lines. */
+    /** `countUnreadMessages`: what the agent follows, mentions anywhere, never its own lines. */
     fun countUnread(agentId: String): Long {
-        val scope = Scope(projectsForAgent(agentId), agentId, true)
+        val scope = Scope(Subscriptions.Reach.Followed, agentId)
         val params = mutableListOf<Any?>()
         val where = unreadWhere(agentId, AGENT_PREFIX + agentId, scope, null, params)
         return db.one("SELECT count(*) AS n$where", *params.toTypedArray()) { it.getLong(1) } ?: 0
@@ -264,18 +251,17 @@ class Messages(private val feed: Feed) {
 
     /**
      * `readMessages`: unread messages (or everything after [since]), oldest first, 50 at a time; with
-     * [markRead] the per-project read cursors move forward and `messages.read` is published.
+     * [markRead] the per-project read cursors move forward and `messages.read` is published. Without
+     * [project] that is what the agent follows (projects and threads) and mentions of it anywhere.
      */
     fun read(agentId: String, since: String?, project: String?, markRead: Boolean?): Page = feed.op {
         if (!agentExists(agentId)) throw notFound("no such agent: $agentId")
         val mine = AGENT_PREFIX + agentId
         val limit = PAGE
         val projectId = if (!project.isNullOrEmpty()) feed.projects.resolve(project).id else null
-        val worksIn = projectsForAgent(agentId)
-        val scopeIds = if (projectId == null) worksIn else listOf(projectId)
         val sinceSeq = decodeCursor(since)
-        val mentionsAnywhere = projectId == null
-        val scope = Scope(scopeIds, agentId, mentionsAnywhere)
+        val reach = if (projectId == null) subscriptions.resolve(agentId, Subscriptions.Reach.Followed) else Subscriptions.Reach.Projects(listOf(projectId), widened = false)
+        val scope = Scope(reach, agentId)
 
         val messages = if (sinceSeq != null && sinceSeq != 0L) {
             listAfter(sinceSeq, mine, limit, scope)
@@ -293,7 +279,11 @@ class Messages(private val feed: Feed) {
 
     private fun markPageRead(agentId: String, mine: String, limit: Int, scope: Scope, since: Long?, messages: List<MessageRow>): Long {
         val last = messages.lastOrNull()?.seq ?: return 0
-        val covered = scope.projectIds ?: messages.map { it.projectId ?: NO_PROJECT }.distinct()
+        val covered = when (val reach = scope.reach) {
+            is Subscriptions.Reach.Projects -> reach.ids
+            Subscriptions.Reach.Followed -> projectsForAgent(agentId) ?: emptyList()
+            Subscriptions.Reach.All -> emptyList()
+        }
         val projects = LinkedHashSet(covered + messages.map { it.projectId ?: NO_PROJECT })
         val handed = messages.map { it.id }.toSet()
         var moved = 0L

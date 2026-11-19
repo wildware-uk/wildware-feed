@@ -5,6 +5,7 @@ import dev.wildware.feed.server.domain.CardRef
 import dev.wildware.feed.server.domain.Given
 import dev.wildware.feed.server.domain.Messages
 import dev.wildware.feed.server.domain.Projects
+import dev.wildware.feed.server.domain.Subscriptions
 import dev.wildware.feed.server.domain.feed
 import dev.wildware.feed.server.domain.invalid
 import dev.wildware.feed.server.domain.jsBoolean
@@ -213,6 +214,71 @@ fun Route.feedRoutes(app: App) {
             val (fields, set) = app.feed.fields.set(card, name, raw.jsString, Messages.HUMAN)
             call.respondOwner(200, buildJsonObject {
                 put("card", card.json); put("fields", JsonArray(fields.map { it.json })); put("set", set)
+            })
+        },
+    )
+
+    // Subscriptions (migration 052): who follows a thread, and what the owner follows.
+    fun ownerView(subs: Subscriptions, thread: Subscriptions.Thread, projectId: String?) = buildJsonObject {
+        val state = subs.threadState(Subscriptions.OWNER, thread)
+        put("following", state ?: (subs.ownerLevel(projectId) == Subscriptions.ALL))
+        put("chosen", state != null)
+    }
+
+    fun changed() = app.bus.publish("subscriptions.updated", buildJsonObject { put("subscriber", Subscriptions.OWNER) })
+
+    endpoint(
+        "/api/cards/{kind}/{id}/followers",
+        HttpMethod.Get to {
+            val subs = Subscriptions(app.db, app.clock)
+            val (thread, projectId) = subs.threadAt(card())
+            call.respondOwner(200, buildJsonObject {
+                put("thread", buildJsonObject { put("kind", thread.kind); put("id", thread.id) })
+                put("followers", JsonArray(subs.followers(thread).map { (id, name) -> buildJsonObject { put("id", id); put("name", name) } }))
+                put("owner", ownerView(subs, thread, projectId))
+            })
+        },
+    )
+
+    endpoint(
+        "/api/cards/{kind}/{id}/follow",
+        HttpMethod.Put to {
+            val following = flag(call.jsonObjectBody()["following"], "following")
+            val subs = Subscriptions(app.db, app.clock)
+            val (thread, projectId) = subs.threadAt(card())
+            if (subs.setOwnerFollow(thread, projectId, following)) changed()
+            call.respondOwner(200, buildJsonObject {
+                put("thread", buildJsonObject { put("kind", thread.kind); put("id", thread.id) })
+                put("owner", ownerView(subs, thread, projectId))
+            })
+        },
+    )
+
+    endpoint(
+        "/api/projects/{reference}/subscription",
+        HttpMethod.Put to {
+            val level = text(call.jsonObjectBody()["level"], "level")
+            val project = app.feed.projects.resolve(param("reference"))
+            val subs = Subscriptions(app.db, app.clock)
+            if (subs.ownerLevel(project.id) != level) {
+                subs.setOwnerLevel(project.id, level)
+                changed()
+            } else if (level !in Subscriptions.LEVELS) {
+                throw invalid("level must be one of: ${Subscriptions.LEVELS.joinToString(", ")}")
+            }
+            call.respondOwner(200, buildJsonObject { put("projectId", project.id); put("level", subs.ownerLevel(project.id)) })
+        },
+    )
+
+    endpoint(
+        "/api/subscriptions",
+        HttpMethod.Get to {
+            val choices = Subscriptions(app.db, app.clock).ownerChoices()
+            call.respondOwner(200, buildJsonObject {
+                put("projects", JsonArray(choices.levels.map { (id, level) -> buildJsonObject { put("projectId", id); put("level", level) } }))
+                put("threads", JsonArray(choices.threads.map { (t, on) ->
+                    buildJsonObject { put("kind", t.kind); put("id", t.id); put("following", on) }
+                }))
             })
         },
     )

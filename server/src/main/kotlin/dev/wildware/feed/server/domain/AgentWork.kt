@@ -12,8 +12,10 @@ import kotlinx.serialization.json.buildJsonObject
  * messages over on the agent stream (TS `src/domain/messages.ts`, `cards.ts`, `requests.ts`,
  * spec/04-stream-and-events.md §4.4-4.6).
  *
- * A subscription is `null` for every project, a list of project ids, or [DERIVED]: the projects the
- * agent has worked in (and everything when it has worked nowhere yet).
+ * A stream's [Subscription] is [Subscription.Derived] (what the agent follows on the server, see
+ * [Subscriptions]; everything when it has never followed a project), [Subscription.Everything], or a
+ * list of projects named by an older bridge, which still hears the threads the agent follows and
+ * mentions of it anywhere.
  */
 class AgentWork(private val db: Database, private val bus: Bus, private val clock: () -> Long = System::currentTimeMillis) {
     data class Counts(val unreadMessages: Int, val openTasks: Int, val pendingApprovals: Int)
@@ -25,43 +27,39 @@ class AgentWork(private val db: Database, private val bus: Bus, private val cloc
         val createdAt: Long, val deletedAt: Long?,
     )
 
-    /** The projects the agent has worked in, or null (everything) when none. */
-    fun projectsForAgent(agentId: String): List<String>? {
-        val ids = db.query(
-            """SELECT DISTINCT project_id FROM updates WHERE agent_id = ?
-               UNION
-               SELECT DISTINCT project_id FROM tasks WHERE agent_id = ? AND project_id IS NOT NULL
-               UNION
-               SELECT DISTINCT project_id FROM messages WHERE author = ? AND project_id IS NOT NULL AND deleted_at IS NULL""",
-            agentId, agentId, "agent:$agentId",
-        ) { it.getString(1) }
-        return ids.ifEmpty { null }
+    private val subscriptions = Subscriptions(db, clock)
+
+    /** The projects the agent follows, or null (everything) when it has never followed one. */
+    fun projectsForAgent(agentId: String): List<String>? = subscriptions.followedProjects(agentId)
+
+    private fun reach(subscribed: Subscription): Subscriptions.Reach = when (subscribed) {
+        Subscription.Derived -> Subscriptions.Reach.Followed
+        Subscription.Everything -> Subscriptions.Reach.All
+        is Subscription.Projects -> Subscriptions.Reach.Projects(subscribed.ids)
     }
 
-    private fun scope(agentId: String, subscribed: Subscription): List<String>? = when (subscribed) {
+    /** The projects whose open work counts: those followed or named, or null for every project. */
+    private fun workProjects(agentId: String, subscribed: Subscription): List<String>? = when (subscribed) {
         Subscription.Derived -> projectsForAgent(agentId)
         Subscription.Everything -> null
         is Subscription.Projects -> subscribed.ids
     }
 
-    /** The heartbeat's counts: unread and open work in the agent's own projects, pending requests everywhere. */
+    /** The heartbeat's counts: unread and open work in what the agent follows, pending requests everywhere. */
     fun countWork(agentId: String) = Counts(
-        unreadMessages = countUnread(agentId, projectsForAgent(agentId)),
+        unreadMessages = countUnread(agentId, Subscriptions.Reach.Followed),
         openTasks = countOpenWork(projectsForAgent(agentId)),
         pendingApprovals = countPending(agentId, null),
     )
 
     /** The agent stream's counts for one subscription. */
-    fun countScoped(agentId: String, subscribed: Subscription): Counts {
-        val projects = scope(agentId, subscribed)
-        return Counts(
-            unreadMessages = countUnread(agentId, projects),
-            openTasks = countOpenWork(projects),
-            pendingApprovals = if (subscribed is Subscription.Projects) countPending(agentId, subscribed.ids) else countPending(agentId, null),
-        )
-    }
+    fun countScoped(agentId: String, subscribed: Subscription): Counts = Counts(
+        unreadMessages = countUnread(agentId, reach(subscribed)),
+        openTasks = countOpenWork(workProjects(agentId, subscribed)),
+        pendingApprovals = if (subscribed is Subscription.Projects) countPending(agentId, subscribed.ids) else countPending(agentId, null),
+    )
 
-    private fun unreadWhere(agentId: String, projects: List<String>?, args: MutableList<Any?>): String {
+    private fun unreadWhere(agentId: String, reach: Subscriptions.Reach, args: MutableList<Any?>): String {
         args += agentId
         args += "agent:$agentId"
         val namesAnyone = "EXISTS (SELECT 1 FROM message_mentions AS mm WHERE mm.message_id = m.id)"
@@ -74,23 +72,19 @@ class AgentWork(private val db: Database, private val bus: Bus, private val cloc
               AND m.author <> ?
               AND (NOT $namesAnyone OR $namesReader)"""
         args += agentId
-        if (projects == null) return base
-        val inProjects = if (projects.isEmpty()) "0" else "m.project_id IN (${projects.joinToString(", ") { "?" }})"
-        args.addAll(projects)
-        args += agentId
-        return "$base AND ($inProjects OR $namesReader)"
+        return base + subscriptions.reachSql(agentId, reach, args)
     }
 
-    fun countUnread(agentId: String, projects: List<String>?): Int {
+    fun countUnread(agentId: String, reach: Subscriptions.Reach): Int {
         val args = mutableListOf<Any?>()
-        val where = unreadWhere(agentId, projects, args)
+        val where = unreadWhere(agentId, reach, args)
         return db.one("SELECT count(*) $where", *args.toTypedArray()) { it.getInt(1) } ?: 0
     }
 
     /** The newest [limit] unread lines in scope, oldest first. */
     fun unread(agentId: String, subscribed: Subscription, limit: Int): List<Line> {
         val args = mutableListOf<Any?>()
-        val where = unreadWhere(agentId, scope(agentId, subscribed), args)
+        val where = unreadWhere(agentId, reach(subscribed), args)
         args += limit
         return db.query("SELECT ${LINE.joinToString(", ") { "m.$it" }} $where ORDER BY m.seq DESC LIMIT ?", *args.toTypedArray()) { line(it) }.reversed()
     }

@@ -111,6 +111,7 @@ map: `src/events/types.ts:61-290`.
 | `notification.created` | `notificationId, kind, projectId` | `recordNotification` — `src/domain/notifications.ts:141`, only for a new row (`:138`). Called from the recorder subscriber (`:238-256`) on every live `update.created`, on `message.created` only when an agent wrote it (`:175-178`), and on `request.created`. `kind` ∈ `update,reply,request`. |
 | `reaction.updated` | `card{kind,id}, messageId, projectId, actor, emoji, on` | `reactToCard` — `src/domain/cards.ts:370-377`, only when a row was added/removed (`:366`). `messageId` = card id for a message card, else `null`. `actor` = `human` or `agent:<id>`. |
 | `notifications.seen` | `count` | `markSeen` — `src/domain/notifications.ts:110`, only when `count > 0`. |
+| `subscriptions.updated` | `subscriber` | Kotlin server only (migration 052): MCP `subscribe` / `unsubscribe`, the owner's follow and level routes, and the owner's first post in a thread, when something changed. The agent stream recounts on it (§4.8). |
 | `agent.presence` | `agentId, sessionId, online` | `announce` — `src/domain/sessions.ts:432`. `online:true` from `registerSession` (`:130`) / `heartbeat` (`:166`) only when the agent was not already online; `online:false` from `endSession` (`:194-195`) when no other session keeps it online, and from the sweeper with `sessionId: null` (`:316`). Going quiet past the 90 s window (`PRESENCE_WINDOW_MS`, `:71`) publishes **nothing**. |
 
 `card.kind` ∈ `update, message, request` (`src/db/cards.ts:30`). Card objects
@@ -277,7 +278,8 @@ All refusals: JSON `{"error":<code>,"message":<text>}`, `content-type: applicati
   slug, case-insensitive slug; archived projects resolve) —
   `src/domain/projects.ts:195-203`.
   - none → `undefined` = "derive from history" (`projectsForAgent`,
-    `src/domain/messages.ts:853-856`; no history = everything).
+    `src/domain/messages.ts:853-856`; no history = everything). **Kotlin server:**
+    what the agent follows on the server (§4.8), read again on every event.
   - exactly `*` → `null` = every project.
   - list → those project ids only.
 - `client` — first value, trimmed, cut to 200 chars; empty/absent → `null` —
@@ -356,7 +358,8 @@ comment, work, message (`src/http/stream/agent.test.ts:654-655`).
 
 Only these bus types are looked at (`WATCHED`, `agent.ts:201-223`):
 `message.created, message.deleted, messages.read, update.updated,
-message.updated, reaction.updated, request.created, request.answered`.
+message.updated, reaction.updated, request.created, request.answered`
+(Kotlin server: and `subscriptions.updated`, §4.8).
 Anything else is ignored (e.g. `update.deleted`, `request.updated`).
 
 Per watched event (`agent.ts:667-705`):
@@ -390,6 +393,62 @@ register a session or change `agent.presence`; the only side effects are the
 `last_seen_at` stamp, one rate-limit unit, and delivery rows.
 
 ---
+
+### 4.8 Subscriptions (Kotlin server, migration 052)
+
+The server keeps what each subscriber follows: an agent (which messages reach it, so a
+bridge need not be told its projects) and the owner (which alerts are raised).
+
+- **Tables.** `project_subscriptions (subscriber, project_id, level)` and
+  `thread_subscriptions (subscriber, kind, thread_id)`. `subscriber` is a principal spelled
+  as a message author is: `agent:<id>`, or `human` for the owner (team members will be
+  `member:<id>`). Each has `after_seq` (only messages with a higher seq reach an agent) and
+  `unsubscribed_at` (unsubscribing keeps the row). `level` is the owner's (below); an
+  agent's is always `all`. A thread is an
+  update (`kind = update`, its comments), a request (`request`, its discussion), or a feed
+  post and its replies (`message`, keyed by the post). A message's thread: `request_id`,
+  else `update_id`, else `reply_to ?? id`; a message on an old task has none.
+- **Following happens by itself.** Posting a message follows its project (from seq 0,
+  as "worked in" always did) and its thread; `post_update` follows the project and the
+  update's thread; `request_input` follows the request's thread; every agent a message
+  @mentions (`@here` / `@everyone` included) follows its thread from that message on.
+  Editing a message in a new mention does the same. Nothing unfollows except MCP
+  `unsubscribe`; posting again follows again, from now.
+- **Seed.** Migration 052 follows, from seq 0, every project an agent has an update, a
+  task or a live message in: exactly the old "worked in" set. No threads are seeded.
+- **Reach.** A message reaches an agent when it passes the @mention audience rule and:
+  it is in a followed project, or in a followed thread, or names the agent. An agent with
+  no `project_subscriptions` rows at all (never followed a project) hears every project;
+  unsubscribing from every project does **not** bring that back. `?project=` lists still
+  hear followed threads and mentions anywhere; `?project=*` hears everything. The same
+  reach drives `get_messages` (without `project`), heartbeat counts, `open_tasks`
+  (followed projects) and `list_work`.
+- **Live.** The stream reads the subscriptions again on every watched event, so a new
+  subscription takes effect without reconnecting.
+- **MCP.** `subscribe` / `unsubscribe` take exactly one of `project`, `update_id`,
+  `message_id` (its thread), `request_id`; `list_subscriptions` lists them.
+- **Owner: what raises an alert.** Each project has a level: `all` (no row: the default),
+  `replies` or `muted`. The owner follows a thread by posting or replying in it (then
+  `subscriptions.updated {subscriber: "human"}`), or by choice, and can unfollow one (a row
+  with `unsubscribed_at`). For a new card, an agent's message or a question:
+  1. priority `critical` → raised (paging stays each phone's own choice);
+  2. a thread the owner follows → raised, even in a muted project; unfollowed → not;
+  3. else `all` → raised; `replies` → only questions, and messages that answer the owner
+     (a reply to their post, or in a thread they spoke in) or name them (`@you`, `@owner`);
+     `muted` → not.
+  An agent asking to pair is always raised. This decides whether the bell row is written
+  and whether APNs alerts go out at all; each phone's own alert preferences (migration
+  047) then decide which phones ring, as before. Alert and Live Activity payloads are
+  unchanged.
+- **Owner API.**
+  - `GET /api/cards/{kind}/{id}/followers` → `{thread: {kind, id}, followers: [{id, name}],
+    owner: {following, chosen}}`: the live agents following the thread that card is in,
+    and the owner's state (`chosen` false: no choice made, so `following` is the
+    project's level being `all`).
+  - `PUT /api/cards/{kind}/{id}/follow {following}` → `{thread, owner}`.
+  - `PUT /api/projects/{reference}/subscription {level}` → `{projectId, level}`.
+  - `GET /api/subscriptions` → `{projects: [{projectId, level}], threads: [{kind, id,
+    following}]}`: every choice the owner has made, for the app to hold.
 
 ## 5. Snapshot cursor
 

@@ -5,6 +5,7 @@ import dev.wildware.feed.server.domain.AgentWork
 import dev.wildware.feed.server.domain.AgentWork.Subscription
 import dev.wildware.feed.server.domain.Agents
 import dev.wildware.feed.server.domain.DomainError
+import dev.wildware.feed.server.domain.Subscriptions
 import dev.wildware.feed.server.domain.invalid
 import dev.wildware.feed.server.domain.notFound
 import dev.wildware.feed.server.events.AppEvent
@@ -23,6 +24,10 @@ import kotlinx.serialization.json.jsonPrimitive
  * (each handed to a client once), the `answer` to one of the agent's requests, and the owner's
  * `reaction` on its lines. Frames carry no ids; there is no replay. Ends within about five seconds
  * of the token being revoked (decided fix 11).
+ *
+ * With no `?project=` it hears what the agent follows on the server ([Subscriptions]), read afresh
+ * on every event, so a new subscription takes effect without reconnecting. `?project=` (older
+ * bridges) names the projects instead, and still hears followed threads and mentions anywhere.
  */
 internal suspend fun ApplicationCall.agentStream(app: App, agent: Agents.Agent, token: String) {
     val subscribed = try {
@@ -88,7 +93,7 @@ private const val MESSAGE_LIMIT = 5
 private const val CLIENT_ID_MAX = 200
 private val WATCHED = setOf(
     "message.created", "message.deleted", "messages.read", "update.updated", "message.updated",
-    "reaction.updated", "request.created", "request.answered",
+    "reaction.updated", "request.created", "request.answered", "subscriptions.updated",
 )
 
 private fun ApplicationCall.subscription(app: App): Subscription {

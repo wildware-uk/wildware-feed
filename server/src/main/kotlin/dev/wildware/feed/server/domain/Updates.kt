@@ -59,6 +59,10 @@ class Updates(private val feed: Feed) {
         if (mediaIds.isNotEmpty()) FeedAttachments.attachMedia(db, mediaIds, "update_id", id, "agent_id", agentId)
         if (embeds.isNotEmpty()) FeedAttachments.attachEmbeds(db, embeds, "update_id", id, agentId, author, feed.now())
         if (apps.isNotEmpty()) FeedAttachments.attachApps(db, apps, CardRef("update", id), agentId, author, feed.now())
+        Subscriptions(db, feed.clock).run {
+            followProject(Subscriptions.agent(agentId), project.id, afterSeq = 0)
+            followThread(Subscriptions.agent(agentId), Subscriptions.Thread("update", id), project.id)
+        }
         feed.publish("update.created", buildJsonObject {
             put("updateId", update.id); put("projectId", update.projectId); put("agentId", update.agentId)
         })

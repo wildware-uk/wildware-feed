@@ -122,6 +122,8 @@ class Apns(private val app: App, private val settings: Config.Apns, private val 
         val reply: Pair<String, String>? = null,
         val extra: List<Pair<String, JsonElement>> = emptyList(),
         val about: dev.wildware.feed.server.domain.AlertPrefs.About = dev.wildware.feed.server.domain.AlertPrefs.About(category.lowercase()),
+        /** Whether the owner follows what this is about (migration 052); a phone's own preferences come after. */
+        val followed: Boolean = true,
     )
 
     fun devices(): List<PushDevice> = app.db.query(
@@ -140,6 +142,7 @@ class Apns(private val app: App, private val settings: Config.Apns, private val 
 
     fun alertFor(event: AppEvent): Alert? {
         fun id(key: String) = (event.payload[key] as? JsonPrimitive)?.content
+        val follows = dev.wildware.feed.server.domain.Subscriptions(app.db, app.clock)
         return when (event.type) {
             "request.created" -> {
                 val requestId = id("requestId") ?: return null
@@ -151,6 +154,7 @@ class Apns(private val app: App, private val settings: Config.Apns, private val 
                     about = dev.wildware.feed.server.domain.AlertPrefs.About(
                         "request", priority = request.priority, agentId = request.agentId, projectSlug = slug(request.projectId),
                     ),
+                    followed = follows.ownerHearsRequest(request.id, request.projectId, request.priority),
                 )
             }
             "update.created" -> {
@@ -159,6 +163,7 @@ class Apns(private val app: App, private val settings: Config.Apns, private val 
                 Alert(
                     built.message, "UPDATE", thread(built.projectId), built.projectId, built.body, reply = "update" to updateId,
                     about = dev.wildware.feed.server.domain.AlertPrefs.About("update", built.level, built.priority, built.agentId, slug(built.projectId)),
+                    followed = follows.ownerHearsUpdate(built.projectId, built.priority),
                 )
             }
             "message.created" -> {
@@ -167,6 +172,7 @@ class Apns(private val app: App, private val settings: Config.Apns, private val 
                 Alert(
                     built.message, "MESSAGE", thread(built.projectId), built.projectId, built.body, reply = "answers" to messageId,
                     about = dev.wildware.feed.server.domain.AlertPrefs.About(if (built.answered) "message" else "comment"),
+                    followed = follows.ownerHearsMessage(messageId, built.answered),
                 )
             }
             "pairing.created" -> {
@@ -183,6 +189,8 @@ class Apns(private val app: App, private val settings: Config.Apns, private val 
     fun start(): () -> Unit {
         val stop = app.bus.subscribe { event ->
             val alert = runCatching { alertFor(event) }.onFailure { System.err.println("apple push failed: $it") }.getOrNull() ?: return@subscribe
+            // What the owner follows decides whether to alert at all; each phone's preferences then decide where.
+            if (!alert.followed) return@subscribe
             val now = app.clock()
             // Each phone's own projects, and its own kinds, levels and priorities (migration 047).
             val wanted = devices().filter {

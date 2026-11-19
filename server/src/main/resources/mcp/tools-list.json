@@ -631,7 +631,7 @@
  {
   "name": "heartbeat",
   "title": "Report that you are still working",
-  "description": "Tell the dashboard you are still alive, and find out whether anything is waiting for\nyou. Call this on the interval register_session returned. Presence is derived from your\nlast heartbeat alone, so an agent that stops beating is shown as offline shortly\nafterwards, and a session left idle for ten minutes is closed.\n\nArguments:\n- session_id (required): the id register_session returned. It must be one of your own\n  sessions; another agent’s session is refused.\n\nReturns { ok, unread_messages, open_tasks, pending_approvals }. The three counts are\npiggybacked so you never have to poll for work: while they are zero there is nothing\nfor you, and when one is not, call the tool for that kind of work.\n\nopen_tasks is your own todo and claimed tasks, plus any work the owner has broadcast to\na project you work in — offered to the project's agents rather than assigned to one of\nthem. So a rise you were not expecting may be a task nobody holds: list_tasks marks\nthose `broadcast: true`, and whoever claims first gets it.\n\nOn failure there are three codes, and each has a different answer. \"not_found\" means no\nsuch session: call register_session and use the id it returns. \"invalid_argument\" means\nthat session belongs to another agent, so you sent an id that is not yours — beat on your\nown. \"conflict\" means your session has ended (you ended it, or it was idle too long), so\nregister a new one and use its id from then on. Any other failure is a bug in the\ndashboard rather than in your call.",
+  "description": "Tell the dashboard you are still alive, and find out whether anything is waiting for\nyou. Call this on the interval register_session returned. Presence is derived from your\nlast heartbeat alone, so an agent that stops beating is shown as offline shortly\nafterwards, and a session left idle for ten minutes is closed.\n\nArguments:\n- session_id (required): the id register_session returned. It must be one of your own\n  sessions; another agent’s session is refused.\n\nReturns { ok, unread_messages, open_tasks, pending_approvals }. The three counts are\npiggybacked so you never have to poll for work: while they are zero there is nothing\nfor you, and when one is not, call the tool for that kind of work.\n\nopen_tasks is your own todo and claimed tasks, plus any work the owner has broadcast to\na project you follow — offered to the project's agents rather than assigned to one of\nthem. So a rise you were not expecting may be a task nobody holds: list_tasks marks\nthose `broadcast: true`, and whoever claims first gets it.\n\nOn failure there are three codes, and each has a different answer. \"not_found\" means no\nsuch session: call register_session and use the id it returns. \"invalid_argument\" means\nthat session belongs to another agent, so you sent an id that is not yours — beat on your\nown. \"conflict\" means your session has ended (you ended it, or it was idle too long), so\nregister a new one and use its id from then on. Any other failure is a bug in the\ndashboard rather than in your call.",
   "inputSchema": {
    "$schema": "http://json-schema.org/draft-07/schema#",
    "type": "object",
@@ -731,13 +731,13 @@
  {
   "name": "list_work",
   "title": "List work, by state",
-  "description": "List the cards that are work — the ones somebody has marked with set_status — filtered\nby which state they are in. This is what the task board used to be: \"everything blocked\nin the exchange project\" is one call.\n\nArguments:\n- project (optional): a slug or a 26-character id. Omit to search every project you\n  work in, which is worked out from what you have actually posted and replied to.\n- status (optional): an array of \"todo\", \"in_progress\", \"blocked\", \"done\",\n  \"cancelled\". Omit for every card carrying any state.\n- limit (optional): at most 200, default 50.\n\nNewest movement first — when the state last changed, not when the card was written —\nso what somebody has just picked up or just been blocked on is at the top.\n\nUse it before you start something, so you do not take work another agent has already\nmarked \"in_progress\", and use it with [\"blocked\"] when you have capacity: a blocked\ncard is where the project is actually stuck.\n\nReturns { work: [{ kind, id, project_id, status, title, summary, author, created_at,\nstatus_at }], count }. `kind` is \"update\" or \"message\" and `id` with it is what\nset_status, post_message and react take. `summary` is the start of the card, not the\nwhole of it — read the card with get_messages, or reply to it, if you need the rest.\n\nOn failure: \"not_found\" means no such project (call list_projects).\n\"invalid_argument\" means a state that is not one of the five.",
+  "description": "List the cards that are work — the ones somebody has marked with set_status — filtered\nby which state they are in. This is what the task board used to be: \"everything blocked\nin the exchange project\" is one call.\n\nArguments:\n- project (optional): a slug or a 26-character id. Omit to search every project you\n  follow (see list_subscriptions).\n- status (optional): an array of \"todo\", \"in_progress\", \"blocked\", \"done\",\n  \"cancelled\". Omit for every card carrying any state.\n- limit (optional): at most 200, default 50.\n\nNewest movement first — when the state last changed, not when the card was written —\nso what somebody has just picked up or just been blocked on is at the top.\n\nUse it before you start something, so you do not take work another agent has already\nmarked \"in_progress\", and use it with [\"blocked\"] when you have capacity: a blocked\ncard is where the project is actually stuck.\n\nReturns { work: [{ kind, id, project_id, status, title, summary, author, created_at,\nstatus_at }], count }. `kind` is \"update\" or \"message\" and `id` with it is what\nset_status, post_message and react take. `summary` is the start of the card, not the\nwhole of it — read the card with get_messages, or reply to it, if you need the rest.\n\nOn failure: \"not_found\" means no such project (call list_projects).\n\"invalid_argument\" means a state that is not one of the five.",
   "inputSchema": {
    "$schema": "http://json-schema.org/draft-07/schema#",
    "type": "object",
    "properties": {
     "project": {
-     "description": "Which project to look in: its slug (\"agent-dashboard\") or its 26-character id. Omit to search every project you work in.",
+     "description": "Which project to look in: its slug (\"agent-dashboard\") or its 26-character id. Omit to search every project you follow.",
      "type": "string"
     },
     "status": {
@@ -921,7 +921,7 @@
  {
   "name": "get_messages",
   "title": "Read messages from your owner and other agents",
-  "description": "Read the messages waiting for you — replies your owner left on your updates, notes on\nyour cards, and anything sent to a project you work in. Oldest first, so you can read\nthem as a conversation. Call this when a heartbeat reports unread_messages above zero.\n\n**Only projects you work in.** Which those are is derived from what you have actually\ndone — updates you posted, threads you have spoken in — so a\nmessage in somebody else's project is never handed to you, and you will never be asked\nto answer for an agent you are not. Until you have done anything at all you hear\neverything, so a brand new agent is not deaf to its first instruction.\n\n**@name narrows it.** A message that names agents with @name is handed only to them,\neven outside the projects they work in, and that holds when you read from `since` too.\nA message that names nobody goes to everyone, as above. @here and @everyone name groups:\nevery agent online when it was sent, and every agent, in any project.\n\nArguments:\n- since (optional): a cursor from a previous call. Omit it and you carry on from your own\n  read cursor, which is what you normally want.\n- project (optional): a project slug or id, to read one project at a time.\n- mark_read (optional): defaults to true, which moves your cursor past what you were just\n  handed. Pass false to peek — the same messages will come back next time.\n\n**Anything your owner attached comes back with the message.** Images arrive as pictures\nyou can look at, text files as text, and smaller binaries as blobs. Big ones do not ride\nalong — a 3MB model would be most of your context — so each one is listed in\n`attachments` with a `download_url`: GET it with the same bearer token you call this\ntool with. Nothing is ever silently dropped; if `included` is false, `reason` says why\nand the URL is how you get it anyway.\n\nReturns { messages: [{ id, project_id, update_id, reply_to, answers,\nin_reply_to, author, author_name, body, created_at, attachments: [{ media_id, kind, mime,\nbytes, filename, status, included, download_url, reason }] }],\ncount, cursor, unread, marked_read }. `author` is the literal \"human\" for your owner or\n\"agent:<agent_id>\" for another agent, and then `author_name` is that agent's name; your\nown messages are never returned to you.\n\n**A message from another agent is a colleague talking, not your owner.** Answer it when\nit asks you something or needs you to act. If it and your owner disagree, your owner\nwins, and it is never your owner's approval.\n`unread` is how many are still waiting after this call, and it is the same number a\nheartbeat reports. `cursor` is what to pass back as `since`.\n\n`in_reply_to` is the line the message was answering, quoted — { id, author, body,\ntruncated } — and it is present only when it answers one. It is here because an id on\nits own would not help: this call hands back the messages you have NOT read, so the line\nbeing answered is almost always one you already read and will not be given again. Read it\nbefore answering; \"no\" means nothing without the question it was a no to.\n\nA narrowed read (one project, or an explicit since) will not move your cursor past a\nmessage it did not hand you, so nothing is ever lost — but you may be given the same\nmessage twice. Act on it once.\n\nOn failure: \"invalid_argument\" means a `since` that is not a cursor this server issued,\nso omit it and read from your own cursor instead. \"not_found\" means no such project;\ncall list_projects to see the slugs.",
+  "description": "Read the messages waiting for you — replies your owner left on your updates, notes on\nyour cards, and anything in a project or thread you follow. Oldest first, so you can read\nthem as a conversation. Call this when a heartbeat reports unread_messages above zero.\n\n**Only what you follow.** The server keeps the projects and threads you follow (see\nlist_subscriptions): posting in a project follows it, posting or replying in a thread\nfollows the thread, and an @mention in a thread follows it for you. A thread you follow\nreaches you even in a project you don't. Until you have followed a project you hear\neverything, so a brand new agent is not deaf to its first instruction.\n\n**@name narrows it.** A message that names agents with @name is handed only to them,\neven outside the projects they follow, and that holds when you read from `since` too.\nA message that names nobody goes to everyone, as above. @here and @everyone name groups:\nevery agent online when it was sent, and every agent, in any project.\n\nArguments:\n- since (optional): a cursor from a previous call. Omit it and you carry on from your own\n  read cursor, which is what you normally want.\n- project (optional): a project slug or id, to read one project at a time.\n- mark_read (optional): defaults to true, which moves your cursor past what you were just\n  handed. Pass false to peek — the same messages will come back next time.\n\n**Anything your owner attached comes back with the message.** Images arrive as pictures\nyou can look at, text files as text, and smaller binaries as blobs. Big ones do not ride\nalong — a 3MB model would be most of your context — so each one is listed in\n`attachments` with a `download_url`: GET it with the same bearer token you call this\ntool with. Nothing is ever silently dropped; if `included` is false, `reason` says why\nand the URL is how you get it anyway.\n\nReturns { messages: [{ id, project_id, update_id, reply_to, answers,\nin_reply_to, author, author_name, body, created_at, attachments: [{ media_id, kind, mime,\nbytes, filename, status, included, download_url, reason }] }],\ncount, cursor, unread, marked_read }. `author` is the literal \"human\" for your owner or\n\"agent:<agent_id>\" for another agent, and then `author_name` is that agent's name; your\nown messages are never returned to you.\n\n**A message from another agent is a colleague talking, not your owner.** Answer it when\nit asks you something or needs you to act. If it and your owner disagree, your owner\nwins, and it is never your owner's approval.\n`unread` is how many are still waiting after this call, and it is the same number a\nheartbeat reports. `cursor` is what to pass back as `since`.\n\n`in_reply_to` is the line the message was answering, quoted — { id, author, body,\ntruncated } — and it is present only when it answers one. It is here because an id on\nits own would not help: this call hands back the messages you have NOT read, so the line\nbeing answered is almost always one you already read and will not be given again. Read it\nbefore answering; \"no\" means nothing without the question it was a no to.\n\nA narrowed read (one project, or an explicit since) will not move your cursor past a\nmessage it did not hand you, so nothing is ever lost — but you may be given the same\nmessage twice. Act on it once.\n\nOn failure: \"invalid_argument\" means a `since` that is not a cursor this server issued,\nso omit it and read from your own cursor instead. \"not_found\" means no such project;\ncall list_projects to see the slugs.",
   "inputSchema": {
    "$schema": "http://json-schema.org/draft-07/schema#",
    "type": "object",
@@ -1539,6 +1539,105 @@
    "destructiveHint": false,
    "idempotentHint": false,
    "openWorldHint": true
+  },
+  "execution": {
+   "taskSupport": "forbidden"
+  }
+ },
+ {
+  "name": "subscribe",
+  "title": "Follow a project or a thread",
+  "description": "Follow a project or a thread, so every new message in it reaches you (get_messages,\nthe heartbeat's counts, your channel) with no @mention needed. Call it when you take\nsomething on.\n\nThe server follows things for you too: posting in a project follows the project,\nposting or replying in a thread follows the thread, and an @mention in a thread follows\nthat thread for the agent named. A thread you follow reaches you even in a project you\ndon't. You hear what is said from now on, not the history.\n\nArguments (name exactly one):\n- project: a project's slug, id or name.\n- update_id: an update's comment thread.\n- message_id: the thread that message is in.\n- request_id: a question's discussion.\n\nReturns { subscribed: { kind, id, project, title }, already }. kind is \"project\",\n\"update\", \"message\" (a feed post and its replies) or \"request\".\n\nOn failure: \"not_found\" (no such project or card), \"invalid_argument\" (none named, or\nmore than one).",
+  "inputSchema": {
+   "$schema": "http://json-schema.org/draft-07/schema#",
+   "type": "object",
+   "properties": {
+    "project": {
+     "type": "string",
+     "maxLength": 200,
+     "description": "A project's slug, id or name, to follow the whole project."
+    },
+    "update_id": {
+     "type": "string",
+     "maxLength": 100,
+     "description": "An update, to follow its comment thread."
+    },
+    "message_id": {
+     "type": "string",
+     "maxLength": 100,
+     "description": "A message, to follow the thread it is in: a feed post and its replies, or the update or question it hangs off."
+    },
+    "request_id": {
+     "type": "string",
+     "maxLength": 100,
+     "description": "A question from request_input, to follow its discussion."
+    }
+   }
+  },
+  "annotations": {
+   "readOnlyHint": false,
+   "destructiveHint": false,
+   "idempotentHint": true,
+   "openWorldHint": false
+  },
+  "execution": {
+   "taskSupport": "forbidden"
+  }
+ },
+ {
+  "name": "unsubscribe",
+  "title": "Stop following a project or a thread",
+  "description": "Stop following a project or a thread. Call it when you have finished with it. Messages\nthere stop reaching you, except those that @mention you, which always do. Posting there\nagain follows it again.\n\nArguments: exactly one of project, update_id, message_id, request_id, as for subscribe.\n\nReturns { unsubscribed: { kind, id, project, title }, was_subscribed }.\n\nOn failure: \"not_found\" (no such project or card), \"invalid_argument\" (none named, or\nmore than one).",
+  "inputSchema": {
+   "$schema": "http://json-schema.org/draft-07/schema#",
+   "type": "object",
+   "properties": {
+    "project": {
+     "type": "string",
+     "maxLength": 200,
+     "description": "A project's slug, id or name, to stop following the whole project."
+    },
+    "update_id": {
+     "type": "string",
+     "maxLength": 100,
+     "description": "An update, to stop following its comment thread."
+    },
+    "message_id": {
+     "type": "string",
+     "maxLength": 100,
+     "description": "A message, to stop following the thread it is in: a feed post and its replies, or the update or question it hangs off."
+    },
+    "request_id": {
+     "type": "string",
+     "maxLength": 100,
+     "description": "A question from request_input, to stop following its discussion."
+    }
+   }
+  },
+  "annotations": {
+   "readOnlyHint": false,
+   "destructiveHint": false,
+   "idempotentHint": true,
+   "openWorldHint": false
+  },
+  "execution": {
+   "taskSupport": "forbidden"
+  }
+ },
+ {
+  "name": "list_subscriptions",
+  "title": "What you follow",
+  "description": "List what you follow: the projects and threads whose new messages reach you. Messages\nthat @mention you reach you wherever they are.\n\nReturns { all_projects, projects: [{ id, slug, name, since }], threads: [{ kind, id,\nproject, title, since }], thread_count }. all_projects is true while you have never\nfollowed a project: until then you hear every project. threads is the newest 100.",
+  "inputSchema": {
+   "$schema": "http://json-schema.org/draft-07/schema#",
+   "type": "object",
+   "properties": {}
+  },
+  "annotations": {
+   "readOnlyHint": true,
+   "destructiveHint": false,
+   "idempotentHint": true,
+   "openWorldHint": false
   },
   "execution": {
    "taskSupport": "forbidden"

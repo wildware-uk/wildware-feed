@@ -208,5 +208,173 @@
     "taskSupport": "forbidden"
    }
   }
+ },
+ {
+  "tool": "get_messages",
+  "path": [
+   "description"
+  ],
+  "why": "Subscriptions: the server keeps what each agent follows, so a bridge needs no project list, and an @mention follows the thread.",
+  "replace": "and anything sent to a project you work in.",
+  "with": "and anything in a project or thread you follow."
+ },
+ {
+  "tool": "get_messages",
+  "path": [
+   "description"
+  ],
+  "why": "Subscriptions: the server keeps what each agent follows, so a bridge needs no project list, and an @mention follows the thread.",
+  "replace": "**Only projects you work in.** Which those are is derived from what you have actually\ndone — updates you posted, threads you have spoken in — so a\nmessage in somebody else's project is never handed to you, and you will never be asked\nto answer for an agent you are not. Until you have done anything at all you hear\neverything, so a brand new agent is not deaf to its first instruction.\n",
+  "with": "**Only what you follow.** The server keeps the projects and threads you follow (see\nlist_subscriptions): posting in a project follows it, posting or replying in a thread\nfollows the thread, and an @mention in a thread follows it for you. A thread you follow\nreaches you even in a project you don't. Until you have followed a project you hear\neverything, so a brand new agent is not deaf to its first instruction.\n"
+ },
+ {
+  "tool": "get_messages",
+  "path": [
+   "description"
+  ],
+  "why": "Subscriptions: the server keeps what each agent follows, so a bridge needs no project list, and an @mention follows the thread.",
+  "replace": "even outside the projects they work in, and that holds",
+  "with": "even outside the projects they follow, and that holds"
+ },
+ {
+  "tool": "list_work",
+  "path": [
+   "description"
+  ],
+  "why": "Subscriptions: the server keeps what each agent follows, so a bridge needs no project list, and an @mention follows the thread.",
+  "replace": "Omit to search every project you\n  work in, which is worked out from what you have actually posted and replied to.",
+  "with": "Omit to search every project you\n  follow (see list_subscriptions)."
+ },
+ {
+  "tool": "list_work",
+  "path": [
+   "inputSchema",
+   "properties",
+   "project",
+   "description"
+  ],
+  "why": "Subscriptions: the server keeps what each agent follows, so a bridge needs no project list, and an @mention follows the thread.",
+  "replace": "Omit to search every project you work in.",
+  "with": "Omit to search every project you follow."
+ },
+ {
+  "tool": "heartbeat",
+  "path": [
+   "description"
+  ],
+  "why": "Subscriptions: the server keeps what each agent follows, so a bridge needs no project list, and an @mention follows the thread.",
+  "replace": "a project you work in",
+  "with": "a project you follow"
+ },
+ {
+  "tool": "subscribe",
+  "why": "Subscriptions: the server keeps what each agent follows, so a bridge needs no project list, and an @mention follows the thread.",
+  "add": {
+   "name": "subscribe",
+   "title": "Follow a project or a thread",
+   "description": "Follow a project or a thread, so every new message in it reaches you (get_messages,\nthe heartbeat's counts, your channel) with no @mention needed. Call it when you take\nsomething on.\n\nThe server follows things for you too: posting in a project follows the project,\nposting or replying in a thread follows the thread, and an @mention in a thread follows\nthat thread for the agent named. A thread you follow reaches you even in a project you\ndon't. You hear what is said from now on, not the history.\n\nArguments (name exactly one):\n- project: a project's slug, id or name.\n- update_id: an update's comment thread.\n- message_id: the thread that message is in.\n- request_id: a question's discussion.\n\nReturns { subscribed: { kind, id, project, title }, already }. kind is \"project\",\n\"update\", \"message\" (a feed post and its replies) or \"request\".\n\nOn failure: \"not_found\" (no such project or card), \"invalid_argument\" (none named, or\nmore than one).",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "project": {
+      "type": "string",
+      "maxLength": 200,
+      "description": "A project's slug, id or name, to follow the whole project."
+     },
+     "update_id": {
+      "type": "string",
+      "maxLength": 100,
+      "description": "An update, to follow its comment thread."
+     },
+     "message_id": {
+      "type": "string",
+      "maxLength": 100,
+      "description": "A message, to follow the thread it is in: a feed post and its replies, or the update or question it hangs off."
+     },
+     "request_id": {
+      "type": "string",
+      "maxLength": 100,
+      "description": "A question from request_input, to follow its discussion."
+     }
+    }
+   },
+   "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": true,
+    "openWorldHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  }
+ },
+ {
+  "tool": "unsubscribe",
+  "why": "Subscriptions: the server keeps what each agent follows, so a bridge needs no project list, and an @mention follows the thread.",
+  "add": {
+   "name": "unsubscribe",
+   "title": "Stop following a project or a thread",
+   "description": "Stop following a project or a thread. Call it when you have finished with it. Messages\nthere stop reaching you, except those that @mention you, which always do. Posting there\nagain follows it again.\n\nArguments: exactly one of project, update_id, message_id, request_id, as for subscribe.\n\nReturns { unsubscribed: { kind, id, project, title }, was_subscribed }.\n\nOn failure: \"not_found\" (no such project or card), \"invalid_argument\" (none named, or\nmore than one).",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "project": {
+      "type": "string",
+      "maxLength": 200,
+      "description": "A project's slug, id or name, to stop following the whole project."
+     },
+     "update_id": {
+      "type": "string",
+      "maxLength": 100,
+      "description": "An update, to stop following its comment thread."
+     },
+     "message_id": {
+      "type": "string",
+      "maxLength": 100,
+      "description": "A message, to stop following the thread it is in: a feed post and its replies, or the update or question it hangs off."
+     },
+     "request_id": {
+      "type": "string",
+      "maxLength": 100,
+      "description": "A question from request_input, to stop following its discussion."
+     }
+    }
+   },
+   "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": true,
+    "openWorldHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  }
+ },
+ {
+  "tool": "list_subscriptions",
+  "why": "Subscriptions: the server keeps what each agent follows, so a bridge needs no project list, and an @mention follows the thread.",
+  "add": {
+   "name": "list_subscriptions",
+   "title": "What you follow",
+   "description": "List what you follow: the projects and threads whose new messages reach you. Messages\nthat @mention you reach you wherever they are.\n\nReturns { all_projects, projects: [{ id, slug, name, since }], threads: [{ kind, id,\nproject, title, since }], thread_count }. all_projects is true while you have never\nfollowed a project: until then you hear every project. threads is the newest 100.",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {}
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "idempotentHint": true,
+    "openWorldHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  }
  }
 ]

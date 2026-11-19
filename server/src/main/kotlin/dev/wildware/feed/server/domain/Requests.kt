@@ -167,6 +167,7 @@ class Requests(
         }
 
         val request = OwnerRequest(row)
+        Subscriptions(db, clock).followThread(Subscriptions.agent(agentId), Subscriptions.Thread("request", request.id), request.projectId)
         val event = bus.publish("request.created", buildJsonObject {
             put("requestId", request.id)
             put("agentId", request.agentId)

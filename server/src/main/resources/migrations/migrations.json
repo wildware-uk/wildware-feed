@@ -355,5 +355,12 @@
   "file": "051-oauth.sql",
   "rebuildsTables": false,
   "checksum": "512d226797c16c7b25916c54e0be6329fa90352a496c00783481b3625218d12f"
+ },
+ {
+  "version": 52,
+  "name": "subscriptions",
+  "file": "052-subscriptions.sql",
+  "rebuildsTables": false,
+  "checksum": "29e9657d78daa8927c8650c5942453e060d3c226873b5613202299f868389e1e"
  }
 ]

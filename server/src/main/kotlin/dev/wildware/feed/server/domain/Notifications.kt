@@ -23,6 +23,8 @@ class Notifications(private val db: Database, private val bus: Bus, private val 
         val agentId: String?,
         val title: String,
         val body: String,
+        /** A message that answers the owner, or is in a thread they spoke in. */
+        val toOwner: Boolean = false,
     )
 
     /** Listen for the three events that ring the bell; call the result to stop. */
@@ -37,12 +39,25 @@ class Notifications(private val db: Database, private val bus: Bus, private val 
                 "request.created" -> id("requestId")?.let(::forRequest)
                 else -> return
             }
-            if (input != null) record(input)
+            if (input != null && followed(input)) record(input)
         } catch (e: Exception) {
             // The write it is about has already happened; a missing bell row must not undo it.
             System.err.println("recording a notification failed: $e")
         }
     }
+
+    /** Whether the owner follows what this is about (migration 052): a muted project rings no bell. */
+    private fun followed(input: New): Boolean {
+        val subs = Subscriptions(db, clock)
+        return when {
+            input.updateId != null -> subs.ownerHearsUpdate(input.projectId, priorityOf("updates", input.updateId))
+            input.requestId != null -> subs.ownerHearsRequest(input.requestId, input.projectId, priorityOf("approvals", input.requestId))
+            input.messageId != null -> subs.ownerHearsMessage(input.messageId, input.toOwner)
+            else -> true
+        }
+    }
+
+    private fun priorityOf(table: String, id: String): String? = db.one("SELECT priority FROM $table WHERE id = ?", id) { it.getString(1) }
 
     /** Insert one row (once per target) and publish `notification.created` for a new one. */
     fun record(input: New): String? {
@@ -94,13 +109,15 @@ class Notifications(private val db: Database, private val bus: Bus, private val 
         if (author == null || !author.startsWith("agent:") || author.length == "agent:".length) return null
         val agentId = author.removePrefix("agent:")
         val who = agentName(agentId)
+        val toOwner = repliesToOwner(replyTo, updateId, taskId)
         return New(
             kind = "reply",
             projectId = projectId,
             messageId = id,
             agentId = agentId,
-            title = if (repliesToOwner(replyTo, updateId, taskId)) "$who replied to you" else "$who commented",
+            title = if (toOwner) "$who replied to you" else "$who commented",
             body = firstLine(body ?: ""),
+            toOwner = toOwner,
         )
     }
 

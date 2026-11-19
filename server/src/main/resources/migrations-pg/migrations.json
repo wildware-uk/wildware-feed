@@ -28,5 +28,11 @@
   "name": "oauth",
   "file": "051-oauth.sql",
   "checksum": "9432af5635f7d62741f0345b602090b12998392f23e33e9e1da1a14176417b98"
+ },
+ {
+  "version": 52,
+  "name": "subscriptions",
+  "file": "052-subscriptions.sql",
+  "checksum": "8549f7dda8037032537a86b6493d394a837594ed2c5e71b846b3d9544b2f6f47"
  }
 ]
