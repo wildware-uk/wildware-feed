@@ -158,6 +158,8 @@ data class Reply(
     val embeds: List<Embed> = emptyList(),
     /** Agents reading it or thinking about it: "scout is thinking…". */
     val acks: Acks = Acks(),
+    /** When it was last changed, as "Edited Monday 3 August 2026 at 14:05"; null when never. Drawn as "edited". */
+    val edited: String? = null,
 )
 
 /**
@@ -296,6 +298,8 @@ sealed interface FeedItem {
         val critical: Boolean = false,
         /** Pinned above the rest of the feed. */
         val pinned: Boolean = false,
+        /** When it was last changed, as "Edited Monday 3 August 2026 at 14:05"; null when never. Drawn as "edited". */
+        val edited: String? = null,
     ) : Threaded {
         override val starter: Author get() = Author.AgentAuthor(agent)
     }
@@ -336,6 +340,8 @@ sealed interface FeedItem {
         val preset: String? = null,
         /** The owner's answer the dashboard refused, to retry or drop. Null when there is none. */
         val unsent: Unsent? = null,
+        /** When it was last changed, as "Edited Monday 3 August 2026 at 14:05"; null when never. Drawn as "edited". */
+        val edited: String? = null,
         /** The talk about the question before it is answered: its own thread, oldest first. */
         override val replies: List<Reply> = emptyList(),
         override val unreadReplies: Int = 0,
@@ -369,6 +375,8 @@ sealed interface FeedItem {
         val sending: Boolean = false,
         /** Questions an agent asked under the post itself, shown at the top of its thread. */
         val questions: List<Question> = emptyList(),
+        /** When it was last changed, as "Edited Monday 3 August 2026 at 14:05"; null when never. Drawn as "edited". */
+        val edited: String? = null,
         val tags: List<CardTag> = emptyList(),
         val fields: List<CardField> = emptyList(),
         /** Its work state, when someone marked it as work. */

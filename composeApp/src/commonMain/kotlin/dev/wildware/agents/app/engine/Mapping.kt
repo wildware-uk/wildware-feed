@@ -213,6 +213,7 @@ internal class FeedMapper(
                 high = update.priority == "high",
                 critical = update.priority == "critical",
                 pinned = pinned,
+                edited = editedLabel(update.editedAt),
             )
         }
         is PostCard -> FeedItem.Post(
@@ -233,6 +234,7 @@ internal class FeedMapper(
             reactions = reactions(reactions),
             sending = post.sending,
             questions = post.questions.map { it.toQuestion(agents, project, index) },
+            edited = editedLabel(post.message.editedAt),
             status = workStatus(status),
             pinned = pinned,
             // Work says where it has got to, which answers "has anybody got this" better.
@@ -316,6 +318,7 @@ internal class FeedMapper(
             // As the website does: a choice question opens on the agent's default, when it is one of the options.
             preset = config?.defaultValue?.takeIf { kind == QuestionKind.Choice && it in options },
             unsent = index.refused(id)?.let(::unsent),
+            edited = editedLabel(request.editedAt),
         )
     }
 
@@ -344,6 +347,7 @@ internal class FeedMapper(
                 files = line.media.files(),
                 embeds = line.embeds.embeds(),
                 acks = acks(line.acks, agents),
+                edited = editedLabel(line.message.editedAt),
             )
         }
     }
@@ -487,6 +491,17 @@ internal class FeedMapper(
             else -> dayLabel(day).let { if (it == "Today") "" else it }
         }
     }
+
+    /** The whole instant, as the website writes it: "Monday 3 August 2026 at 14:05". */
+    fun exactTime(millis: Long): String {
+        val then = Instant.fromEpochMilliseconds(millis).toLocalDateTime(zone)
+        val weekday = then.dayOfWeek.name.lowercase().replaceFirstChar { it.uppercase() }
+        val month = then.month.name.lowercase().replaceFirstChar { it.uppercase() }
+        return "$weekday ${then.day} $month ${then.year} at ${then.hour.toString().padStart(2, '0')}:${then.minute.toString().padStart(2, '0')}"
+    }
+
+    /** Stated, never silent: a card that was rewritten says when. Null when it never was. */
+    fun editedLabel(editedAt: Long?): String? = editedAt?.takeIf { it > 0 }?.let { "Edited ${exactTime(it)}" }
 
     private fun dayOf(millis: Long): LocalDate = Instant.fromEpochMilliseconds(millis).toLocalDateTime(zone).date
 

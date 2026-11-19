@@ -688,6 +688,22 @@ class ScreenshotTest {
         }
     }
 
+    /** Cards and a reply the agent rewrote say "edited" after their time, as on the website. */
+    @Test
+    fun editedMarks() {
+        val items = FakeFeed.state.sections.flatMap { it.items }
+        val q = items.filterIsInstance<FeedItem.Question>().first().copy(edited = "Edited Wednesday 18 November 2026 at 10:05")
+        val u = items.filterIsInstance<FeedItem.Update>().first { it.replies.isNotEmpty() }.let { u ->
+            u.copy(edited = "Edited Wednesday 18 November 2026 at 10:20", replies = u.replies.mapIndexed { i, r -> if (i == 0) r.copy(edited = "Edited Wednesday 18 November 2026 at 10:21") else r })
+        }
+        val state = FakeFeed.state.copy(sections = listOf(FakeFeed.state.sections.first().copy(items = listOf(q, u))))
+        for (dark in listOf(false, true)) {
+            val mode = if (dark) "dark" else "light"
+            shoot("phone-$mode-edited", Size.Phone, dark) { AgentsPreview(dark = dark, state = state, safeArea = Size.Phone.safeArea) }
+            shoot("desktop-$mode-edited", Size.Desktop, dark) { AgentsPreview(dark = dark, state = state, safeArea = Size.Desktop.safeArea) }
+        }
+    }
+
     /** Increase Contrast on, in both themes, and the largest common text size. */
     @Test
     fun accessibilityVariants() {

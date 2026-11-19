@@ -2,6 +2,7 @@ package dev.wildware.agents.app.feed
 
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.semantics.selected
 import androidx.compose.runtime.Immutable
 import dev.wildware.agents.app.ProductName
@@ -112,11 +113,13 @@ private fun CardHeader(
     /** Folding the card away; null where it can't fold (in its own thread). */
     fold: Fold? = null,
     critical: Boolean = false,
+    /** "Edited Monday 3 August 2026 at 14:05" when it was rewritten; drawn as "edited". */
+    edited: String? = null,
 ) {
     val colors = AgentTheme.colors
     val type = AgentTheme.type
     val spoken = listOfNotNull(
-        author.name, role, time, "pinned".takeIf { pinned }, "critical".takeIf { critical }, "high priority".takeIf { high && !critical },
+        author.name, role, time, edited, "pinned".takeIf { pinned }, "critical".takeIf { critical }, "high priority".takeIf { high && !critical },
         level?.label, status?.let { "status ${it.label}" },
     ).joinToString(", ")
     Row(
@@ -142,12 +145,22 @@ private fun CardHeader(
             }
             Spacer(Modifier.width(10.dp))
             MetaText(time, Modifier.clearAndSetSemantics { })
+            if (edited != null) EditedMark(Modifier.padding(start = 6.dp).clearAndSetSemantics { })
             if (pinned) Icon(Icons.Pin, null, tint = colors.accent, modifier = Modifier.padding(start = 8.dp).size(13.dp))
         }
         if (!compact) Chips(level, status, high, onStatus = onStatus, critical = critical)
         // First thing a reader reaches for on a long feed, and the one control that changes nothing.
         fold?.let { IconAction(if (it.folded) Icons.ChevronRight else Icons.ChevronDown, it.label, Modifier.padding(start = 4.dp), onClick = it.toggle) }
     }
+}
+
+/**
+ * "edited", as the website marks a card or line the agent rewrote: stated, never silent, so what the
+ * owner read earlier can be told apart from what it says now. The exact time is in what it reads out.
+ */
+@Composable
+internal fun EditedMark(modifier: Modifier = Modifier) {
+    Text("edited", modifier, color = AgentTheme.colors.textMuted, style = AgentTheme.type.meta.copy(fontStyle = FontStyle.Italic), maxLines = 1)
 }
 
 /** A card's fold: whether it is folded, what the control is called, and how to flip it. */
@@ -285,6 +298,7 @@ fun UpdateCard(
                 pinned = pinned,
                 fold = fold,
                 critical = item.critical,
+                edited = item.edited,
             )
             Column(Modifier.padding(start = indent, top = 8.dp)) {
                 if (density == Density.Compact) Chips(item.level, item.status, item.high, Modifier.padding(bottom = 8.dp), onStatus = chooseStatus, critical = item.critical)
@@ -481,6 +495,8 @@ fun QuestionCard(
                 )
             }
             if (item.critical) CriticalChip(Modifier.padding(start = 8.dp))
+            // The agent rewrote the question after asking it: what it says now isn't what it said then.
+            item.edited?.let { EditedMark(Modifier.padding(start = 8.dp).semantics { contentDescription = it }) }
             Box(Modifier.weight(1f).padding(start = if (phone) 6.dp else 8.dp, end = 8.dp)) {
                 // Inside a thread the project is already known.
                 if (showsProject() && !inThread) ProjectLabel(item.project)
@@ -818,6 +834,7 @@ fun PostCard(item: FeedItem.Post, modifier: Modifier = Modifier, density: Densit
                 onStatus = chooseStatus,
                 pinned = pinned,
                 fold = fold,
+                edited = item.edited,
             )
             Column(Modifier.padding(start = indent, top = 8.dp)) {
                 if (density == Density.Compact && item.status != null) Chips(null, item.status, modifier = Modifier.padding(bottom = 8.dp), onStatus = chooseStatus)

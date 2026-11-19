@@ -70,6 +70,18 @@ class MappingTest {
         EngineFeed(null, null, status, true, false, false, waiting, emptyList(), cards, 0, false, emptyList())
 
     @Test
+    fun anEditedUpdateAndReplySayWhen() {
+        val edited = update("u1", noon, "Title", "Body", replies = listOf(line("m1", "agent:a1", noon).let { it.copy(message = it.message.copy(editedAt = noon - 90 * 60_000)) }))
+        val card = edited.copy(update = edited.update.copy(editedAt = noon + 5 * 60_000))
+        val item = mapper.map(feed(listOf(card)), listOf(mega), emptyList(), emptyList(), null).sections.single().items.single() as FeedItem.Update
+        assertEquals("Edited Wednesday 18 November 2026 at 12:05", item.edited)
+        assertEquals("Edited Wednesday 18 November 2026 at 10:30", item.replies.single().edited)
+        // Never edited: nothing to say.
+        val plain = mapper.map(feed(listOf(update("u2", noon, "T", "B"))), listOf(mega), emptyList(), emptyList(), null).sections.single().items.single() as FeedItem.Update
+        assertEquals(null, plain.edited)
+    }
+
+    @Test
     fun anUntitledUpdateTakesItsFirstLineAsItsHeadline() {
         val state = mapper.map(feed(listOf(update("u1", noon, null, "**Disk** is full\n\nPrune the caches."))), listOf(mega), emptyList(), emptyList(), null)
         val item = state.sections.single().items.single() as FeedItem.Update

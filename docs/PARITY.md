@@ -59,7 +59,7 @@ It doesn't, beyond oldest first.
 | 18 | Offline answer | Done | — | Yes: outbox, "Answer waiting to send" | Yes | App only | — |
 | 19 | Discussion thread on a request | Done | Reply/react/acks under the controls (`RequestCard.svelte:686-705`) | Yes: Discuss opens the question's own thread (#53) | Yes: inline under the controls (#53) | — | P1 |
 | 20 | Reactions / tags / fields / pin on request | Open | Same as other cards | No | No | See rows 40-48 | P2 |
-| 21 | "edited" marker on request | Open | Shown when agent rewrote it (`:386-399`) | No | No | — | P2 |
+| 21 | "edited" marker on request | Done | Shown when agent rewrote it (`:386-399`) | Yes: "edited" by the agent's name; read out with the exact time | Yes | — | P2 |
 | 22 | Collapse request | Open | Fold to one line | No | No | See row 31 | P2 |
 | 23 | Answer from notification | Done | Web push SW: confirm/buttons/choice first two (`service-worker.ts:81-140`) | Yes, iOS: per-kind actions incl. text input, Face ID (`iosApp/Common/Notifications.swift`) | Partial: desktop notice opens card, no answer buttons (`desktop/NotificationRules.kt`) | iOS richer | — |
 | 24 | Answer from widget / Live Activity / Watch / Siri | App only | — | App only: StatusWidget answer buttons, Live Activity Yes/No, Watch Inbox, "Answer My Agents" intent | — | App only | — |
@@ -82,7 +82,7 @@ It doesn't, beyond oldest first.
 | **Card types and their controls** |||||||
 | 40 | Update card basics | Done | Level bar + badge, title, markdown body (`UpdateCard.svelte`) | Yes: level chip, title, markdown | Yes | — | — |
 | 41 | "High" priority chip on updates | Done | Red "High" when priority high (`UpdateCard.svelte:250-262`) | Yes: Red "High" chip | Yes | — | P1 |
-| 42 | "edited" marker on updates/messages | Open | "edited" + tooltip | No | No | — | P2 |
+| 42 | "edited" marker on updates/messages | Done | "edited" + tooltip | Yes: "edited" after the time on updates, posts and replies; read out with the exact time | Yes | No hover tooltip yet (see row 28) | P2 |
 | 43 | Work status chip | Done | To do / In progress / Blocked / Done / Cancelled (`status.ts`) | Yes: Status chip, changeable (PR #18) | Yes | — | — |
 | 44 | Mark as work / change status | Done | "Mark as work" menu of 5 states, "Not work" (`StatusChip.svelte:51-116`) | Yes: Mark as work and change status from the card menu (PR #18) | Yes | — | P0 |
 | 45 | Pin / unpin card | Done | Pin button on every card (`UpdateActions.svelte`, `CardActions.svelte`) | Yes: Menu Pin / Unpin | Yes | — | P1 |
