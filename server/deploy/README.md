@@ -15,6 +15,19 @@ are. It needs Java 21, and `ffmpeg` on `PATH` for video posters, transcodes and 
 `bin/feed-server` serves. `bin/feed-server <command>` is the admin CLI (`mint-token`,
 `hash-password`, `list-tokens`, `rename-token`, `revoke-token`, `help`).
 
+The distribution also holds `web/`, the web app (the Compose app built for browsers), which the
+server serves at its root: every path but `/api`, `/mcp` and `/media` is the app's, and any page
+path without a file opens `index.html`. `WEB_DIR` points it somewhere else. Add `-Pfeed.web=false`
+to leave it out, which skips the few minutes its build takes; the server then answers 404 there,
+as before.
+
+The web app signs in with the owner password and gets its device key as an `HttpOnly`,
+`SameSite=Strict` cookie (`feed_device`, `Secure` when `PUBLIC_BASE_URL` is https). A request that
+changes something on the strength of that cookie must come from the server's own page
+(`Sec-Fetch-Site: same-origin`, or a matching `Origin`), so the app has to be served from the same
+address as the API. Serving the bundle from another site would need CORS and a cross-site cookie,
+which the server does not offer.
+
 ## Docker
 
 ```sh

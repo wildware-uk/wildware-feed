@@ -24,6 +24,8 @@ RUN apt-get update \
 COPY --from=runtime /jre /opt/java
 COPY lib /opt/feed-server/lib
 COPY bin /opt/feed-server/bin
+# The web app, served at the site's root. The server finds it beside lib/.
+COPY web /opt/feed-server/web
 ENV JAVA_HOME=/opt/java
 ENV PATH=/opt/java/bin:/opt/feed-server/bin:$PATH
 ENV JAVA_OPTS="-XX:MaxRAMPercentage=75 -XX:+ExitOnOutOfMemoryError -Djava.awt.headless=true"

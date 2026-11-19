@@ -91,11 +91,14 @@ fun Application.feed(app: App) {
         oauthRoutes(app)
 
         // Anything else. Under /api the guard has already turned strangers away: the owner gets a
-        // JSON 404 (decided fix 12b). Elsewhere it is the site's own 404 page.
+        // JSON 404 (decided fix 12b). Elsewhere it is the web app, when this server has it, or a 404.
         route("{...}") {
             handle {
+                val web = app.web
                 if (Guard.isApi(call.request.path())) {
                     call.respondJson(404, Wire.error("not_found", "no such API route: ${call.request.path()}"))
+                } else if (web != null && Guard.isWebApp(call.request.path())) {
+                    web.serve(call)
                 } else {
                     call.respondRaw(404, "Not Found", "text/plain;charset=utf-8")
                 }
@@ -105,24 +108,32 @@ fun Application.feed(app: App) {
 }
 
 /**
- * The owner: a device key (`Authorization: Bearer`). The TS server also takes its web session
- * cookie; the Kotlin server does not, because the website is deprecated (spec/README.md, scope).
+ * The owner: a device key, as `Authorization: Bearer` (the apps) or the web app's cookie
+ * ([OwnerCookie]). The TS server's web session cookie is not taken: its website is retired.
  */
 fun App.isOwner(call: ApplicationCall): Boolean {
-    val bearer = Guard.bearer(call.request.headers["Authorization"]) ?: return false
-    return devices.authenticate(bearer) != null
+    val key = call.ownerKey() ?: return false
+    return devices.authenticate(key) != null
 }
 
 /**
  * The guard: every path that is not token-authed or public needs the owner. A stranger gets
- * `401 {"error":"unauthenticated"}` everywhere — there is no login page to redirect to.
+ * `401 {"error":"unauthenticated"}` everywhere — there is no login page to redirect to. The web
+ * app's own files are public, as any website's code is; it holds nothing of the owner's.
  */
 private suspend fun guardRefused(call: ApplicationCall, app: App): Boolean {
     val path = call.request.path()
     if (!Guard.requiresSession(path)) return false
-    if (app.isOwner(call)) return false
-    call.respondRaw(401, """{"error":"unauthenticated"}""", Wire.JSON)
-    return true
+    if (app.web != null && Guard.isWebApp(path)) return false
+    if (!app.isOwner(call)) {
+        call.respondRaw(401, """{"error":"unauthenticated"}""", Wire.JSON)
+        return true
+    }
+    if (call.keyIsCookie() && !call.cookieRequestAllowed(app.config)) {
+        call.respondRaw(403, """{"error":"forbidden","message":"this request did not come from the dashboard's own page"}""", Wire.JSON)
+        return true
+    }
+    return false
 }
 
 /** The socket peer, or ADDRESS_HEADER per adapter-node's rules: the login limiter's key. */

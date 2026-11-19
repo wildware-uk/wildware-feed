@@ -44,9 +44,28 @@ fun Route.deviceRoutes(app: App) {
                 }
                 PasswordCheck.Ok -> {
                     val (device, token) = app.devices.mint(name)
-                    call.respondOwner(201, minted(device, token))
+                    // The web app asks for its key as a cookie its code can't read, and is never shown it.
+                    if ((body["cookie"] as? JsonPrimitive)?.let { !it.isString && it.content == "true" } == true) {
+                        call.response.headers.append("Set-Cookie", OwnerCookie.set(token, app.config, call))
+                        call.respondOwner(201, minted(device, ""))
+                    } else {
+                        call.respondOwner(201, minted(device, token))
+                    }
                 }
             }
+        },
+    )
+    endpoint(
+        "/api/devices/sign-out",
+        HttpMethod.Post to {
+            // Signs this device out: its key stops working and the web app's cookie is cleared.
+            // Public, so a browser whose key is already revoked can still clear its cookie.
+            val key = call.ownerKey()
+            val device = key?.let { app.devices.authenticate(it) }
+            val allowed = !call.keyIsCookie() || call.cookieRequestAllowed(app.config)
+            val removed = device != null && allowed && app.devices.remove(device.id)
+            call.response.headers.append("Set-Cookie", OwnerCookie.clear(app.config, call))
+            call.respondOwner(200, buildJsonObject { put("signedOut", JsonPrimitive(removed)) })
         },
     )
     endpoint(
@@ -113,10 +132,9 @@ fun Route.deviceRoutes(app: App) {
     )
 }
 
-/** The device behind the bearer, or the TS server's 400 for a cookie caller. */
+/** The device behind the bearer or the web app's cookie, else the TS server's 400. */
 private fun ApplicationCall.currentDevice(app: App): String {
-    val bearer = Guard.bearer(request.headers["Authorization"])
-    val device = bearer?.let { app.devices.authenticate(it) }
+    val device = ownerKey()?.let { app.devices.authenticate(it) }
         ?: throw invalid("this needs a device key: send Authorization: Bearer <device token>")
     return device.id
 }

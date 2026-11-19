@@ -35,6 +35,11 @@ data class Config(
     /** FFMPEG_THREADS: ffmpeg's thread cap (null: ffmpeg decides). DERIVE_WORKERS: derivations at once. */
     val ffmpegThreads: Int? = null,
     val deriveWorkers: Int = 2,
+    /**
+     * WEB_DIR: the web app's bundle, served at the site's root. Unset: the `web` folder of the
+     * installed server, when it has one. Null: no web app; every page path answers 404.
+     */
+    val webDir: String? = null,
 ) {
     /** A private S3-compatible bucket, addressed path-style. [toString] leaves the secret out. */
     data class S3(val endpoint: String, val bucket: String, val accessKeyId: String, val secretAccessKey: String, val region: String) {
@@ -153,6 +158,7 @@ data class Config(
                 s3 = s3,
                 ffmpegThreads = env["FFMPEG_THREADS"]?.toIntOrNull()?.takeIf { it > 0 },
                 deriveWorkers = env["DERIVE_WORKERS"]?.toIntOrNull()?.takeIf { it > 0 } ?: 2,
+                webDir = env["WEB_DIR"]?.takeIf { it.isNotBlank() } ?: dev.wildware.feed.server.http.WebApp.besideInstall(),
             )
         }
 

@@ -1,4 +1,7 @@
+import java.io.File
 import java.time.Duration
+import java.util.zip.Deflater
+import java.util.zip.GZIPOutputStream
 
 plugins {
     alias(libs.plugins.kotlin.jvm)
@@ -54,3 +57,35 @@ val generateServerVersion by tasks.registering {
 }
 sourceSets.main { resources.srcDir(generateServerVersion) }
 
+
+/*
+ * The web app: composeApp's browser build, installed as `web/` beside `lib/`, where the server
+ * finds it and serves it at the site's root (WebApp.kt). Each big file gets a gzip copy beside it,
+ * sent to browsers that take gzip. `-Pfeed.web=false` leaves it out (the parity run has no use for it).
+ */
+val withWeb = providers.gradleProperty("feed.web").map { it != "false" }.getOrElse(true)
+
+val webBundle by tasks.registering(Sync::class) {
+    dependsOn(":composeApp:wasmJsBrowserDistribution")
+    from(rootProject.layout.projectDirectory.dir("composeApp/build/dist/wasmJs/productionExecutable"))
+    // Source maps are for debugging the build, not for the owner's browser.
+    exclude("**/*.map")
+    into(layout.buildDirectory.dir("web"))
+    doLast {
+        destinationDir.walkTopDown()
+            .filter { it.isFile && it.extension in setOf("wasm", "js", "html", "ttf", "json") && it.length() > 1024 }
+            .forEach { file ->
+                File(file.path + ".gz").outputStream().use { out ->
+                    object : GZIPOutputStream(out) {
+                        init { def.setLevel(Deflater.BEST_COMPRESSION) }
+                    }.use { gz -> file.inputStream().use { it.copyTo(gz) } }
+                }
+            }
+    }
+}
+
+if (withWeb) {
+    distributions.named("main") {
+        contents { from(webBundle) { into("web") } }
+    }
+}

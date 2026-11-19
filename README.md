@@ -50,13 +50,32 @@ A debug build installs beside a release one as `dev.wildware.agents.debug`; star
 `adb shell am start -n dev.wildware.agents.debug/dev.wildware.agents.android.MainActivity --ez sample true`
 to see the feed on made-up data.
 
+## In a browser
+
+The same Compose app, built for the web (Kotlin/Wasm), is served by the server itself: open your
+server's address (`https://<your server>/`) in a recent Chrome, Edge, Firefox or Safari and sign
+in with the owner password. The browser then appears in the device list like a phone, and is
+revoked there the same way.
+
+- The session is the browser's device key, kept in a cookie the page's own code can't read
+  (`HttpOnly`, `SameSite=Strict`). Nothing in the page's storage can sign anyone in.
+- Attach with the paperclip, by dragging files onto the message box, or by pasting a picture.
+  Videos play over the page in the browser's own player; files download through the browser.
+- Not on the web: system notifications (the bell still counts), the tray, Live Activities,
+  widgets, running a server ("This computer"), self-update and the mic button.
+
+`./gradlew :composeApp:wasmJsBrowserDistribution` builds it on its own, into
+`composeApp/build/dist/wasmJs/productionExecutable`; `:server:installDist` puts it in the server's
+`web/` folder. `server/deploy/smoke-web.sh` checks it end to end in a headless Chromium.
+Screenshots: [docs/screenshots/web](docs/screenshots/web).
+
 ## How it fits together
 
 | Folder | What it is |
 | --- | --- |
 | `shared/` | Kotlin Multiplatform: the dashboard client, the data shapes, and the logic for notification buttons, the Inbox's order and time left, where the composer sends, spoken answers, Siri replies and project-name matching. Tested on the JVM. |
 | `androidApp/` | The Android app around the Compose screens: activity, storage, notifications, share sheet, links. |
-| `composeApp/` | The Compose Multiplatform screens. On iPhone the app links them as one `ComposeApp` framework that also exports `shared`. |
+| `composeApp/` | The Compose Multiplatform screens. On iPhone the app links them as one `ComposeApp` framework that also exports `shared`. `src/wasmJsMain` is the web app's few browser pieces. |
 | `iosApp/App` | The SwiftUI shell around the Compose screens: Keychain sign-in store, deep links into the feed, push, Live Activity control, Siri. |
 | `iosApp/Widgets` | Widgets and the Live Activity screens. |
 | `iosApp/Share` | The share sheet. |

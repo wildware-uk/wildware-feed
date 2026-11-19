@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Build the server image and check it: it answers, signs a device in, runs the CLI inside, and stops
-# quickly on SIGTERM. Uses throwaway secrets and a loopback port; leaves nothing running.
+# Build the server image and check it: it answers, serves the web app, signs a device in, runs the
+# CLI inside, and stops quickly on SIGTERM. Uses throwaway secrets and a loopback port; leaves nothing running.
 #
 #   server/deploy/smoke-image.sh            (builds the distribution first)
 #   SKIP_DIST=1 server/deploy/smoke-image.sh
@@ -35,6 +35,10 @@ for _ in $(seq 1 60); do
 done
 fail() { echo "smoke: $*"; docker logs "$name" 2>&1 | tail -20; exit 1; }
 [ "$(curl -s "$base/api/summary")" = '{"error":"unauthenticated"}' ] || fail "a stranger did not get 401"
+# The web app is in the image and served at the root, its code with the type browsers insist on.
+[ "$(curl -s -o /dev/null -w '%{content_type}' "$base/")" = "text/html; charset=UTF-8" ] || fail "/ is not the web app"
+wasm="$(docker exec "$name" sh -c 'cd /opt/feed-server/web && ls *.wasm | head -1')"
+[ "$(curl -s -o /dev/null -w '%{content_type}' "$base/$wasm")" = "application/wasm" ] || fail "the web app's code is not served as application/wasm"
 key="$(curl -s -X POST -H 'Content-Type: application/json' -d '{"name":"smoke","password":"smoke-password"}' "$base/api/devices/sign-in" \
     | sed -n 's/.*"token":"\([^"]*\)".*/\1/p')"
 [ -n "$key" ] || fail "device sign-in gave no key"

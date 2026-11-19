@@ -26,7 +26,7 @@ fun Route.streamRoutes(app: App) {
         "/api/stream",
         HttpMethod.Get to {
             val cursor = parseCursor(call.request.headers["Last-Event-ID"]) ?: parseCursor(call.request.queryParameters["last_event_id"])
-            val key = Guard.bearer(call.request.headers["Authorization"])
+            val key = call.ownerKey()
             val bus = app.bus
             call.respondSse(
                 SseContent(

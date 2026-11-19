@@ -61,7 +61,8 @@ gradle() {
 
 # ── Build both servers ───────────────────────────────────────────────────────────────────────────
 echo "== building the Kotlin server"
-gradle -q :server:installDist
+# The web app is left out: the suite tests the API, and building it takes minutes.
+gradle -q -Pfeed.web=false :server:installDist
 kotlin_bin="$repo_root/server/build/install/feed-server/bin/feed-server"
 
 if [ -z "${TS_SERVER_DIR:-}" ]; then

@@ -10,8 +10,11 @@ object Guard {
      * `/api/server` says what this is and how to sign in, for the app's "Connect to a host" step.
      * `/api/pair` is where an agent with no token asks to join (the owner's side is `/api/pairings`).
      * `/.well-known` and `/oauth` are OAuth for MCP clients: the authorize page signs the owner in itself.
+     * `/api/devices/sign-out` clears the web app's cookie even when its key is already revoked.
      */
-    private val PUBLIC = listOf("/api/devices/sign-in", "/api/server", "/api/pair", "/.well-known", "/oauth")
+    private val PUBLIC = listOf(
+        "/api/devices/sign-in", "/api/devices/sign-out", "/api/server", "/api/pair", "/.well-known", "/oauth",
+    )
 
     fun normalise(path: String): String = if (path == "/") path else path.trimEnd('/').ifEmpty { "/" }
 
@@ -23,6 +26,21 @@ object Guard {
     }
 
     fun isApi(path: String) = under(normalise(path), "/api")
+
+    /**
+     * The web app's paths, where the server has it: all but the server's own routes. Only a plain
+     * path counts. Routing decodes `%61pi` to `api` and may fold `//`, so a path written any other
+     * way is left to the guard as an owner path, or `/%61pi/summary` would pass as the app's.
+     */
+    fun isWebApp(path: String): Boolean {
+        if (!Regex("^(/[A-Za-z0-9_.~-]+)*/?$").matches(path)) return false
+        if (path.split('/').any { it == "." || it == ".." }) return false
+        val p = normalise(path)
+        return SERVER_ROUTES.none { under(p.lowercase(), it) }
+    }
+
+    /** What the server answers itself, under the site's root. */
+    private val SERVER_ROUTES = listOf("/api", "/mcp", "/media", "/apps", "/oauth", "/.well-known")
 
     /** `Authorization: Bearer <one token>` (case-insensitive), else null. */
     fun bearer(header: String?): String? =

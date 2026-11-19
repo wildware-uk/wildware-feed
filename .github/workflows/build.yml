@@ -229,7 +229,8 @@ jobs:
   # The server's container image: built from the distribution and smoke-tested. Never pushed.
   server-image:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    # The image carries the web app, whose build takes a few minutes of its own.
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -238,26 +239,49 @@ jobs:
           java-version: 21
       - uses: gradle/actions/setup-gradle@v4
       - name: Build and smoke-test the image
-        timeout-minutes: 20
+        timeout-minutes: 30
         run: server/deploy/smoke-image.sh
 
-  # The app built for the browser (Kotlin/Wasm): the shared tests on the web engine, and the bundle.
+  # The app built for the browser (Kotlin/Wasm), served by the server: the shared tests on the web
+  # engine, then a headless Chromium that signs in, reads the feed, replies and plays a video.
   web:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 21
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
       - uses: gradle/actions/setup-gradle@v4
       - name: Shared tests on Wasm
         timeout-minutes: 15
         run: ./gradlew --no-daemon :shared:wasmJsNodeTest
-      - name: Build the web app
-        timeout-minutes: 15
-        run: ./gradlew --no-daemon :composeApp:wasmJsBrowserDistribution
+      - name: Build the web app and the server
+        timeout-minutes: 20
+        run: ./gradlew --no-daemon :server:installDist
+      # The server derives video posters with ffmpeg, and the smoke test makes its clip with it.
+      - name: Install ffmpeg
+        timeout-minutes: 12
+        run: |
+          for i in 1 2; do
+            sudo apt-get update -q && sudo apt-get install -yq --no-install-recommends ffmpeg && exit 0
+            sleep 10
+          done
+          exit 1
+      - name: Sign in, read, reply and play a video in a headless browser
+        timeout-minutes: 20
+        run: SKIP_DIST=1 SHOTS=web-screenshots server/deploy/smoke-web.sh
+      - if: always()
+        uses: actions/upload-artifact@v4
+        timeout-minutes: 5
+        with:
+          name: web-screenshots
+          path: web-screenshots/*.png
+          if-no-files-found: warn
 
   ios:
     runs-on: macos-26

@@ -484,14 +484,10 @@ private suspend fun ApplicationCall.smallBody(max: Int): String? {
 }
 
 /**
- * A form post from this dashboard's own page. Browsers say where a request came from in
- * Sec-Fetch-Site, or at least Origin; a request with neither is not a browser's cross-site post.
+ * A form post from this dashboard's own page ([pageOrigin]). A request that says nothing of where it
+ * came from is not a browser's cross-site post, and the form's CSRF token still has to match.
  */
-private fun ApplicationCall.sameOrigin(app: App): Boolean {
-    request.headers["Sec-Fetch-Site"]?.let { return it == "same-origin" }
-    val origin = request.headers["Origin"] ?: return true
-    return OAuthUrls.canonical(origin) == OAuthUrls.canonical(app.config.origin)
-}
+private fun ApplicationCall.sameOrigin(app: App): Boolean = pageOrigin(app.config) ?: true
 
 private fun ApplicationCall.addressOrNull(app: App): String? = runCatching { clientAddress(app.config) }.getOrNull()
 

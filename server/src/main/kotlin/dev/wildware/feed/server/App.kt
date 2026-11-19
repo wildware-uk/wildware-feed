@@ -26,6 +26,10 @@ class App(val config: Config, val db: Database, val clock: () -> Long = System::
     val devices = Devices(db, config.tokenSecret, clock)
     val reads = Reads(db, clock)
 
+    /** The web app's bundle, served at the root, when this server has one ([Config.webDir]). */
+    val web: dev.wildware.feed.server.http.WebApp? =
+        config.webDir?.let { dev.wildware.feed.server.http.WebApp(java.io.File(it)) }?.takeIf { it.present }
+
     /** Every MCP tool; feature files register theirs (see `mcp/`). */
     val tools = dev.wildware.feed.server.mcp.ToolRegistry()
 
