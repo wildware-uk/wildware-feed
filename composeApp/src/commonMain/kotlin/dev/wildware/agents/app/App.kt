@@ -10,6 +10,7 @@ import androidx.compose.ui.Modifier
 import dev.wildware.agents.app.feed.AppCommand
 import dev.wildware.agents.app.feed.LocalAppCommands
 import dev.wildware.agents.app.feed.LocalDemo
+import dev.wildware.agents.app.feed.LocalCrashReports
 import dev.wildware.agents.app.feed.LocalOpenSettings
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -128,6 +129,7 @@ fun AgentsApp(
                         LocalAppCommands provides commands,
                         LocalDemo provides screen.demo,
                         LocalOpenSettings provides openSettings,
+                        LocalCrashReports provides platform.crashReports,
                     ) {
                         FeedScreen(state, safeArea, navigator = navigator, onAwayFromTop = session::holdArrivals) { event ->
                             when (event) {

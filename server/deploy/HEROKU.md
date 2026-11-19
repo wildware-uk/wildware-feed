@@ -60,6 +60,11 @@ For iOS alerts and Live Activities add `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_BUND
 dyno has no key file, `APNS_KEY` with the .p8 file's contents in place of `APNS_KEY_PATH`:
 `heroku config:set APNS_KEY="$(cat AuthKey_XXXX.p8)" -a APP`.
 
+Crash reports are off unless you set `SENTRY_DSN` to a Sentry project's DSN
+(`heroku config:set SENTRY_DSN='<dsn>' -a APP`; `SENTRY_ENVIRONMENT` defaults to `production`).
+A report carries the error's type and stack, the HTTP method and route pattern, and the server's
+version: never request contents, messages, users or addresses (`server/.../CrashReports.kt`).
+
 `TOKEN_SECRET` must be the old server's, or every agent token stops working. `PORT` is set by
 Heroku. The server prints `Database: Postgres` and `Media: bucket <name>` when it starts; check
 the log for both.

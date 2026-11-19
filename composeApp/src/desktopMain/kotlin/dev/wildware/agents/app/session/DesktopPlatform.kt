@@ -136,6 +136,7 @@ fun desktopPlatform(dir: File = desktopConfigDir()): AppPlatform {
         postTarget = FileTextStore(postTarget),
         filePicker = AwtFilePicker { java.awt.Frame.getFrames().firstOrNull { it.isActive } },
         localServer = localServer(dir),
+        crashReports = dev.wildware.agents.app.crash.CrashReporting.setting,
     )
 }
 

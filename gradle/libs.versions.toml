@@ -25,8 +25,13 @@ bouncycastle = "1.81"
 commonmark = "0.24.0"
 slf4j = "2.0.17"
 composemediaplayer = "0.11.4"
+# Crash reports. The multiplatform SDK pins the Java SDK it was built with; the server uses the same one.
+sentry-kmp = "0.30.0"
+sentry-java = "8.64.0"
 
 [libraries]
+sentry-kmp = { module = "io.sentry:sentry-kotlin-multiplatform", version.ref = "sentry-kmp" }
+sentry-java = { module = "io.sentry:sentry", version.ref = "sentry-java" }
 composemediaplayer = { module = "io.github.kdroidfilter:composemediaplayer", version.ref = "composemediaplayer" }
 # Windows only: the window's title bar follows the app's light or dark (DwmSetWindowAttribute).
 jna = { module = "net.java.dev.jna:jna", version.ref = "jna" }

@@ -54,6 +54,8 @@ class AppPlatform(
     val pushAlerts: Boolean = false,
     /** A server this app can run itself ("This computer"), or null where it can't (phones). */
     val localServer: dev.wildware.agents.app.local.LocalServerHost? = null,
+    /** "Send crash reports", in a build that sends them (`CrashReporting.start`); null in any other. */
+    val crashReports: dev.wildware.agents.app.crash.CrashReportSetting? = null,
 ) {
     companion object {
         /** Everything in memory: for tests and previews. */

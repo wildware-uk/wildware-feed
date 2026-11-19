@@ -7,6 +7,7 @@ import android.provider.Settings
 import android.speech.SpeechRecognizer
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ProcessLifecycleOwner
+import dev.wildware.agents.app.crash.CrashReporting
 import dev.wildware.agents.app.design.AndroidAppIcon
 import dev.wildware.agents.app.engine.AppModel
 import dev.wildware.agents.app.engine.AppScreen
@@ -60,6 +61,8 @@ class AgentsApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // First, so a crash anywhere after this is reported (in a build that reports crashes).
+        CrashReporting.start(FileTextStore(File(filesDir, "crash-reports.txt")))
         Channels.create(this)
         AndroidAppIcon.bitmap = drawAppIcon(this)
         platform = androidPlatform(this, hooks, scope)
@@ -154,6 +157,7 @@ fun androidPlatform(context: Context, hooks: ActivityHooks, scope: CoroutineScop
         filePicker = AndroidPhotoPicker(hooks, context.contentResolver, scope),
         // No recogniser on the phone (some builds without Google's apps): no mic, rather than one that can't work.
         voiceInput = if (SpeechRecognizer.isRecognitionAvailable(context)) SpeechVoiceInput(context, hooks) else null,
+        crashReports = CrashReporting.setting,
     )
 }
 

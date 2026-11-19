@@ -1,8 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
-  Apple's privacy manifest, in the app, the watch app and every extension. No tracking and nothing
-  collected: everything goes to the owner's own dashboard. The reasons cover the app's settings
+  Apple's privacy manifest, in the app, the watch app and every extension. No tracking. Everything
+  goes to the owner's own dashboard, except crash reports from published builds, which the owner
+  can turn off (PRIVACY.md, "Crash reports"): crash data, not linked to anyone. The reasons cover the app's settings
   (its own and the app group's) and what the Kotlin runtime and Compose call underneath: file
   dates, the uptime clock and free disk space.
 -->
@@ -13,7 +14,20 @@
 	<key>NSPrivacyTrackingDomains</key>
 	<array/>
 	<key>NSPrivacyCollectedDataTypes</key>
-	<array/>
+	<array>
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypeCrashData</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+			</array>
+		</dict>
+	</array>
 	<key>NSPrivacyAccessedAPITypes</key>
 	<array>
 		<dict>

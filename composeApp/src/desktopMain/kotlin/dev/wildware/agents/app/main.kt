@@ -57,6 +57,8 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlin.system.exitProcess
 import dev.wildware.agents.app.feed.AppNavigator
+import dev.wildware.agents.app.crash.CrashReporting
+import dev.wildware.agents.app.session.FileTextStore
 import dev.wildware.agents.app.session.desktopConfigDir
 import dev.wildware.agents.app.session.desktopPlatform
 import kotlinx.coroutines.CoroutineScope
@@ -101,6 +103,8 @@ private fun savePrefs(file: File, state: WindowState) {
 @OptIn(FlowPreview::class)
 fun main(args: Array<String>) {
     val dir = desktopConfigDir()
+    // First, so a crash anywhere after this is reported (in a build that reports crashes).
+    CrashReporting.start(FileTextStore(File(dir, "crash-reports.txt")))
     val prefsFile = File(dir, "window.json")
     val prefs = loadPrefs(prefsFile)
     val platform = desktopPlatform(dir)

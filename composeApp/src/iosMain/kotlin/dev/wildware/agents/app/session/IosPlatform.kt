@@ -73,6 +73,7 @@ fun iosPlatform(
         cardFolds = IosTextStore(cardFolds),
         postTarget = IosTextStore(postTarget),
         pushAlerts = true,
+        crashReports = dev.wildware.agents.app.crash.CrashReporting.setting,
         clearLocalData = {
             outbox.clear()
             remove(readMarks)

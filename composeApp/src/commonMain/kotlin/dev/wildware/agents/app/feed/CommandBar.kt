@@ -1,5 +1,6 @@
 package dev.wildware.agents.app.feed
 
+import dev.wildware.agents.app.crash.CrashReportSetting
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -87,8 +88,9 @@ fun CommandBar(ui: FeedUi, safeArea: SafeArea, panelModifier: Modifier = Modifie
     LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
 
     val extra = LocalAppCommands.current
-    val commands by remember(extra) {
-        derivedStateOf { commandsFor(ui, query.text.toString().trim(), extra, close) }
+    val crashReports = LocalCrashReports.current
+    val commands by remember(extra, crashReports) {
+        derivedStateOf { commandsFor(ui, query.text.toString().trim(), extra, crashReports, close) }
     }
     LaunchedEffect(query.text) { highlighted = 0 }
     val list = rememberLazyListState()
@@ -177,7 +179,7 @@ private fun CommandRow(command: Command, highlighted: Boolean) {
 }
 
 /** What the bar offers for [query]: actions and projects whose names match, then search results. */
-private fun commandsFor(ui: FeedUi, query: String, extra: List<AppCommand>, close: () -> Unit): List<Command> {
+private fun commandsFor(ui: FeedUi, query: String, extra: List<AppCommand>, crashReports: CrashReportSetting?, close: () -> Unit): List<Command> {
     fun done(action: () -> Unit): () -> Unit = {
         close()
         action()
@@ -207,6 +209,18 @@ private fun commandsFor(ui: FeedUi, query: String, extra: List<AppCommand>, clos
             add(Command("Actions", "Keep media", "How long the dashboard keeps pictures and files", Icons.Clock, done { ui.retentionOpen = true }))
         }
         if (wanted("Switch theme", "dark", "light")) add(Command("Actions", "Switch light or dark", "", Icons.Moon, done { ui.emit(FeedEvent.ToggleTheme) }))
+        if (crashReports != null && wanted("Crash reports", "privacy", "settings")) {
+            val on = crashReports.enabled.value
+            add(
+                Command(
+                    "Actions",
+                    if (on) "Stop sending crash reports" else "Send crash reports",
+                    if (on) "Crashes are reported, without your messages or names" else "Report crashes, without your messages or names",
+                    Icons.Warning,
+                    done { crashReports.set(!on) },
+                ),
+            )
+        }
         extra.filter { wanted(it.title, *it.keywords.toTypedArray()) }.forEach { add(Command("Actions", it.title, it.detail, Icons.Download, done(it.run))) }
         if (wanted("Sign out")) add(Command("Actions", "Sign out", "Forget this device's key", Icons.SignOut, done { ui.emit(FeedEvent.SignOut) }))
     }

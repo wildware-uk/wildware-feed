@@ -22,6 +22,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
@@ -47,6 +49,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import dev.wildware.agents.AlertPrefs
 import dev.wildware.agents.app.ProductName
+import dev.wildware.agents.app.crash.CrashReportSetting
 import dev.wildware.agents.app.design.AgentTheme
 import dev.wildware.agents.app.design.Icons
 import dev.wildware.agents.app.design.touchTarget
@@ -59,6 +62,9 @@ val LocalPushAlerts = staticCompositionLocalOf { false }
  * "Critical" channel); null where there is none to open.
  */
 val LocalCriticalAlertSettings = staticCompositionLocalOf<(() -> Unit)?> { null }
+
+/** "Send crash reports", in a build that sends them; null in any other, which shows no switch. */
+val LocalCrashReports = staticCompositionLocalOf<CrashReportSetting?> { null }
 
 /** One switch: what it is called and what it sets. */
 private data class AlertChoice(val label: String, val axis: AlertPrefs.Axis, val value: String)
@@ -116,6 +122,7 @@ fun AlertSettingsSheet(ui: FeedUi, safeArea: SafeArea) {
                 color = if (alerts.problem != null) colors.error else colors.textMuted,
                 style = AgentTheme.type.body,
             )
+            LocalCrashReports.current?.let { CrashReportsGroup(it) }
             // The dashboard's own settings, for whoever may change them.
             KeepMediaEntry(ui)
             DevicesEntry(ui)
@@ -188,6 +195,23 @@ internal fun SettingsLinkRow(icon: ImageVector, label: String, value: String, on
         MetaText(value, color = colors.textMuted)
         Icon(Icons.ChevronRight, null, tint = colors.textFaint, modifier = Modifier.padding(start = 6.dp).size(16.dp))
     }
+}
+
+/**
+ * "Send crash reports": on unless turned off, and off the moment it is. What a report holds is
+ * PRIVACY.md's "Crash reports"; this says the short of it.
+ */
+@Composable
+private fun CrashReportsGroup(setting: CrashReportSetting) {
+    val on by setting.enabled.collectAsState()
+    SettingsHeading("Privacy")
+    CheckRow("Send crash reports", on, enabled = true) { setting.set(!on) }
+    Text(
+        "When $ProductName crashes, it tells us where in its code and on which version and system. Never your messages, names, server or keys.",
+        Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+        color = AgentTheme.colors.textMuted,
+        style = AgentTheme.type.body,
+    )
 }
 
 /** A small heading over a group of settings. */

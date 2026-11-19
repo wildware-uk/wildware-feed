@@ -17,6 +17,7 @@ fun main(args: Array<String>) {
             System.err.println(e.message)
             exitProcess(1)
         }
+        if (CrashReports.start(System.getenv())) println("Crash reports: on (SENTRY_DSN)")
         val app = App.open(config)
         println(if (config.databaseUrl != null) "Database: Postgres" else "Database: SQLite in ${config.dataDir}")
         println(config.s3?.let { "Media: bucket ${it.bucket}" } ?: "Media: on disk in ${config.dataDir}")

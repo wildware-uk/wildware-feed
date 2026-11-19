@@ -31,6 +31,44 @@ val generateAppVersion by tasks.registering {
     }
 }
 
+/**
+ * Where crash reports go, written into the app's code. Release CI sets SENTRY_DSN_APP from a secret;
+ * any other build (a self-hoster's, a local one) has none, and sends nothing. SENTRY_ENVIRONMENT says
+ * production or debug; SENTRY_PROGUARD_UUID names the Android build's R8 mapping, which CI uploads.
+ */
+val generateCrashReportingBuild by tasks.registering {
+    val out = layout.buildDirectory.dir("generated/crashReporting/kotlin")
+    val dsn = providers.environmentVariable("SENTRY_DSN_APP").orElse("")
+    val environment = providers.environmentVariable("SENTRY_ENVIRONMENT").orElse("debug")
+    val proguardUuid = providers.environmentVariable("SENTRY_PROGUARD_UUID").orElse("")
+    val version = agentsVersion
+    inputs.property("dsn", dsn)
+    inputs.property("environment", environment)
+    inputs.property("proguardUuid", proguardUuid)
+    inputs.property("version", version)
+    outputs.dir(out)
+    doLast {
+        fun quoted(value: String) = "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"").replace("$", "\\$") + "\""
+        val file = out.get().file("dev/wildware/agents/app/crash/CrashReportingBuild.kt").asFile
+        file.parentFile.mkdirs()
+        file.writeText(
+            """
+            |package dev.wildware.agents.app.crash
+            |
+            |/** How this build reports crashes. Generated from the build's environment; do not edit. */
+            |internal object CrashReportingBuild {
+            |    /** Where reports go. Empty: this build sends none, and offers no switch for it. */
+            |    const val Dsn: String = ${quoted(dsn.get())}
+            |    const val Environment: String = ${quoted(environment.get())}
+            |    const val Release: String = ${quoted("wildware-feed@$version")}
+            |    /** The Android R8 mapping's id, or empty. */
+            |    const val ProguardUuid: String = ${quoted(proguardUuid.get())}
+            |}
+            |""".trimMargin(),
+        )
+    }
+}
+
 kotlin {
     jvmToolchain(21)
 
@@ -61,8 +99,17 @@ kotlin {
     }
 
     sourceSets {
+        commonMain {
+            kotlin.srcDir(generateCrashReportingBuild)
+        }
         commonMain.dependencies {
             implementation(project(":shared"))
+            // Crash reports: the Java SDK on desktop, Android's on Android, Cocoa's on the iPhone. Never
+            // session replay, and no native (NDK) handler: the Android app has no native code of its own.
+            implementation(libs.sentry.kmp.get().let { "${it.module}:${it.versionConstraint.requiredVersion}" }) {
+                exclude(group = "io.sentry", module = "sentry-android-replay")
+                exclude(group = "io.sentry", module = "sentry-android-ndk")
+            }
             implementation(libs.compose.runtime)
             implementation(libs.compose.foundation)
             implementation(libs.compose.ui)
@@ -83,6 +130,8 @@ kotlin {
             implementation(libs.datetime)
         }
         val desktopMain by getting {
+            // The crash report setup the desktop and Android share: both run Sentry's Java SDK.
+            kotlin.srcDir("src/jvmShared/kotlin")
             // The window icon is the installers' own picture, so the two never drift apart.
             resources.srcDir("packaging/icons")
             kotlin.srcDir(generateAppVersion)
@@ -100,6 +149,9 @@ kotlin {
                     exclude(group = "org.jetbrains.kotlinx", module = "kotlinx-coroutines-test")
                 }
             }
+        }
+        androidMain {
+            kotlin.srcDir("src/jvmShared/kotlin")
         }
         androidMain.dependencies {
             implementation(libs.androidx.activity.compose)

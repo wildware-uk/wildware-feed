@@ -1,6 +1,7 @@
 package dev.wildware.feed.server.http
 
 import dev.wildware.feed.server.App
+import dev.wildware.feed.server.CrashReports
 import dev.wildware.feed.server.domain.DomainError
 import io.ktor.http.HttpMethod
 import io.ktor.server.application.Application
@@ -61,6 +62,17 @@ class FeedServer(val app: App) {
 
 /** The whole HTTP surface, as a Ktor module the desktop app can mount too. */
 fun Application.feed(app: App) {
+    // A request that throws is answered with a 500; it is reported first, when reports are on.
+    intercept(ApplicationCallPipeline.Monitoring) {
+        try {
+            proceed()
+        } catch (e: Throwable) {
+            if (e !is kotlinx.coroutines.CancellationException) {
+                CrashReports.requestFailed(e, call.request.httpMethod.value, call.attributes.getOrNull(RoutePattern))
+            }
+            throw e
+        }
+    }
     intercept(ApplicationCallPipeline.Plugins) {
         if (guardRefused(call, app)) return@intercept finish()
     }
@@ -140,6 +152,7 @@ fun Route.endpoint(path: String, vararg handlers: Pair<HttpMethod, suspend Routi
     table[path] = fresh
     route(path) {
         handle {
+            call.attributes.put(RoutePattern, path)
             val m = call.request.httpMethod
             val h = fresh[m] ?: if (m == HttpMethod.Head) fresh[HttpMethod.Get] else null
             if (h == null) {
@@ -158,5 +171,8 @@ fun Route.endpoint(path: String, vararg handlers: Pair<HttpMethod, suspend Routi
         }
     }
 }
+
+/** The pattern a request matched (`/api/cards/{id}`), not its path: a crash report names the route, never the ids in it. */
+private val RoutePattern = io.ktor.util.AttributeKey<String>("RoutePattern")
 
 private val endpointTables = java.util.WeakHashMap<Route, HashMap<String, LinkedHashMap<HttpMethod, suspend RoutingContext.() -> Unit>>>()

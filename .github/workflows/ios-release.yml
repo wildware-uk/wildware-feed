@@ -8,6 +8,9 @@ name: iOS release
 # Signing is cloud-managed: no certificates or profiles live in the repo. Xcode signs with an App
 # Store Connect API key (Admin role) from the secrets ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8_BASE64
 # and APPLE_TEAM_ID, the same ones desktop-release.yml notarises with.
+#
+# Crash reports: SENTRY_DSN_APP (where the app sends them) and SENTRY_AUTH_TOKEN (to upload the
+# debug symbols that make them readable). Both optional; without the first the app sends nothing.
 on:
   workflow_dispatch:
     inputs:
@@ -143,6 +146,10 @@ jobs:
       TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
       ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
       ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      # Crash reports (PRIVACY.md): written into the app by every Gradle build of it here, Xcode's
+      # own included, so it is set for the whole job. Without the secret the app reports nothing.
+      SENTRY_DSN_APP: ${{ secrets.SENTRY_DSN_APP }}
+      SENTRY_ENVIRONMENT: production
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -268,6 +275,21 @@ jobs:
             tail -40 archive.log
             exit 1
           fi
+
+      # A crash on the iPhone arrives as addresses; these turn them back into the code's names.
+      - name: Upload the debug symbols for crash reports
+        timeout-minutes: 10
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: wildware
+          SENTRY_PROJECT: wildware-feed-app
+        run: |
+          set -euo pipefail
+          if [ -z "$SENTRY_AUTH_TOKEN" ] || [ -z "$SENTRY_DSN_APP" ]; then
+            echo "::notice::No SENTRY_AUTH_TOKEN or SENTRY_DSN_APP, so no debug symbol upload."
+            exit 0
+          fi
+          npx --yes @sentry/cli@3.8.2 debug-files upload "$RUNNER_TEMP/Agents.xcarchive/dSYMs"
 
       # Always export a local .ipa first and check it, so a broken build never reaches TestFlight.
       - name: Export the .ipa (App Store signing, done in the cloud)

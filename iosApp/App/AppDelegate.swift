@@ -12,6 +12,10 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
+        #if COMPOSE_APP
+        // First, so a crash anywhere after this is reported (in a build that reports crashes).
+        IosCrashReportingKt.startCrashReporting(dataDir: AppData.folder.path(percentEncoded: false))
+        #endif
         UNUserNotificationCenter.current().delegate = self
         WatchLink.shared.start()
         OutboxRunner.registerBackgroundTasks()

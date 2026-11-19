@@ -29,6 +29,8 @@ dependencies {
     implementation(libs.commonmark)
     implementation(libs.commonmark.tables)
     implementation(libs.commonmark.strikethrough)
+    // Crash reports, only when SENTRY_DSN is set (CrashReports.kt).
+    implementation(libs.sentry.java)
     runtimeOnly(libs.slf4j.simple)
 
     testImplementation(kotlin("test"))

@@ -24,6 +24,13 @@ settings:
 # being built (debug or release) into shared/build/XCFrameworks/current (each scheme runs it first). The extensions and the watch link that static
 # framework. The iPhone app links ComposeApp instead: the Compose screens with `shared` exported in
 # the same framework, so the app carries one Kotlin runtime, not two. Its build phase builds it.
+# Sentry's Cocoa SDK, for crash reports. The Kotlin side (sentry-kotlin-multiplatform in
+# composeApp) is built against this exact version: bump the two together (its CHANGELOG says which).
+packages:
+  Sentry:
+    url: https://github.com/getsentry/sentry-cocoa
+    exactVersion: 9.35.0
+
 targetTemplates:
   UsesShared:
     dependencies:
@@ -130,6 +137,8 @@ targets:
         # Gradle reads and writes outside the sandbox Xcode gives build scripts.
         ENABLE_USER_SCRIPT_SANDBOXING: NO
     dependencies:
+      # The ComposeApp framework calls into it; only the app links it, not the extensions or the watch.
+      - package: Sentry
       - target: AgentsWidgets
       - target: AgentsShare
       - target: AgentsNotificationService

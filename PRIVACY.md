@@ -5,9 +5,35 @@ you. This page says what the app does with your information.
 
 ## What the app collects
 
-Nothing, for us. There are no accounts with us, no analytics, no advertising, no tracking and no
-crash reporting. We, the makers of Wildware Feed, never receive your messages, updates, voice
-notes, pictures or any information about how you use the app.
+Only crash reports, and you can turn them off. There are no accounts with us, no analytics, no
+advertising and no tracking. We, the makers of Wildware Feed, never receive your messages,
+updates, voice notes, pictures or any information about how you use the app.
+
+## Crash reports
+
+When the app crashes or freezes, the copies we publish (the App Store, TestFlight and the downloads
+on GitHub) send a crash report to [Sentry](https://sentry.io), the service we use to read them.
+A copy you build yourself sends nothing, unless you give it a Sentry address of your own.
+
+A crash report holds only:
+
+- what went wrong: the kind of error and where in the app's code it happened (the stack);
+- the app's version, and whether it is a release or a test build;
+- your device's kind and its system: for example "iPhone 16, iOS 26" or "Windows 11";
+- a few notes on what the app was doing just before, such as a screen opening, with any detail
+  that could be yours taken out.
+
+It never holds your messages, cards, project or agent names, voice notes or pictures, your server's
+address, keys or passwords, the contents of anything sent over the network, your name, email or
+device name, or any id for you or your device. Error messages are left out too, as one can quote
+something you wrote. Sentry is set not to store the internet address a report comes from. There are
+no screenshots, no recordings of the screen and no performance tracing.
+
+**Turning it off.** Open "Alerts on this device" (tap your name, under the projects list) and untick
+**Send crash reports**, or type "crash reports" in the command bar. It stops at once and stays off
+on that device.
+
+A server you run sends no crash reports of its own unless you set its `SENTRY_DSN`.
 
 ## Where your information goes
 
