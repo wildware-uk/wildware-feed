@@ -56,6 +56,49 @@ class DesktopIntegrationTest {
 
     // --- Notification rules -------------------------------------------------------------------
 
+    private fun criticalUpdate(id: String, priority: String = "critical") = UpdateCard(
+        UpdateView(id = id, seq = 2, projectId = "p1", agentId = "a1", title = "Production is down", body = "Every request **fails**", priority = priority, createdAt = 5_000),
+        "Builder", "Mega", true, 5_000, emptyList(), 0, emptyList(), emptyList(), emptyList(),
+    )
+
+    private val slugs: (String?) -> String? = { id -> if (id == "p1") "mega" else null }
+
+    @Test
+    fun `a critical update is announced and pages a phone that allows it`() {
+        val paged = NotificationRules()
+        paged.next(true, emptyList(), feed(), AlertPrefs(critical = true), slugs)
+        assertEquals(
+            listOf(DesktopNotice("update-u9", "Builder · Mega", "Production is down", "u9", critical = true)),
+            paged.next(true, emptyList(), feed(criticalUpdate("u9")), AlertPrefs(critical = true), slugs),
+        )
+
+        val ordinary = NotificationRules()
+        ordinary.next(true, emptyList(), feed())
+        assertEquals(listOf(false), ordinary.next(true, emptyList(), feed(criticalUpdate("u9"))).map { it.critical })
+
+        val elsewhere = NotificationRules()
+        val onlyDocs = AlertPrefs(critical = true, criticalProjects = listOf("docs"))
+        elsewhere.next(true, emptyList(), feed(), onlyDocs, slugs)
+        assertEquals(listOf(false), elsewhere.next(true, emptyList(), feed(criticalUpdate("u9")), onlyDocs, slugs).map { it.critical })
+    }
+
+    @Test
+    fun `an ordinary new update is still left to the feed`() {
+        val rules = NotificationRules()
+        rules.next(true, emptyList(), feed())
+        assertTrue(rules.next(true, emptyList(), feed(criticalUpdate("u9", priority = "high"))).isEmpty())
+    }
+
+    @Test
+    fun `a critical question pages and an ordinary one does not`() {
+        val rules = NotificationRules()
+        val prefs = AlertPrefs(critical = true)
+        rules.next(true, emptyList(), feed(), prefs, slugs)
+        val loud = question("r9").let { it.copy(request = it.request.copy(priority = "critical")) }
+        val notices = rules.next(true, listOf(loud, question("r10")), feed(), prefs, slugs)
+        assertEquals(listOf("request-r9" to true, "request-r10" to false), notices.map { it.key to it.critical })
+    }
+
     @Test
     fun `nothing already there when the dashboard is first read is announced`() {
         val rules = NotificationRules()

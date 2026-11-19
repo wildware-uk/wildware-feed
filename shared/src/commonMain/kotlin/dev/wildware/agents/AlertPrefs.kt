@@ -13,6 +13,15 @@ data class AlertPrefs(
     val types: List<String>? = null,
     val levels: List<String>? = null,
     val priorities: List<String>? = null,
+    /**
+     * Whether something an agent marks critical pages this device through Do Not Disturb. Off
+     * unless the owner turns it on; until then a critical alert is an ordinary one.
+     */
+    val critical: Boolean? = null,
+    /** Only these agents (by id) may page it; null for any agent. */
+    val criticalAgents: List<String>? = null,
+    /** Only these projects (by slug) may page it; null for any project. */
+    val criticalProjects: List<String>? = null,
 ) {
     enum class Axis { Types, Levels, Priorities }
 
@@ -27,13 +36,40 @@ data class AlertPrefs(
         val AllLevels = listOf("error", "warn", "success", "info")
         val AllPriorities = listOf("high", "medium", "low")
 
-        /** Whether [prefs] lets an alert of [type] through; [level] and [priority] only matter for updates. */
-        fun allows(prefs: AlertPrefs?, type: String, level: String? = null, priority: String? = null): Boolean {
+        const val Critical = "critical"
+
+        /**
+         * Whether [prefs] lets an alert of [type] through; [level] and [priority] only matter for
+         * updates. A page ([pages]) always gets through, and critical counts as high.
+         */
+        fun allows(
+            prefs: AlertPrefs?,
+            type: String,
+            level: String? = null,
+            priority: String? = null,
+            agentId: String? = null,
+            projectSlug: String? = null,
+        ): Boolean {
             if (prefs == null) return true
+            if (pages(prefs, priority, agentId, projectSlug)) return true
             if (prefs.types != null && type !in prefs.types) return false
             if (type != Update) return true
             if (level != null && prefs.levels != null && level !in prefs.levels) return false
-            if (priority != null && prefs.priorities != null && priority !in prefs.priorities) return false
+            if (priority != null && prefs.priorities != null) {
+                val wanted = priority in prefs.priorities || (priority == Critical && "high" in prefs.priorities)
+                if (!wanted) return false
+            }
+            return true
+        }
+
+        /**
+         * Whether this pages the device, as the dashboard decides it: marked [Critical], critical alerts
+         * turned on, and from an agent and project it allowed (when it named any).
+         */
+        fun pages(prefs: AlertPrefs?, priority: String?, agentId: String?, projectSlug: String?): Boolean {
+            if (priority != Critical || prefs?.critical != true) return false
+            if (prefs.criticalAgents != null && (agentId == null || agentId !in prefs.criticalAgents)) return false
+            if (prefs.criticalProjects != null && (projectSlug == null || projectSlug !in prefs.criticalProjects)) return false
             return true
         }
 
@@ -71,7 +107,7 @@ data class AlertPrefs(
                 Axis.Levels -> base.copy(levels = stored)
                 Axis.Priorities -> base.copy(priorities = stored)
             }
-            return changed.takeUnless { it.types == null && it.levels == null && it.priorities == null }
+            return changed.takeUnless { it == AlertPrefs() }
         }
     }
 }

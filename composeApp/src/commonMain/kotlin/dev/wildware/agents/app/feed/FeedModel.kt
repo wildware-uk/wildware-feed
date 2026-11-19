@@ -285,6 +285,8 @@ sealed interface FeedItem {
         val fields: List<CardField> = emptyList(),
         /** The agent marked it high priority. Shown as a red "High" chip; it doesn't change the order. */
         val high: Boolean = false,
+        /** The agent marked it critical: it pages phones that allow it. A solid red "Critical" chip. */
+        val critical: Boolean = false,
         /** Pinned above the rest of the feed. */
         val pinned: Boolean = false,
     ) : Threaded {
@@ -326,6 +328,8 @@ sealed interface FeedItem {
         /** The talk about the question before it is answered: its own thread, oldest first. */
         override val replies: List<Reply> = emptyList(),
         override val unreadReplies: Int = 0,
+        /** The agent marked it critical: it pages phones that allow it. A solid red "Critical" chip. */
+        val critical: Boolean = false,
     ) : Threaded {
         val hasPictures: Boolean get() = choices.any { it.image != null }
         override val title: String get() = prompt
@@ -397,6 +401,8 @@ data class FeedState(
     val bell: Bell = Bell(),
     /** Who a message can @mention, in the order the @ list shows them. */
     val mentionable: List<Mentionable> = emptyList(),
+    /** What an agent marked critical and still wants the owner: waiting questions, and updates not yet read. */
+    val critical: List<CriticalNotice> = emptyList(),
     /** Which alerts this device gets. */
     val alerts: AlertSettings = AlertSettings(),
     /** How long the dashboard keeps media. */
@@ -483,3 +489,7 @@ data class Mentionable(
     /** A short line beside the name, as for a group. */
     val hint: String? = null,
 )
+
+/** Something marked critical, for the red banner on desktop: who, and what, in one line. */
+@Immutable
+data class CriticalNotice(val id: String, val agent: String, val text: String, val question: Boolean)

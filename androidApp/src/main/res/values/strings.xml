@@ -6,6 +6,8 @@
     <string name="channel_questions_about">An agent asks you something.</string>
     <string name="channel_replies">Replies and mentions</string>
     <string name="channel_replies_about">An agent answers you or mentions you.</string>
+    <string name="channel_critical">Critical alerts</string>
+    <string name="channel_critical_about">Something an agent marked critical. Allow it to override Do Not Disturb to be paged at any hour.</string>
     <string name="channel_connection">Staying connected</string>
     <string name="channel_connection_about">Shown while the app keeps its connection open in the background.</string>
 </resources>

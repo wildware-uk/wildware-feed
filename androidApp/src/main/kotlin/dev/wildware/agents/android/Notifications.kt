@@ -28,6 +28,22 @@ object Channels {
     const val Replies = "replies"
     const val Connection = "connection"
 
+    /**
+     * Something an agent marked critical, on a phone that allows it to page. The channel asks to
+     * break through Do Not Disturb; Android leaves the final say to the owner, in the channel's own
+     * settings, which the alert settings open ([openCriticalSettings]).
+     */
+    const val Critical = "critical"
+
+    /** The system's settings for the "Critical" channel, where Do Not Disturb can be overridden. */
+    fun openCriticalSettings(context: Context) {
+        val intent = android.content.Intent(android.provider.Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS)
+            .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, context.packageName)
+            .putExtra(android.provider.Settings.EXTRA_CHANNEL_ID, Critical)
+            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+        runCatching { context.startActivity(intent) }
+    }
+
     fun create(context: Context) {
         val manager = context.getSystemService(NotificationManager::class.java)
         manager.createNotificationChannels(
@@ -36,6 +52,13 @@ object Channels {
                     .apply { description = context.getString(R.string.channel_questions_about) },
                 NotificationChannel(Replies, context.getString(R.string.channel_replies), NotificationManager.IMPORTANCE_DEFAULT)
                     .apply { description = context.getString(R.string.channel_replies_about) },
+                NotificationChannel(Critical, context.getString(R.string.channel_critical), NotificationManager.IMPORTANCE_HIGH)
+                    .apply {
+                        description = context.getString(R.string.channel_critical_about)
+                        setBypassDnd(true)
+                        enableVibration(true)
+                        lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
+                    },
                 NotificationChannel(Connection, context.getString(R.string.channel_connection), NotificationManager.IMPORTANCE_MIN)
                     .apply {
                         description = context.getString(R.string.channel_connection_about)
@@ -63,13 +86,24 @@ class AndroidNotifier(private val context: Context) {
             MainActivity.openCard(context, notice.focusId),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
-        val notification = NotificationCompat.Builder(context, if (question) Channels.Questions else Channels.Replies)
+        val channel = when {
+            notice.critical -> Channels.Critical
+            question -> Channels.Questions
+            else -> Channels.Replies
+        }
+        val notification = NotificationCompat.Builder(context, channel)
             .setSmallIcon(R.drawable.ic_stat_agents)
             .setContentTitle(notice.title)
             .setContentText(notice.body)
             .setStyle(NotificationCompat.BigTextStyle().bigText(notice.body))
-            .setCategory(NotificationCompat.CATEGORY_MESSAGE)
-            .setPriority(if (question) NotificationCompat.PRIORITY_HIGH else NotificationCompat.PRIORITY_DEFAULT)
+            .setCategory(if (notice.critical) NotificationCompat.CATEGORY_ALARM else NotificationCompat.CATEGORY_MESSAGE)
+            .setPriority(
+                when {
+                    notice.critical -> NotificationCompat.PRIORITY_MAX
+                    question -> NotificationCompat.PRIORITY_HIGH
+                    else -> NotificationCompat.PRIORITY_DEFAULT
+                },
+            )
             .setContentIntent(open)
             .setAutoCancel(true)
             .build()
@@ -124,10 +158,11 @@ class Alerts(
         val rules = NotificationRules()
         combine(dashboard.ready, dashboard.waiting, dashboard.everything.state) { ready, waiting, feed ->
             onWaiting(waiting.size)
-            rules.next(ready, waiting, feed, session.alerts.value.prefs)
+            val slugs = dashboard.projects.value.associate { it.project.id to it.project.slug }
+            rules.next(ready, waiting, feed, session.alerts.value.prefs) { id -> id?.let(slugs::get) }
         }.collectLatest { notices ->
-            if (onScreen()) return@collectLatest
-            notices.forEach(notifier::show)
+            // A page goes out even with the app open: it is meant to be impossible to miss.
+            notices.filter { it.critical || !onScreen() }.forEach(notifier::show)
         }
     }
 }

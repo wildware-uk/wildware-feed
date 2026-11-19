@@ -110,7 +110,12 @@ targets:
         # Alerts arrive as messages from the agent, with its face on the banner (NotificationService.swift).
         # Needs the Communication Notifications capability on this App ID and the service extension's.
         com.apple.developer.usernotifications.communication: true
+        # Questions, and anything an agent marks critical on a phone that allows it, break through Focus.
         com.apple.developer.usernotifications.time-sensitive: true
+        # Critical alerts proper (loud through the silent switch) need Apple's Critical Alerts
+        # entitlement, granted by request only. Once it is: add
+        # `com.apple.developer.usernotifications.critical-alerts: true` here and set the server's
+        # CRITICAL_STYLE (server/src/main/kotlin/dev/wildware/feed/server/push/Apns.kt) to "critical".
         com.apple.security.application-groups: [group.dev.wildware.agents]
         keychain-access-groups: [$(AppIdentifierPrefix)dev.wildware.agents.shared]
     settings:

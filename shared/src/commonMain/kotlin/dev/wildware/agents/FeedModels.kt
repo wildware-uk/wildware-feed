@@ -288,6 +288,8 @@ data class RequestView(
     val embeds: List<EmbedView> = emptyList(),
     val editedAt: Long? = null,
     val pinned: Boolean = false,
+    /** How much it needs the owner now; "critical" pages their phones. */
+    val priority: String = "medium",
     val reactions: List<ReactionView> = emptyList(),
 ) {
     /** Null for a kind this app doesn't know yet: show it, and send the owner to the website to answer it. */

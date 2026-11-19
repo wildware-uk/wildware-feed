@@ -1,5 +1,7 @@
 package dev.wildware.agents.android
 
+import dev.wildware.agents.app.feed.LocalCriticalAlertSettings
+import androidx.compose.runtime.CompositionLocalProvider
 import android.Manifest
 import android.content.Context
 import android.content.Intent
@@ -129,14 +131,17 @@ class MainActivity : ComponentActivity() {
         // One live object, so the keyboard sliding moves the composer without redrawing the app.
         val safeArea = rememberSystemSafeArea()
         Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))) {
-            AgentsApp(
-                app.platform,
-                app.model,
-                safeArea = safeArea,
-                navigator = app.navigator,
-                commands = if (signed) commands(stay) else emptyList(),
-                overlay = { StatusBarScrim(safeArea) },
-            )
+            // The alert settings lead to the "Critical" channel, where Do Not Disturb can be overridden.
+            CompositionLocalProvider(LocalCriticalAlertSettings provides { Channels.openCriticalSettings(this@MainActivity) }) {
+                AgentsApp(
+                    app.platform,
+                    app.model,
+                    safeArea = safeArea,
+                    navigator = app.navigator,
+                    commands = if (signed) commands(stay) else emptyList(),
+                    overlay = { StatusBarScrim(safeArea) },
+                )
+            }
         }
     }
 

@@ -168,6 +168,28 @@ fun LevelTag(level: Level, modifier: Modifier = Modifier) {
     }
 }
 
+/**
+ * A solid red "Critical" chip, louder than [HighChip]: the agent marked this critical, which pages
+ * the owner's phones that allow it. Read aloud with the card's header.
+ */
+@Composable
+fun CriticalChip(modifier: Modifier = Modifier) {
+    Row(
+        modifier
+            .clip(AgentTheme.shapes.pill)
+            .background(CriticalRed)
+            .padding(horizontal = 9.dp, vertical = 3.dp)
+            .semantics(mergeDescendants = true) { contentDescription = "Critical" },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(dev.wildware.agents.app.design.Icons.Bell, contentDescription = null, tint = Color.White, modifier = Modifier.size(12.dp))
+        Text("CRITICAL", Modifier.padding(start = 4.dp), color = Color.White, style = AgentTheme.type.overline)
+    }
+}
+
+/** The one red behind white for anything critical, in either theme: white on it is over 5:1. */
+val CriticalRed = Color(0xFFC62828)
+
 /** A red "High" chip: the agent marked this high priority. Read aloud with the card's header. */
 @Composable
 fun HighChip(modifier: Modifier = Modifier) {

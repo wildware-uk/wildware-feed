@@ -36,10 +36,12 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import dev.wildware.agents.AlertPrefs
 import dev.wildware.agents.app.ProductName
@@ -49,6 +51,12 @@ import dev.wildware.agents.app.design.touchTarget
 
 /** Whether the dashboard pushes this device its alerts (an iPhone), so every filter applies. */
 val LocalPushAlerts = staticCompositionLocalOf { false }
+
+/**
+ * Opens the system's own switch that lets critical alerts through Do Not Disturb (Android's
+ * "Critical" channel); null where there is none to open.
+ */
+val LocalCriticalAlertSettings = staticCompositionLocalOf<(() -> Unit)?> { null }
 
 /** One switch: what it is called and what it sets. */
 private data class AlertChoice(val label: String, val axis: AlertPrefs.Axis, val value: String)
@@ -74,7 +82,8 @@ private val priorities = listOf(
 /**
  * Which alerts this device gets, the same three filters the website has for a browser. An iPhone
  * is pushed its alerts, so every filter applies; a computer or an Android phone raises its own
- * while the app runs, which are questions and replies only, so it offers just those.
+ * while the app runs, which are questions, replies and critical updates, so it offers just those.
+ * A phone also chooses whether critical alerts page it through Do Not Disturb.
  */
 @Composable
 fun AlertSettingsSheet(ui: FeedUi, safeArea: SafeArea) {
@@ -91,10 +100,13 @@ fun AlertSettingsSheet(ui: FeedUi, safeArea: SafeArea) {
                 Group("Update levels", levels, alerts.prefs, ready && updatesOn, set)
                 Group("Update priority", priorities, alerts.prefs, ready && updatesOn, set)
             }
+            val systemSwitch = LocalCriticalAlertSettings.current
+            // Paging means a phone: one the dashboard pushes, or an Android phone with its own channel.
+            if (push || systemSwitch != null) CriticalGroup(ui, alerts.prefs, ready, systemSwitch)
             val note = alerts.problem ?: when {
                 !alerts.loaded -> "Reading this device's settings…"
                 push -> "The dashboard sends these to this device, even when $ProductName is closed."
-                else -> "Shown while $ProductName is running on this device. Updates and comments stay in the feed and under the bell."
+                else -> "Shown while $ProductName is running on this device. Critical updates alert too; other updates and comments stay in the feed and under the bell."
             }
             Text(
                 note,
@@ -189,6 +201,82 @@ internal fun CheckRow(label: String, on: Boolean, enabled: Boolean, onToggle: ()
             contentAlignment = Alignment.Center,
         ) {
             if (on) Icon(Icons.Check, null, tint = colors.onAccent, modifier = Modifier.size(14.dp))
+        }
+        Spacer(Modifier.width(12.dp))
+        Text(label, color = colors.text, style = AgentTheme.type.body)
+    }
+}
+
+/**
+ * Whether something an agent marks critical pages this phone through Do Not Disturb, and from whom.
+ * Off unless turned on. The agent and project lists only narrow it: none ticked is anyone.
+ */
+@Composable
+private fun CriticalGroup(ui: FeedUi, prefs: AlertPrefs?, enabled: Boolean, systemSwitch: (() -> Unit)?) {
+    val colors = AgentTheme.colors
+    val on = prefs?.critical == true
+    val save = { next: AlertPrefs -> ui.emit(FeedEvent.SetAlertPrefs(next.takeUnless { it == AlertPrefs() })) }
+    val base = prefs ?: AlertPrefs()
+    MetaText("CRITICAL ALERTS", Modifier.padding(start = 16.dp, top = 14.dp, bottom = 2.dp).semantics { heading() }, color = colors.error)
+    CheckRow("Page me for critical alerts", on, enabled) {
+        save(if (on) base.copy(critical = null, criticalAgents = null, criticalProjects = null) else base.copy(critical = true))
+    }
+    Text(
+        "Breaks through silent mode and Do Not Disturb. Agents are told to use it only when you have explicitly asked them to.",
+        Modifier.padding(start = 48.dp, end = 16.dp, bottom = 4.dp),
+        color = colors.textMuted,
+        style = AgentTheme.type.meta,
+    )
+    if (!on) return
+    if (systemSwitch != null) {
+        AppButton(
+            "Let them through Do Not Disturb",
+            ButtonTone.Secondary,
+            Modifier.padding(start = 48.dp, end = 16.dp, top = 4.dp, bottom = 4.dp),
+            icon = Icons.Bell,
+            onClick = systemSwitch,
+        )
+    }
+    fun pick(list: List<String>?, value: String): List<String>? =
+        (if (list != null && value in list) list - value else (list ?: emptyList()) + value).takeIf { it.isNotEmpty() }
+    MetaText("FROM AGENTS · NONE TICKED IS ANY", Modifier.padding(start = 48.dp, top = 8.dp, bottom = 2.dp), color = colors.textMuted)
+    ui.state.agents.forEach { agent ->
+        CriticalCheckRow(agent.name, prefs.criticalAgents?.contains(agent.id) == true, enabled, spoken = "Critical alerts from ${agent.name}", indent = 32.dp) {
+            save(base.copy(criticalAgents = pick(prefs.criticalAgents, agent.id)))
+        }
+    }
+    MetaText("FROM PROJECTS · NONE TICKED IS ANY", Modifier.padding(start = 48.dp, top = 8.dp, bottom = 2.dp), color = colors.textMuted)
+    ui.projects.filter { !it.archived && it.slug != null }.forEach { project ->
+        val slug = project.slug!!
+        CriticalCheckRow(project.name, prefs.criticalProjects?.contains(slug) == true, enabled, spoken = "Critical alerts from ${project.name}", indent = 32.dp) {
+            save(base.copy(criticalProjects = pick(prefs.criticalProjects, slug)))
+        }
+    }
+}
+
+/** A tick box in the critical group: red when on, with its own spoken label. */
+@Composable
+private fun CriticalCheckRow(label: String, on: Boolean, enabled: Boolean, spoken: String? = null, indent: Dp = 0.dp, onToggle: () -> Unit) {
+    val colors = AgentTheme.colors
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .touchTarget()
+            .toggleable(value = on, enabled = enabled, role = Role.Checkbox) { onToggle() }
+            .then(if (spoken != null) Modifier.semantics { contentDescription = spoken } else Modifier)
+            .alpha(if (enabled) 1f else 0.5f)
+            .padding(start = 16.dp + indent, end = 16.dp, top = 8.dp, bottom = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier
+                .size(20.dp)
+                .clip(AgentTheme.shapes.small)
+                .background(if (on) colors.error else Color.Transparent)
+                .border(1.5.dp, if (on) colors.error else colors.borderStrong, AgentTheme.shapes.small),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (on) Icon(Icons.Check, null, tint = Color.White, modifier = Modifier.size(14.dp))
         }
         Spacer(Modifier.width(12.dp))
         Text(label, color = colors.text, style = AgentTheme.type.body)

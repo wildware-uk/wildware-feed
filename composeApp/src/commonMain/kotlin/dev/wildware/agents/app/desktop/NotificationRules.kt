@@ -14,7 +14,14 @@ import dev.wildware.agents.UpdateCard
  * One notification (desktop, or Android while the app runs). [focusId] is the card to open the
  * app at when it is clicked, or null for none.
  */
-data class DesktopNotice(val key: String, val title: String, val body: String, val focusId: String?)
+data class DesktopNotice(
+    val key: String,
+    val title: String,
+    val body: String,
+    val focusId: String?,
+    /** Marked critical and allowed to page this device: Android's "Critical" channel, through Do Not Disturb. */
+    val critical: Boolean = false,
+)
 
 /**
  * Which changes deserve a desktop notification, following the phone's push rules:
@@ -23,7 +30,11 @@ data class DesktopNotice(val key: String, val title: String, val body: String, v
  * - an agent's message that answers the owner: it answers one of the owner's lines, sits under
  *   the owner's post, or lands in an update, task or question thread the owner has written in
  *   (the server's own "replied to you" rule);
- * - an agent's message that mentions the owner: `@you` or `@owner`.
+ * - an agent's message that mentions the owner: `@you` or `@owner`;
+ * - an update an agent marked critical (other updates stay in the feed and under the bell).
+ *
+ * Something marked critical is flagged [DesktopNotice.critical] where the device's choice lets it
+ * page ([AlertPrefs.pages]).
  *
  * The title is the agent and the project, the body plain text cut to [maxBody] characters.
  * Nothing that was already there when the dashboard was first read is announced: the first
@@ -36,12 +47,20 @@ class NotificationRules(private val maxBody: Int = 140) {
     private var watermark = Long.MIN_VALUE
 
     /** What changed since the last call that deserves a notice. [prefs] is the device's choice of alerts; null is all. */
-    fun next(ready: Boolean, waiting: List<RequestCard>, feed: FeedState, prefs: AlertPrefs? = null): List<DesktopNotice> {
+    fun next(
+        ready: Boolean,
+        waiting: List<RequestCard>,
+        feed: FeedState,
+        prefs: AlertPrefs? = null,
+        /** A project's slug by its id, for a device that lets only some projects page it. */
+        slugOf: (String?) -> String? = { null },
+    ): List<DesktopNotice> {
         if (!ready) return emptyList()
         val threads = threadsOf(feed, waiting)
         if (!baselined) {
             baselined = true
             waiting.forEach { seen += requestKey(it.id) }
+            feed.allCards.filterIsInstance<UpdateCard>().forEach { seen += updateKey(it.id) }
             threads.forEach { thread -> thread.lines.forEach { seen += messageKey(it.message.id) } }
             watermark = threads.flatMap { it.lines }.maxOfOrNull { it.message.createdAt } ?: Long.MIN_VALUE
             return emptyList()
@@ -50,8 +69,20 @@ class NotificationRules(private val maxBody: Int = 140) {
         val notices = mutableListOf<DesktopNotice>()
         for (card in waiting) {
             if (!seen.add(requestKey(card.id))) continue
-            if (!AlertPrefs.allows(prefs, AlertPrefs.Request)) continue
-            notices += DesktopNotice(requestKey(card.id), title(card.agentName, card.projectName), plain(card.request.question), card.id)
+            val request = card.request
+            val slug = slugOf(request.projectId)
+            if (!AlertPrefs.allows(prefs, AlertPrefs.Request, priority = request.priority, agentId = request.agentId, projectSlug = slug)) continue
+            val page = AlertPrefs.pages(prefs, request.priority, request.agentId, slug)
+            notices += DesktopNotice(requestKey(card.id), title(card.agentName, card.projectName), plain(request.question), card.id, critical = page)
+        }
+        for (card in feed.allCards.filterIsInstance<UpdateCard>()) {
+            if (!seen.add(updateKey(card.id))) continue
+            val update = card.update
+            if (update.priority != AlertPrefs.Critical) continue
+            val slug = slugOf(update.projectId)
+            if (!AlertPrefs.allows(prefs, AlertPrefs.Update, update.level, update.priority, update.agentId, slug)) continue
+            val text = update.title?.takeIf { it.isNotBlank() } ?: update.body
+            notices += DesktopNotice(updateKey(card.id), title(card.agentName, card.projectName), plain(text), card.id, critical = AlertPrefs.pages(prefs, update.priority, update.agentId, slug))
         }
         for (thread in threads) {
             for (line in thread.lines) {
@@ -112,5 +143,6 @@ class NotificationRules(private val maxBody: Int = 140) {
 
         private fun requestKey(id: String) = "request-$id"
         private fun messageKey(id: String) = "message-$id"
+        private fun updateKey(id: String) = "update-$id"
     }
 }

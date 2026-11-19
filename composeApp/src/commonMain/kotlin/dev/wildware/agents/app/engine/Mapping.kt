@@ -3,6 +3,7 @@ package dev.wildware.agents.app.engine
 import dev.wildware.agents.AckView
 import dev.wildware.agents.app.feed.PickBounds
 import dev.wildware.agents.RequestConfig
+import dev.wildware.agents.app.feed.CriticalNotice
 import dev.wildware.agents.FeedCard
 import dev.wildware.agents.LiveAgentView
 import dev.wildware.agents.MediaView
@@ -131,8 +132,18 @@ internal class FeedMapper(
             loading = feed.loading,
             hasMore = feed.hasMore,
             tags = feed.tags.map { it.toCardTag() },
+            critical = criticalNotices(inScope, feed),
         )
     }
+
+    /** Waiting questions marked critical, then critical updates the owner hasn't read yet. */
+    private fun criticalNotices(questions: List<RequestCard>, feed: EngineFeed): List<CriticalNotice> =
+        questions.filter { it.request.priority == "critical" }.map { CriticalNotice(it.id, it.agentName, oneLine(it.request.question), question = true) } +
+            feed.allCards.filterIsInstance<UpdateCard>()
+                .filter { it.isNew && it.update.priority == "critical" }
+                .map { CriticalNotice(it.id, it.agentName, oneLine(it.update.title?.takeIf(String::isNotBlank) ?: it.update.body), question = false) }
+
+    private fun oneLine(markdown: String) = dev.wildware.agents.PlainText.fromMarkdown(markdown).lineSequence().firstOrNull().orEmpty()
 
     private fun agentNames(feed: EngineFeed): Map<String, String> = buildMap {
         feed.allCards.forEach { card ->
@@ -185,6 +196,7 @@ internal class FeedMapper(
                 tags = tags.map { it.toCardTag() },
                 fields = fields.map { CardField(it.name, it.value) },
                 high = update.priority == "high",
+                critical = update.priority == "critical",
                 pinned = pinned,
             )
         }
@@ -285,6 +297,7 @@ internal class FeedMapper(
             replies = replies(discussion, unread, agents, project, threads),
             unreadReplies = unread,
             picks = if (kind == QuestionKind.MultiChoice) pickBounds(config, options.size) else PickBounds(),
+            critical = request.priority == "critical",
         )
     }
 

@@ -276,7 +276,10 @@ private fun DesktopColumns(ui: FeedUi, showRail: Boolean, startAt: String?) {
     ) {
         Sidebar(ui, Modifier.width(SidebarWidth), showAgents = !showRail)
         VerticalRule()
-        Box(Modifier.weight(1f).fillMaxHeight()) {
+        Column(Modifier.weight(1f).fillMaxHeight()) {
+        // Red, above the feed, until it is answered, read or put away: a page made visible.
+        CriticalBanner(ui)
+        Box(Modifier.weight(1f).fillMaxWidth()) {
             LazyColumn(
                 Modifier.fillMaxSize().closesComposer(ui).listActions(refresh, toTop, null),
                 state = list,
@@ -310,6 +313,7 @@ private fun DesktopColumns(ui: FeedUi, showRail: Boolean, startAt: String?) {
                     modifier = Modifier.widthIn(max = FeedMaxWidth),
                 )
             }
+        }
         }
         if (showRail) {
             VerticalRule()

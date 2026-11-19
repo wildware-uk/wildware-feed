@@ -109,11 +109,13 @@ private fun CardHeader(
     pinned: Boolean = false,
     /** Folding the card away; null where it can't fold (in its own thread). */
     fold: Fold? = null,
+    critical: Boolean = false,
 ) {
     val colors = AgentTheme.colors
     val type = AgentTheme.type
     val spoken = listOfNotNull(
-        author.name, role, time, "pinned".takeIf { pinned }, "high priority".takeIf { high }, level?.label, status?.let { "status ${it.label}" },
+        author.name, role, time, "pinned".takeIf { pinned }, "critical".takeIf { critical }, "high priority".takeIf { high && !critical },
+        level?.label, status?.let { "status ${it.label}" },
     ).joinToString(", ")
     Row(
         Modifier.fillMaxWidth().semantics(mergeDescendants = true) { contentDescription = spoken },
@@ -140,7 +142,7 @@ private fun CardHeader(
             MetaText(time, Modifier.clearAndSetSemantics { })
             if (pinned) Icon(Icons.Pin, null, tint = colors.accent, modifier = Modifier.padding(start = 8.dp).size(13.dp))
         }
-        if (!compact) Chips(level, status, high, onStatus = onStatus)
+        if (!compact) Chips(level, status, high, onStatus = onStatus, critical = critical)
         // First thing a reader reaches for on a long feed, and the one control that changes nothing.
         fold?.let { IconAction(if (it.folded) Icons.ChevronRight else Icons.ChevronDown, it.label, Modifier.padding(start = 4.dp), onClick = it.toggle) }
     }
@@ -182,13 +184,20 @@ private fun FoldedSummary(body: String, replies: Int) {
  * from the card's actions ("Work state…"), so the chips themselves stay out of the spoken header.
  */
 @Composable
-private fun Chips(level: Level?, status: WorkStatus?, high: Boolean = false, modifier: Modifier = Modifier, onStatus: (() -> Unit)? = null) {
+private fun Chips(
+    level: Level?,
+    status: WorkStatus?,
+    high: Boolean = false,
+    modifier: Modifier = Modifier,
+    onStatus: (() -> Unit)? = null,
+    critical: Boolean = false,
+) {
     Row(
         modifier.clearAndSetSemantics { },
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (high) HighChip()
+        if (critical) CriticalChip() else if (high) HighChip()
         if (status != null) {
             val shape = AgentTheme.shapes.pill
             StatusChip(status, if (onStatus != null) Modifier.clip(shape).clickable(onClick = onStatus) else Modifier)
@@ -273,9 +282,10 @@ fun UpdateCard(
                 high = item.high,
                 pinned = pinned,
                 fold = fold,
+                critical = item.critical,
             )
             Column(Modifier.padding(start = indent, top = 8.dp)) {
-                if (density == Density.Compact) Chips(item.level, item.status, item.high, Modifier.padding(bottom = 8.dp), onStatus = chooseStatus)
+                if (density == Density.Compact) Chips(item.level, item.status, item.high, Modifier.padding(bottom = 8.dp), onStatus = chooseStatus, critical = item.critical)
                 Text(
                     item.title,
                     Modifier.semantics { heading() },
@@ -428,7 +438,7 @@ fun QuestionCard(
         Modifier
             .fillMaxWidth()
             .then(frame)
-            .semantics(mergeDescendants = false) { contentDescription = "Question from ${item.agent.name}, waiting on you" }
+            .semantics(mergeDescendants = false) { contentDescription = (if (item.critical) "Critical question" else "Question") + " from ${item.agent.name}, waiting on you" }
             .onKeyEvent { e ->
                 if (e.type != KeyEventType.KeyUp) return@onKeyEvent false
                 val number = listOf(Key.One, Key.Two, Key.Three, Key.Four, Key.Five).indexOf(e.key)
@@ -468,6 +478,7 @@ fun QuestionCard(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
+            if (item.critical) CriticalChip(Modifier.padding(start = 8.dp))
             Box(Modifier.weight(1f).padding(start = if (phone) 6.dp else 8.dp, end = 8.dp)) {
                 // Inside a thread the project is already known.
                 if (showsProject() && !inThread) ProjectLabel(item.project)
