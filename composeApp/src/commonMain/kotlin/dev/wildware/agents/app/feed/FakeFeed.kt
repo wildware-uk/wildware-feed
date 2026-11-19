@@ -8,7 +8,7 @@ object FakeFeed {
     private val relay = Agent("a4", "relay", "Ops", Presence.Online, hue = 1, doing = "Watching the build box")
     private val quill = Agent("a5", "quill", "Docs", Presence.Offline, hue = 4)
 
-    private val owner = Author.Owner("Shaun")
+    private val owner = Author.Owner("Sam")
 
     private val dashboard = Project("p1", "agent-dashboard", unread = 4, waiting = 1, hue = 0, slug = "agent-dashboard")
     private val ios = Project("p2", "ios-companion", unread = 12, hue = 2, slug = "ios-companion")
