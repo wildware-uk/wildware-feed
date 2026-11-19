@@ -48,7 +48,7 @@ It doesn't, beyond oldest first.
 | 7 | Time left / expiry | Done | "expires in 2h 10m", static (`days.ts:91-102`) | Yes "N h left", refreshed ~20 s (`Mapping.kt` expiresIn) | Yes | App slightly better (re-maps on engine tick) | — |
 | 8 | Kind `confirm` | Done | Approve (true) / Reject (false) (`RequestCard.svelte:571-587`) | Yes as "Yes"/"No" buttons + swipe (`Mapping.kt` Confirm) | Yes, plus Y/N keys | Labels differ (Yes/No vs Approve/Reject) | P2 |
 | 9 | Kind `buttons` | Done | One button per option (`RequestCard.svelte:603-625`) | Yes, swipe right = first, left = last | Yes, number keys 1-5 | — | — |
-| 10 | Kind `choice` | Partial | Radio list, pre-picked from `config.default` (`:508-533`) | Partial: pick then Send; no default pre-pick | Partial | Pre-pick `config.default` | P2 |
+| 10 | Kind `choice` | Done | Radio list, pre-picked from `config.default` (`:508-533`) | Yes: opens on the agent's default, picked and ready to send | Yes | — | P2 |
 | 11 | Kind `multi_choice` | Done | Checkboxes, enforce `config.min`/`max`, "Choose between X and Y" (`:535-564`) | Yes: checkboxes; picks bounded by `config.min`/`max`; a "Choose between 2 and 3" style hint (#57) | Yes | — | P1 |
 | 12 | Kind `text` | Done | Input/textarea (`multiline`), placeholder, maxlength, default, min chars (`:469-506`) | Yes: multiline, placeholder, default, min/max length, with a problem line (#60) | Yes | — | P1 |
 | 13 | Kind `form` | Done | Labelled field + agent's own action buttons, sends `{action,text}` (`:588-602`) | Yes: Form answers (PR #12) | Yes | — | P0 |

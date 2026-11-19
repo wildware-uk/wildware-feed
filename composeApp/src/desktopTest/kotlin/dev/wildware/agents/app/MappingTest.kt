@@ -180,6 +180,24 @@ class MappingTest {
         assertEquals(PickBounds(1, 4, bounded = false), multi(RequestConfig(max = 9)).picks)
     }
 
+    private fun choice(config: RequestConfig?, kind: String = "choice"): FeedItem.Question {
+        val request = RequestCard(
+            RequestView(id = "r4", agentId = "a1", kind = kind, question = "Which?", options = listOf("A", "B", "C"), config = config),
+            agentName = "lumen", projectName = null, discussion = emptyList(), unread = 0, sending = false, tags = emptyList(), fields = emptyList(),
+        )
+        return mapper.map(feed(emptyList(), listOf(request)), listOf(mega), emptyList(), emptyList(), null).sections.single().items.single() as FeedItem.Question
+    }
+
+    @Test
+    fun aChoiceQuestionStartsOnTheAgentsDefault() {
+        assertEquals("B", choice(RequestConfig(defaultValue = "B")).preset)
+        assertEquals(null, choice(null).preset)
+        // A default that is not one of the options picks nothing.
+        assertEquals(null, choice(RequestConfig(defaultValue = "Z")).preset)
+        // Only choice questions: a buttons question answers on the spot.
+        assertEquals(null, choice(RequestConfig(defaultValue = "B"), kind = "buttons").preset)
+    }
+
     @Test
     fun picturesOnOptionsGoToTheirOptionsAndNotTheCard() {
         fun media(id: String) = MediaView(id = id, kind = "image", status = "ready", variants = listOf("original"), filename = "$id.png")

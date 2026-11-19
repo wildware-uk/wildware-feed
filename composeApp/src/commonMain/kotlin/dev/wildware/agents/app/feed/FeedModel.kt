@@ -325,6 +325,8 @@ sealed interface FeedItem {
         val threadId: String? = null,
         /** How many picks a multi-choice question takes. */
         val picks: PickBounds = PickBounds(),
+        /** The option a choice question starts picked on: the agent's default. Null picks nothing. */
+        val preset: String? = null,
         /** The talk about the question before it is answered: its own thread, oldest first. */
         override val replies: List<Reply> = emptyList(),
         override val unreadReplies: Int = 0,

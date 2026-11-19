@@ -654,6 +654,22 @@ class ScreenshotTest {
 
 
 
+    /** A choice question opens on the agent's default: that option is picked and Send is ready. */
+    @Test
+    fun choiceDefault() {
+        val base = FakeFeed.state.sections.flatMap { it.items }.filterIsInstance<FeedItem.Question>().first()
+        val q = base.copy(
+            prompt = "Which branch should the release go out from?", body = "I'd go with main unless you say otherwise.",
+            kind = QuestionKind.Choice, choices = listOf("main", "release/2.4", "hotfix").map { Choice(it) }, preset = "main",
+        )
+        val state = FakeFeed.state.copy(sections = listOf(FakeFeed.state.sections.first().copy(items = listOf(q))))
+        for (dark in listOf(false, true)) {
+            val mode = if (dark) "dark" else "light"
+            shoot("phone-$mode-choice-default", Size.Phone, dark) { AgentsPreview(dark = dark, state = state, safeArea = Size.Phone.safeArea) }
+            shoot("desktop-$mode-choice-default", Size.Desktop, dark) { AgentsPreview(dark = dark, state = state, safeArea = Size.Desktop.safeArea) }
+        }
+    }
+
     /** Increase Contrast on, in both themes, and the largest common text size. */
     @Test
     fun accessibilityVariants() {

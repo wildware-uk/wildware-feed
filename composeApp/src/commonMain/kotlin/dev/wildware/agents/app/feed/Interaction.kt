@@ -379,11 +379,12 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
     /** What the owner has picked on choice questions but not sent yet, by question id. */
     val picks = mutableStateMapOf<String, Set<String>>().apply { putAll(preview.picked) }
 
-    fun picksFor(questionId: String): Set<String> = picks[questionId] ?: emptySet()
+    /** The owner's picks on [question]; until they touch it, the agent's default ([FeedItem.Question.preset]). */
+    fun picksFor(question: FeedItem.Question): Set<String> = picks[question.id] ?: setOfNotNull(question.preset)
 
     /** Pick or unpick an option: any number for multi-choice, one at a time otherwise. */
     fun toggle(question: FeedItem.Question, label: String) {
-        val now = picksFor(question.id)
+        val now = picksFor(question)
         picks[question.id] = when {
             label in now -> now - label
             question.kind == QuestionKind.MultiChoice -> now + label

@@ -402,7 +402,7 @@ fun QuestionCard(
     val dismiss = { ui?.emit(FeedEvent.DismissQuestion(item.id)); Unit }
     // Buttons answer on the spot; choice and multi-choice gather picks, then send them.
     val gathers = item.kind == QuestionKind.Choice || item.kind == QuestionKind.MultiChoice
-    val picks = ui?.picksFor(item.id) ?: emptySet()
+    val picks = ui?.picksFor(item) ?: emptySet()
     // Only within the question's bounds: a disabled Send that says why beats a refusal after it.
     val ready = item.picks.allows(picks.size)
     val send = {

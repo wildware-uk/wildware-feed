@@ -298,6 +298,8 @@ internal class FeedMapper(
             unreadReplies = unread,
             picks = if (kind == QuestionKind.MultiChoice) pickBounds(config, options.size) else PickBounds(),
             critical = request.priority == "critical",
+            // As the website does: a choice question opens on the agent's default, when it is one of the options.
+            preset = config?.defaultValue?.takeIf { kind == QuestionKind.Choice && it in options },
         )
     }
 
