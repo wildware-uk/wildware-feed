@@ -144,12 +144,23 @@ private struct ShareView: View {
         status = projects.isEmpty ? .failed("Couldn't reach the dashboard to list your projects. Try again with signal.") : .ready
     }
 
+    /// What a share with no note says: "Shared from my phone: photo.jpg", or how many files.
+    static func caption(for photos: [OutboxPhoto]) -> String? {
+        switch photos.count {
+        case 0: return nil
+        case 1: return "Shared from my phone: \(photos[0].filename)"
+        default: return "Shared \(photos.count) files from my phone"
+        }
+    }
+
     private func post() {
         guard let selected, let project = projects.first(where: { $0.slug == selected }) else { return }
         status = .sending
         Task {
+            // With no note, the post says where it came from: the app's own composer sends just the file names.
+            let words = note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? Self.caption(for: attachments) : note
             let queued = OutboxQueue.enqueueMessage(
-                label: "To \(project.name)", thread: ["project": project.slug], text: note, photos: attachments
+                label: "To \(project.name)", thread: ["project": project.slug], text: words, photos: attachments
             )
             let outcome = await OutboxQueue.flush(only: queued)
             if outcome == .sent {

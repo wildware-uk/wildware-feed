@@ -803,27 +803,34 @@ fun PhoneThreadScreen(ui: FeedUi, item: Threaded, widthPx: Float, safeArea: Safe
                 }
             }
             Column(
-                Modifier.weight(1f).closesComposer(ui).verticalScroll(scroll).padding(horizontal = 16.dp),
+                // Clear of the keyboard and the home indicator, as the box at the foot used to be.
+                Modifier.weight(1f).safePadding(safeArea, bottom = 0.dp).verticalScroll(scroll).padding(horizontal = 16.dp),
             ) {
-                Spacer(Modifier.height(8.dp))
-                FeedItemView(item, selected = false, density = Density.Compact, inThread = true)
-                HeadQuestions(item)
-                Spacer(Modifier.height(14.dp))
-                Row(Modifier.onPlaced { repliesAt[0] = it.positionInParent().y.roundToInt() }, verticalAlignment = Alignment.CenterVertically) {
-                    SectionLabel(if (item.replies.size == 1) "1 reply" else "${item.replies.size} replies")
-                    Spacer(Modifier.weight(1f))
-                    if (item.replies.isNotEmpty()) MetaText("Swipe a reply right to answer it")
+                // A touch on the card or the replies puts the open box away; one on the box itself never does.
+                Column(Modifier.closesComposer(ui)) {
+                    Spacer(Modifier.height(8.dp))
+                    FeedItemView(item, selected = false, density = Density.Compact, inThread = true)
+                    HeadQuestions(item)
+                    Spacer(Modifier.height(14.dp))
+                    Row(Modifier.onPlaced { repliesAt[0] = it.positionInParent().y.roundToInt() }, verticalAlignment = Alignment.CenterVertically) {
+                        SectionLabel(if (item.replies.size == 1) "1 reply" else "${item.replies.size} replies")
+                        Spacer(Modifier.weight(1f))
+                        if (item.replies.isNotEmpty()) MetaText("Swipe a reply right to answer it")
+                    }
+                    Spacer(Modifier.height(6.dp))
                 }
-                Spacer(Modifier.height(6.dp))
-                // Newest first, under the card; the "N new" line under the new ones.
-                val order = remember(item.replies) { NewestFirst(item.replies, all = true) }
-                order.replies.forEachIndexed { i, reply ->
-                    key(reply.id) { InteractiveReply(reply) }
-                    if (i == order.newLineAfter) NewDivider(item.unreadReplies, newAbove = true)
+                // The box sits at the top of the replies, right under the card: the newest reply is just below it.
+                ThreadComposer(ui, item.id, Modifier.padding(bottom = 8.dp))
+                Column(Modifier.closesComposer(ui)) {
+                    // Newest first, under the box; the "N new" line under the new ones.
+                    val order = remember(item.replies) { NewestFirst(item.replies, all = true) }
+                    order.replies.forEachIndexed { i, reply ->
+                        key(reply.id) { InteractiveReply(reply) }
+                        if (i == order.newLineAfter) NewDivider(item.unreadReplies, newAbove = true)
+                    }
+                    Spacer(Modifier.height(12.dp))
                 }
-                Spacer(Modifier.height(12.dp))
             }
-            ThreadComposer(ui, item.id, Modifier.padding(start = 12.dp, end = 12.dp, top = 6.dp).safePadding(safeArea, bottom = 6.dp))
         }
     }
 }

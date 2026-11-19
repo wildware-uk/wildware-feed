@@ -86,6 +86,12 @@ class Uploads(
     private fun tooLarge(kind: String, limit: Long, declared: Long) =
         MediaError("too_large", "${article(kind)} $kind may be at most $limit bytes; this one declares $declared")
 
+    /**
+     * The name kept with an upload: a file's, a sound's and a video's, so the apps can say which is
+     * which; never a picture's. The TS server kept it for files only (a known difference, spec/README.md).
+     */
+    internal fun keptName(kind: String, name: String): String? = if (kind == "image") null else name
+
     /** `create_upload`: a pending media row and a single-use token for it, valid 15 minutes. */
     fun reserve(agentId: String, filename: String, rawMime: String, bytes: Long): Grant {
         val now = clock()
@@ -101,7 +107,7 @@ class Uploads(
         val mediaId = Ulid.next(now)
         val tokenId = Ulid.next(now)
         db.transaction { _ ->
-            insertMedia(mediaId, agentId, "agent:$agentId", kind, mime, bytes, if (kind == "file") name else null, now)
+            insertMedia(mediaId, agentId, "agent:$agentId", kind, mime, bytes, keptName(kind, name), now)
             db.update(
                 "INSERT INTO upload_tokens (id, agent_id, media_id, max_bytes, mime_allow, expires_at) VALUES (?, ?, ?, ?, ?, ?)",
                 tokenId, agentId, mediaId, maxBytes, Wire.encode(kotlinx.serialization.json.JsonArray(listOf(JsonPrimitive(mime)))), expiresAt,
@@ -154,7 +160,7 @@ class Uploads(
         val id = Ulid.next(now)
         db.update(
             "INSERT INTO media (id, agent_id, author, kind, mime, bytes, sha256, filename, status, created_at) VALUES (?, NULL, 'human', ?, ?, 0, '', ?, 'pending', ?)",
-            id, kind, mime, if (kind == "file") name else null, now,
+            id, kind, mime, keptName(kind, name), now,
         )
         return storeBytes(row(id)!!, body, limit, listOf(mime), contentLength)
     }

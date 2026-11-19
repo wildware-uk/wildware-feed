@@ -495,14 +495,18 @@ class DashboardClient(
         }.requireSuccess()
     }
 
-    /** Posts shared content to a project's feed. The dashboard needs some text, so files alone get a caption. */
+    /**
+     * Posts what was shared from another app into a project's feed. Files alone say where they came
+     * from ("Shared from my phone: shot.png"), as the iPhone's share sheet does.
+     */
     @Throws(Exception::class)
     suspend fun share(projectSlug: String, text: String?, attachments: List<Attachment>): String =
-        send(mapOf("project" to projectSlug), text, attachments)
+        send(mapOf("project" to projectSlug), text?.trim()?.takeIf { it.isNotEmpty() } ?: shareCaption(attachments), attachments)
 
     /**
      * Posts what the composer bar holds into [thread]: `{"project": slug}` for a feed post,
-     * `{"request": id}` to talk over a question an agent asked. Files alone get a caption.
+     * `{"request": id}` to talk over a question an agent asked. The dashboard needs some text, so
+     * files sent alone go up under their names.
      */
     @Throws(Exception::class)
     suspend fun send(thread: Map<String, String>, text: String?, attachments: List<Attachment>): String =
@@ -516,7 +520,7 @@ class DashboardClient(
         /** How many bytes of all the files together have gone up so far. */
         sent: ((Long) -> Unit)? = null,
     ): Posted {
-        val body = text?.trim()?.takeIf { it.isNotEmpty() } ?: shareCaption(attachments)
+        val body = text?.trim()?.takeIf { it.isNotEmpty() } ?: namesOf(attachments)
         var done = 0L
         val mediaIds = attachments.map { file ->
             val before = done
@@ -586,10 +590,21 @@ class DashboardClient(
     internal data class ErrorBody(val error: String? = null, val message: String? = null)
 
 
+    /** What files sent with no words say: just their names, "report.pdf, logs.zip". */
+    private fun namesOf(attachments: List<Attachment>): String {
+        if (attachments.isEmpty()) throw DashboardException(400, "invalid_argument", "There is nothing to send.")
+        return attachments.joinToString(", ") { it.filename }.take(MaxCaption)
+    }
+
     private fun shareCaption(attachments: List<Attachment>): String = when (attachments.size) {
         0 -> throw DashboardException(400, "invalid_argument", "There is nothing to share.")
         1 -> "Shared from my phone: ${attachments[0].filename}"
         else -> "Shared ${attachments.size} files from my phone"
+    }
+
+    private companion object {
+        /** Well inside the dashboard's limit on a message's words. */
+        const val MaxCaption = 2_000
     }
 }
 

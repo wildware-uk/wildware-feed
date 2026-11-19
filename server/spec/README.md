@@ -122,6 +122,9 @@ Deliberate differences, by decision rather than by limit (see "Scope of the Kotl
 - **No Web Push.** Only the website subscribed to it. No `/api/push` routes, no `VAPID_*` settings
   (they are ignored, so decided fix 6's boot check is gone too), nothing sent. DevicesTest's web-push
   test is tagged `tsOnly`. iOS alerts and Live Activities (APNs) are kept.
+- **Sound and video names.** An upload's filename is kept for kinds `audio` and `video` as well as
+  `file` (the TS server kept it for `file` only), so the apps can name each of several sounds. Only
+  `image` still drops it. Pinned by `UploadsTest`; no parity test reads a sound's or video's name.
 - **No share links.** No `/s/...` routes, no `POST|DELETE /api/updates/[id]/share`, no `share` key on
   updates. `MediaTest` 16 is tagged `tsOnly`.
 

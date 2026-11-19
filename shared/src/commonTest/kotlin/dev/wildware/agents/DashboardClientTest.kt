@@ -112,6 +112,17 @@ class DashboardClientTest {
     }
 
     @Test
+    fun `files sent from the app with no words go up under their names`() = runTest {
+        var n = 0
+        client { request ->
+            if (request.url.encodedPath == "/api/media") json("""{"media":{"id":"x${++n}"}}""", HttpStatusCode.Created)
+            else json("""{"message":{"id":"m3"}}""", HttpStatusCode.Created)
+        }.send(mapOf("replyTo" to "p1"), "  ", listOf(Attachment("report.pdf", "application/pdf", byteArrayOf(1)), Attachment("logs.zip", "application/zip", byteArrayOf(2))))
+
+        assertEquals("""{"replyTo":"p1","body":"report.pdf, logs.zip","mediaIds":["x1","x2"]}""", seen.last().second)
+    }
+
+    @Test
     fun `the composer talks over a question in its own thread with photos`() = runTest {
         client { request ->
             if (request.url.encodedPath == "/api/media") json("""{"media":{"id":"x1"}}""", HttpStatusCode.Created)

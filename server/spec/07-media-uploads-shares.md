@@ -71,7 +71,7 @@ Checks in order (`src/media/upload.ts:198-220`):
 MediaError → tool error codes (`src/domain/media.ts:75-87`): `not_found`→`not_found`, `conflict`→`conflict`, everything else (`too_large`, `unsupported_type`, `invalid_argument`) → `invalid_argument`.
 
 Writes, one transaction (`src/media/upload.ts:229-252`):
-- `media` row: `agent_id`, `author = "agent:<agentId>"` (`src/db/media.ts:94`), `kind`, canonical `mime`, `bytes = declared`, `sha256 = ''` (means "no bytes yet"), `filename = trimmed` **only for kind `file`**, else NULL; `status='pending'`, `created_at=now`.
+- `media` row: `agent_id`, `author = "agent:<agentId>"` (`src/db/media.ts:94`), `kind`, canonical `mime`, `bytes = declared`, `sha256 = ''` (means "no bytes yet"), `filename = trimmed` **only for kind `file`**, else NULL (the Kotlin server also keeps it for `audio` and `video`: see README "Known differences"); `status='pending'`, `created_at=now`.
 - `upload_tokens` row: new ULID `id`, `agent_id`, `media_id`, `max_bytes = min(bytes, limit)` (= `bytes`, since step 4), `mime_allow = JSON ["<mime>"]`, `expires_at = now + 900000` (`src/media/tokens.ts:26`), `used_at NULL`.
 
 Tool structured result (`create-upload.ts:113-121`): `{ media_id, upload_url, expires_at: ISO-8601 (Date.toISOString), max_bytes }`. Text: `Reserved <args.mime> upload <id>. PUT the raw bytes to <url> within 15 minutes, then pass <id> to post_update as media_ids.` (note: echoes the *raw* `args.mime`).

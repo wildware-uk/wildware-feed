@@ -83,6 +83,44 @@ internal object DesktopPlayback {
             "/usr/lib64", "/lib64", "/usr/lib", "/lib", "/usr/local/lib",
         )
 
+    /** The words for a video no decoder here can play, which otherwise stays a silent black box. */
+    const val NeedsCodec = "This video needs a codec: install gstreamer1.0-libav"
+
+    /**
+     * Why [video] can't play on this computer, before trying. On Linux an MP4 or MOV is H.264, which
+     * only gstreamer1.0-libav (or the openh264 plugin) decodes; without one GStreamer fails quietly.
+     */
+    fun problemFor(
+        video: VideoSource,
+        linux: Boolean = isLinux,
+        pluginDirs: List<String> = pluginDirs(),
+        /** GStreamer itself missing: [problem]. */
+        core: () -> String? = { problem },
+    ): String? {
+        if (!linux) return null
+        core()?.let { return it }
+        val h264 = video.mime.substringBefore(';').trim().lowercase() in H264Containers
+        return if (h264 && !hasH264Decoder(pluginDirs)) NeedsCodec else null
+    }
+
+    /** Whether a GStreamer plugin that decodes H.264 is in one of [dirs]. */
+    internal fun hasH264Decoder(dirs: List<String>): Boolean =
+        H264Plugins.any { lib -> dirs.any { File(it, lib).exists() } }
+
+    private val isLinux: Boolean get() = System.getProperty("os.name").orEmpty().lowercase().contains("linux")
+
+    private val H264Containers = setOf("video/mp4", "video/quicktime", "video/x-m4v")
+    private val H264Plugins = listOf("libgstlibav.so", "libgstopenh264.so")
+
+    /** Where GStreamer looks for plugins: its own variables, then the usual system folders. */
+    private fun pluginDirs(): List<String> =
+        listOf("GST_PLUGIN_PATH", "GST_PLUGIN_SYSTEM_PATH", "GST_PLUGIN_PATH_1_0", "GST_PLUGIN_SYSTEM_PATH_1_0")
+            .flatMap { System.getenv(it).orEmpty().split(':') }.filter { it.isNotBlank() } +
+            listOf(
+                "/usr/lib/x86_64-linux-gnu/gstreamer-1.0", "/usr/lib/aarch64-linux-gnu/gstreamer-1.0",
+                "/usr/lib64/gstreamer-1.0", "/usr/lib/gstreamer-1.0", "/usr/local/lib/gstreamer-1.0",
+            )
+
     /** The loopback address [item] plays from, with the key added on the way. */
     fun localUrl(item: Playable, auth: MediaAuth?): String = proxy.urlFor(item.url, auth.headersFor(item.url), item.fileName)
 }
@@ -94,7 +132,7 @@ internal object DesktopPlayback {
  */
 @Composable
 actual fun InAppVideo(video: VideoSource, auth: MediaAuth?, modifier: Modifier) {
-    val problem = DesktopPlayback.problem
+    val problem = remember(video.url, video.mime) { DesktopPlayback.problemFor(video) }
     if (problem != null) {
         Box(modifier.background(Color.Black).semantics { contentDescription = "Video" }.padding(16.dp), contentAlignment = Alignment.Center) {
             Text(problem, color = Color.White, style = AgentTheme.type.body)
