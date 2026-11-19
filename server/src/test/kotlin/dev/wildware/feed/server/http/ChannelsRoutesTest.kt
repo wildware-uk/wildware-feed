@@ -137,6 +137,28 @@ class ChannelsRoutesTest {
     }
 
     @Test
+    fun `unsubscribe(group) silences channels the agent only posted in, but a channel it chose survives`() {
+        val app = App(config, Database.memory())
+        val (alpha, _) = app.agents.mint("alpha")
+        for (name in listOf("Web", "Api")) app.feed.projects.create(name, null, null)
+        app.feed.groups.create("Launch", "launch")
+        for (slug in listOf("web", "api")) app.feed.projects.update(slug, Projects.Patch(group = Given("launch")))
+        // Alpha posts in both, so follows both automatically; then chooses web on purpose.
+        for (slug in listOf("web", "api")) assertEquals(null, tool(app, alpha, "post_update", "channel" to slug, "body" to "work in $slug").error())
+        assertEquals(null, tool(app, alpha, "subscribe", "channel" to "web").error())
+        tool(app, alpha, "get_messages")
+
+        assertEquals(true, tool(app, alpha, "unsubscribe", "group" to "launch").structured()["was_subscribed"]!!.jsonPrimitive.content.toBoolean())
+        for (slug in listOf("web", "api")) {
+            app.feed.messages.post(dev.wildware.feed.server.domain.Messages.Post(author = "human", body = "owner in $slug", project = slug))
+        }
+        val heard = tool(app, alpha, "get_messages").structured()["messages"]!!.jsonArray.map { it.jsonObject.str("body") }
+        assertEquals(listOf("owner in web"), heard, "api, only posted in, is quiet; web, chosen, still reaches alpha")
+        val via = tool(app, alpha, "list_subscriptions").structured()["channels"]!!.jsonArray.associate { it.jsonObject.str("slug") to it.jsonObject.str("via") }
+        assertEquals<Map<String?, String?>>(mapOf("web" to "chosen"), via)
+    }
+
+    @Test
     fun `the owner makes, fills, follows and deletes a group over the API`() {
         val app = App(config, Database.memory())
         val (_, key) = app.devices.mint("Phone")

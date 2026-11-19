@@ -137,7 +137,9 @@ Changed, adding fields only:
   `groups`, so an agent can see which project a channel belongs to.
 - `subscribe`, `unsubscribe`: take one of `group`, `channel` (alias `project`), `update_id`,
   `message_id`, `request_id`. They answer with `kind` `group`, `channel` or a thread kind (the
-  old `project` kind becomes `channel`).
+  old `project` kind becomes `channel`). `unsubscribe`'s `was_subscribed` is true when anything the agent heard
+  stops, so leaving a group it never joined still counts when that quiets channels it only posted
+  in.
 - `list_subscriptions`: adds `groups` and `channels` (each channel with its `group` and whether it
   was `chosen`), and keeps `projects` (the channels the agent hears, as before) and `all_projects`.
 - The parity suite's `tools-list-kotlin-changes.json` records each description and schema change.

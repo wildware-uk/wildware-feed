@@ -114,13 +114,16 @@ fun ToolRegistry.registerSubscriptionTools(app: App) {
     register("unsubscribe") { call ->
         val t = target(call)
         val me = Subscriptions.agent(call.agent.id)
-        val everything = subs.followedProjects(call.agent.id) == null
-        val was = following(call.agent.id, t) && !(everything && t.thread == null)
+        val heardBefore = subs.followedProjects(call.agent.id)
+        val everything = heardBefore == null
+        val followed = following(call.agent.id, t) && !(everything && t.thread == null)
         when (t.kind) {
             "group" -> subs.unfollowGroup(me, t.id)
             "channel" -> subs.unfollowProject(me, t.id)
             else -> subs.unfollowThread(me, t.thread!!)
         }
+        // Leaving a group the agent never joined can still quiet channels it only posted in.
+        val was = followed || heardBefore?.toSet() != subs.followedProjects(call.agent.id)?.toSet()
         if (was) changed(call.agent.id)
         val summary = when {
             everything && t.thread == null ->
