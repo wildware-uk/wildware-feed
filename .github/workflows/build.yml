@@ -332,3 +332,21 @@ jobs:
           path: |
             build.log
             watch-build.log
+
+  claude-plugin:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install
+        timeout-minutes: 3
+        working-directory: plugins/bridge
+        run: npm ci --no-audit --no-fund
+      # Includes the check that the committed bin/*.mjs are what the source builds to.
+      - name: Test
+        timeout-minutes: 3
+        working-directory: plugins/bridge
+        run: npm test

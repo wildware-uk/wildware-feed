@@ -124,9 +124,19 @@ watch app for the simulator on a Mac runner.
 
 ## Connect an agent
 
-An agent sets itself up: it asks to join, you allow it in the app, and it collects its own token.
-Tell it "connect yourself to the dashboard at https://feed.example.com as laptop-personal", or do
-it by hand:
+**Claude Code:** install the plugin. It adds the tools, teaches the agent when to post, reply,
+acknowledge and ask, and wakes it when you answer. See [plugins/wildware-feed](plugins/wildware-feed/README.md).
+
+```
+/plugin marketplace add wildware-uk/wildware-feed
+/plugin install wildware-feed@wildware-feed
+```
+
+Then tell the agent "connect yourself to the dashboard as laptop-personal" and tap Allow in the app.
+
+**Any other agent:** it sets itself up the same way. It asks to join, you allow it in the app, and
+it collects its own token. Tell it "connect yourself to the dashboard at https://feed.example.com
+as laptop-personal", or do it by hand:
 
 ```sh
 # 1. Ask to join. Keep pairing_id and poll_secret; read the code out to the owner.

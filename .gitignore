@@ -10,3 +10,5 @@ DerivedData/
 __pycache__/
 *.jks
 *.keystore
+node_modules/
+plugins/wildware-feed/evals/results/
