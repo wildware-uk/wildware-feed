@@ -483,7 +483,7 @@ Notification JSON (key order: row `db/notifications.ts:34-48`, then view `notifi
  "projects":[{"slug":"web","name":"Web"}],
  "working":[{"agentId":"01JC…","agent":"claude","task":"Fix the fee rounding","since":1763460000}]}
 ```
-- `onlineAgents`: one per agent with an open session whose last heartbeat ≥ now−90 s
+- `onlineAgents`: one per agent with an open session whose last heartbeat ≥ now−5 min
   (`domain/sessions.ts:71,237`), newest heartbeat first; host/cwd from session meta, non-empty strings
   else null (`sessions.ts:477`).
 - `requests`: §1.8 list; `agentName` fallback `"An agent"`; `default` = `config.default ?? null`;

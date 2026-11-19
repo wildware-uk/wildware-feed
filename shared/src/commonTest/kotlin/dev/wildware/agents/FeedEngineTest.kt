@@ -416,7 +416,11 @@ class FeedEngineTest {
         val dashboard = started(server)
         assertEquals(listOf("Builder"), dashboard.online.value.map { it.name })
 
-        advanceTimeBy(95_000)
+        advanceTimeBy(PresenceReader.WindowMillis - 5_000)
+        runCurrent()
+        assertEquals(listOf("Builder"), dashboard.online.value.map { it.name })
+
+        advanceTimeBy(30_000)
         runCurrent()
         assertTrue(dashboard.online.value.isEmpty())
     }

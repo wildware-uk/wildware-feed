@@ -772,7 +772,7 @@ internal class PresenceReader(
 
     companion object {
         /** An agent that hasn't beaten for this long is offline. The server's own window. */
-        const val WindowMillis = 90_000L
+        const val WindowMillis = 300_000L
     }
 }
 

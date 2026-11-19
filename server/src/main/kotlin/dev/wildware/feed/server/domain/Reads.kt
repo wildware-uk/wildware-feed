@@ -655,7 +655,7 @@ class Reads(private val db: Database, private val clock: () -> Long = System::cu
         const val UPDATES_MAX = 200
         const val MESSAGES_MAX = 200
         const val PENDING_REQUEST_LIMIT = 200
-        const val PRESENCE_WINDOW_MS = 90_000L
+        const val PRESENCE_WINDOW_MS = Sessions.PRESENCE_WINDOW_MS
         val RENDERABLE_MIMES = setOf(
             "image/png", "image/jpeg", "image/webp", "image/gif",
             "video/mp4", "video/webm", "video/quicktime",

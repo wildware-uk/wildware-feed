@@ -10,7 +10,7 @@ import kotlinx.serialization.json.buildJsonObject
 
 /**
  * Agent sessions and presence (TS `src/domain/sessions.ts`, spec/08 presence): an agent is online
- * while one of its open sessions has beaten within the last 90 s. `agent.presence` fires only on a
+ * while one of its open sessions has beaten within the last 5 minutes. `agent.presence` fires only on a
  * change; going quiet publishes nothing (spec/04 §1.6).
  */
 class Sessions(private val db: Database, private val bus: Bus, private val work: AgentWork, private val clock: () -> Long = System::currentTimeMillis) {
@@ -115,7 +115,7 @@ class Sessions(private val db: Database, private val bus: Bus, private val work:
 
     companion object {
         const val HEARTBEAT_INTERVAL_S = 30
-        const val PRESENCE_WINDOW_MS = 90_000L
+        const val PRESENCE_WINDOW_MS = 300_000L
         const val SESSION_IDLE_MS = 10 * 60_000L
         const val SWEEP_INTERVAL_MS = 60_000L
     }

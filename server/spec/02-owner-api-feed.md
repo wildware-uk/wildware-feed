@@ -524,7 +524,7 @@ Run on insert (and edit) of every message (`src/domain/messages.ts:334`). Stored
 - Effect: a message with ≥1 mention is delivered only to the mentioned agents (and reaches them outside their projects); with none, it reaches every agent in scope (`src/db/messages.ts` `readerScope`).
 - Kotlin server only (the TS server is retired): two groups, matched the same way as names. `@everyone`
   mentions every non-revoked agent; `@here` every non-revoked agent with an open session that beat
-  within `PRESENCE_WINDOW_MS` (90 s). A group never mentions the agent that wrote the message (its
+  within `PRESENCE_WINDOW_MS` (5 min). A group never mentions the agent that wrote the message (its
   own messages never reach it anyway). An agent named `here` or `everyone` is still mentioned by name.
   Offline agents mentioned this way see the message as unread when they next connect.
 

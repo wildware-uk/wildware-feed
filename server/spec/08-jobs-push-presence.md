@@ -128,12 +128,12 @@ Source: `src/domain/sessions.ts`, SQL `src/db/sessions.ts`.
 | Name | Value | Source |
 |------|-------|--------|
 | `HEARTBEAT_INTERVAL_S` | 30 | `src/domain/sessions.ts:68` |
-| `PRESENCE_WINDOW_MS` | 90 000 | `src/domain/sessions.ts:71` |
+| `PRESENCE_WINDOW_MS` | 300 000 | `src/domain/sessions.ts:71` |
 | `SESSION_IDLE_MS` | 600 000 | `src/domain/sessions.ts:74` |
 | `SWEEP_INTERVAL_MS` | 60 000 | `src/domain/sessions.ts:77` |
 | meta `host` / `cwd` / `model` max length | 200 / 1 000 / 100 | `src/domain/sessions.ts:80-82` |
 
-The browser copies the window: `PRESENCE_WINDOW_MS = 90_000` and re-polls the agents snapshot
+The browser copies the window: `PRESENCE_WINDOW_MS = 300_000` and re-polls the agents snapshot
 every 20 000 ms (`src/web/presence.svelte.ts:78,81`).
 
 ### 3.2 Model
@@ -616,7 +616,7 @@ Black-box testable against both servers (with a controllable clock, or real wait
 
 - Presence: `register_session` → agent in `GET /api/snapshot/agents` (`{agents: LiveAgent[]}`,
   `src/http/stream/agents.ts:30-32`) and `/api/summary.onlineAgents`;
-  no heartbeat for >90 s → gone, with **no** SSE event; `heartbeat` after going quiet → one
+  no heartbeat for >5 min → gone, with **no** SSE event; `heartbeat` after going quiet → one
   `agent.presence online:true`; a storm of heartbeats → zero events; `end_session` → one
   `online:false` (none if a second session is live); second `end_session` → `ended:false`, no event.
 - Sweep: session idle >600 s, wait ≤60 s → `heartbeat` returns `conflict` with the exact message.

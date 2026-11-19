@@ -188,7 +188,7 @@ class ReadsTest {
         session("S1", "A1", now - 1000, """{"host":"box","cwd":"","model":5}""")
         session("S2", "A2", now - 500, null)
         session("S3", "A1", now - 2000, null)
-        session("S4", "A2", now - 100_000, null)
+        session("S4", "A2", now - 400_000, null)
         session("S5", "A2", now, null, ended = now)
         assertEquals(
             """[{"agentId":"A2","name":"scout","sessionId":"S2","startedAt":1,"lastHeartbeatAt":${now - 500},"sessions":1,"host":null,"cwd":null,"model":null},""" +

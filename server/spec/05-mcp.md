@@ -297,7 +297,7 @@ else items `JSON.stringify`-ed joined by `, ` (no trailing period); form object 
 ## 5. Presence (`register_session`, `heartbeat`, `end_session`)
 
 Constants (`src/domain/sessions.ts:68-82`): `HEARTBEAT_INTERVAL_S = 30` (returned to the agent),
-`PRESENCE_WINDOW_MS = 90_000`, `SESSION_IDLE_MS = 600_000`, `SWEEP_INTERVAL_MS = 60_000`,
+`PRESENCE_WINDOW_MS = 300_000`, `SESSION_IDLE_MS = 600_000`, `SWEEP_INTERVAL_MS = 60_000`,
 meta limits host 200 / cwd 1000 / model 100.
 
 - **Online** = the agent has at least one session with `ended_at IS NULL` and
@@ -327,7 +327,7 @@ meta limits host 200 / cwd 1000 / model 100.
   session remains.
 - Sweeper (`src/domain/sessions.ts:296-363`, started in `src/hooks.server.ts`): every 60 s closes
   sessions idle > 10 min; for agents that went offline publishes `agent.presence {agentId, sessionId:null, online:false}`.
-  Between 90 s and 10 min of silence the agent is shown offline with no event.
+  Between 5 and 10 min of silence the agent is shown offline with no event.
 
 ## 6. Attachments in `get_messages` (`src/mcp/attachments.ts`)
 
