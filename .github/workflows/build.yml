@@ -72,8 +72,14 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       # The server derives video posters and audio waveforms with ffmpeg.
       - name: Install ffmpeg
-        timeout-minutes: 5
-        run: sudo apt-get update -q && sudo apt-get install -yq ffmpeg
+        timeout-minutes: 12
+        # Without recommends it is a fraction of the download; a slow mirror gets a second try.
+        run: |
+          for i in 1 2; do
+            sudo apt-get update -q && sudo apt-get install -yq --no-install-recommends ffmpeg && exit 0
+            sleep 10
+          done
+          exit 1
       - name: Compile the suite
         timeout-minutes: 10
         run: ./gradlew --no-daemon :server-parity:testClasses
@@ -128,8 +134,14 @@ jobs:
           node-version: '24'
       - uses: gradle/actions/setup-gradle@v4
       - name: Install ffmpeg
-        timeout-minutes: 5
-        run: sudo apt-get update -q && sudo apt-get install -yq ffmpeg
+        timeout-minutes: 12
+        # Without recommends it is a fraction of the download; a slow mirror gets a second try.
+        run: |
+          for i in 1 2; do
+            sudo apt-get update -q && sudo apt-get install -yq --no-install-recommends ffmpeg && exit 0
+            sleep 10
+          done
+          exit 1
       - name: Unit tests
         timeout-minutes: 10
         run: ./gradlew --no-daemon :server:test
@@ -180,8 +192,14 @@ jobs:
           node-version: '24'
       - uses: gradle/actions/setup-gradle@v4
       - name: Install ffmpeg
-        timeout-minutes: 5
-        run: sudo apt-get update -q && sudo apt-get install -yq ffmpeg
+        timeout-minutes: 12
+        # Without recommends it is a fraction of the download; a slow mirror gets a second try.
+        run: |
+          for i in 1 2; do
+            sudo apt-get update -q && sudo apt-get install -yq --no-install-recommends ffmpeg && exit 0
+            sleep 10
+          done
+          exit 1
       # An S3-compatible stand-in for R2. MinIO no longer publishes images, so SeaweedFS's S3 gateway,
       # pinned. A service container can't be given its command, so it starts here.
       - name: Start an S3-compatible server
