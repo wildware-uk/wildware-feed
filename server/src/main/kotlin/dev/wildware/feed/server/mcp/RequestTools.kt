@@ -49,11 +49,11 @@ fun ToolRegistry.registerRequestTools(app: App) {
                 NewEmbed(embed["type"].jsString!!, embed["data"], embed["source_url"].jsString)
             },
         )
-        requestResult(app.requests.requestInput(call.agent.id, input))
+        requestResult(app.requests.requestInput(call.agent.id, input), app.db)
     }
 
     register("await_request") { call ->
-        requestResult(app.requests.awaitRequest(call.args["request_id"].jsString!!, call.agent.id))
+        requestResult(app.requests.awaitRequest(call.args["request_id"].jsString!!, call.agent.id), app.db)
     }
 
     register("edit_request") { call ->
@@ -99,16 +99,20 @@ internal fun requestView(request: OwnerRequest): JsonObject = buildJsonObject {
 }
 
 /** `requestResult` (TS `src/mcp/results.ts:149`). */
-internal fun requestResult(result: RequestResult): ToolResult {
+internal fun requestResult(result: RequestResult, db: dev.wildware.feed.server.db.Database? = null): ToolResult {
     val request = requestView(result.request)
     val id = result.request.id
+    // On a team (migration 055), which person answered; a team of one reads as it always has.
+    val by = result.request.answeredBy
+    val byName = db?.let { dev.wildware.feed.server.domain.People.teamName(it, by) }
     return when (result.state) {
-        "answered" -> ToolResult.ok(answeredSummary(result), buildJsonObject {
+        "answered" -> ToolResult.ok(answeredSummary(result, byName), buildJsonObject {
             put("state", "answered")
             put("request_id", id)
             put("request", request)
             put("response", result.response!!)
             put("answered_at", Wire.isoOf(result.answeredAt))
+            if (byName != null) put("answered_by", buildJsonObject { put("user_id", by); put("name", byName) })
         })
         "pending" -> ToolResult.ok(
             "Nobody has answered yet. This is not a refusal — call await_request({request_id: \"$id\"}) and keep calling it while state is \"pending\".",
@@ -130,12 +134,13 @@ internal fun requestResult(result: RequestResult): ToolResult {
     }
 }
 
-private fun answeredSummary(result: RequestResult): String {
+private fun answeredSummary(result: RequestResult, byName: String? = null): String {
     val value = result.response!!["value"]!!
+    val who = byName ?: "Your owner"
     if (result.request.kind == "secret") {
-        return "Your owner saved the secret ${jsonStringifyJs(value)}. Fetch it with secret_url into a file; never print its value."
+        return "$who saved the secret ${jsonStringifyJs(value)}. Fetch it with secret_url into a file; never print its value."
     }
-    return "Your owner answered: ${describe(value)}"
+    return "$who answered: ${describe(value)}"
 }
 
 /** `describe` (TS `src/mcp/results.ts:188`): the answer in one line of the summary. */

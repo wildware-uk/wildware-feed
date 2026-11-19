@@ -28,6 +28,10 @@ fun Route.streamRoutes(app: App) {
             val cursor = parseCursor(call.request.headers["Last-Event-ID"]) ?: parseCursor(call.request.queryParameters["last_event_id"])
             val key = call.ownerKey()
             val bus = app.bus
+            // An event about one person's own bell or follows (it names a memberId) goes only to them.
+            val me = call.person.id
+            fun mine(event: dev.wildware.feed.server.events.AppEvent) =
+                (event.payload["memberId"] as? kotlinx.serialization.json.JsonPrimitive)?.content.let { it == null || it == me }
             call.respondSse(
                 SseContent(
                     stillAllowed = key?.let { k -> { app.devices.authenticate(k) != null } },
@@ -36,7 +40,7 @@ fun Route.streamRoutes(app: App) {
                     val sameBoot = cursor != null && (cursor.boot == null || cursor.boot == bus.boot)
                     val (_, stop) = bus.subscribeFrom(
                         since = if (sameBoot) cursor!!.seq else null,
-                        listener = { sink.send(Frames.event(it, bus.boot)) },
+                        listener = { if (mine(it)) sink.send(Frames.event(it, bus.boot)) },
                     ) { replay ->
                         val opening = StringBuilder(Frames.retry(Frames.RETRY_MS)).append(Frames.comment("connected"))
                         when {
@@ -45,7 +49,7 @@ fun Route.streamRoutes(app: App) {
                                 .append(Frames.resync("restarted", cursor.seq, bus.lastSeq, bus.boot))
                             replay is Ring.Replay.Hit -> {
                                 opening.append(Frames.hello(bus.boot, cursor.seq))
-                                replay.events.forEach { opening.append(Frames.event(it, bus.boot)) }
+                                replay.events.filter(::mine).forEach { opening.append(Frames.event(it, bus.boot)) }
                             }
                             else -> opening.append(Frames.hello(bus.boot, bus.lastSeq))
                                 .append(Frames.resync((replay as Ring.Replay.Miss).reason, cursor.seq, bus.lastSeq, bus.boot))

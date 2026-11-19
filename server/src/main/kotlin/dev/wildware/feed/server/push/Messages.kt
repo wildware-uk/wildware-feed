@@ -1,5 +1,6 @@
 package dev.wildware.feed.server.push
 
+import dev.wildware.feed.server.domain.People
 import dev.wildware.feed.server.App
 import dev.wildware.feed.server.media.Serve
 
@@ -68,17 +69,25 @@ class PushMessages(private val app: App) {
         )
     }
 
-    class Reply(val message: PushMessage, val projectId: String?, val body: String, val answered: Boolean)
+    /** [actor]: the person who wrote it (migration 055), who is never alerted about it; null for an agent. */
+    class Reply(val message: PushMessage, val projectId: String?, val body: String, val answered: Boolean, val actor: String? = null, val actorName: String? = null)
 
-    /** An agent's message; null for the owner's own words. */
-    fun reply(messageId: String): Reply? {
-        data class Row(val author: String, val projectId: String?, val body: String, val replyTo: String?, val updateId: String?, val taskId: String?)
-        val row = db.one("SELECT author, project_id, body, reply_to, update_id, task_id FROM messages WHERE id = ?", messageId) {
-            Row(it.getString(1), it.getString(2), it.getString(3), it.getString(4), it.getString(5), it.getString(6))
+    /**
+     * A message, as [member] is told of it: an agent's, or on a team another person's (migration
+     * 055). Null for a team of one's own words.
+     */
+    fun reply(messageId: String, member: String = People.FOUNDER): Reply? {
+        data class Row(val author: String, val projectId: String?, val body: String, val replyTo: String?, val updateId: String?, val taskId: String?, val userId: String?)
+        val row = db.one("SELECT author, project_id, body, reply_to, update_id, task_id, user_id FROM messages WHERE id = ?", messageId) {
+            Row(it.getString(1), it.getString(2), it.getString(3), it.getString(4), it.getString(5), it.getString(6), it.getString(7))
         } ?: return null
-        if (!row.author.startsWith("agent:")) return null
-        val name = agentName(row.author.removePrefix("agent:")) ?: "An agent"
-        val answered = repliesToOwner(row.replyTo, row.updateId, row.taskId)
+        val person = if (row.author == "human") row.userId ?: People.FOUNDER else null
+        val name = when {
+            person != null -> People.teamName(db, person) ?: return null
+            row.author.startsWith("agent:") -> agentName(row.author.removePrefix("agent:")) ?: "An agent"
+            else -> return null
+        }
+        val answered = repliesTo(member, row.replyTo, row.updateId, row.taskId)
         return Reply(
             PushMessage(
                 title = if (answered) "$name replied to you" else "$name commented",
@@ -86,18 +95,24 @@ class PushMessages(private val app: App) {
                 url = projectUrl(row.projectId, messageId),
                 tag = "message-$messageId",
             ),
-            row.projectId, row.body, answered,
+            row.projectId, row.body, answered, person, name.takeIf { person != null },
         )
     }
 
-    /** Does this message answer the owner: a reply to their post, or a line in a thread they spoke in? */
-    private fun repliesToOwner(replyTo: String?, updateId: String?, taskId: String?): Boolean {
-        if (replyTo != null) return db.one("SELECT author FROM messages WHERE id = ?", replyTo) { it.getString(1) } == "human"
+    /** Does this message answer [member]: a reply to their post, or a line in a thread they spoke in? */
+    private fun repliesTo(member: String, replyTo: String?, updateId: String?, taskId: String?): Boolean {
+        if (replyTo != null) {
+            return db.one("SELECT author, user_id FROM messages WHERE id = ?", replyTo) { it.getString(1) to it.getString(2) }
+                ?.let { (author, user) -> author == "human" && (user ?: People.FOUNDER) == member } == true
+        }
         val (column, value) = when {
             updateId != null -> "update_id" to updateId
             taskId != null -> "task_id" to taskId
             else -> return false
         }
-        return db.one("SELECT 1 FROM messages WHERE $column = ? AND author = 'human' AND deleted_at IS NULL LIMIT 1", value) { 1 } != null
+        return db.one(
+            "SELECT 1 FROM messages WHERE $column = ? AND author = 'human' AND coalesce(user_id, ?) = ? AND deleted_at IS NULL LIMIT 1",
+            value, People.FOUNDER, member,
+        ) { 1 } != null
     }
 }

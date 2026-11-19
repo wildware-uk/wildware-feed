@@ -40,7 +40,7 @@ fun Route.readRoutes(app: App, lastSeq: () -> Long) {
         "/api/snapshot",
         HttpMethod.Get to {
             val query = SnapshotQuery.of(call.request.queryParameters)
-            stamped { reads.snapshot(Reads.SnapshotRequest(query.project, query.status, query.limit, query.cursor)) }
+            stamped { reads.snapshot(Reads.SnapshotRequest(query.project, query.status, query.limit, query.cursor)) + people(app) }
         },
     )
     endpoint(
@@ -85,8 +85,8 @@ fun Route.readRoutes(app: App, lastSeq: () -> Long) {
             val limit = if (Js.isInteger(asked) && asked > 0) minOf(asked, 100.0).toInt() else 50
             stamped {
                 listOf(
-                    "notifications" to JsonArray(reads.notifications(unseenOnly, limit)),
-                    "unseen" to JsonPrimitive(reads.unseenNotifications()),
+                    "notifications" to JsonArray(reads.notifications(unseenOnly, limit, call.person.id)),
+                    "unseen" to JsonPrimitive(reads.unseenNotifications(call.person.id)),
                 )
             }
         },
@@ -133,4 +133,13 @@ internal fun threadQuery(params: Parameters): Reads.ThreadQuery {
         project = given("project"),
         limit = limit,
     )
+}
+
+/**
+ * The snapshot's `people` (migration 055): everyone who has been in the team, so the apps can name
+ * who wrote or answered what. Only on a team: a team of one's snapshot reads as it always has.
+ */
+private fun people(app: dev.wildware.feed.server.App): List<Pair<String, JsonElement>> {
+    if (!app.people.isTeam()) return emptyList()
+    return listOf("people" to JsonArray(app.people.list().map { personView(it, email = false) }))
 }

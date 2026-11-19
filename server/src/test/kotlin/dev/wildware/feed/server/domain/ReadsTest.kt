@@ -201,8 +201,8 @@ class ReadsTest {
     fun `a notification names its project and the path it opens`() {
         setup()
         update("U1")
-        db.update("INSERT INTO notifications (id, kind, project_id, update_id, title, body, created_at) VALUES ('N1', 'update', 'P1', 'U1', 't', 'b', 1)")
-        db.update("INSERT INTO notifications (id, kind, title, body, created_at, seen_at) VALUES ('N2', 'reply', 't', 'b', 2, 3)")
+        db.update("INSERT INTO notifications (id, kind, project_id, update_id, title, body, created_at, member_id) VALUES ('N1', 'update', 'P1', 'U1', 't', 'b', 1, 'founder')")
+        db.update("INSERT INTO notifications (id, kind, title, body, created_at, seen_at, member_id) VALUES ('N2', 'reply', 't', 'b', 2, 3, 'founder')")
         val list = reads.notifications(unseenOnly = false, limit = 50)
         assertEquals(listOf("N2", "N1"), ids(list))
         assertEquals(listOf("/", "/projects/web?focus=U1"), list.map { it["path"]!!.jsonPrimitive.content })

@@ -70,6 +70,9 @@ class MessageRow(val json: JsonObject) {
     val requestId get() = json.text("requestId")
     val editedAt get() = json.number("editedAt")
 
+    /** The person who wrote it (migration 055), or null for an agent. */
+    val userId: String? get() = json.text("userId") ?: People.FOUNDER.takeIf { author == "human" }
+
     /** `threadKeys`: the four keys events carry after the author. */
     fun threadKeys(): List<Pair<String, String?>> =
         listOf("updateId" to updateId, "replyTo" to replyTo, "requestId" to requestId, "taskId" to taskId)
@@ -99,6 +102,9 @@ class ReactionRow(val json: JsonObject) {
     val messageId get() = json.text("messageId")
     val actor get() = json.text("actor")!!
     val emoji get() = json.text("emoji")!!
+
+    /** The person who reacted (migration 055), or null for an agent. */
+    val userId: String? get() = json.text("userId") ?: People.FOUNDER.takeIf { actor == "human" }
     val createdAt get() = json.number("createdAt")!!
 }
 

@@ -1,6 +1,7 @@
 package dev.wildware.feed.server.http
 
 import dev.wildware.feed.server.App
+import dev.wildware.feed.server.domain.People
 import dev.wildware.feed.server.auth.SlidingLimiter
 import dev.wildware.feed.server.auth.Tokens
 import dev.wildware.feed.server.domain.Agents
@@ -307,8 +308,12 @@ object OwnerSession {
 
     private fun secure(app: App) = app.config.publicBaseUrl.startsWith("https://")
 
+    // Bound to the password in use: the founder's own once they set one (migration 055), else the server's.
     private fun signature(app: App, expires: Long, nonce: String) = Tokens.base64url(
-        Tokens.hmac(app.config.sessionSecret, "oauth-owner:v1:$expires:$nonce:${Tokens.hex(MessageDigest.getInstance("SHA-256").digest(app.config.adminPasswordHash.toByteArray()))}"),
+        Tokens.hmac(
+            app.config.sessionSecret,
+            "oauth-owner:v1:$expires:$nonce:${Tokens.hex(MessageDigest.getInstance("SHA-256").digest((app.people.founderHash() ?: app.config.adminPasswordHash).toByteArray()))}",
+        ),
     )
 
     /** A Set-Cookie header for a new session. */
@@ -323,8 +328,14 @@ object OwnerSession {
     fun clear(app: App): String =
         "${cookieName(app)}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax" + if (secure(app)) "; Secure" else ""
 
-    /** The session's nonce, or null when there is no valid session. */
+    /**
+     * The session's nonce, or null when there is no valid session. Only the founding owner signs in
+     * here (the password has no email), so the session also ends the moment they are removed or are
+     * no longer an owner or admin (migration 055).
+     */
     fun read(app: App, call: ApplicationCall): String? {
+        val founder = app.people.find(People.FOUNDER)
+        if (founder == null || !founder.active || founder.role.rank < People.Role.ADMIN.rank) return null
         val raw = call.request.cookies.rawCookies[cookieName(app)] ?: return null
         val parts = raw.split('.')
         if (parts.size != 4 || parts[0] != "v1") return null
@@ -359,7 +370,12 @@ private suspend fun signIn(app: App, call: ApplicationCall, request: AuthRequest
             val headers = result.retryAfterS?.let { arrayOf("Retry-After" to it.toString()) } ?: emptyArray()
             call.page(result.status, OAuthPage.signIn(request, result.message), extra = headers)
         }
-        PasswordCheck.Ok -> call.respondRedirect303("/oauth/authorize?${request.query()}", "Set-Cookie" to OwnerSession.mint(app), *NO_STORE)
+        // Connecting an agent is an owner's or an admin's to allow (docs/TEAMS.md §1).
+        is PasswordCheck.Ok -> if (result.person.role.rank < People.Role.ADMIN.rank) {
+            call.page(403, OAuthPage.signIn(request, "Only an owner or an admin can connect an agent."))
+        } else {
+            call.respondRedirect303("/oauth/authorize?${request.query()}", "Set-Cookie" to OwnerSession.mint(app), *NO_STORE)
+        }
     }
 }
 

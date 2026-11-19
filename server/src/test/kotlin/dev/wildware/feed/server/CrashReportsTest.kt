@@ -90,14 +90,14 @@ class CrashReportsTest {
         testApplication {
             application {
                 feed(app)
-                routing { endpoint("/api/boom/{id}", HttpMethod.Get to { error("card text") }) }
+                routing { endpoint("/api/agent/boom/{id}", HttpMethod.Get to { error("card text") }) }
             }
-            runCatching { client.get("/api/boom/C42") { header("Authorization", "Bearer $key") } }
+            runCatching { client.get("/api/agent/boom/C42") { header("Authorization", "Bearer $key") } }
         }
         app.close()
         val (error, method, route) = reported.single()
         assertEquals("card text", error.message)
         assertEquals("GET", method)
-        assertEquals("/api/boom/{id}", route)
+        assertEquals("/api/agent/boom/{id}", route)
     }
 }

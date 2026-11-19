@@ -1002,5 +1002,32 @@
     "taskSupport": "forbidden"
    }
   }
+ },
+ {
+  "tool": "get_messages",
+  "path": [
+   "description"
+  ],
+  "why": "Teams (migration 055): on a team of several people, agents learn which person wrote or answered, as extra keys only.",
+  "replace": "own messages are never returned to you.\n",
+  "with": "own messages are never returned to you. On a team of several people a \"human\" message also\nhas `author_name` (the person's name) and `author_user_id`, and an `in_reply_to` quoting one\nhas `author_name`; any of them speaks for your owner.\n"
+ },
+ {
+  "tool": "await_request",
+  "path": [
+   "description"
+  ],
+  "why": "Teams (migration 055): on a team of several people, agents learn which person wrote or answered, as extra keys only.",
+  "replace": "  { \"state\": \"cancelled\", \"request_id\" }\n",
+  "with": "  { \"state\": \"cancelled\", \"request_id\" }\n\nOn a team of several people, an answer also says who gave it: answered_by { user_id, name }.\n"
+ },
+ {
+  "tool": "request_input",
+  "path": [
+   "description"
+  ],
+  "why": "Teams (migration 055): on a team of several people, agents learn which person wrote or answered, as extra keys only.",
+  "replace": "  { \"state\": \"cancelled\", \"request_id\" }\n",
+  "with": "  { \"state\": \"cancelled\", \"request_id\" }\n\nOn a team of several people, an answer also says who gave it: answered_by { user_id, name }.\n"
  }
 ]

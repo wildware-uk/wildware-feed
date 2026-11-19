@@ -18,14 +18,14 @@ import java.sql.ResultSet
 internal object Rows {
     const val PROJECT = "seq, id, slug, name, description, status, pinned, created_at, updated_at, theme, board, group_id"
     const val UPDATE = "seq, id, project_id, agent_id, session_id, title, body, level, pinned, created_at, deleted_at, edited_at, priority, task_id, status, status_at"
-    const val MESSAGE = "seq, id, project_id, update_id, task_id, author, body, created_at, reply_to, deleted_at, answers, request_id, edited_at, pinned, status, status_at"
+    const val MESSAGE = "seq, id, project_id, update_id, task_id, author, body, created_at, reply_to, deleted_at, answers, request_id, edited_at, pinned, status, status_at, user_id"
     const val ACK = "seq, id, agent_id, message_id, task_id, update_id, request_id, state, created_at, updated_at"
-    const val REACTION = "seq, id, message_id, update_id, request_id, task_id, actor, emoji, created_at"
+    const val REACTION = "seq, id, message_id, update_id, request_id, task_id, actor, emoji, created_at, user_id"
     const val TAG = "seq, id, project_id, name, slug, colour, agent_id, created_at"
     const val CARD_TAG = "seq, id, tag_id, update_id, message_id, request_id, author, created_at"
     const val FIELD = "seq, id, update_id, message_id, request_id, name, slug, value, author, created_at, updated_at"
     const val DELIVERY = "seq, id, message_id, agent_id, delivered_at, client_id"
-    const val APPROVAL = "seq, id, agent_id, project_id, update_id, message_id, kind, question, detail, options, config, state, expires_at, decided_at, decided_value, answer, edited_at, pinned, priority"
+    const val APPROVAL = "seq, id, agent_id, project_id, update_id, message_id, kind, question, detail, options, config, state, expires_at, decided_at, decided_value, answer, edited_at, pinned, priority, decided_by"
     const val MEDIA = "seq, id, agent_id, author, update_id, message_id, request_id, task_id, kind, mime, bytes, sha256, width, height, duration_ms, filename, status, created_at"
     const val EMBED = "seq, id, type_id, update_id, message_id, request_id, task_id, agent_id, author, data, source_url, created_at"
     const val NOTIFICATION = "seq, id, kind, project_id, update_id, message_id, request_id, agent_id, title, body, created_at, seen_at"
@@ -105,6 +105,16 @@ internal object Rows {
         flag(rs, "pinned", "pinned")
         str(rs, "status", "status")
         long(rs, "statusAt", "status_at")
+        person(rs, "userId", "user_id")
+    }
+
+    /**
+     * Which person wrote, reacted or answered (migration 055), by membership id. Left out for the
+     * founder, today's one owner, so a team of one reads exactly as before; a person's row without
+     * it is the founder's.
+     */
+    private fun JsonObjectBuilder.person(rs: ResultSet, key: String, column: String) {
+        rs.getString(column)?.takeIf { it.isNotEmpty() && it != People.FOUNDER }?.let { put(key, it) }
     }
 
     fun ack(rs: ResultSet): JsonObject = buildJsonObject {
@@ -129,6 +139,7 @@ internal object Rows {
         str(rs, "actor", "actor")
         str(rs, "emoji", "emoji")
         long(rs, "createdAt", "created_at")
+        person(rs, "userId", "user_id")
     }
 
     fun tag(rs: ResultSet): JsonObject = buildJsonObject {
@@ -219,6 +230,7 @@ internal object Rows {
             // Migration 049. Only when it says something: a question is "medium" unless the agent
             // said otherwise, and leaving that out keeps every ordinary read as it always was.
             rs.getString("priority")?.takeIf { it != "medium" }?.let { put("priority", it) }
+            if (rowState == "approved" || rowState == "rejected") person(rs, "answeredBy", "decided_by")
         }
     }
 

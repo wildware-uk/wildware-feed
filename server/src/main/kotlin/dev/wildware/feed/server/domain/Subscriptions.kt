@@ -5,8 +5,8 @@ import dev.wildware.feed.server.db.Ulid
 
 /**
  * What each subscriber follows (migration 052): projects and threads. A subscriber is a principal,
- * spelled as a message author is: `agent:<id>` for an agent, `human` for the owner (team members
- * will be `member:<id>`).
+ * spelled as a message author is: `agent:<id>` for an agent, and `member:<membership id>` for a
+ * person (migration 055; the one owner was `human` before).
  *
  * For an agent it decides which messages reach it, so a bridge no longer has to be told its projects:
  * - Posting in a project follows it; posting or replying in a thread follows the thread.
@@ -14,11 +14,12 @@ import dev.wildware.feed.server.db.Ulid
  * - An agent that has never followed a project hears every project, as a new agent always has.
  * - Only `unsubscribe` stops following. Posting there again follows it again.
  *
- * For the owner it decides which alerts (phone push and the bell) are worth raising; each phone's
- * own alert preferences still decide whether that phone rings, see [ownerHears]:
+ * For each person it decides which alerts (phone push and the bell) are worth raising; each phone's
+ * own alert preferences still decide whether that phone rings, see [hears]:
  * - Each project has a level: `all` (the default), `replies` (only threads the owner follows, and
  *   questions) or `muted`.
- * - The owner follows a thread by posting or replying in it, or by choice, and can unfollow one.
+ * - A person follows a thread by posting or replying in it, by being @mentioned, or by choice, and
+ *   can unfollow one.
  *
  * A thread is an update (its comments), a request (its discussion), or a feed post with its replies
  * (kind `message`, keyed by the post). An agent following only ever hears messages newer than the
@@ -262,144 +263,149 @@ class Subscriptions(private val db: Database, private val clock: () -> Long = Sy
 
     /**
      * After a message is posted or edited: its author follows the thread (an agent the project too),
-     * and every agent it mentions follows the thread. A thread is heard from after this message; the
-     * message itself reaches the mentioned agents as a mention. True when the owner newly follows.
+     * and every agent and person it mentions follows the thread. A thread is heard from after this
+     * message; the message itself reaches the mentioned agents as a mention. Answers the people who
+     * newly follow, by membership id.
      */
-    fun afterPost(message: MessageRow, mentioned: List<String>): Boolean {
+    fun afterPost(message: MessageRow, mentioned: List<String>, mentionedPeople: List<String> = emptyList()): List<String> {
         val thread = threadOf(message)
         val author = message.author
         val authorId = author.takeIf { it.startsWith(AGENT) }?.removePrefix(AGENT)?.ifEmpty { null }
-        var ownerFollowed = false
+        val followed = ArrayList<String>()
+        val person = if (author == HUMAN) message.userId else null
         if (authorId != null) {
             // From the start, as working in a project always has: what the agent has not read yet stays unread.
             message.projectId?.let { followProject(author, it, afterSeq = 0) }
             thread?.let { followThread(author, it, message.projectId, message.seq) }
-        } else if (author == OWNER && thread != null) {
-            ownerFollowed = followThread(OWNER, thread, message.projectId, message.seq)
+        } else if (person != null && thread != null) {
+            if (followThread(People.subscriber(person), thread, message.projectId, message.seq)) followed += person
         }
-        if (thread != null) for (id in mentioned) if (id != authorId) followThread(agent(id), thread, message.projectId, message.seq)
-        return ownerFollowed
+        if (thread != null) {
+            for (id in mentioned) if (id != authorId) followThread(agent(id), thread, message.projectId, message.seq)
+            for (id in mentionedPeople) if (id != person && followThread(People.subscriber(id), thread, message.projectId, message.seq)) followed += id
+        }
+        return followed.distinct()
     }
 
-    // ---- the owner --------------------------------------------------------------------------------
+    // ---- people -----------------------------------------------------------------------------------
 
     /**
-     * The owner's level for a channel: the channel's own, else its group's, else `all` (spec/12:
-     * the most specific setting wins).
+     * A person's level for a channel: the channel's own, else its group's, else `all` (spec/12:
+     * the most specific setting wins). [who] is `member:<membership id>` ([People.subscriber]).
      */
-    fun ownerLevel(projectId: String?): String = projectId?.let { ownerChannelLevel(it) ?: ownerGroupLevelOf(it) } ?: ALL
+    fun level(who: String, projectId: String?): String = projectId?.let { channelLevel(who, it) ?: groupLevelOf(who, it) } ?: ALL
 
-    /** The level the owner set on this channel itself, or null when it follows its group. */
-    fun ownerChannelLevel(projectId: String): String? = db.one(
-        "SELECT level FROM project_subscriptions WHERE subscriber = ? AND project_id = ? AND unsubscribed_at IS NULL", OWNER, projectId,
+    /** The level [who] set on this channel itself, or null when it follows its group. */
+    fun channelLevel(who: String, projectId: String): String? = db.one(
+        "SELECT level FROM project_subscriptions WHERE subscriber = ? AND project_id = ? AND unsubscribed_at IS NULL", who, projectId,
     ) { it.getString(1) }
 
-    /** The level the owner set on a group, or null. */
-    fun ownerGroupLevel(groupId: String): String? = db.one(
-        "SELECT level FROM group_subscriptions WHERE subscriber = ? AND group_id = ? AND unsubscribed_at IS NULL", OWNER, groupId,
+    /** The level [who] set on a group, or null. */
+    fun groupLevel(who: String, groupId: String): String? = db.one(
+        "SELECT level FROM group_subscriptions WHERE subscriber = ? AND group_id = ? AND unsubscribed_at IS NULL", who, groupId,
     ) { it.getString(1) }
 
-    private fun ownerGroupLevelOf(projectId: String): String? = db.one(
+    private fun groupLevelOf(who: String, projectId: String): String? = db.one(
         "SELECT gs.level FROM group_subscriptions AS gs JOIN projects AS p ON p.group_id = gs.group_id " +
             "WHERE gs.subscriber = ? AND p.id = ? AND gs.unsubscribed_at IS NULL",
-        OWNER, projectId,
+        who, projectId,
     ) { it.getString(1) }
 
-    /** Set the owner's level on a channel; null clears it, so the channel follows its group again. */
-    fun setOwnerLevel(projectId: String, level: String?) {
+    /** Set [who]'s level on a channel; null clears it, so the channel follows its group again. */
+    fun setLevel(who: String, projectId: String, level: String?) {
         if (level == null) {
-            db.update("UPDATE project_subscriptions SET unsubscribed_at = ? WHERE subscriber = ? AND project_id = ? AND unsubscribed_at IS NULL", clock(), OWNER, projectId)
+            db.update("UPDATE project_subscriptions SET unsubscribed_at = ? WHERE subscriber = ? AND project_id = ? AND unsubscribed_at IS NULL", clock(), who, projectId)
             return
         }
         if (level !in LEVELS) throw invalid("level must be one of: ${LEVELS.joinToString(", ")}")
         db.update(
             "INSERT INTO project_subscriptions (id, subscriber, project_id, level, after_seq, created_at, chosen) VALUES (?, ?, ?, ?, 0, ?, 1) " +
                 "ON CONFLICT (subscriber, project_id) DO UPDATE SET level = excluded.level, unsubscribed_at = NULL, chosen = 1",
-            Ulid.next(clock()), OWNER, projectId, level, clock(),
+            Ulid.next(clock()), who, projectId, level, clock(),
         )
     }
 
-    /** Set the owner's level on a group, for every channel in it without its own; null clears it. */
-    fun setOwnerGroupLevel(groupId: String, level: String?) {
+    /** Set [who]'s level on a group, for every channel in it without its own; null clears it. */
+    fun setGroupLevel(who: String, groupId: String, level: String?) {
         if (level == null) {
-            db.update("UPDATE group_subscriptions SET unsubscribed_at = ? WHERE subscriber = ? AND group_id = ? AND unsubscribed_at IS NULL", clock(), OWNER, groupId)
+            db.update("UPDATE group_subscriptions SET unsubscribed_at = ? WHERE subscriber = ? AND group_id = ? AND unsubscribed_at IS NULL", clock(), who, groupId)
             return
         }
         if (level !in LEVELS) throw invalid("level must be one of: ${LEVELS.joinToString(", ")}")
         db.update(
             "INSERT INTO group_subscriptions (id, subscriber, group_id, level, after_seq, created_at) VALUES (?, ?, ?, ?, 0, ?) " +
                 "ON CONFLICT (subscriber, group_id) DO UPDATE SET level = excluded.level, unsubscribed_at = NULL",
-            Ulid.next(clock()), OWNER, groupId, level, clock(),
+            Ulid.next(clock()), who, groupId, level, clock(),
         )
     }
 
-    /** Follow or unfollow a thread for the owner. True when that changed anything. */
-    fun setOwnerFollow(thread: Thread, projectId: String?, following: Boolean): Boolean = if (following) {
-        followThread(OWNER, thread, projectId)
+    /** Follow or unfollow a thread for [who]. True when that changed anything. */
+    fun setFollow(who: String, thread: Thread, projectId: String?, following: Boolean): Boolean = if (following) {
+        followThread(who, thread, projectId)
     } else {
-        val before = threadState(OWNER, thread)
+        val before = threadState(who, thread)
         if (before == null) {
             db.update(
                 "INSERT INTO thread_subscriptions (id, subscriber, kind, thread_id, project_id, after_seq, created_at, unsubscribed_at) " +
                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                Ulid.next(clock()), OWNER, thread.kind, thread.id, projectId, now(), clock(), clock(),
+                Ulid.next(clock()), who, thread.kind, thread.id, projectId, now(), clock(), clock(),
             )
             true
         } else {
-            unfollowThread(OWNER, thread)
+            unfollowThread(who, thread)
         }
     }
 
-    fun ownerChoices(): OwnerChoices = OwnerChoices(
-        levels = db.query("SELECT project_id, level FROM project_subscriptions WHERE subscriber = ? AND unsubscribed_at IS NULL ORDER BY seq", OWNER) {
+    fun choices(who: String): OwnerChoices = OwnerChoices(
+        levels = db.query("SELECT project_id, level FROM project_subscriptions WHERE subscriber = ? AND unsubscribed_at IS NULL ORDER BY seq", who) {
             it.getString(1) to it.getString(2)
         },
-        groups = db.query("SELECT group_id, level FROM group_subscriptions WHERE subscriber = ? AND unsubscribed_at IS NULL ORDER BY seq", OWNER) {
+        groups = db.query("SELECT group_id, level FROM group_subscriptions WHERE subscriber = ? AND unsubscribed_at IS NULL ORDER BY seq", who) {
             it.getString(1) to it.getString(2)
         },
-        threads = db.query("SELECT kind, thread_id, unsubscribed_at IS NULL FROM thread_subscriptions WHERE subscriber = ? ORDER BY seq", OWNER) {
+        threads = db.query("SELECT kind, thread_id, unsubscribed_at IS NULL FROM thread_subscriptions WHERE subscriber = ? ORDER BY seq", who) {
             Thread(it.getString(1), it.getString(2)) to it.getBoolean(3)
         },
     )
 
     /**
-     * Whether an alert is one the owner follows, before any phone's own preferences. [kind] is
-     * `update` (a new card), `message` (a line by an agent in [thread]), `request` (a question for
-     * the owner) or anything else (always heard). [toOwner]: the message answers the owner, or is in
-     * a thread they spoke in before following existed. [critical] alerts are always heard: whether
-     * one pages is each phone's own choice.
+     * Whether an alert is one [who] follows, before any phone's own preferences. [kind] is `update`
+     * (a new card), `message` (a line in [thread]), `request` (a question for the team) or anything
+     * else (always heard). [toThem]: the message answers them, or is in a thread they spoke in
+     * before following existed. [critical] alerts are always heard: whether one pages is each
+     * phone's own choice.
      *
-     * - A thread the owner follows is heard, even in a muted project; one they unfollowed is not.
-     * - `all`: everything else. `replies`: questions, and messages [toOwner] (or naming them with
+     * - A thread they follow is heard, even in a muted channel; one they unfollowed is not.
+     * - `all`: everything else. `replies`: questions, and messages [toThem] (or naming them with
      *   `@you` or `@owner`). `muted`: nothing else.
      */
-    fun ownerHears(kind: String, projectId: String?, thread: Thread?, toOwner: Boolean = false, critical: Boolean = false): Boolean {
+    fun hears(who: String, kind: String, projectId: String?, thread: Thread?, toThem: Boolean = false, critical: Boolean = false): Boolean {
         if (critical) return true
         if (kind != "update" && kind != "message" && kind != "request") return true
-        val state = thread?.let { threadState(OWNER, it) }
+        val state = thread?.let { threadState(who, it) }
         if (state == true) return true
         if (state == false) return false
-        return when (ownerLevel(projectId)) {
+        return when (level(who, projectId)) {
             MUTED -> false
-            REPLIES -> kind == "request" || (kind == "message" && toOwner)
+            REPLIES -> kind == "request" || (kind == "message" && toThem)
             else -> true
         }
     }
 
-    /** [ownerHears] for a new card. */
-    fun ownerHearsUpdate(projectId: String?, priority: String?): Boolean =
-        ownerHears("update", projectId, null, critical = priority == CRITICAL)
+    /** [hears] for a new card. */
+    fun hearsUpdate(who: String, projectId: String?, priority: String?): Boolean =
+        hears(who, "update", projectId, null, critical = priority == CRITICAL)
 
-    /** [ownerHears] for an agent's message; [toOwner] as [ownerHears] says, and `@you` or `@owner` in it counts too. */
-    fun ownerHearsMessage(messageId: String, toOwner: Boolean): Boolean {
+    /** [hears] for a message; [toThem] as [hears] says, and `@you` or `@owner` in it counts too. */
+    fun hearsMessage(who: String, messageId: String, toThem: Boolean): Boolean {
         val (thread, projectId) = runCatching { threadAt(CardRef("message", messageId)) }.getOrNull() ?: (null to null)
         val (project, body) = db.one("SELECT project_id, body FROM messages WHERE id = ?", messageId) { it.getString(1) to it.getString(2) } ?: (null to "")
-        return ownerHears("message", projectId ?: project, thread, toOwner = toOwner || OWNER_MENTION.containsMatchIn(body))
+        return hears(who, "message", projectId ?: project, thread, toThem = toThem || OWNER_MENTION.containsMatchIn(body))
     }
 
-    /** [ownerHears] for a question waiting on the owner. */
-    fun ownerHearsRequest(requestId: String, projectId: String?, priority: String?): Boolean =
-        ownerHears("request", projectId, Thread("request", requestId), critical = priority == CRITICAL)
+    /** [hears] for a question waiting on the team. */
+    fun hearsRequest(who: String, requestId: String, projectId: String?, priority: String?): Boolean =
+        hears(who, "request", projectId, Thread("request", requestId), critical = priority == CRITICAL)
 
     // ---- threads ----------------------------------------------------------------------------------
 
@@ -435,7 +441,7 @@ class Subscriptions(private val db: Database, private val clock: () -> Long = Sy
 
     companion object {
         private const val AGENT = "agent:"
-        const val OWNER = "human"
+        private const val HUMAN = "human"
         const val ALL = "all"
         const val REPLIES = "replies"
         const val MUTED = "muted"

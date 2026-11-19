@@ -25,6 +25,8 @@ class AgentWork(private val db: Database, private val bus: Bus, private val cloc
         val seq: Long, val id: String, val projectId: String?, val updateId: String?, val taskId: String?,
         val replyTo: String?, val answers: String?, val requestId: String?, val author: String, val body: String,
         val createdAt: Long, val deletedAt: Long?,
+        /** The person, for a `human` line (migration 055). */
+        val userId: String? = null,
     )
 
     private val subscriptions = Subscriptions(db, clock)
@@ -161,7 +163,9 @@ class AgentWork(private val db: Database, private val bus: Bus, private val cloc
         "taskId" to m.taskId,
     )
 
-    fun authorName(author: String): String? {
+    /** An agent's name; a person's on a team (migration 055), else null for a person. */
+    fun authorName(author: String, userId: String? = null): String? {
+        if (author == "human") return People.teamName(db, userId)
         if (!author.startsWith("agent:")) return null
         return db.one("SELECT name FROM agents WHERE id = ?", author.removePrefix("agent:")) { it.getString(1) }
     }
@@ -192,6 +196,7 @@ class AgentWork(private val db: Database, private val bus: Bus, private val cloc
         taskId = rs.getString("task_id"), replyTo = rs.getString("reply_to"), answers = rs.getString("answers"),
         requestId = rs.getString("request_id"), author = rs.getString("author"), body = rs.getString("body"),
         createdAt = rs.getLong("created_at"), deletedAt = rs.getLong("deleted_at").let { if (rs.wasNull()) null else it },
+        userId = rs.getString("user_id") ?: People.FOUNDER.takeIf { rs.getString("author") == "human" },
     )
 
     sealed interface Subscription {
@@ -202,6 +207,6 @@ class AgentWork(private val db: Database, private val bus: Bus, private val cloc
 
     companion object {
         val OPEN = listOf("todo", "in_progress", "blocked")
-        private val LINE = listOf("seq", "id", "project_id", "update_id", "task_id", "reply_to", "answers", "request_id", "author", "body", "created_at", "deleted_at")
+        private val LINE = listOf("seq", "id", "project_id", "update_id", "task_id", "reply_to", "answers", "request_id", "author", "body", "created_at", "deleted_at", "user_id")
     }
 }

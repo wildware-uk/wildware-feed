@@ -10,12 +10,14 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
 /**
- * The bell (spec/03 §5, spec/08 notifications): a row for every agent update, agent message and
- * request, written by a bus listener, and the owner marking them seen.
+ * The bell (spec/03 §5, spec/08 notifications): a row for every agent update, message and request,
+ * written by a bus listener, and the owner marking them seen. Each person has their own bell
+ * (migration 055): a row per person who follows what it is about, never for what they did themselves.
  *
- * It also says which notifications on the owner's devices are done with (spec/08 §6.9): a
- * `notifications.cleared {tags}` event names them by the tag their alert carried, when the owner
- * reads them, answers or loses a question, settles a pairing, or the agent deletes the thing.
+ * It also says which notifications on a person's devices are done with (spec/08 §6.9): a
+ * `notifications.cleared {tags}` event names them by the tag their alert carried, when they read
+ * them; or, for everyone, when a question is answered or lost, a pairing settles, or the thing is
+ * deleted. An event for one person carries their `memberId`.
  */
 class Notifications(private val db: Database, private val bus: Bus, private val clock: () -> Long = System::currentTimeMillis) {
     /** What one notification will say, before it is written. */
@@ -28,8 +30,10 @@ class Notifications(private val db: Database, private val bus: Bus, private val 
         val agentId: String?,
         val title: String,
         val body: String,
-        /** A message that answers the owner, or is in a thread they spoke in. */
+        /** A message that answers the person it is for, or is in a thread they spoke in. */
         val toOwner: Boolean = false,
+        /** The person who wrote it, who is never told about their own message. */
+        val authorMember: String? = null,
     )
 
     /** Listen for the events that ring the bell or settle what it rang for; call the result to stop. */
@@ -39,16 +43,16 @@ class Notifications(private val db: Database, private val bus: Bus, private val 
         val id = { key: String -> (event.payload[key] as? JsonPrimitive)?.content }
         try {
             when (event.type) {
-                "update.created" -> id("updateId")?.let(::forUpdate)?.let(::recordIfFollowed)
-                "message.created" -> id("messageId")?.let(::forMessage)?.let(::recordIfFollowed)
-                "request.created" -> id("requestId")?.let(::forRequest)?.let(::recordIfFollowed)
-                // A question answered, timed out, cancelled or withdrawn: its alert and bell row are done.
-                "request.answered" -> id("requestId")?.let { markCardsSeen(listOf(it), also = listOf(requestTag(it))) }
-                // A deleted line, post or update: nothing left to read.
-                "message.deleted" -> id("messageId")?.let { markCardsSeen(listOf(it)) }
-                "update.deleted" -> id("updateId")?.let { markCardsSeen(listOf(it)) }
+                "update.created" -> id("updateId")?.let { u -> recordForEach { forUpdate(u) } }
+                "message.created" -> id("messageId")?.let { m -> recordForEach { member -> forMessage(m, member) } }
+                "request.created" -> id("requestId")?.let { r -> recordForEach { forRequest(r) } }
+                // A question answered, timed out, cancelled or withdrawn: everyone's alert and bell row are done.
+                "request.answered" -> id("requestId")?.let { markCardsSeen(listOf(it), also = listOf(requestTag(it)), member = null) }
+                // A deleted line, post or update: nothing left to read, for anyone.
+                "message.deleted" -> id("messageId")?.let { markCardsSeen(listOf(it), member = null) }
+                "update.deleted" -> id("updateId")?.let { markCardsSeen(listOf(it), member = null) }
                 // Allowed, denied, collected or expired: nothing left to decide.
-                "pairing.updated" -> id("pairingId")?.takeIf { id("state") != "pending" }?.let { publishCleared(listOf(pairingTag(it))) }
+                "pairing.updated" -> id("pairingId")?.takeIf { id("state") != "pending" }?.let { publishCleared(listOf(pairingTag(it)), null) }
             }
         } catch (e: Exception) {
             // The write it is about has already happened; a missing bell row must not undo it.
@@ -56,35 +60,41 @@ class Notifications(private val db: Database, private val bus: Bus, private val 
         }
     }
 
-    private fun recordIfFollowed(input: New) {
-        if (followed(input)) record(input)
+    /** One row for each person who follows what [build] describes for them, except whoever wrote it. */
+    private fun recordForEach(build: (String) -> New?) {
+        for (member in db.query("SELECT id FROM memberships WHERE removed_at IS NULL ORDER BY seq") { it.getString(1) }) {
+            val input = build(member) ?: continue
+            if (input.authorMember == member) continue
+            if (followed(input, People.subscriber(member))) record(input, member)
+        }
     }
 
-    /** Whether the owner follows what this is about (migration 052): a muted project rings no bell. */
-    private fun followed(input: New): Boolean {
+    /** Whether [who] follows what this is about (migration 052): a muted channel rings no bell. */
+    private fun followed(input: New, who: String): Boolean {
         val subs = Subscriptions(db, clock)
         return when {
-            input.updateId != null -> subs.ownerHearsUpdate(input.projectId, priorityOf("updates", input.updateId))
-            input.requestId != null -> subs.ownerHearsRequest(input.requestId, input.projectId, priorityOf("approvals", input.requestId))
-            input.messageId != null -> subs.ownerHearsMessage(input.messageId, input.toOwner)
+            input.updateId != null -> subs.hearsUpdate(who, input.projectId, priorityOf("updates", input.updateId))
+            input.requestId != null -> subs.hearsRequest(who, input.requestId, input.projectId, priorityOf("approvals", input.requestId))
+            input.messageId != null -> subs.hearsMessage(who, input.messageId, input.toOwner)
             else -> true
         }
     }
 
     private fun priorityOf(table: String, id: String): String? = db.one("SELECT priority FROM $table WHERE id = ?", id) { it.getString(1) }
 
-    /** Insert one row (once per target) and publish `notification.created` for a new one. */
-    fun record(input: New): String? {
+    /** Insert one row (once per target and person) and publish `notification.created` for a new one. */
+    fun record(input: New, member: String = People.FOUNDER): String? {
         val id = Ulid.next(clock())
         val inserted = db.one(
-            "INSERT INTO notifications (id, kind, project_id, update_id, message_id, request_id, agent_id, title, body, created_at) " +
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING RETURNING id, kind, project_id",
-            id, input.kind, input.projectId, input.updateId, input.messageId, input.requestId, input.agentId, input.title, input.body, clock(),
+            "INSERT INTO notifications (id, kind, project_id, update_id, message_id, request_id, agent_id, title, body, created_at, member_id) " +
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING RETURNING id, kind, project_id",
+            id, input.kind, input.projectId, input.updateId, input.messageId, input.requestId, input.agentId, input.title, input.body, clock(), member,
         ) { Triple(it.getString(1), it.getString(2), it.getString(3)) } ?: return null
         bus.publish("notification.created", buildJsonObject {
             put("notificationId", inserted.first)
             put("kind", inserted.second)
             put("projectId", inserted.third)
+            whose(member)
         })
         return inserted.first
     }
@@ -108,10 +118,14 @@ class Notifications(private val db: Database, private val bus: Bus, private val 
         )
     }
 
-    fun forMessage(messageId: String): New? {
+    /**
+     * A line, as [member] would be told of it: by an agent, or (migration 055) by another person on
+     * the team. "Replied to you" when it answers them or is in a thread they spoke in.
+     */
+    fun forMessage(messageId: String, member: String = People.FOUNDER): New? {
         val row = db.one(
-            "SELECT id, project_id, update_id, task_id, author, body, reply_to, deleted_at FROM messages WHERE id = ?", messageId,
-        ) { rs -> (1..8).map { rs.getObject(it)?.toString() } } ?: return null
+            "SELECT id, project_id, update_id, task_id, author, body, reply_to, deleted_at, user_id FROM messages WHERE id = ?", messageId,
+        ) { rs -> (1..9).map { rs.getObject(it)?.toString() } } ?: return null
         val id = row[0]!!
         val projectId = row[1]
         val updateId = row[2]
@@ -119,11 +133,13 @@ class Notifications(private val db: Database, private val bus: Bus, private val 
         val author = row[4]
         val body = row[5]
         val replyTo = row[6]
-        if (row[7] != null || author == HUMAN) return null
-        if (author == null || !author.startsWith("agent:") || author.length == "agent:".length) return null
-        val agentId = author.removePrefix("agent:")
-        val who = agentName(agentId)
-        val toOwner = repliesToOwner(replyTo, updateId, taskId)
+        if (row[7] != null || author == null) return null
+        val (agentId, who, person) = when {
+            author == HUMAN -> Triple(null, People.teamName(db, row[8] ?: People.FOUNDER) ?: return null, row[8] ?: People.FOUNDER)
+            author.startsWith("agent:") && author.length > "agent:".length -> author.removePrefix("agent:").let { Triple(it, agentName(it), null) }
+            else -> return null
+        }
+        val toOwner = repliesTo(member, replyTo, updateId, taskId)
         return New(
             kind = "reply",
             projectId = projectId,
@@ -132,19 +148,27 @@ class Notifications(private val db: Database, private val bus: Bus, private val 
             title = if (toOwner) "$who replied to you" else "$who commented",
             body = firstLine(body ?: ""),
             toOwner = toOwner,
+            authorMember = person,
         )
     }
 
-    /** `repliesToOwner` (TS `src/domain/push.ts:525`): a reply to the owner's post, or in a thread they spoke in. */
-    private fun repliesToOwner(replyTo: String?, updateId: String?, taskId: String?): Boolean {
-        if (replyTo != null) return db.one("SELECT author FROM messages WHERE id = ?", replyTo) { it.getString(1) } == HUMAN
+    /**
+     * `repliesToOwner` (TS `src/domain/push.ts:525`), per person: a reply to [member]'s post, or in a
+     * thread they spoke in.
+     */
+    private fun repliesTo(member: String, replyTo: String?, updateId: String?, taskId: String?): Boolean {
+        if (replyTo != null) {
+            return db.one("SELECT author, user_id FROM messages WHERE id = ?", replyTo) { it.getString(1) to it.getString(2) }
+                ?.let { (author, user) -> author == HUMAN && (user ?: People.FOUNDER) == member } == true
+        }
         val (column, value) = when {
             updateId != null -> "update_id" to updateId
             taskId != null -> "task_id" to taskId
             else -> return false
         }
         return db.one(
-            "SELECT 1 FROM messages WHERE $column = ? AND deleted_at IS NULL AND author = ? LIMIT 1", value, HUMAN,
+            "SELECT 1 FROM messages WHERE $column = ? AND deleted_at IS NULL AND author = ? AND coalesce(user_id, ?) = ? LIMIT 1",
+            value, HUMAN, People.FOUNDER, member,
         ) { true } == true
     }
 
@@ -162,41 +186,46 @@ class Notifications(private val db: Database, private val bus: Bus, private val 
         )
     }
 
-    /** Mark these seen, or every unseen one when [ids] is null; publishes `notifications.seen` when any changed. */
-    fun markSeen(ids: List<String>?): Int {
+    /**
+     * Mark [member]'s rows seen: these, or every unseen one when [ids] is null; publishes
+     * `notifications.seen` when any changed.
+     */
+    fun markSeen(ids: List<String>?, member: String = People.FOUNDER): Int {
         val at = clock()
         val changed = when {
-            ids == null -> db.query("UPDATE notifications SET seen_at = ? WHERE seen_at IS NULL RETURNING $SEEN_COLUMNS", at, row = ::tagOf)
+            ids == null -> db.query("UPDATE notifications SET seen_at = ? WHERE seen_at IS NULL AND member_id = ? RETURNING $SEEN_COLUMNS", at, member, row = ::tagOf)
             ids.isEmpty() -> emptyList()
             else -> ids.distinct().chunked(CHUNK).flatMap { chunk ->
                 db.query(
-                    "UPDATE notifications SET seen_at = ? WHERE seen_at IS NULL AND id IN (${marks(chunk)}) RETURNING $SEEN_COLUMNS",
-                    at, *chunk.toTypedArray(), row = ::tagOf,
+                    "UPDATE notifications SET seen_at = ? WHERE seen_at IS NULL AND member_id = ? AND id IN (${marks(chunk)}) RETURNING $SEEN_COLUMNS",
+                    at, member, *chunk.toTypedArray(), row = ::tagOf,
                 )
             }
         }
-        announce(changed)
+        announce(changed, member = member)
         return changed.size
     }
 
     /**
-     * Mark seen everything the bell holds about these cards (spec/03 §5.3): an update or request
-     * card, a post, or a single line, and every line in their threads. The owner opened them on some
-     * device. [also] are more tags to clear whatever changed, such as a question that settled.
+     * Mark seen everything [member]'s bell holds about these cards (spec/03 §5.3): an update or
+     * request card, a post, or a single line, and every line in their threads. They opened them on
+     * some device. [member] null is everyone's bell (the thing settled or went away). [also] are
+     * more tags to clear whatever changed, such as a question that settled.
      */
-    fun markCardsSeen(cards: List<String>, also: List<String> = emptyList()): Int {
+    fun markCardsSeen(cards: List<String>, also: List<String> = emptyList(), member: String? = People.FOUNDER): Int {
         val at = clock()
+        val whose = if (member == null) "" else " AND member_id = ?"
         val changed = cards.distinct().chunked(CHUNK).flatMap { chunk ->
             val m = marks(chunk)
             db.query(
-                "UPDATE notifications SET seen_at = ? WHERE seen_at IS NULL AND (" +
+                "UPDATE notifications SET seen_at = ? WHERE seen_at IS NULL$whose AND (" +
                     "update_id IN ($m) OR request_id IN ($m) OR message_id IN ($m) OR message_id IN (" +
                     "SELECT id FROM messages WHERE update_id IN ($m) OR reply_to IN ($m) OR request_id IN ($m) OR task_id IN ($m))" +
                     ") RETURNING $SEEN_COLUMNS",
-                at, *List(7) { chunk }.flatten().toTypedArray(), row = ::tagOf,
+                at, *listOfNotNull(member).toTypedArray(), *List(7) { chunk }.flatten().toTypedArray(), row = ::tagOf,
             )
         }
-        announce(changed, also)
+        announce(changed, also, member)
         return changed.size
     }
 
@@ -204,16 +233,39 @@ class Notifications(private val db: Database, private val bus: Bus, private val 
      * [changed] are the rows an `UPDATE … RETURNING` marked, in no promised order (Postgres returns
      * them as it finds them), so their tags go out oldest bell row first, then [also].
      */
-    private fun announce(changed: List<Seen>, also: List<String> = emptyList()) {
-        if (changed.isNotEmpty()) bus.publish("notifications.seen", buildJsonObject { put("count", changed.size) })
-        publishCleared(changed.sortedBy { it.seq }.mapNotNull { it.tag } + also)
+    private fun announce(changed: List<Seen>, also: List<String> = emptyList(), member: String?) {
+        if (member == null) {
+            // Everyone's rows: each person whose bell changed hears it, and every device clears.
+            for ((who, rows) in changed.groupBy { it.member }) {
+                bus.publish("notifications.seen", buildJsonObject { put("count", rows.size); whose(who) })
+            }
+            publishCleared(changed.sortedBy { it.seq }.mapNotNull { it.tag } + also, null)
+            return
+        }
+        if (changed.isNotEmpty()) bus.publish("notifications.seen", buildJsonObject { put("count", changed.size); whose(member) })
+        publishCleared(changed.sortedBy { it.seq }.mapNotNull { it.tag }, member)
+        publishCleared(also, null)
     }
 
-    /** `notifications.cleared {tags}`: these alerts are done with on every device. Nothing when there are none. */
-    private fun publishCleared(tags: List<String>) {
+    /**
+     * `notifications.cleared {tags}`: these alerts are done with on [member]'s devices, or on every
+     * device when null. Nothing when there are none.
+     */
+    private fun publishCleared(tags: List<String>, member: String?) {
         val distinct = tags.distinct()
         if (distinct.isEmpty()) return
-        bus.publish("notifications.cleared", buildJsonObject { put("tags", JsonArray(distinct.map(::JsonPrimitive))) })
+        bus.publish("notifications.cleared", buildJsonObject {
+            put("tags", JsonArray(distinct.map(::JsonPrimitive)))
+            whose(member)
+        })
+    }
+
+    /**
+     * `memberId` on an event that is one person's (their bell, their alerts), so only their apps
+     * and phones act on it. Only on a team: a team of one's events read as they always have.
+     */
+    private fun kotlinx.serialization.json.JsonObjectBuilder.whose(member: String?) {
+        if (member != null && (db.one("SELECT count(*) FROM memberships") { it.getLong(1) } ?: 0) > 1) put("memberId", member)
     }
 
     /**
@@ -223,7 +275,7 @@ class Notifications(private val db: Database, private val bus: Bus, private val 
      * done with (it may be the app's own notice, such as `update-check`), nor is a tag of any
      * other shape.
      */
-    fun handled(tags: List<String>): List<String> {
+    fun handled(tags: List<String>, member: String = People.FOUNDER): List<String> {
         val now = clock()
         val byKind = tags.distinct().mapNotNull { tag -> TAG.matchEntire(tag)?.let { it.groupValues[1] to it.groupValues[2] } }
             .groupBy({ it.first }, { it.second })
@@ -238,23 +290,25 @@ class Notifications(private val db: Database, private val bus: Bus, private val 
         /** [sql] lists, of the ids in its `IN`, those done with; the rest are not. */
         fun finished(kind: String, sql: (String) -> String) {
             for (chunk in byKind[kind].orEmpty().chunked(CHUNK)) {
-                db.query(sql(marks(chunk)), *chunk.toTypedArray()) { it.getString(1) }.forEach { done += "$kind-$it" }
+                db.query(sql(marks(chunk)), *chunk.toTypedArray(), member) { it.getString(1) }.forEach { done += "$kind-$it" }
             }
         }
         stillOpen("request", { "SELECT id FROM approvals WHERE state = 'pending' AND expires_at > ? AND id IN ($it)" }, now)
         stillOpen("pairing", { "SELECT id FROM agent_pairings WHERE state = 'pending' AND expires_at > ? AND id IN ($it)" }, now)
+        // Seen means seen by [member]: their own bell row.
         finished("update", {
             "SELECT u.id FROM updates AS u WHERE u.id IN ($it) AND (u.deleted_at IS NOT NULL OR EXISTS " +
-                "(SELECT 1 FROM notifications AS n WHERE n.update_id = u.id AND n.kind = 'update' AND n.seen_at IS NOT NULL))"
+                "(SELECT 1 FROM notifications AS n WHERE n.update_id = u.id AND n.kind = 'update' AND n.seen_at IS NOT NULL AND n.member_id = ?))"
         })
         finished("message", {
             "SELECT m.id FROM messages AS m WHERE m.id IN ($it) AND (m.deleted_at IS NOT NULL OR EXISTS " +
-                "(SELECT 1 FROM notifications AS n WHERE n.message_id = m.id AND n.seen_at IS NOT NULL))"
+                "(SELECT 1 FROM notifications AS n WHERE n.message_id = m.id AND n.seen_at IS NOT NULL AND n.member_id = ?))"
         })
         return tags.distinct().filter { it in done }
     }
 
-    fun unseen(): Long = db.one("SELECT count(*) AS n FROM notifications WHERE seen_at IS NULL") { it.getLong(1) } ?: 0
+    fun unseen(member: String = People.FOUNDER): Long =
+        db.one("SELECT count(*) AS n FROM notifications WHERE seen_at IS NULL AND member_id = ?", member) { it.getLong(1) } ?: 0
 
     companion object {
         const val HUMAN = "human"
@@ -263,7 +317,7 @@ class Notifications(private val db: Database, private val bus: Bus, private val 
         private const val CHUNK = 200
 
         /** What an `UPDATE … RETURNING` gives [tagOf]. */
-        private const val SEEN_COLUMNS = "seq, kind, update_id, message_id"
+        private const val SEEN_COLUMNS = "seq, kind, update_id, message_id, member_id"
 
         /** An alert's tag (spec/08 §6.7): its kind and the id of what it is about. */
         private val TAG = Regex("^(request|pairing|update|message)-(.+)$")
@@ -282,10 +336,11 @@ class Notifications(private val db: Database, private val bus: Bus, private val 
                 "reply" -> rs.getString(4)?.let { "message-$it" }
                 else -> null
             },
+            member = rs.getString(5),
         )
 
-        /** A bell row just marked seen: where it sits in the bell, and the alert tag it clears, if any. */
-        private class Seen(val seq: Long, val tag: String?)
+        /** A bell row just marked seen: where it sits in the bell, the alert tag it clears, if any, and whose it is. */
+        private class Seen(val seq: Long, val tag: String?, val member: String?)
 
         private fun marks(ids: List<*>) = ids.joinToString(", ") { "?" }
 

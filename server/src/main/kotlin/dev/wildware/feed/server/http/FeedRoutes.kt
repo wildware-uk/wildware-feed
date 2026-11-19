@@ -1,6 +1,7 @@
 package dev.wildware.feed.server.http
 
 import dev.wildware.feed.server.App
+import dev.wildware.feed.server.domain.People
 import dev.wildware.feed.server.domain.CardRef
 import dev.wildware.feed.server.domain.Given
 import dev.wildware.feed.server.domain.Groups
@@ -121,7 +122,7 @@ fun Route.feedRoutes(app: App) {
             val message = app.feed.messages.post(
                 Messages.Post(
                     author = Messages.HUMAN, body = text, project = project, updateId = updateId, replyTo = replyTo,
-                    answers = answers, requestId = requestId, mediaIds = mediaIds,
+                    answers = answers, requestId = requestId, mediaIds = mediaIds, userId = call.person.id,
                 ),
             )
             call.respondOwner(201, buildJsonObject { put("message", message.json) })
@@ -131,7 +132,7 @@ fun Route.feedRoutes(app: App) {
     endpoint(
         "/api/messages/{id}",
         HttpMethod.Delete to {
-            call.respondOwner(200, buildJsonObject { put("message", app.feed.messages.delete(param("id"), Messages.HUMAN).json) })
+            call.respondOwner(200, buildJsonObject { put("message", app.feed.messages.delete(param("id"), Messages.HUMAN, call.person).json) })
         },
     )
 
@@ -140,7 +141,7 @@ fun Route.feedRoutes(app: App) {
         HttpMethod.Post to {
             val body = call.lenientObjectBody()
             val emoji = text(body["emoji"], "emoji")
-            val (reactions, on) = app.feed.cards.react(CardRef("message", param("id")), Messages.HUMAN, emoji, body["on"].jsBoolean)
+            val (reactions, on) = app.feed.cards.react(CardRef("message", param("id")), Messages.HUMAN, emoji, body["on"].jsBoolean, call.person.id)
             call.respondOwner(200, buildJsonObject { put("reactions", JsonArray(reactions.map { it.json })); put("on", on) })
         },
     )
@@ -190,7 +191,7 @@ fun Route.feedRoutes(app: App) {
         HttpMethod.Post to {
             val body = call.lenientObjectBody()
             val emoji = body["emoji"].jsString ?: throw invalid("emoji must be a string")
-            val (reactions, on) = app.feed.cards.react(card(), Messages.HUMAN, emoji, body["on"].jsBoolean)
+            val (reactions, on) = app.feed.cards.react(card(), Messages.HUMAN, emoji, body["on"].jsBoolean, call.person.id)
             call.respondOwner(200, buildJsonObject { put("reactions", JsonArray(reactions.map { it.json })); put("on", on) })
         },
     )
@@ -221,14 +222,17 @@ fun Route.feedRoutes(app: App) {
         },
     )
 
-    // Subscriptions (migration 052): who follows a thread, and what the owner follows.
-    fun ownerView(subs: Subscriptions, thread: Subscriptions.Thread, projectId: String?) = buildJsonObject {
-        val state = subs.threadState(Subscriptions.OWNER, thread)
-        put("following", state ?: (subs.ownerLevel(projectId) == Subscriptions.ALL))
+    // Subscriptions (migration 052): who follows a thread, and what each person follows (migration 055).
+    // The key stays "owner": it is the caller's own view, as it was the one owner's.
+    fun ownerView(subs: Subscriptions, who: String, thread: Subscriptions.Thread, projectId: String?) = buildJsonObject {
+        val state = subs.threadState(who, thread)
+        put("following", state ?: (subs.level(who, projectId) == Subscriptions.ALL))
         put("chosen", state != null)
     }
 
-    fun changed() = app.bus.publish("subscriptions.updated", buildJsonObject { put("subscriber", Subscriptions.OWNER) })
+    fun RoutingContext.who() = People.subscriber(call.person.id)
+
+    fun RoutingContext.changed() = app.bus.publish("subscriptions.updated", People.followsChanged(app.db, call.person.id))
 
     endpoint(
         "/api/cards/{kind}/{id}/followers",
@@ -238,7 +242,7 @@ fun Route.feedRoutes(app: App) {
             call.respondOwner(200, buildJsonObject {
                 put("thread", buildJsonObject { put("kind", thread.kind); put("id", thread.id) })
                 put("followers", JsonArray(subs.followers(thread).map { (id, name) -> buildJsonObject { put("id", id); put("name", name) } }))
-                put("owner", ownerView(subs, thread, projectId))
+                put("owner", ownerView(subs, who(), thread, projectId))
             })
         },
     )
@@ -249,10 +253,10 @@ fun Route.feedRoutes(app: App) {
             val following = flag(call.jsonObjectBody()["following"], "following")
             val subs = Subscriptions(app.db, app.clock)
             val (thread, projectId) = subs.threadAt(card())
-            if (subs.setOwnerFollow(thread, projectId, following)) changed()
+            if (subs.setFollow(who(), thread, projectId, following)) changed()
             call.respondOwner(200, buildJsonObject {
                 put("thread", buildJsonObject { put("kind", thread.kind); put("id", thread.id) })
-                put("owner", ownerView(subs, thread, projectId))
+                put("owner", ownerView(subs, who(), thread, projectId))
             })
         },
     )
@@ -271,14 +275,14 @@ fun Route.feedRoutes(app: App) {
             val level = level(call.jsonObjectBody())
             val project = app.feed.projects.resolve(param("reference"))
             val subs = Subscriptions(app.db, app.clock)
-            if (subs.ownerChannelLevel(project.id) != level) {
-                subs.setOwnerLevel(project.id, level)
+            if (subs.channelLevel(who(), project.id) != level) {
+                subs.setLevel(who(), project.id, level)
                 changed()
             }
             call.respondOwner(200, buildJsonObject {
                 put("projectId", project.id)
-                put("level", subs.ownerLevel(project.id))
-                put("inherited", subs.ownerChannelLevel(project.id) == null)
+                put("level", subs.level(who(), project.id))
+                put("inherited", subs.channelLevel(who(), project.id) == null)
             })
         },
     )
@@ -312,7 +316,8 @@ fun Route.feedRoutes(app: App) {
         },
         HttpMethod.Delete to {
             val group = app.feed.groups.delete(param("reference"))
-            changed()
+            // Everyone's choices for it went with it.
+            app.bus.publish("subscriptions.updated", People.followsChanged(app.db, call.person.id).let { it - "memberId" }.let(::JsonObject))
             call.respondOwner(200, buildJsonObject { put("deleted", true); put("groupId", group.id) })
         },
     )
@@ -323,11 +328,11 @@ fun Route.feedRoutes(app: App) {
             val level = level(call.jsonObjectBody())
             val group = app.feed.groups.resolve(param("reference"))
             val subs = Subscriptions(app.db, app.clock)
-            if (subs.ownerGroupLevel(group.id) != level) {
-                subs.setOwnerGroupLevel(group.id, level)
+            if (subs.groupLevel(who(), group.id) != level) {
+                subs.setGroupLevel(who(), group.id, level)
                 changed()
             }
-            call.respondOwner(200, buildJsonObject { put("groupId", group.id); put("level", subs.ownerGroupLevel(group.id)) })
+            call.respondOwner(200, buildJsonObject { put("groupId", group.id); put("level", subs.groupLevel(who(), group.id)) })
         },
     )
 
@@ -335,7 +340,7 @@ fun Route.feedRoutes(app: App) {
         "/api/subscriptions",
         HttpMethod.Get to {
             val seq = app.bus.lastSeq
-            val choices = Subscriptions(app.db, app.clock).ownerChoices()
+            val choices = Subscriptions(app.db, app.clock).choices(who())
             call.respondOwner(200, buildJsonObject {
                 put("seq", seq)
                 put("at", Wire.isoOf(app.clock()))

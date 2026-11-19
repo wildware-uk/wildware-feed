@@ -1,33 +1,45 @@
 package dev.wildware.feed.server.http
 
 import dev.wildware.feed.server.App
-import dev.wildware.feed.server.auth.Passwords
+import dev.wildware.feed.server.domain.People
+import dev.wildware.feed.server.domain.jsTrim
 
 /**
- * The owner password check behind device sign-in (spec/01 §5.1). The TS server shares it with its
- * login form; the Kotlin server has no web pages (the website is deprecated), so device sign-in is
- * its only user.
+ * The password check behind device sign-in (spec/01 §5.1) and the OAuth page. Without an email it
+ * is today's sign-in: the founding owner's password (ADMIN_PASSWORD_HASH, or one they set). With an
+ * email it is that person's (migration 055). Five wrong guesses in 15 minutes lock an address out,
+ * and ten in an hour lock an email out, wherever they come from.
  */
 sealed interface PasswordCheck {
-    data object Ok : PasswordCheck
+    data class Ok(val person: People.Person) : PasswordCheck
     data class Refused(val status: Int, val message: String, val retryAfterS: Long? = null) : PasswordCheck
 }
 
-fun App.checkPassword(password: String?, clientAddress: String): PasswordCheck {
+fun App.checkPassword(password: String?, clientAddress: String, email: String? = null): PasswordCheck {
     if (password == "") return PasswordCheck.Refused(400, "Enter your password.")
+    if (email != null && email.isBlank()) return PasswordCheck.Refused(400, "Enter your email.")
+    val check = { pw: String -> if (email == null) people.signInFounder(pw) else people.signIn(email, pw) }
     if (config.trustLoopback && isLoopback(clientAddress)) {
-        return if (Passwords.verify(config.adminPasswordHash, password ?: "")) PasswordCheck.Ok
-        else PasswordCheck.Refused(400, "That password is not right.")
+        return check(password ?: "")?.let { PasswordCheck.Ok(it) } ?: PasswordCheck.Refused(400, WRONG)
     }
-    val verdict = loginLimiter.check(clientAddress)
-    if (!verdict.allowed) return PasswordCheck.Refused(429, "Too many attempts. Try again later.", (verdict.retryAfterMs + 999) / 1000)
-    if (!Passwords.verify(config.adminPasswordHash, password ?: "")) {
+    // Cleaned as People.signIn cleans it, so one account is one budget however the email is spelled.
+    val emailKey = email?.let { "email:" + it.jsTrim().lowercase() }
+    for (verdict in listOfNotNull(loginLimiter.check(clientAddress), emailKey?.let { emailLimiter.check(it) })) {
+        if (!verdict.allowed) return PasswordCheck.Refused(429, "Too many attempts. Try again later.", (verdict.retryAfterMs + 999) / 1000)
+    }
+    val person = check(password ?: "")
+    if (person == null) {
         loginLimiter.record(clientAddress)
-        return PasswordCheck.Refused(400, "That password is not right.")
+        emailKey?.let { emailLimiter.record(it) }
+        return PasswordCheck.Refused(400, if (email == null) WRONG else WRONG_EMAIL)
     }
     loginLimiter.reset(clientAddress)
-    return PasswordCheck.Ok
+    emailKey?.let { emailLimiter.reset(it) }
+    return PasswordCheck.Ok(person)
 }
+
+private const val WRONG = "That password is not right."
+private const val WRONG_EMAIL = "That email and password don't match."
 
 /** 127.0.0.0/8 or ::1, as the socket reports it. */
 internal fun isLoopback(address: String): Boolean {

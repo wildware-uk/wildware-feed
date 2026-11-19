@@ -57,12 +57,12 @@ class ChannelsTest {
         assertEquals(listOf("Renamed", "r", "archived"), listOf(renamed.name, renamed.slug, renamed.status))
         assertEquals("#ff8800", (renamed.theme as kotlinx.serialization.json.JsonObject)["accent"]!!.jsText())
 
-        subs.setOwnerGroupLevel(group.id, "muted")
+        subs.setGroupLevel(FOUNDER_SUB, group.id, "muted")
         feed.groups.delete("r")
         assertNull(feed.groups.find(group.id))
         assertEquals(listOf(null, null, null), listOf("a", "b", "c").map { feed.projects.resolve(it).groupId })
         assertEquals(3, feed.projects.list(null).size, "the channels and their history stay")
-        assertEquals("all", subs.ownerLevel(id("a")), "the group's level went with it")
+        assertEquals("all", subs.level(FOUNDER_SUB, id("a")), "the group's level went with it")
     }
 
     @Test
@@ -81,33 +81,33 @@ class ChannelsTest {
     @Test
     fun `the owner's channel level beats the group's, and a followed thread beats both`() {
         val group = setup()
-        assertEquals("all", subs.ownerLevel(id("a")))
-        subs.setOwnerGroupLevel(group.id, "muted")
-        assertEquals(listOf("muted", "muted", "all"), listOf("a", "b", "c").map { subs.ownerLevel(id(it)) })
-        assertFalse(subs.ownerHearsUpdate(id("a"), "medium"))
-        assertTrue(subs.ownerHearsUpdate(id("a"), "critical"), "critical is always heard")
+        assertEquals("all", subs.level(FOUNDER_SUB, id("a")))
+        subs.setGroupLevel(FOUNDER_SUB, group.id, "muted")
+        assertEquals(listOf("muted", "muted", "all"), listOf("a", "b", "c").map { subs.level(FOUNDER_SUB, id(it)) })
+        assertFalse(subs.hearsUpdate(FOUNDER_SUB, id("a"), "medium"))
+        assertTrue(subs.hearsUpdate(FOUNDER_SUB, id("a"), "critical"), "critical is always heard")
 
-        subs.setOwnerLevel(id("a"), "all")
-        assertEquals("all", subs.ownerLevel(id("a")), "the channel's own setting wins")
-        assertEquals("muted", subs.ownerLevel(id("b")))
+        subs.setLevel(FOUNDER_SUB, id("a"), "all")
+        assertEquals("all", subs.level(FOUNDER_SUB, id("a")), "the channel's own setting wins")
+        assertEquals("muted", subs.level(FOUNDER_SUB, id("b")))
 
-        subs.setOwnerLevel(id("a"), null)
-        assertEquals("muted", subs.ownerLevel(id("a")), "cleared, it follows its group again")
-        assertNull(subs.ownerChannelLevel(id("a")))
+        subs.setLevel(FOUNDER_SUB, id("a"), null)
+        assertEquals("muted", subs.level(FOUNDER_SUB, id("a")), "cleared, it follows its group again")
+        assertNull(subs.channelLevel(FOUNDER_SUB, id("a")))
 
         val update = feed.updates.post(Updates.Post(project = "b", agentId = "A", body = "card in b"))
         val thread = Subscriptions.Thread("update", update.id)
-        assertFalse(subs.ownerHears("message", id("b"), thread))
-        subs.setOwnerFollow(thread, id("b"), true)
-        assertTrue(subs.ownerHears("message", id("b"), thread), "a followed thread is heard in a muted group")
+        assertFalse(subs.hears(FOUNDER_SUB, "message", id("b"), thread))
+        subs.setFollow(FOUNDER_SUB, thread, id("b"), true)
+        assertTrue(subs.hears(FOUNDER_SUB, "message", id("b"), thread), "a followed thread is heard in a muted group")
 
-        subs.setOwnerGroupLevel(group.id, "replies")
-        assertTrue(subs.ownerHears("request", id("b"), null))
-        assertFalse(subs.ownerHears("update", id("b"), null))
-        subs.setOwnerGroupLevel(group.id, null)
-        assertEquals("all", subs.ownerLevel(id("b")))
+        subs.setGroupLevel(FOUNDER_SUB, group.id, "replies")
+        assertTrue(subs.hears(FOUNDER_SUB, "request", id("b"), null))
+        assertFalse(subs.hears(FOUNDER_SUB, "update", id("b"), null))
+        subs.setGroupLevel(FOUNDER_SUB, group.id, null)
+        assertEquals("all", subs.level(FOUNDER_SUB, id("b")))
 
-        val choices = subs.ownerChoices()
+        val choices = subs.choices(FOUNDER_SUB)
         assertEquals(emptyList<Pair<String, String>>(), choices.levels, "a cleared channel level is not a choice")
         assertEquals(emptyList<Pair<String, String>>(), choices.groups)
     }
@@ -213,7 +213,7 @@ class ChannelsTest {
                 assertEquals(0, old.one("SELECT count(*) FROM project_groups") { it.getInt(1) })
 
                 val s = Subscriptions(old) { now }
-                assertEquals("muted", s.ownerLevel("P1"))
+                assertEquals("muted", s.level(FOUNDER_SUB, "P1"))
                 assertEquals(listOf("P1"), s.followedProjects("A"))
             }
         }
@@ -231,3 +231,6 @@ class ChannelsTest {
 }
 
 private fun kotlinx.serialization.json.JsonElement.jsText() = (this as kotlinx.serialization.json.JsonPrimitive).content
+
+/** The founding owner, as a subscriber (migration 055). */
+private const val FOUNDER_SUB = "member:founder"

@@ -96,10 +96,11 @@ class HttpApnsTransport(settings: Config.Apns, private val clock: () -> Long = S
     }
 }
 
-/** A device as the pushers need it. */
+/** A device as the pushers need it; [userId] is whose phone it is (migration 055). */
 data class PushDevice(
     val id: String, val apnsToken: String?, val environment: String?, val liveActivityToken: String?,
     val pushToStartToken: String?, val alertProjectIds: List<String>?, val alertPrefs: JsonObject? = null,
+    val userId: String = dev.wildware.feed.server.domain.People.FOUNDER,
 )
 
 /**
@@ -118,8 +119,11 @@ class Apns(
     private val messages = PushMessages(app)
     private val sender = Executors.newScheduledThreadPool(2) { r -> Thread(r, "apns").apply { isDaemon = true } }
 
-    /** Tags waiting for the next background clear, oldest first; a flush is due while it is not empty. */
-    private val clearing = LinkedHashSet<String>()
+    /**
+     * Tags waiting for the next background clear, oldest first, by whose phones they clear (null:
+     * everyone's); a flush is due while it is not empty.
+     */
+    private val clearing = LinkedHashMap<String?, LinkedHashSet<String>>()
 
     /** One alert, with room for optional fields after today's (they are appended in order). */
     class Alert(
@@ -132,17 +136,22 @@ class Apns(
         val reply: Pair<String, String>? = null,
         val extra: List<Pair<String, JsonElement>> = emptyList(),
         val about: dev.wildware.feed.server.domain.AlertPrefs.About = dev.wildware.feed.server.domain.AlertPrefs.About(category.lowercase()),
-        /** Whether the owner follows what this is about (migration 052); a phone's own preferences come after. */
+        /** Whether the person follows what this is about (migration 052); a phone's own preferences come after. */
         val followed: Boolean = true,
+        /** The person who did it (migration 055): their own phones are not told. */
+        val actor: String? = null,
+        /** Only owners and admins are told (an agent asking to join is theirs to allow). */
+        val admins: Boolean = false,
     )
 
     fun devices(): List<PushDevice> = app.db.query(
-        "SELECT id, apns_token, apns_environment, live_activity_token, push_to_start_token, alert_project_ids, alert_prefs FROM owner_devices ORDER BY seq",
+        "SELECT id, apns_token, apns_environment, live_activity_token, push_to_start_token, alert_project_ids, alert_prefs, user_id FROM owner_devices ORDER BY seq",
     ) { rs ->
         PushDevice(
             rs.getString(1), rs.getString(2), rs.getString(3), rs.getString(4), rs.getString(5),
             rs.getString(6)?.let { text -> runCatching { (Wire.json.parseToJsonElement(text) as JsonArray).map { it.jsonPrimitive.content } }.getOrNull() },
             rs.getString(7)?.let { text -> runCatching { Wire.json.parseToJsonElement(text) as JsonObject }.getOrNull() },
+            rs.getString(8) ?: dev.wildware.feed.server.domain.People.FOUNDER,
         )
     }
 
@@ -150,9 +159,11 @@ class Apns(
 
     private fun thread(projectId: String?) = slug(projectId) ?: "dashboard"
 
-    fun alertFor(event: AppEvent): Alert? {
+    /** The alert [member]'s phones would get for [event] (migration 055: each person their own), or null. */
+    fun alertFor(event: AppEvent, member: String = dev.wildware.feed.server.domain.People.FOUNDER): Alert? {
         fun id(key: String) = (event.payload[key] as? JsonPrimitive)?.content
         val follows = dev.wildware.feed.server.domain.Subscriptions(app.db, app.clock)
+        val who = dev.wildware.feed.server.domain.People.subscriber(member)
         return when (event.type) {
             "request.created" -> {
                 val requestId = id("requestId") ?: return null
@@ -164,7 +175,7 @@ class Apns(
                     about = dev.wildware.feed.server.domain.AlertPrefs.About(
                         "request", priority = request.priority, agentId = request.agentId, projectSlug = slug(request.projectId),
                     ),
-                    followed = follows.ownerHearsRequest(request.id, request.projectId, request.priority),
+                    followed = follows.hearsRequest(who, request.id, request.projectId, request.priority),
                 )
             }
             "update.created" -> {
@@ -173,23 +184,26 @@ class Apns(
                 Alert(
                     built.message, "UPDATE", thread(built.projectId), built.projectId, built.body, reply = "update" to updateId,
                     about = dev.wildware.feed.server.domain.AlertPrefs.About("update", built.level, built.priority, built.agentId, slug(built.projectId)),
-                    followed = follows.ownerHearsUpdate(built.projectId, built.priority),
+                    followed = follows.hearsUpdate(who, built.projectId, built.priority),
                 )
             }
             "message.created" -> {
                 val messageId = id("messageId") ?: return null
-                val built = messages.reply(messageId) ?: return null
+                val built = messages.reply(messageId, member) ?: return null
                 Alert(
                     built.message, "MESSAGE", thread(built.projectId), built.projectId, built.body, reply = "answers" to messageId,
+                    // Who wrote it, when a person did (migration 055), for the app's own "Sam replied".
+                    extra = listOfNotNull(built.actorName?.let { "actorName" to JsonPrimitive(it) }),
                     about = dev.wildware.feed.server.domain.AlertPrefs.About(if (built.answered) "message" else "comment"),
-                    followed = follows.ownerHearsMessage(messageId, built.answered),
+                    followed = follows.hearsMessage(who, messageId, built.answered),
+                    actor = built.actor,
                 )
             }
             "pairing.created" -> {
                 val pairingId = id("pairingId") ?: return null
                 val pairing = app.pairings.find(pairingId)?.takeIf { it.state == "pending" } ?: return null
                 val message = messages.pairing(pairing)
-                Alert(message, "PAIRING", "dashboard", null, message.body, about = dev.wildware.feed.server.domain.AlertPrefs.About("pairing"))
+                Alert(message, "PAIRING", "dashboard", null, message.body, about = dev.wildware.feed.server.domain.AlertPrefs.About("pairing"), admins = true)
             }
             else -> null
         }
@@ -199,23 +213,28 @@ class Apns(
     fun start(): () -> Unit {
         val stop = app.bus.subscribe { event ->
             if (event.type == "notifications.cleared") return@subscribe queueClear(event)
-            val alert = runCatching { alertFor(event) }.onFailure { System.err.println("apple push failed: $it") }.getOrNull() ?: return@subscribe
-            // What the owner follows decides whether to alert at all; each phone's preferences then decide where.
-            if (!alert.followed) return@subscribe
+            if (event.type !in ALERTING) return@subscribe
             val now = app.clock()
-            // Each phone's own projects, and its own kinds, levels and priorities (migration 047).
-            val wanted = devices().filter {
-                it.apnsToken != null && (alert.projectId == null || it.alertProjectIds == null || alert.projectId in it.alertProjectIds) &&
-                    dev.wildware.feed.server.domain.AlertPrefs.notifies(it.alertPrefs, alert.about)
-            }
-            if (wanted.isEmpty()) return@subscribe
-            val headers = alertHeaders(settings.bundleId, alert.message.tag, now)
-            val normal = Wire.encode(alertPayload(alert))
-            val paged = Wire.encode(alertPayload(alert, page = CRITICAL_STYLE))
-            for (device in wanted) {
-                // Paged only on a phone that turned critical alerts on, for this agent and project.
-                val payload = if (dev.wildware.feed.server.domain.AlertPrefs.pages(device.alertPrefs, alert.about)) paged else normal
-                sender.execute { deliver(device, "apns_token", headers, payload) }
+            // Each person's phones, with that person's alert: what they follow decides whether to alert
+            // at all, then each phone's own projects, kinds, levels and priorities (migration 047).
+            val phones = devices().filter { it.apnsToken != null }.groupBy { it.userId }
+            for ((member, theirs) in phones) {
+                val alert = runCatching { alertFor(event, member) }.onFailure { System.err.println("apple push failed: $it") }.getOrNull() ?: continue
+                if (!alert.followed || alert.actor == member) continue
+                if (alert.admins && (app.people.find(member)?.role?.rank ?: 0) < dev.wildware.feed.server.domain.People.Role.ADMIN.rank) continue
+                val wanted = theirs.filter {
+                    (alert.projectId == null || it.alertProjectIds == null || alert.projectId in it.alertProjectIds) &&
+                        dev.wildware.feed.server.domain.AlertPrefs.notifies(it.alertPrefs, alert.about)
+                }
+                if (wanted.isEmpty()) continue
+                val headers = alertHeaders(settings.bundleId, alert.message.tag, now)
+                val normal = Wire.encode(alertPayload(alert))
+                val paged = Wire.encode(alertPayload(alert, page = CRITICAL_STYLE))
+                for (device in wanted) {
+                    // Paged only on a phone that turned critical alerts on, for this agent and project.
+                    val payload = if (dev.wildware.feed.server.domain.AlertPrefs.pages(device.alertPrefs, alert.about)) paged else normal
+                    sender.execute { deliver(device, "apns_token", headers, payload) }
+                }
             }
         }
         return { stop(); sender.shutdownNow() }
@@ -228,19 +247,27 @@ class Apns(
     private fun queueClear(event: AppEvent) {
         val tags = (event.payload["tags"] as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.content }.orEmpty()
         if (tags.isEmpty()) return
-        val first = synchronized(clearing) { clearing.isEmpty().also { clearing += tags } }
+        val member = (event.payload["memberId"] as? JsonPrimitive)?.content
+        val first = synchronized(clearing) { clearing.isEmpty().also { clearing.getOrPut(member) { LinkedHashSet() } += tags } }
         if (first) runCatching { sender.schedule(::flushClears, clearDelayMs, java.util.concurrent.TimeUnit.MILLISECONDS) }
     }
 
-    /** One background push to every phone, naming the alerts it can take off its screen. */
+    /**
+     * One background push to each phone, naming the alerts it can take off its screen: everyone's,
+     * and those of its own person (migration 055).
+     */
     fun flushClears() {
-        val tags = synchronized(clearing) { clearing.toList().also { clearing.clear() } }
-        if (tags.isEmpty()) return
+        val pending = synchronized(clearing) { clearing.mapValues { it.value.toList() }.also { clearing.clear() } }
+        if (pending.isEmpty()) return
         val phones = devices().filter { it.apnsToken != null }
         if (phones.isEmpty()) return
         val headers = clearHeaders(settings.bundleId, app.clock())
-        val payload = Wire.encode(clearPayload(tags))
-        for (device in phones) deliver(device, "apns_token", headers, payload)
+        val everyone = pending[null].orEmpty()
+        for (device in phones) {
+            val tags = (everyone + pending[device.userId].orEmpty()).distinct()
+            if (tags.isEmpty()) continue
+            deliver(device, "apns_token", headers, Wire.encode(clearPayload(tags)))
+        }
     }
 
     /** Send to one device's token in [column]; `sent`, `removed` (a dead token was cleared) or `failed`. */
@@ -274,6 +301,9 @@ class Apns(
     }
 
     companion object {
+        /** The events that can raise an alert. */
+        private val ALERTING = setOf("request.created", "update.created", "message.created", "pairing.created")
+
         const val EXPIRATION_S = 15 * 60
 
         /** A clear is still worth having after a phone was off for a while: its own catch-up covers the rest. */
