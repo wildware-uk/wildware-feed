@@ -52,6 +52,14 @@ class App(val config: Config, val db: Database, val clock: () -> Long = System::
     val pairStartLimiter = SlidingLimiter(limit = 5, windowMs = 600_000, clock = clock)
     val pairPollLimiter = SlidingLimiter(limit = 60, windowMs = 60_000, clock = clock)
 
+    /**
+     * OAuth for MCP clients (migration 051), keyed by client address: 20 registrations an hour, 60
+     * authorize-page loads and 60 token calls a minute. Wrong passwords also count on [loginLimiter].
+     */
+    val oauthRegisterLimiter = SlidingLimiter(limit = 20, windowMs = 3_600_000, clock = clock)
+    val oauthAuthorizeLimiter = SlidingLimiter(limit = 60, windowMs = 60_000, clock = clock)
+    val oauthTokenLimiter = SlidingLimiter(limit = 60, windowMs = 60_000, clock = clock)
+
     /** Its own 120 a minute per agent token, apart from /mcp's (spec/07 §8). */
     val agentMediaLimiter = SlidingLimiter(limit = 120, windowMs = 60_000, clock = clock)
 
@@ -89,6 +97,9 @@ class App(val config: Config, val db: Database, val clock: () -> Long = System::
     /** Agents asking to join, and the owner allowing or denying them (migration 050). */
     val pairings = dev.wildware.feed.server.domain.Pairings(db, bus, config.tokenSecret, clock)
 
+    /** MCP clients connecting over OAuth, allowed by the owner in the browser (migration 051). */
+    val oauth = dev.wildware.feed.server.domain.OAuth(db, config.tokenSecret, clock)
+
     /** The bell's recorder listens from the start, as the TS server's does. */
     private val stopNotificationRecorder = notifications.startRecorder()
 
@@ -120,6 +131,7 @@ class App(val config: Config, val db: Database, val clock: () -> Long = System::
         every(dev.wildware.feed.server.domain.Sessions.SWEEP_INTERVAL_MS, "presence sweep") { sessions.sweep() }
         every(dev.wildware.feed.server.domain.Requests.SWEEP_INTERVAL_MS, "request sweep") { requests.expireDue() }
         every(dev.wildware.feed.server.domain.Pairings.SWEEP_INTERVAL_MS, "pairing sweep") { pairings.expireDue() }
+        every(dev.wildware.feed.server.domain.OAuth.SWEEP_INTERVAL_MS, "oauth sweep") { oauth.sweep() }
         every(dev.wildware.feed.server.media.Derive.WORKER_INTERVAL_MS, "media derive") { derive.tick() }
         every(15 * 60_000L, "media sweep") { uploads.sweep() }
         every(dev.wildware.feed.server.media.Retention.CHECK_INTERVAL_MS, "media retention") { retention.tick() }

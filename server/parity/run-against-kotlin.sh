@@ -26,7 +26,7 @@ remote="${TS_SERVER_REPO:-https://github.com/wildware-uk/agent-dashboard.git}"
 password="parity-$(openssl rand -hex 12)"
 # Phase 1: boot, auth and reads.
 # Every phase: boot, auth, reads, writes, streams, every MCP tool, media.
-kotlin_tests="${KOTLIN_TESTS:-SmokeTest AuthTest $([ -n "${KOTLIN_DATABASE_URL:-}" ] || echo DatabaseTest) McpToolsListTest ReadParityTest FeedApiTest RequestsTest DevicesTest StreamTest McpTransportTest McpToolsTest McpEdgeTest MediaTest RateLimitTest}"
+kotlin_tests="${KOTLIN_TESTS:-SmokeTest AuthTest $([ -n "${KOTLIN_DATABASE_URL:-}" ] || echo DatabaseTest) McpToolsListTest ReadParityTest FeedApiTest RequestsTest DevicesTest StreamTest McpTransportTest McpToolsTest McpEdgeTest MediaTest RateLimitTest OAuthTest}"
 # Tests inside those classes that need a later phase.
 # tsOnly: what the Kotlin server deliberately leaves out (the website, share links, Web Push).
 exclude_tags="${KOTLIN_EXCLUDE_TAGS:-tsOnly}"

@@ -63,9 +63,31 @@ class Agents(private val db: Database, private val tokenSecret: String, private 
     fun authenticate(token: String): Pair<Agent?, Refusal?> {
         val hash = hashOf(token)
         val row = db.one("SELECT * FROM agents WHERE token_hash = ?", hash) { it.getString("token_hash") to row(it) }
-        if (row == null || !Tokens.same(row.first, hash)) return null to Refusal("unknown_token", "unknown bearer token: no agent holds it")
+            ?: return oauthAccess(hash)
+        if (!Tokens.same(row.first, hash)) return null to Refusal("unknown_token", "unknown bearer token: no agent holds it")
         val agent = row.second
         if (agent.revokedAt != null) return null to Refusal("revoked_token", "revoked bearer token: ask the dashboard owner to mint a new one")
+        db.update("UPDATE agents SET last_seen_at = ${db.greatest("coalesce(last_seen_at, 0)", "?")} WHERE id = ?", clock(), agent.id)
+        return agent to null
+    }
+
+    /**
+     * An OAuth access token (migration 051) for the agent its grant was allowed as: live while the
+     * token is unexpired, the grant unrevoked and the agent unrevoked.
+     */
+    private fun oauthAccess(hash: String): Pair<Agent?, Refusal?> {
+        val found = db.one(
+            "SELECT t.token_hash AS hash, t.expires_at AS token_expires, g.revoked_at AS grant_revoked, a.* FROM oauth_tokens t " +
+                "JOIN oauth_grants g ON g.id = t.grant_id JOIN agents a ON a.id = g.agent_id WHERE t.token_hash = ? AND t.kind = 'access'",
+            hash,
+        ) { Triple(it.getString("hash"), it.getLong("token_expires") to it.longOrNull("grant_revoked"), row(it)) }
+        if (found == null || !Tokens.same(found.first, hash)) return null to Refusal("unknown_token", "unknown bearer token: no agent holds it")
+        val (expires, grantRevoked) = found.second
+        val agent = found.third
+        if (agent.revokedAt != null || grantRevoked != null) {
+            return null to Refusal("revoked_token", "revoked bearer token: sign in again, or ask the dashboard owner to allow this client again")
+        }
+        if (expires <= clock()) return null to Refusal("expired_token", "expired access token: use your refresh token, or sign in again")
         db.update("UPDATE agents SET last_seen_at = ${db.greatest("coalesce(last_seen_at, 0)", "?")} WHERE id = ?", clock(), agent.id)
         return agent to null
     }

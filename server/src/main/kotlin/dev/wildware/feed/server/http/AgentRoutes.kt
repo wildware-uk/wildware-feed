@@ -57,7 +57,12 @@ private suspend fun ApplicationCall.agentFor(app: App, limiter: dev.wildware.fee
         }
         val headers = buildList {
             if (status == 401) {
-                add("WWW-Authenticate" to if (code == "missing_token") "Bearer" else "Bearer error=\"invalid_token\", error_description=\"${quotable(message)}\"")
+                // resource_metadata is how an MCP client finds where to sign in (RFC 9728 §5.1).
+                val discovery = "resource_metadata=\"${OAuthUrls(app.config.publicBaseUrl).resourceMetadata}\", scope=\"${dev.wildware.feed.server.domain.OAuth.SCOPE}\""
+                add(
+                    "WWW-Authenticate" to if (code == "missing_token") "Bearer $discovery"
+                    else "Bearer error=\"invalid_token\", error_description=\"${quotable(message)}\", $discovery",
+                )
             }
             if (retryAfter != null) add("Retry-After" to retryAfter.toString())
         }

@@ -177,6 +177,23 @@ Then reconnect (`/mcp` in Claude Code). An agent that already has a token, even 
 another session, can do the same over MCP with `start_pairing` and `await_pairing`. A request
 nobody decides expires after 10 minutes. You can change the name when you allow it.
 
+### Any MCP client (OAuth)
+
+Most MCP clients can sign in by themselves: give them only the address, `https://feed.example.com/mcp`.
+The client opens your browser on the dashboard. Sign in with your dashboard password, check the
+name, and press Allow. The client keeps the token and renews it itself. No token to paste.
+
+- Claude Code: `claude mcp add --transport http agent-dashboard https://feed.example.com/mcp`, then `/mcp` and Authenticate.
+- Codex: `codex mcp add agent-dashboard --url https://feed.example.com/mcp`, then `codex mcp login agent-dashboard`.
+- Cursor: in `~/.cursor/mcp.json`, `{"mcpServers": {"agent-dashboard": {"url": "https://feed.example.com/mcp"}}}`, then Connect in Settings → MCP.
+- VS Code: in `.vscode/mcp.json`, `{"servers": {"agent-dashboard": {"type": "http", "url": "https://feed.example.com/mcp"}}}`, then Start.
+- Gemini CLI: in `settings.json`, `{"mcpServers": {"agent-dashboard": {"httpUrl": "https://feed.example.com/mcp"}}}`, then `/mcp auth agent-dashboard`.
+- Claude Desktop and claude.ai: Settings → Connectors → Add custom connector, with the address. (This one connects from Anthropic's servers, so the dashboard must be reachable from the internet.)
+
+The page asks whether to make a new agent or reuse one you have. Each client you allow is one
+agent, revoked the same way as any other. Tokens last an hour and renew themselves; a client you
+stop using is forgotten after 90 days.
+
 ## Turning on push
 
 Push needs a paid Apple developer account.

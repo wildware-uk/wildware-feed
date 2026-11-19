@@ -9,8 +9,9 @@ object Guard {
     /**
      * `/api/server` says what this is and how to sign in, for the app's "Connect to a host" step.
      * `/api/pair` is where an agent with no token asks to join (the owner's side is `/api/pairings`).
+     * `/.well-known` and `/oauth` are OAuth for MCP clients: the authorize page signs the owner in itself.
      */
-    private val PUBLIC = listOf("/api/devices/sign-in", "/api/server", "/api/pair")
+    private val PUBLIC = listOf("/api/devices/sign-in", "/api/server", "/api/pair", "/.well-known", "/oauth")
 
     fun normalise(path: String): String = if (path == "/") path else path.trimEnd('/').ifEmpty { "/" }
 

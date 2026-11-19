@@ -348,5 +348,12 @@
   "file": "050-agent-pairing.sql",
   "rebuildsTables": false,
   "checksum": "41bc3c1bf0ead29ecfbfaea3dd6ec02f219ce26b71d360ac311557dda8e684c5"
+ },
+ {
+  "version": 51,
+  "name": "oauth",
+  "file": "051-oauth.sql",
+  "rebuildsTables": false,
+  "checksum": "3056f263fdad58dad8d31800c5457aabb8968c35a10b1ec02f4d7033a7fc8ed9"
  }
 ]

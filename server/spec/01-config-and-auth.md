@@ -377,7 +377,7 @@ Used by `POST /mcp`, `GET /api/agent/stream`, `GET /api/agent/media/[id]`. Befor
 ```json
 {"jsonrpc":"2.0","id":null,"error":{"code":-32000,"message":"<message>","data":{"error":"<code>"}}}
 ```
-- 401 + `www-authenticate`: `Bearer` when code is `missing_token`; otherwise `Bearer error="invalid_token", error_description="<message>"` where the message has non-printable-ASCII → space and `"`/`\` removed (`:47-62`).
+- 401 + `www-authenticate`: `Bearer` when code is `missing_token`; otherwise `Bearer error="invalid_token", error_description="<message>"` where the message has non-printable-ASCII → space and `"`/`\` removed (`:47-62`). The Kotlin server adds `resource_metadata="<base>/.well-known/oauth-protected-resource/mcp", scope="agent"` to both, for OAuth discovery, and also takes OAuth access tokens (spec/11-oauth.md).
 - 429 + `retry-after`, message `rate limit exceeded for this token: retry after <n>s`, code `rate_limited` (`:66-69`).
 - 503 + `retry-after: 30`, message `this dashboard is not configured for agents: TOKEN_SECRET is missing or too short`, code `server_not_configured` (`:84-91`).
 - `GET /mcp` → SvelteKit 405 (no GET handler).

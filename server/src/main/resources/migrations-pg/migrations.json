@@ -22,5 +22,11 @@
   "name": "agent-pairing",
   "file": "050-agent-pairing.sql",
   "checksum": "593327afebdb9e206966b762f8d7cb6c7341557a6a510bd1d458ddb0b9f467fb"
+ },
+ {
+  "version": 51,
+  "name": "oauth",
+  "file": "051-oauth.sql",
+  "checksum": "4b4c5f4a3466d45d69d81fa9a27f7f1355ff7065fec2b95b7611957883243faf"
  }
 ]

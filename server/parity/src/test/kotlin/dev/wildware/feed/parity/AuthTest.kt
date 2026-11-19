@@ -241,7 +241,9 @@ class AuthTest : ParityTest() {
 
         val missing = mcp(null)
         assertEquals(401, missing.status.value)
-        assertEquals("Bearer", missing.headers[HttpHeaders.WWWAuthenticate])
+        // The Kotlin server also points MCP clients at its OAuth metadata (spec/11-oauth.md).
+        val discovery = if (Parity.kotlin) "resource_metadata=\"${Parity.baseUrl}/.well-known/oauth-protected-resource/mcp\", scope=\"agent\"" else null
+        assertEquals(listOfNotNull("Bearer", discovery).joinToString(" "), missing.headers[HttpHeaders.WWWAuthenticate])
         assertEquals(
             """{"jsonrpc":"2.0","id":null,"error":{"code":-32000,"message":"missing Authorization header: send Authorization: Bearer <agent token>","data":{"error":"missing_token"}}}""",
             missing.bodyAsText(),
@@ -259,7 +261,7 @@ class AuthTest : ParityTest() {
         assertEquals(401, malformed.status.value)
         assertEquals("malformed_token", malformed.obj()["error"]["data"]["error"].s)
         assertEquals(
-            """Bearer error="invalid_token", error_description="malformed bearer token: not a token this server issued"""",
+            listOfNotNull("""Bearer error="invalid_token", error_description="malformed bearer token: not a token this server issued"""", discovery).joinToString(", "),
             malformed.headers[HttpHeaders.WWWAuthenticate],
         )
 
