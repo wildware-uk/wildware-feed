@@ -327,29 +327,37 @@ private fun DesktopColumns(ui: FeedUi, showRail: Boolean, startAt: String?) {
             val target = if (state.current.slug == null) ui.postProject else state.current
             // Only the slug is captured, so a new engine state doesn't redraw the composer.
             val postTo = if (state.current.slug == null) target?.slug else null
-            if (target != null) Box(
-                Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .background(bottomFade(colors.background))
-                    .padding(horizontal = 36.dp, vertical = 18.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Column(Modifier.widthIn(max = FeedMaxWidth)) {
-                    if (state.current.slug == null) PostToPicker(ui, target, Modifier.padding(bottom = 8.dp))
-                    Composer(
-                        focus = ui.composerFocus,
-                        placeholder = "Write to everyone in ${target.name}…",
-                        onSend = { text, files -> ui.emit(FeedEvent.Post(text, files, project = postTo)) },
-                        draftKey = "project:${target.slug}",
-                    )
-                }
-            }
+            if (target != null) DesktopComposer(ui, target, postTo, picking = state.current.slug == null, Modifier.align(Alignment.BottomCenter))
         }
         }
         if (showRail) {
             VerticalRule()
             AgentsRail(ui, Modifier.width(RailWidth))
+        }
+    }
+}
+
+/**
+ * The desktop's message box at the foot of the feed, with the project picker over it on "All
+ * projects". Its own composable, so a new engine state that leaves [target] alone skips it.
+ */
+@Composable
+private fun DesktopComposer(ui: FeedUi, target: Project, postTo: String?, picking: Boolean, modifier: Modifier) {
+    Box(
+        modifier
+            .fillMaxWidth()
+            .background(bottomFade(AgentTheme.colors.background))
+            .padding(horizontal = 36.dp, vertical = 18.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(Modifier.widthIn(max = FeedMaxWidth)) {
+            if (picking) PostToPicker(ui, target, Modifier.padding(bottom = 8.dp))
+            Composer(
+                focus = ui.composerFocus,
+                placeholder = "Write to everyone in ${target.name}…",
+                onSend = { text, files -> ui.emit(FeedEvent.Post(text, files, project = postTo)) },
+                draftKey = "project:${target.slug}",
+            )
         }
     }
 }
