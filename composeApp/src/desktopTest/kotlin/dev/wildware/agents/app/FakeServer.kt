@@ -71,6 +71,9 @@ class FakeServer {
     @Volatile var refuseApprove: String? = null
     /** This device's alert choice, as `{"prefs":…}` JSON. */
     var alertPrefs = """{"prefs":null}"""
+    /** Agent a1's OAuth connections, as `GET /api/agents/a1/connections` answers. */
+    var connections = """{"connections":[{"id":"g1","clientName":"Cursor","redirectOrigin":"cursor:","createdAt":"2026-11-18T10:00:00Z","lastUsedAt":"2026-11-19T09:00:00Z"}]}"""
+
     /** The devices signed in as the owner, as `GET /api/devices` answers. */
     var devices = """{"devices":[{"id":"d1","name":"Test device","createdAt":"2026-11-18T10:00:00Z","lastSeenAt":null},{"id":"d2","name":"Old phone","createdAt":"2026-10-01T10:00:00Z","lastSeenAt":"2026-11-01T09:00:00Z"}]}"""
     /** How long the dashboard keeps media, as `GET /api/settings/media-retention` answers; null refuses with a 403. */
@@ -149,6 +152,7 @@ class FakeServer {
             "/api/snapshot/requests" -> ok(json.encodeToString(RequestsSnapshot.serializer(), RequestsSnapshot(seq, requests = requests)))
             "/api/devices/current/alert-prefs" -> ok(alertPrefs)
             "/api/devices" -> ok(devices)
+            "/api/agents/a1/connections" -> ok(connections)
             "/api/settings/media-retention" -> mediaRetention?.let { ok(it) } ?: ok("""{"error":"forbidden","message":"Only the owner can change this."}""", HttpStatusCode.Forbidden)
             "/api/pairings" -> ok(json.encodeToString(dev.wildware.agents.PairingsSnapshot.serializer(), dev.wildware.agents.PairingsSnapshot(seq, pairings = pairings)))
             "/api/snapshot/agents" -> ok(json.encodeToString(AgentsSnapshot.serializer(), AgentsSnapshot(seq, agents = agents)))

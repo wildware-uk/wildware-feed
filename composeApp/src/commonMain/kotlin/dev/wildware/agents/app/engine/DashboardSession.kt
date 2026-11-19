@@ -102,6 +102,9 @@ class DashboardSession(
 
     private val mutableDevices = MutableStateFlow(DeviceList())
 
+    /** The open agent's OAuth connections. */
+    private val mutableConnections = MutableStateFlow(dev.wildware.agents.app.feed.ConnectionList())
+
     /** This device's own key was revoked from its Devices sheet: it is signed out at once. */
     private val revokedHere = MutableStateFlow(false)
 
@@ -126,6 +129,7 @@ class DashboardSession(
         val retention: RetentionSettings,
         val mentionable: List<dev.wildware.agents.app.feed.Mentionable>,
         val joining: List<dev.wildware.agents.app.feed.JoinRequest>,
+        val connections: dev.wildware.agents.app.feed.ConnectionList,
     )
 
     private val selected = MutableStateFlow<String?>(null)
@@ -165,7 +169,7 @@ class DashboardSession(
         dashboard.everything.state,
         dashboard.projects,
         dashboard.notifications,
-        combine(combine(mutableAlerts, mutableRetention, mentionables, joining, ::Extras), lastProject, mutableDevices, ::Triple),
+        combine(combine(mutableAlerts, mutableRetention, mentionables, joining, mutableConnections, ::Extras), lastProject, mutableDevices, ::Triple),
     ) { shown, everything, projects, notifications, (extras, postTarget, devices) ->
         val alerts = extras.alerts
         val retention = extras.retention
@@ -174,7 +178,7 @@ class DashboardSession(
         val all = if (shown.current.slug == null) shown else mapper.map(everything, projects, emptyList(), emptyList(), null)
         // Parse what the feed will draw before handing it over, here off the UI thread, so a card
         // that scrolls into view (or arrives) finds its markdown ready instead of parsing mid-frame.
-        shown.copy(searchIndex = searchEntriesOf(all.sections), bell = mapper.bell(notifications), alerts = alerts, retention = retention, mentionable = mentionable, postTarget = postTarget, devices = devices, joining = extras.joining).also { MarkdownCache.warm(markdownIn(it).asIterable()) }
+        shown.copy(searchIndex = searchEntriesOf(all.sections), bell = mapper.bell(notifications), alerts = alerts, retention = retention, mentionable = mentionable, postTarget = postTarget, devices = devices, joining = extras.joining, connections = extras.connections).also { MarkdownCache.warm(markdownIn(it).asIterable()) }
     }.stateIn(scope, SharingStarted.Eagerly, mapper.map(feed.state.value, emptyList(), emptyList(), emptyList(), null))
 
     /** True once the dashboard has stopped taking this device's key. */
@@ -200,6 +204,50 @@ class DashboardSession(
             mutableDevices.value.copy(problem = "Couldn't read the devices. ${refused.message}")
         } catch (failed: Throwable) {
             mutableDevices.value.copy(problem = "Couldn't read the devices. Check the connection and try again.")
+        }
+    }
+
+    /** Reads the MCP clients signed in as [agentId] over OAuth, newest first. */
+    private suspend fun loadConnections(agentId: String) {
+        if (mutableConnections.value.agentId != agentId) mutableConnections.value = dev.wildware.agents.app.feed.ConnectionList(agentId)
+        val read = try {
+            val rows = client.agentConnections(agentId).map { c ->
+                dev.wildware.agents.app.feed.ConnectionRow(
+                    id = c.id,
+                    client = c.clientName,
+                    where = connectionPlace(c.redirectOrigin),
+                    used = c.lastUsedAt?.let(::isoMillis)?.let { "Last used ${mapper.relativeLabel(it)}" } ?: "Never used",
+                    added = isoMillis(c.createdAt)?.let { "Added ${mapper.shortDay(it)}" } ?: "",
+                )
+            }
+            dev.wildware.agents.app.feed.ConnectionList(agentId, rows, loaded = true)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (refused: DashboardException) {
+            mutableConnections.value.copy(problem = "Couldn't read its connections. ${refused.message}")
+        } catch (failed: Throwable) {
+            mutableConnections.value.copy(problem = "Couldn't read its connections. Check the connection and try again.")
+        }
+        // The owner may have opened another agent meanwhile.
+        if (mutableConnections.value.agentId == agentId) mutableConnections.value = read
+    }
+
+    /** Signs one client out of an agent, then reads the list again. */
+    private fun revokeConnection(agentId: String, connectionId: String) {
+        if (mutableConnections.value.removing != null) return
+        mutableConnections.value = mutableConnections.value.copy(removing = connectionId, problem = null)
+        scope.launch {
+            try {
+                client.revokeAgentConnection(agentId, connectionId)
+                loadConnections(agentId)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (refused: DashboardException) {
+                mutableConnections.value = mutableConnections.value.copy(problem = "Couldn't revoke it. ${refused.message}")
+            } catch (failed: Throwable) {
+                mutableConnections.value = mutableConnections.value.copy(problem = "Couldn't revoke it. Check the connection and try again.")
+            }
+            mutableConnections.value = mutableConnections.value.copy(removing = null)
         }
     }
 
@@ -447,6 +495,8 @@ class DashboardSession(
             is FeedEvent.ReadMediaRetention -> scope.launch { loadRetention() }
             is FeedEvent.ReadDevices -> scope.launch { loadDevices() }
             is FeedEvent.RevokeDevice -> revokeDevice(event.deviceId)
+            is FeedEvent.ReadConnections -> scope.launch { loadConnections(event.agentId) }
+            is FeedEvent.RevokeConnection -> revokeConnection(event.agentId, event.connectionId)
             is FeedEvent.SetMediaRetention -> saveRetention(event.setting)
             is FeedEvent.SelectProject -> select(event.slug)
             is FeedEvent.CreateProject -> changeNow(event.done) {
@@ -569,3 +619,18 @@ class DashboardSession(
 
 /** Answers that mean "not for this person" or "this dashboard has no such setting": the setting stays hidden. */
 private val RetentionHidden = setOf(401, 403, 404)
+
+/**
+ * Where a connection signed in from, in words: an app on the client's own computer for a loopback
+ * address, the site for https, or the app whose links it used.
+ */
+internal fun connectionPlace(origin: String): String {
+    val lower = origin.lowercase()
+    val host = lower.substringAfter("://", "").substringBefore('/').substringBeforeLast(':').removePrefix("[").removeSuffix("]")
+    return when {
+        lower.startsWith("http://") && (host == "localhost" || host == "::1" || host.startsWith("127.")) -> "An app on its own computer"
+        lower.startsWith("https://") -> host.ifEmpty { origin }
+        lower.endsWith(":") -> "${origin.removeSuffix(":")}: links"
+        else -> origin
+    }
+}

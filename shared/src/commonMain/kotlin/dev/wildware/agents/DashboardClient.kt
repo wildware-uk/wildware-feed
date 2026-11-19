@@ -239,6 +239,23 @@ class DashboardClient(
         }.requireSuccess()
     }
 
+    /**
+     * The MCP clients signed in as an agent over OAuth (a dashboard from before OAuth has none),
+     * newest first.
+     */
+    @Throws(Exception::class)
+    suspend fun agentConnections(agentId: String): List<AgentConnection> {
+        val response = http.get("api/agents/${agentId.encodeURLPathPart()}/connections") { authorise() }
+        if (response.status.value == 404) return emptyList()
+        return response.decoded<ConnectionsBody>().connections
+    }
+
+    /** Revokes one of an agent's connections: that client is signed out; the agent and its other tokens keep working. */
+    @Throws(Exception::class)
+    suspend fun revokeAgentConnection(agentId: String, connectionId: String) {
+        http.delete("api/agents/${agentId.encodeURLPathPart()}/connections/${connectionId.encodeURLPathPart()}") { authorise() }.requireSuccess()
+    }
+
     /** Pins a project to the top of the project list, or unpins it. */
     @Throws(Exception::class)
     suspend fun setProjectPinned(slug: String, pinned: Boolean): ProjectView =
@@ -621,6 +638,21 @@ data class OwnerDevice(
 
 @kotlinx.serialization.Serializable
 internal data class DevicesBody(val devices: List<OwnerDevice> = emptyList())
+
+/** An MCP client the owner allowed in the browser as an agent (OAuth). */
+@Serializable
+data class AgentConnection(
+    val id: String,
+    /** What the client calls itself. */
+    val clientName: String,
+    /** Where its sign-in went back to: an https or loopback origin, or `scheme:` for an app's own links. */
+    val redirectOrigin: String,
+    val createdAt: String,
+    val lastUsedAt: String? = null,
+)
+
+@kotlinx.serialization.Serializable
+internal data class ConnectionsBody(val connections: List<AgentConnection> = emptyList())
 
 @kotlinx.serialization.Serializable
 internal data class ProjectBody(val project: ProjectView)

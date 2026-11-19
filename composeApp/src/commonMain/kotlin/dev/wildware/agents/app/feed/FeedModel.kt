@@ -517,6 +517,8 @@ data class FeedState(
     val postTarget: String? = null,
     /** The devices signed in as the owner, read when the Devices sheet opens. */
     val devices: DeviceList = DeviceList(),
+    /** The open agent's OAuth connections, read when its dialog opens. */
+    val connections: ConnectionList = ConnectionList(),
     /** Agents asking to join, oldest first: each waits on the owner to allow or deny it. */
     val joining: List<JoinRequest> = emptyList(),
 ) {
@@ -573,6 +575,32 @@ data class DeviceList(
     /** The device being revoked, while the dashboard is asked. */
     val removing: String? = null,
     val problem: String? = null,
+)
+
+/** The MCP clients signed in as one agent over OAuth, newest first. */
+@Immutable
+data class ConnectionList(
+    /** Whose these are: the dialog shows them only for that agent. */
+    val agentId: String? = null,
+    val connections: List<ConnectionRow> = emptyList(),
+    val loaded: Boolean = false,
+    /** The connection being revoked, while the dashboard is asked. */
+    val removing: String? = null,
+    val problem: String? = null,
+)
+
+/** One connection, as the agent dialog lists it. */
+@Immutable
+data class ConnectionRow(
+    val id: String,
+    /** What the client calls itself: "Cursor". */
+    val client: String,
+    /** Where it signed in from: "An app on its computer", "claude.ai", "cursor: links". */
+    val where: String,
+    /** "Last used 5m ago", "Never used". */
+    val used: String,
+    /** "Added 3 August 2026". */
+    val added: String,
 )
 
 /** One signed-in device, as the Devices sheet lists it. */
