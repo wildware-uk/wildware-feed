@@ -123,7 +123,7 @@ It doesn't, beyond oldest first.
 | 76 | Tags at post time | Open | Pick tags before posting | No | No | With row 47 | P2 |
 | 77 | Voice dictation | Done | — | Yes hold-to-talk (`Voice.kt`) | Yes if available | App only | — |
 | 78 | Share into the app | Done | — | Yes, iOS share extension | Desktop drop | App only | — |
-| 79 | @mention | Partial | Plain text only, server routes | "@" button inserts @ (desktop only, `Panels.kt`) | Same | No autocomplete either side | P2 |
+| 79 | @mention | Done | Plain text only, server routes | Yes: typing @ in any message box lists the agents, online first; letters filter, a tap picks (`Mentions.kt`) | Yes: same, with arrows, Enter or Tab, and an "@" button | App richer: the website had no list | P2 |
 | **Media** |||||||
 | 80 | Image grid | Done | 1/2/3 cols by count, aspect clamp (`media.ts:29-130`) | Yes (`Content.kt` MediaGrid) | Yes | — | — |
 | 81 | Image viewer | Done | Lightbox: arrows, Home/End, "Original" link | Yes: pager, pinch zoom, prev/next (`Overlays.kt` ImageViewer) | Yes + ←/→/Esc | No "Original" or download | P2 |
