@@ -164,6 +164,13 @@ Push needs a paid Apple developer account.
 The app ids, the app group `group.dev.wildware.agents` and the push, time-sensitive and app group
 capabilities are all set in `iosApp/project.yml`. Xcode's automatic signing creates them on first build.
 
+## Code signing policy
+
+Windows releases are signed through the SignPath Foundation's program for open-source projects:
+free code signing provided by [SignPath.io](https://about.signpath.io), certificate by
+[SignPath Foundation](https://signpath.org). The [code signing policy](docs/CODE_SIGNING.md) says
+what is signed, how, and by whom. Until the application is accepted, Windows releases are unsigned.
+
 ## License
 
 - Apps and shared code: MIT, see [LICENSE](LICENSE).

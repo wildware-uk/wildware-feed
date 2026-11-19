@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The SignPath artifact configuration for Wildware Feed's Windows release. Keep it the same as
+     the one saved in SignPath, which is the one that counts (docs/CODE_SIGNING.md).
+
+     The desktop-release workflow sends one ZIP holding two files:
+       Wildware-Feed-<version>-windows-x64.msi   the installer
+       Wildware Feed.exe                          the app, from the portable folder
+     SignPath signs the Wildware Feed.exe inside the .msi, then the .msi itself, then the portable
+     Wildware Feed.exe. Each Wildware Feed.exe must name the product "Wildware Feed" and carry the
+     release's version, which the workflow passes as the "version" parameter. The Java runtime
+     files next to the app are not ours and are left as they are. -->
+<artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
+  <parameters>
+    <parameter name="version" required="true" />
+  </parameters>
+  <zip-file>
+    <msi-file path="Wildware-Feed-${version}-windows-x64.msi">
+      <pe-file path="**/Wildware Feed.exe" product-name="Wildware Feed" product-version="${version}">
+        <authenticode-sign />
+      </pe-file>
+      <authenticode-sign />
+    </msi-file>
+    <pe-file path="Wildware Feed.exe" product-name="Wildware Feed" product-version="${version}">
+      <authenticode-sign />
+    </pe-file>
+  </zip-file>
+</artifact-configuration>

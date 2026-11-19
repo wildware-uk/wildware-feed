@@ -44,7 +44,7 @@ cat <<NOTES
 NOTES
 
 if [ "$windows_signed" = "true" ]; then
-  echo "This build is signed."
+  echo "This build is signed, with **SignPath Foundation** as the publisher. Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by [SignPath Foundation](https://signpath.org). [Code signing policy](https://github.com/wildware-uk/wildware-feed/blob/master/docs/CODE_SIGNING.md)."
 else
   echo "This build is **not signed**, so SmartScreen says \"Windows protected your PC\" the first time: click **More info**, then **Run anyway**."
 fi

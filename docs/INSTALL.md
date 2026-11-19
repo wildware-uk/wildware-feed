@@ -31,6 +31,10 @@ Wildware Feed in Applications, choose **Open**, then **Open** again.
 If the release notes say the Windows app is **not signed**, SmartScreen shows "Windows protected
 your PC". Once only: click **More info**, then **Run anyway**.
 
+A signed release names **SignPath Foundation** as its publisher: Wildware Feed is signed through
+its free program for open-source projects (see the [code signing policy](CODE_SIGNING.md)).
+SmartScreen can still warn for a while after a new release, until enough people have installed it.
+
 The portable `.zip` needs no install: unzip it anywhere and run `Wildware Feed.exe`.
 
 ## Linux
@@ -99,7 +103,8 @@ The `desktop-release` workflow builds all of these. Push a tag `v<version>` matc
 `agents.version` in `gradle.properties` to publish a release; run it by hand from the Actions tab
 for a test build (its files stay on the run as artifacts).
 
-Signing turns on by itself when these repository secrets exist. Without them the builds are
+Signing turns on by itself when these repository secrets exist (Windows signing is set up
+differently: see "Windows signing" at the end). Without them the builds are
 unsigned and the release notes say so.
 
 | Secret | What it is |
@@ -110,8 +115,6 @@ unsigned and the release notes say so.
 | `ASC_KEY_ID` | An App Store Connect API key's Key ID (App Store Connect › Users and Access › Integrations › Team Keys, role Developer). |
 | `ASC_ISSUER_ID` | The Issuer ID shown above that key list. |
 | `ASC_KEY_P8_BASE64` | That key's `AuthKey_<id>.p8` file, base64-encoded. |
-| `WINDOWS_CERT_PFX_BASE64` | Optional: an Authenticode code-signing certificate as a `.pfx`, base64-encoded. |
-| `WINDOWS_CERT_PASSWORD` | Optional: its password. |
 
 The Mac needs the first three to sign, and all six to notarise. Notarising is what stops the
 "could not verify" message for good.
@@ -187,3 +190,32 @@ the app signing key and use the key above as the upload key, so sideloaded and P
 both update. The store listing needs screenshots, a privacy policy URL, and the data safety form
 (the app sends what you write, and your device key, only to your own dashboard).
 
+### Windows signing
+
+Windows files are signed through the [SignPath Foundation](https://signpath.org), free for
+open-source projects. Certificates must now keep their keys in a hardware vault, so a `.pfx` in a
+secret is no longer possible; SignPath holds the key and signs what this workflow sends it. What
+is signed, and the rules, are in the [code signing policy](CODE_SIGNING.md).
+
+Once SignPath has accepted the project:
+
+1. In SignPath, add the **GitHub.com** trusted build system to the organisation and link it to the
+   project. Install the [SignPath GitHub App](https://github.com/apps/signpath) on this repository.
+2. Save [`.signpath/artifact-configuration.xml`](../.signpath/artifact-configuration.xml) as the
+   project's artifact configuration (as the default one, or note its slug).
+3. Make a CI user with permission to submit to the signing policy, and create an API token for it.
+4. Give the workflow these settings (repository **Settings › Secrets and variables › Actions**):
+
+| Name | Kind | What it is |
+| --- | --- | --- |
+| `SIGNPATH_API_TOKEN` | Secret | The CI user's API token. |
+| `SIGNPATH_ORGANIZATION_ID` | Variable | The organisation's id, shown in SignPath. |
+| `SIGNPATH_PROJECT_SLUG` | Variable | The project's slug, e.g. `wildware-feed`. |
+| `SIGNPATH_SIGNING_POLICY_SLUG` | Variable | `test-signing` to try it out, then `release-signing`. |
+| `SIGNPATH_ARTIFACT_CONFIGURATION_SLUG` | Variable | Optional: only if the configuration above isn't the default one. |
+
+With all four, every tag's Windows files go to SignPath. The `windows-sign` job waits up to two
+hours for the request to be approved in SignPath, then swaps the signed `.msi` and
+`Wildware Feed.exe` into the release, and its notes say it is signed. A run by hand from the
+Actions tab signs only when its **sign_windows** box is ticked, which is how to try `test-signing`
+first. Without the settings, nothing changes: the files are unsigned and the release notes say so.
