@@ -447,10 +447,14 @@ class FeedApiTest : ParityTest() {
             field("update", update, "name" to "f21", "value" to "v").expectError(400, "invalid_argument", "a card may carry at most 20 fields")
             assertEquals(20, field("update", update, "name" to "f20", "value" to "changed").obj()["fields"].arr.size, "an existing field can still change")
 
-            stream.drain(1000.milliseconds)
-            val changes = stream.seen.filter { it.event == "fields.changed" && it.data?.contains(pid) == true }
+            fun changes() = stream.seen.filter { it.event == "fields.changed" && it.data?.contains(pid) == true }
+            val expected = 1 + 1 + 19 + 1
+            // Wait for the last one rather than a fixed window: a busy CI runner can take over a second.
+            while (changes().size < expected) stream.awaitEvent("fields.changed") { it.data?.contains(pid) == true }
+            stream.drain(500.milliseconds)
+            val changes = changes()
             assertEquals("""{"projectId":"$pid"}""", changes.first().obj["payload"].toString())
-            assertEquals(1 + 1 + 19 + 1, changes.size, "one per real change: Branch, the request's, f2-f20, f20 again")
+            assertEquals(expected, changes.size, "one per real change: Branch, the request's, f2-f20, f20 again")
         }
     }
 
