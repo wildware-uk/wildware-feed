@@ -522,6 +522,9 @@ fun Composer(
     draftKey: String? = null,
     /** A new post's box: the project (by id) whose tags it can go up wearing. Replies have none. */
     tagProject: String? = null,
+    /** A reply box: who a Reply on a line asks it to name, and whether to take the cursor. [onAsked] once done. */
+    ask: MentionAsk? = null,
+    onAsked: () -> Unit = {},
 ) {
     val colors = AgentTheme.colors
     val shape = AgentTheme.shapes.large
@@ -539,6 +542,8 @@ fun Composer(
     val focusManager = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
     var open by remember { mutableStateOf(false) }
+    // The box's own, for a Reply to put the cursor in it; [focus] when the screen holds one.
+    val fieldFocus = focus ?: remember { FocusRequester() }
     val close: () -> Unit = {
         keyboard?.hide()
         focusManager.clearFocus(force = true)
@@ -576,6 +581,20 @@ fun Composer(
             if (draft.text.isNotBlank()) text.edit { replace(0, length, Dictation.appendDictation(text.text.toString(), draft.text)) }
             add(draft.files)
             runCatching { focus.requestFocus() }
+        }
+    }
+    if (ask != null) {
+        LaunchedEffect(ask) {
+            // Read here, not while drawing, so the box doesn't redraw with every engine publish.
+            val known = ui?.state?.mentionable.orEmpty().map { it.name }
+            val now = text.text.toString()
+            val next = MentionText.retarget(now, ask.mention, known)
+            if (next != now || ask.focus) text.edit {
+                if (next != now) replace(0, length, next)
+                selection = TextRange(length)
+            }
+            if (ask.focus) runCatching { fieldFocus.requestFocus() }
+            onAsked()
         }
     }
     // Read as a yes/no, so typing redraws only the text, not the whole box, on every key.
@@ -657,7 +676,7 @@ fun Composer(
                 text,
                 label = label,
                 placeholder = placeholder,
-                modifier = Modifier.weight(1f).then(if (focus != null) Modifier.focusRequester(focus) else Modifier).onFocusChanged {
+                modifier = Modifier.weight(1f).focusRequester(fieldFocus).onFocusChanged {
                     if (it.isFocused != open) {
                         open = it.isFocused
                         ui?.composerOpen = it.isFocused
@@ -760,7 +779,8 @@ fun ReplyView(reply: Reply, modifier: Modifier = Modifier) {
     val colors = AgentTheme.colors
     val time = if (reply.sending) SendingLabel else reply.time
     val detail = if (reply.sending) "" else reply.timeDetail
-    val spoken = listOfNotNull(reply.author.name, detail.ifEmpty { time }, reply.edited, "new".takeIf { reply.unread }).joinToString(", ")
+    val answering = reply.answering?.let { "answering $it" }
+    val spoken = listOfNotNull(reply.author.name, answering, detail.ifEmpty { time }, reply.edited, "new".takeIf { reply.unread }).joinToString(", ")
     Row(modifier.fillMaxWidth().alpha(if (reply.sending) SendingAlpha else 1f)) {
         Avatar(reply.author, 28.dp, showPresence = false)
         Column(Modifier.padding(start = 10.dp).weight(1f)) {
@@ -776,6 +796,11 @@ fun ReplyView(reply: Reply, modifier: Modifier = Modifier) {
                 )
                 TimeText(time, detail, Modifier.padding(start = 8.dp).clearAndSetSemantics { })
                 if (reply.edited != null) EditedMark(Modifier.padding(start = 6.dp).clearAndSetSemantics { })
+                if (answering != null) {
+                    // Last, and the one to give way: a long name ends in "…" before the time does.
+                    Icon(Icons.Reply, null, tint = colors.textFaint, modifier = Modifier.padding(start = 8.dp).size(12.dp))
+                    MetaText(answering, Modifier.padding(start = 3.dp).weight(1f, fill = false).clearAndSetSemantics { })
+                }
             }
             Spacer(Modifier.height(2.dp))
             MarkdownBody(reply.body)

@@ -28,6 +28,13 @@ import dev.wildware.agents.app.design.AgentTheme
 import dev.wildware.agents.app.design.pressable
 
 /**
+ * A Reply on a line of thread [threadId], or calling that reply off, asking its reply box to name
+ * [mention] instead (null names nobody) and, with [focus], to take the cursor.
+ */
+@androidx.compose.runtime.Immutable
+data class MentionAsk(val threadId: String, val mention: String?, val focus: Boolean)
+
+/**
  * The @mention being typed, if the cursor is in one. The dashboard matches `@` and an agent's name
  * not run on from a word, so an email address is not a mention, and a space ends one.
  */
@@ -55,6 +62,36 @@ object MentionText {
         val after = text.substring(cursor).removePrefix(" ")
         val inserted = "@$name "
         return (before + inserted + after) to (before.length + inserted.length)
+    }
+
+    /**
+     * The reply box's words once a Reply on a line has picked who it names: [mention], or nobody for
+     * null (replying to the owner's own line, or the reply called off). A box holding only a mention
+     * (the one an earlier Reply put there, most likely) swaps it; words the owner wrote are kept,
+     * with "@[mention] " put in front unless they name them already. [known] is every name the @ list
+     * offers.
+     */
+    fun retarget(draft: String, mention: String?, known: Collection<String>): String {
+        val tag = mention?.let { "@$it " }.orEmpty()
+        val bare = draft.trim()
+        if (bare.isEmpty() || known.any { bare.equals("@$it", ignoreCase = true) }) return tag
+        if (mention == null || names(draft, mention)) return draft
+        return tag + draft.trimStart()
+    }
+
+    /** Whether [text] has "@[name]" in it as the dashboard reads a mention: not run on from a word on either side. */
+    fun names(text: String, name: String): Boolean {
+        var from = 0
+        while (true) {
+            val at = text.indexOf("@$name", from, ignoreCase = true)
+            if (at < 0) return false
+            val before = text.getOrNull(at - 1)
+            val after = text.getOrNull(at + 1 + name.length)
+            val startsClean = before == null || !(before.isLetterOrDigit() || before == '_' || before == '@')
+            val endsClean = after == null || !(after.isLetterOrDigit() || after == '_' || after == '-')
+            if (startsClean && endsClean) return true
+            from = at + 1
+        }
     }
 
     /** Who matches [query]: names that start with it first, then names that contain it, in [all]'s order. */

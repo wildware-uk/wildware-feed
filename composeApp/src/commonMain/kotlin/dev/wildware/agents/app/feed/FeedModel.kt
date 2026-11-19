@@ -212,6 +212,8 @@ data class Reply(
     val edited: String? = null,
     /** The whole instant behind [time], as "Posted Monday 3 August 2026 at 14:05 · updated …". Shown on hover, read aloud. */
     val timeDetail: String = "",
+    /** Who wrote the line in this thread that this one answers: an agent's name, or "you". Drawn as "answering forge". */
+    val answering: String? = null,
 )
 
 /**

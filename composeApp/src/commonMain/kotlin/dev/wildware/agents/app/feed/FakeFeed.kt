@@ -41,6 +41,7 @@ object FakeFeed {
             time = "9:54",
             body = "Yes. The watch reads the same counter, so it is right again too. Checked on a Series 9 and an SE.",
             reactions = listOf(Reaction("🙌", 1, mine = true, spoken = "raised hands")),
+            answering = "you",
         ),
         Reply(
             id = "r3",

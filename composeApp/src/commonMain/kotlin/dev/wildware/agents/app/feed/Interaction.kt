@@ -195,6 +195,8 @@ data class ScreenPreview(
     val questionSwipe: Float = 0f,
     /** A reply to show swiped right, part-way to "Reply". */
     val replySwipe: String? = null,
+    /** The reply (by id) showing its desktop Reply button, as if the pointer were over it. */
+    val replyHover: String? = null,
     /** The command bar, open with this typed in it. */
     val command: String? = null,
     /** Files already attached in the feed's composer. */
@@ -276,6 +278,28 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
     /** Cards whose whole thread the owner asked to see inline, not just its newest replies. */
     val expandedThreads = mutableStateSetOf<String>()
     var replyingTo by mutableStateOf<Reply?>(null)
+
+    /** What a Reply on a line, or calling it off, asks of that thread's reply box; the box clears it once done. */
+    var mentionAsk by mutableStateOf<MentionAsk?>(null)
+
+    /**
+     * Calls off answering [replyingTo] in thread [threadId]: the reply goes to the thread as a whole,
+     * and a box holding only the mention a Reply put there is emptied again.
+     */
+    fun stopReplying(threadId: String) {
+        replyingTo = null
+        mentionAsk = MentionAsk(threadId, mention = null, focus = false)
+    }
+
+    /**
+     * How a reply to [author] names them: an agent by the name the @ list gives it, so the dashboard
+     * hands it to that agent alone, wherever it works. The owner's own line names nobody.
+     */
+    private fun mentionFor(author: Author): String? = when (author) {
+        is Author.Owner -> null
+        is Author.AgentAuthor -> state.mentionable.firstOrNull { it.kind == MentionKind.Agent && it.id == author.agent.id }?.name
+            ?: author.agent.name
+    }
     var refreshing by mutableStateOf(false)
     var filter by mutableStateOf(preview.filter)
     var showArchived by mutableStateOf(false)
@@ -684,7 +708,10 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
                     ?: state.sections.asSequence().flatMap { it.items }.filterIsInstance<Threaded>()
                         .firstOrNull { t -> t.replies.any { it.id == event.targetId } }
                 if (card != null && card.id != threadId) openThread(card.id, phone = isPhone)
-                replyingTo = card?.replies?.firstOrNull { it.id == event.targetId }
+                val line = card?.replies?.firstOrNull { it.id == event.targetId }
+                replyingTo = line
+                // The box names who wrote it, and takes the cursor, ready to write the answer.
+                if (card != null && line != null) mentionAsk = MentionAsk(card.id, mentionFor(line.author), focus = true)
             }
             is FeedEvent.SendReply -> replyingTo = null
             is FeedEvent.SelectText -> selecting = textOf(event.targetId)?.let { SelectingText(event.targetId, it) }

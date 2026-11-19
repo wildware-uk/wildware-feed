@@ -184,6 +184,25 @@ class FeedTest {
     }
 
     @Test
+    fun `an owner's answer naming an agent reaches only it, even outside the projects it works in`() {
+        agent("A1", "scout")
+        agent("A2", "forge")
+        feed.projects.create("P", null, null)
+        feed.projects.create("Q", null, null)
+        // forge works in q only.
+        feed.updates.post(Updates.Post(project = "q", agentId = "A2", body = "elsewhere"))
+        val update = feed.updates.post(Updates.Post(project = "p", agentId = "A1", body = "u"))
+        val line = feed.messages.post(Messages.Post(author = "agent:A1", body = "done", updateId = update.id))
+
+        val answer = human("@forge can you check this", updateId = update.id, answers = line.id)
+        assertEquals(line.id, answer.answers)
+        assertEquals(update.id, answer.updateId)
+        assertEquals(listOf("A2"), mentioned(answer.id))
+        assertEquals(listOf("@forge can you check this"), feed.messages.read("A2", null, null, false).messages.map { it.body })
+        assertTrue(feed.messages.read("A1", null, null, false).messages.none { it.id == answer.id }, "only the agent it names hears it")
+    }
+
+    @Test
     fun `replies flatten to the post and anchors are checked`() {
         agent("A1", "scout")
         val project = feed.projects.create("P", null, null).first

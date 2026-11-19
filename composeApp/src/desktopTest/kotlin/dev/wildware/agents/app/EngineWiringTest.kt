@@ -432,6 +432,25 @@ class EngineWiringTest {
     }
 
     @Test
+    fun replyOnACommentMentionsItsAgentAndAnswersIt() = runDesktopComposeUiTest(width = 1440, height = 900) {
+        app()
+        waitFor("Fixed the unread counts")
+        waitFor("Confirmed on my side.")
+        // The comment sits under the feed's floating box here, out of the pointer's reach, so Reply is
+        // pressed as a screen reader does; ReplyToCommentTest presses the hover button.
+        runCustomAction("Reply", on = hasAnyDescendant(hasText("Confirmed on my side.")))
+        waitFor("Replying to scout")
+        val box = onNode(hasContentDescription("Reply") and hasSetTextAction())
+        assertEquals("@scout ", box.fetchSemanticsNode().config[SemanticsProperties.EditableText].text)
+        box.performTextInput("thanks, shipping it")
+        val field = box.fetchSemanticsNode().boundsInRoot
+        val sends = onAllNodes(hasContentDescription("Send"))
+        sends[sends.fetchSemanticsNodes().indexOfFirst { it.boundsInRoot.top == field.top }].performSemanticsAction(SemanticsActions.OnClick)
+        val body = waitForWrite("POST", "/api/messages")
+        assertTrue("\"update\":\"u1\"" in body && "\"answers\":\"m1\"" in body && "@scout thanks, shipping it" in body, body)
+    }
+
+    @Test
     fun aDoubleTapReactsOnTheServer() = runDesktopComposeUiTest(width = 1440, height = 900) {
         app()
         waitFor("Fixed the unread counts")

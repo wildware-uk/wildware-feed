@@ -182,6 +182,22 @@ class MappingTest {
     }
 
     @Test
+    fun anAnswerSaysWhoseLineInTheThreadItAnswers() {
+        fun answering(id: String, author: String, at: Long, answers: String?) =
+            line(id, author, at).let { it.copy(message = it.message.copy(answers = answers)) }
+        val replies = listOf(
+            line("m1", "agent:a2", noon - 4000),
+            answering("m2", "human", noon - 3000, answers = "m1"),
+            answering("m3", "agent:a2", noon - 2000, answers = "m2"),
+            // The card itself is no line of its thread, so answering it says nothing.
+            answering("m4", "agent:a2", noon - 1000, answers = "u1"),
+        )
+        val item = mapper.map(feed(listOf(update("u1", noon, "T", "B", replies))), listOf(mega), emptyList(), emptyList(), null)
+            .sections.single().items.single() as FeedItem.Update
+        assertEquals(listOf(null, "scout", "you", null), item.replies.map { it.answering })
+    }
+
+    @Test
     fun cardsFallUnderTheirDay() {
         val day = 86_400_000L
         val state = mapper.map(

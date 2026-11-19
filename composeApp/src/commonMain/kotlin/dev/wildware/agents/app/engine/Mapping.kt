@@ -390,6 +390,7 @@ internal class FeedMapper(
     ): List<Reply> {
         // The engine counts unread comments per card; they are the newest ones not written by the owner.
         val unreadIds = lines.filter { !it.message.isOwner }.takeLast(unread).mapTo(HashSet()) { it.message.id }
+        val byId = lines.associateBy { it.message.id }
         return lines.map { line ->
             Reply(
                 id = line.message.id,
@@ -408,6 +409,8 @@ internal class FeedMapper(
                 embeds = line.embeds.embeds(),
                 acks = acks(line, agents),
                 edited = editedLabel(line.message.editedAt),
+                // Only a line in this same thread: the card's own head needs no saying.
+                answering = line.message.answers?.let(byId::get)?.let { if (it.message.isOwner) "you" else author(it, agents).name },
             )
         }
     }

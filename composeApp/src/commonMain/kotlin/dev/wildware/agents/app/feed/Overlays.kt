@@ -17,6 +17,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
+import androidx.compose.foundation.hoverable
+import dev.wildware.agents.app.design.focusRing
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -643,7 +646,13 @@ internal fun replySurface(colors: AgentColors, own: Boolean): Color = when {
     else -> colors.surfaceSunken
 }
 
-/** A reply that can be swiped right to answer it, long-pressed for its menu, double-tapped to react. */
+/** Who "Replying to …" names: the agent, or "yourself" for the owner's own line. */
+private fun replyingWho(reply: Reply): String = if (reply.author is Author.Owner) "yourself" else reply.author.name
+
+/**
+ * A reply that can be swiped right to answer it, long-pressed for its menu, double-tapped to react.
+ * On desktop a Reply button shows in its corner while the pointer is over it.
+ */
 @Composable
 fun InteractiveReply(reply: Reply, modifier: Modifier = Modifier) {
     val ui = LocalFeedUi.current
@@ -661,6 +670,7 @@ fun InteractiveReply(reply: Reply, modifier: Modifier = Modifier) {
         own = reply.author is Author.Owner,
     )
     val shape = AgentTheme.shapes.medium
+    val hover = remember { MutableInteractionSource() }
     SwipeActions(
         shape = shape,
         // About 8 dp between one reply and the next.
@@ -671,17 +681,53 @@ fun InteractiveReply(reply: Reply, modifier: Modifier = Modifier) {
         },
     ) {
         val shown = ui?.reactionsFor(reply.id, reply.reactions) ?: reply.reactions
-        // Each reply on its own surface, so it is plain where one ends and the next begins. The
-        // surface is opaque, so it also covers the action under it while it is swiped.
-        ReplyView(
-            reply.copy(reactions = shown),
-            Modifier
-                .clip(shape)
-                .background(replySurface(colors, own = reply.author is Author.Owner))
-                .border(1.dp, colors.border, shape)
-                .feedItemGestures(target)
-                .padding(horizontal = 12.dp, vertical = 10.dp),
-        )
+        val phone = LocalIsPhone.current
+        Box(if (phone) Modifier else Modifier.hoverable(hover)) {
+            // Each reply on its own surface, so it is plain where one ends and the next begins. The
+            // surface is opaque, so it also covers the action under it while it is swiped.
+            ReplyView(
+                reply.copy(reactions = shown),
+                Modifier
+                    .clip(shape)
+                    .background(replySurface(colors, own = reply.author is Author.Owner))
+                    .border(1.dp, colors.border, shape)
+                    .feedItemGestures(target)
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+            )
+            // Phones swipe instead: a button on every line would crowd a narrow thread.
+            if (!phone && ui != null) {
+                HoverReply(hover, always = preview.replyHover == reply.id, who = replyingWho(reply), Modifier.align(Alignment.TopEnd).padding(6.dp)) {
+                    ui.emit(FeedEvent.Reply(reply.id))
+                }
+            }
+        }
+    }
+}
+
+/**
+ * The Reply button in a reply's corner, shown while the pointer is over the reply ([always] for a
+ * screenshot). Its own scope, so the pointer coming and going redraws only the button.
+ */
+@Composable
+private fun HoverReply(hover: MutableInteractionSource, always: Boolean, who: String, modifier: Modifier, onClick: () -> Unit) {
+    val hovered by hover.collectIsHoveredAsState()
+    if (!hovered && !always) return
+    val colors = AgentTheme.colors
+    val shape = AgentTheme.shapes.pill
+    Row(
+        modifier
+            .lift(AgentTheme.elevation.raised, shape)
+            .clip(shape)
+            .background(colors.surfaceRaised)
+            .border(1.dp, colors.borderStrong, shape)
+            .focusRing(shape)
+            .semantics { contentDescription = "Reply to $who" }
+            .clickable(role = Role.Button, onClickLabel = "Reply to $who", onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Reply, null, tint = colors.textMuted, modifier = Modifier.size(14.dp))
+        Text("Reply", Modifier.padding(start = 5.dp), color = colors.text, style = AgentTheme.type.label)
     }
 }
 
@@ -801,20 +847,23 @@ fun ThreadComposer(ui: FeedUi?, threadId: String, modifier: Modifier = Modifier,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Icon(Icons.Reply, null, tint = colors.accent, modifier = Modifier.size(16.dp))
+                val who = replyingWho(shown)
                 Column(Modifier.padding(start = 8.dp).weight(1f)) {
-                    Text("Replying to ${shown.author.name}", color = colors.text, style = AgentTheme.type.label)
+                    Text("Replying to $who", color = colors.text, style = AgentTheme.type.label)
                     MetaText(shown.body.replace("**", ""), color = colors.textMuted)
                 }
-                IconAction(Icons.Close, "Stop replying to ${shown.author.name}") { ui?.replyingTo = null }
+                IconAction(Icons.Close, "Stop replying to $who") { ui?.stopReplying(threadId) }
             }
         }
         Composer(
-            placeholder = replying?.let { "Answer ${it.author.name}…" } ?: "Reply to the thread…",
+            placeholder = replying?.let { if (it.author is Author.Owner) "Add to what you said…" else "Answer ${it.author.name}…" } ?: "Reply to the thread…",
             label = "Reply",
             compact = true,
             onSend = { text, files -> ui?.emit(FeedEvent.SendReply(threadId, text, replying?.id, files)) },
             focus = focus,
             draftKey = "thread:$threadId",
+            ask = ui?.mentionAsk?.takeIf { it.threadId == threadId },
+            onAsked = { ui?.mentionAsk = null },
         )
     }
 }

@@ -88,7 +88,7 @@ class PinTest {
     fun aReplyInAThreadHasNoPin() = runComposeUiTest {
         feed(390, startAt = null, state = FakeFeed.state, preview = ScreenPreview(threadOpen = true))
         // Held on the reply's name: holding its text selects the text instead.
-        onNode(hasContentDescription("forge, 9:54")).performScrollTo().performTouchInput { longClick() }
+        onNode(hasContentDescription("forge, answering you, 9:54")).performScrollTo().performTouchInput { longClick() }
         onNodeWithText("Reply").assertExists()
         onNodeWithText("Pin").assertDoesNotExist()
     }
