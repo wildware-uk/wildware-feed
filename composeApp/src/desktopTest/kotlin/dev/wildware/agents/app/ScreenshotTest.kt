@@ -29,6 +29,7 @@ import dev.wildware.agents.app.feed.Bell
 import dev.wildware.agents.app.feed.BellItem
 import dev.wildware.agents.app.feed.Acks
 import dev.wildware.agents.app.feed.Author
+import dev.wildware.agents.app.feed.FeedSection
 import dev.wildware.agents.app.feed.VoiceInput
 import dev.wildware.agents.app.feed.LocalVoiceInput
 import dev.wildware.agents.app.feed.Attachment
@@ -701,6 +702,23 @@ class ScreenshotTest {
             val mode = if (dark) "dark" else "light"
             shoot("phone-$mode-edited", Size.Phone, dark) { AgentsPreview(dark = dark, state = state, safeArea = Size.Phone.safeArea) }
             shoot("desktop-$mode-edited", Size.Desktop, dark) { AgentsPreview(dark = dark, state = state, safeArea = Size.Desktop.safeArea) }
+        }
+    }
+
+    /** The owner's own post carries an accent rail down its left edge; an agent's post does not. */
+    @Test
+    fun ownPosts() {
+        val posts = FakeFeed.state.sections.flatMap { it.items }.filterIsInstance<FeedItem.Post>()
+        val mine = posts.first { it.author is Author.Owner }
+        val theirs = mine.copy(
+            id = "p-agent", author = Author.AgentAuthor(FakeFeed.state.agents.first()), acks = Acks(),
+            body = "Found it: the Mac build re-signs every framework twice. A fix is on its way.",
+        )
+        val state = FakeFeed.state.copy(sections = listOf(FeedSection("Today", listOf(mine, theirs))))
+        for (dark in listOf(false, true)) {
+            val mode = if (dark) "dark" else "light"
+            shoot("phone-$mode-own-post", Size.Phone, dark) { AgentsPreview(dark = dark, state = state, safeArea = Size.Phone.safeArea) }
+            shoot("desktop-$mode-own-post", Size.Desktop, dark) { AgentsPreview(dark = dark, state = state, safeArea = Size.Desktop.safeArea) }
         }
     }
 

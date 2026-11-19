@@ -3,6 +3,8 @@ package dev.wildware.agents.app.feed
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.semantics.selected
 import androidx.compose.runtime.Immutable
 import dev.wildware.agents.app.ProductName
@@ -75,24 +77,32 @@ fun CardFrame(
     modifier: Modifier = Modifier,
     selected: Boolean = false,
     density: Density = Density.Comfortable,
+    /** The owner wrote it: an accent rail down its left edge, as the website marks the owner's own posts. */
+    mine: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     val colors = AgentTheme.colors
     val shape = AgentTheme.shapes.large
     val pad = if (density == Density.Comfortable) 18.dp else 14.dp
     val lit = LocalLit.current
+    val rail = colors.accent
     Box(
         modifier
             .fillMaxWidth()
             .semantics { if (lit) this[Highlighted] = true }
             .clip(shape)
             .background(if (selected) colors.surfaceRaised else colors.surface)
+            // Drawn, not laid out: no extra node or measure pass for every card in the feed.
+            .then(if (mine) Modifier.drawBehind { drawRect(rail, size = Size(MineRail.toPx(), size.height)) } else Modifier)
             .border(if (lit) 2.dp else 1.dp, if (lit) colors.accent else if (selected) colors.borderStrong else colors.border, shape)
             .padding(horizontal = pad, vertical = pad - 2.dp),
     ) { content() }
 }
 
 private val AvatarSize = 26.dp
+
+/** How wide the accent rail on the owner's own posts is. */
+private val MineRail = 3.dp
 
 /** Name, role, time, level and status on one line; read aloud as one sentence. */
 @OptIn(ExperimentalLayoutApi::class)
@@ -820,7 +830,7 @@ fun PostCard(item: FeedItem.Post, modifier: Modifier = Modifier, density: Densit
     val chooseStatus = { ui?.emit(FeedEvent.ChooseStatus(item.id, item.status)); Unit }
     val fold = rememberFold(item.id, "post", dev.wildware.agents.PlainText.clip(dev.wildware.agents.PlainText.fromMarkdown(item.body), 60), inThread)
     WithMenu(target, modifier.alpha(if (item.sending) SendingAlpha else 1f)) { gestures ->
-    CardFrame(gestures, density = density) {
+    CardFrame(gestures, density = density, mine = item.author is Author.Owner) {
         Column {
             CardHeader(
                 author = item.author,

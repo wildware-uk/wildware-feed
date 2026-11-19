@@ -92,7 +92,7 @@ It doesn't, beyond oldest first.
 | 49 | Delete update | Done | Inline "Delete this update?" confirm (`UpdateActions.svelte`) | Yes: Menu Delete, asks "Delete this update?" | Yes | — | P1 |
 | 50 | Delete own post / message | Done | Confirm, "…and its N replies?" (`PostCard.svelte:253-265`, `Thread.svelte:555-603`) | Yes: Delete asks first, "…and its N replies?" | Yes | — | P1 |
 | 51 | Share link (public) | Dropped | Mint link, Copy, Stop sharing, "Public · N views" (`UpdateActions.svelte:57-198`) | **No** ("Copy link" copies `agents://item/<id>`, `Overlays.kt`) | **No** | Dropped by the owner's decision: links stay private to the dashboard | P1 |
-| 52 | Post card: mine styling | Open | Accent left border | No | No | — | P2 |
+| 52 | Post card: mine styling | Done | Accent left border | Yes: the owner's posts have an accent rail down the left edge | Yes | — | P2 |
 | 53 | "Not delivered to any agent" | Done | Red warning after 15 s with no ack/delivery (`acks.ts:66-93`) | Yes: Red warning after 15 s (PR #37) | Yes | — | P1 |
 | 54 | Embeds (agent "looks") | Open | Blocks rendered with brand mark/palette (`Embed.svelte`, `embeds.ts`) | **No** (EmbedView in engine, unmapped) | **No** | Port | P1 |
 | 55 | Apps (MCP Apps iframe) | Open | Sandboxed app with live data/theme/state/tools (`AppFrame.svelte`, `appbridge.ts`) | No | No | Needs a webview; big | P2 |
