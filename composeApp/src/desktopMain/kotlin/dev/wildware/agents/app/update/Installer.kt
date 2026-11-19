@@ -25,6 +25,9 @@ sealed interface Prepared {
 
     /** The app can't finish this itself: tell the owner [message] and show them [folder]. */
     data class Manual(val message: String, val folder: File?) : Prepared
+
+    /** Already in place, with nothing left to run: only asked for when not opening the app again. */
+    data object Done : Prepared
 }
 
 /** Puts a verified download in place. The real one is [SystemInstaller]; tests use a fake. */
@@ -34,9 +37,10 @@ interface Installer {
 
     /**
      * Gets everything ready that can be done while the app runs, and checks it worked, so a failure
-     * here changes nothing. Throws [InstallException].
+     * here changes nothing. With [relaunch] off (the app is quitting for good) the helper only
+     * swaps the new version in, and doesn't open it. Throws [InstallException].
      */
-    fun prepare(installation: Installation, download: File, workDir: File, pid: Long): Prepared
+    fun prepare(installation: Installation, download: File, workDir: File, pid: Long, relaunch: Boolean = true): Prepared
 
     /** Starts [helper] so that it outlives this app. Throws [InstallException]. */
     fun launch(helper: Helper)
@@ -82,16 +86,16 @@ class SystemInstaller(
         return File(workDir, asset.name)
     }
 
-    override fun prepare(installation: Installation, download: File, workDir: File, pid: Long): Prepared = when (installation) {
-        is Installation.MacBundle -> prepareMac(installation, download, workDir, pid)
-        is Installation.WindowsMsi -> prepareMsi(installation, download, workDir, pid)
-        is Installation.WindowsPortable -> preparePortable(installation, download, workDir, pid)
-        is Installation.LinuxAppImage -> prepareAppImage(installation, download, workDir, pid)
-        is Installation.LinuxPackage -> preparePackage(installation, download, workDir, pid)
+    override fun prepare(installation: Installation, download: File, workDir: File, pid: Long, relaunch: Boolean): Prepared = when (installation) {
+        is Installation.MacBundle -> prepareMac(installation, download, workDir, pid, relaunch)
+        is Installation.WindowsMsi -> prepareMsi(installation, download, workDir, pid, relaunch)
+        is Installation.WindowsPortable -> preparePortable(installation, download, workDir, pid, relaunch)
+        is Installation.LinuxAppImage -> prepareAppImage(installation, download, workDir, pid, relaunch)
+        is Installation.LinuxPackage -> preparePackage(installation, download, workDir, pid, relaunch)
         is Installation.Unsupported -> throw InstallException(installation.reason)
     }
 
-    private fun prepareMac(installation: Installation.MacBundle, dmg: File, workDir: File, pid: Long): Prepared {
+    private fun prepareMac(installation: Installation.MacBundle, dmg: File, workDir: File, pid: Long, relaunch: Boolean): Prepared {
         val app = File(installation.app)
         val parent = app.absoluteFile.parentFile
         if (parent == null || !canWriteIn(parent) || !app.canWrite()) {
@@ -113,19 +117,19 @@ class SystemInstaller(
             throw InstallException("The disk image has no app in it. Nothing was installed.")
         }
         val script = File(workDir, "update.sh")
-        script.writeText(HelperScripts.mac(pid, app.absolutePath, newApp.absolutePath, mount.absolutePath, File(workDir, "update.log").absolutePath))
+        script.writeText(HelperScripts.mac(pid, app.absolutePath, newApp.absolutePath, mount.absolutePath, File(workDir, "update.log").absolutePath, relaunch))
         return Prepared.Restart(Helper(script, listOf("/usr/bin/nohup", "/bin/sh", script.absolutePath)))
     }
 
-    private fun prepareMsi(installation: Installation.WindowsMsi, msi: File, workDir: File, pid: Long): Prepared {
+    private fun prepareMsi(installation: Installation.WindowsMsi, msi: File, workDir: File, pid: Long, relaunch: Boolean): Prepared {
         val script = File(workDir, "update.ps1")
         script.writeText(
-            HelperScripts.windowsMsi(pid, msi.absolutePath, msiLaunchers(installation.exe), File(workDir, "update.log").absolutePath, File(workDir, "msiexec.log").absolutePath),
+            HelperScripts.windowsMsi(pid, msi.absolutePath, msiLaunchers(installation.exe), File(workDir, "update.log").absolutePath, File(workDir, "msiexec.log").absolutePath, relaunch),
         )
         return Prepared.Restart(Helper(script, powershell(script)))
     }
 
-    private fun preparePortable(installation: Installation.WindowsPortable, zip: File, workDir: File, pid: Long): Prepared {
+    private fun preparePortable(installation: Installation.WindowsPortable, zip: File, workDir: File, pid: Long, relaunch: Boolean): Prepared {
         val folder = File(installation.folder)
         val parent = folder.absoluteFile.parentFile
         if (parent == null || !canWriteIn(parent)) {
@@ -151,12 +155,12 @@ class SystemInstaller(
         val exe = (Installation.parentOf(installation.exe) ?: folder.absolutePath) + "\\" + exeName
         val script = File(workDir, "update.ps1")
         script.writeText(
-            HelperScripts.windowsPortable(pid, folder.absolutePath, staged.absolutePath, exe, File(workDir, "update.log").absolutePath),
+            HelperScripts.windowsPortable(pid, folder.absolutePath, staged.absolutePath, exe, File(workDir, "update.log").absolutePath, relaunch),
         )
         return Prepared.Restart(Helper(script, powershell(script)))
     }
 
-    private fun prepareAppImage(installation: Installation.LinuxAppImage, download: File, workDir: File, pid: Long): Prepared {
+    private fun prepareAppImage(installation: Installation.LinuxAppImage, download: File, workDir: File, pid: Long, relaunch: Boolean): Prepared {
         val target = File(installation.file).absoluteFile
         val dir = target.parentFile
         if (dir == null || !canWriteIn(dir)) {
@@ -166,12 +170,14 @@ class SystemInstaller(
             )
         }
         replaceAppImage(download, target)
+        // A running AppImage keeps its old copy open, so with no relaunch there is nothing left to do.
+        if (!relaunch) return Prepared.Done
         val script = File(workDir, "relaunch.sh")
         script.writeText(HelperScripts.linuxRelaunch(pid, target.absolutePath, File(workDir, "update.log").absolutePath))
         return Prepared.Restart(Helper(script, detached(script), dropEnv = AppImageEnv))
     }
 
-    private fun preparePackage(installation: Installation.LinuxPackage, file: File, workDir: File, pid: Long): Prepared {
+    private fun preparePackage(installation: Installation.LinuxPackage, file: File, workDir: File, pid: Long, relaunch: Boolean): Prepared {
         val deb = installation.kind == AssetKind.LinuxDeb
         val by = if (deb) "sudo apt install ${file.absolutePath}" else "sudo dnf install ${file.absolutePath}"
         val pkexec = which("pkexec")
@@ -188,6 +194,7 @@ class SystemInstaller(
             126, 127 -> throw InstallException("The install was cancelled, so nothing changed.")
             else -> throw InstallException("The package manager couldn't install the update. ${lastLine(output)}".trim())
         }
+        if (!relaunch) return Prepared.Done
         val script = File(workDir, "relaunch.sh")
         script.writeText(HelperScripts.linuxRelaunch(pid, packageLauncher(installation.launcher), File(workDir, "update.log").absolutePath))
         return Prepared.Restart(Helper(script, detached(script)))

@@ -2,6 +2,8 @@ package dev.wildware.agents.app.update
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
+import kotlin.test.assertFalse
 
 /**
  * The scripts that finish an update, word for word. They run after the app has gone, where
@@ -169,6 +171,26 @@ class HelperScriptsTest {
     }
 }
 
+/** Quitting with an update waiting: the scripts swap it in and don't open the app again. */
+class HelperScriptsNoRelaunchTest {
+    @Test
+    fun withoutRelaunchNothingIsOpenedAndTheSwapIsTheSame() {
+        val mac = HelperScripts.mac(1, "/Applications/Agents.app", "/tmp/m/Agents.app", "/tmp/m", "/tmp/m.log")
+        val macQuit = HelperScripts.mac(1, "/Applications/Agents.app", "/tmp/m/Agents.app", "/tmp/m", "/tmp/m.log", relaunch = false)
+        assertTrue("open \"${'$'}app\"" in mac)
+        assertFalse("open \"" in macQuit, macQuit)
+        assertEquals(mac.substringBefore("xattr"), macQuit.substringBefore("xattr"), "the swap itself is unchanged")
+
+        val msi = HelperScripts.windowsMsi(1, "C:\\u\\a.msi", listOf("C:\\u\\Wildware Feed.exe"), "C:\\u\\l.log", "C:\\u\\m.log", relaunch = false)
+        assertTrue("msiexec.exe" in msi)
+        assertFalse("Start-Process -FilePath ${'$'}exe" in msi, msi)
+
+        val portable = HelperScripts.windowsPortable(1, "C:\\a", "C:\\a.updating", "C:\\a\\Wildware Feed.exe", "C:\\l.log", relaunch = false)
+        assertTrue("Move-Item -LiteralPath ${'$'}new" in portable)
+        assertFalse("Start-Process -FilePath 'C:" in portable, portable)
+    }
+}
+
 /** The shell scripts, run for real where this machine can. */
 class HelperScriptsRunTest {
     private fun shAvailable() = java.io.File("/bin/sh").canExecute()
@@ -181,6 +203,7 @@ class HelperScriptsRunTest {
             val scripts = mapOf(
                 "mac.sh" to HelperScripts.mac(1, "/Applications/Agents.app", "/tmp/m/Agents.app", "/tmp/m", "/tmp/m.log"),
                 "linux.sh" to HelperScripts.linuxRelaunch(1, "/opt/agents/bin/Agents", "/tmp/l.log"),
+                "mac-quit.sh" to HelperScripts.mac(1, "/Applications/Agents.app", "/tmp/m/Agents.app", "/tmp/m", "/tmp/m.log", relaunch = false),
             )
             scripts.forEach { (name, text) ->
                 val file = java.io.File(dir, name).apply { writeText(text) }

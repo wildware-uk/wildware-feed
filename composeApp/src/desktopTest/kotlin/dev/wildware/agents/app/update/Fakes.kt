@@ -50,12 +50,33 @@ class FakeReleaseSource(
         return latest
     }
 
+    /** Downloads to fail before one works, each with [failWith] or a 502. */
+    var failNext = 0
+
+    /** When set, the next download writes this many bytes and then breaks off, as a dropped connection would. */
+    var breakAfter: Int? = null
+
+    /** Where each download started from: 0, or the bytes an earlier one left. */
+    val startedFrom = mutableListOf<Long>()
+
     override suspend fun download(asset: ReleaseAsset, out: File, progress: (Long, Long) -> Unit) {
         downloads++
         failWith?.let { throw it }
+        if (failNext > 0) {
+            failNext--
+            throw ReleaseSourceException("The download failed (GitHub answered 502).")
+        }
         val data = bytes[asset.name] ?: asset.name.toByteArray()
-        progress(0, data.size.toLong())
-        out.writeBytes(data)
+        // Carries on from what is there, as a server that honours Range does.
+        val have = if (out.isFile && out.length() <= data.size) out.length() else 0L
+        startedFrom += have
+        progress(have, data.size.toLong())
+        breakAfter?.let { cut ->
+            breakAfter = null
+            out.writeBytes(data.copyOfRange(0, cut))
+            throw ReleaseSourceException("The download stopped part way. Try again.")
+        }
+        if (have > 0) out.appendBytes(data.copyOfRange(have.toInt(), data.size)) else out.writeBytes(data)
         progress(data.size.toLong(), data.size.toLong())
     }
 }
@@ -66,8 +87,8 @@ class FakeInstaller(var prepared: (File) -> Prepared = { Prepared.Restart(Helper
 
     override fun downloadTarget(installation: Installation, asset: ReleaseAsset, workDir: File) = File(workDir, asset.name)
 
-    override fun prepare(installation: Installation, download: File, workDir: File, pid: Long): Prepared {
-        calls += "prepare ${download.name}"
+    override fun prepare(installation: Installation, download: File, workDir: File, pid: Long, relaunch: Boolean): Prepared {
+        calls += "prepare ${download.name}" + if (relaunch) "" else " without relaunch"
         return prepared(download)
     }
 

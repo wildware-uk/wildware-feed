@@ -81,6 +81,10 @@ interface ReleaseSource {
     /** The newest release, or null when there is none. Throws [ReleaseSourceException] when it can't tell. */
     suspend fun latest(): Release?
 
-    /** Saves [asset] to [out], calling [progress] with the bytes so far and the total (or -1). */
+    /**
+     * Saves [asset] to [out], calling [progress] with the bytes so far and the total (or -1).
+     * When [out] already holds the start of it (an earlier try stopped part way), carries on from
+     * there if the server allows, else starts again. A failure leaves what arrived in [out].
+     */
     suspend fun download(asset: ReleaseAsset, out: File, progress: (done: Long, total: Long) -> Unit)
 }

@@ -33,6 +33,14 @@ interface TrayActions {
 
     fun setCheckForUpdates(on: Boolean)
 
+    /** "Restart to update to 1.0.2": puts in the version downloaded in the background and opens the app again. */
+    fun restartToUpdate() {}
+
+    /** "What's new in 1.0.2…": shows the window with the update's notes. */
+    fun showUpdateNotes() = openUpdate()
+
+    fun setUpdateAutomatically(on: Boolean) {}
+
     /** "This computer…": shows the window with the settings for the server this app runs. */
     fun openThisComputer() {}
 }
@@ -61,6 +69,7 @@ class DesktopTray(private val actions: TrayActions, settings: DesktopSettings, p
     private val startAtLogin = CheckboxMenuItem("Start at login", settings.startAtLogin)
     private val doNotDisturb = CheckboxMenuItem("Do not disturb", settings.doNotDisturb)
     private val checkAutomatically = CheckboxMenuItem("Check for updates automatically", settings.checkForUpdates)
+    private val updateAutomatically = CheckboxMenuItem("Update automatically", settings.updateAutomatically)
 
     /** "Check for updates…", "Checking…", then "Install update 1.0.2" once one is found. */
     @Volatile
@@ -71,10 +80,17 @@ class DesktopTray(private val actions: TrayActions, settings: DesktopSettings, p
                 TrayUpdate.Check -> actions.checkForUpdates()
                 is TrayUpdate.Install -> actions.installUpdate()
                 is TrayUpdate.Open -> actions.openUpdate()
-                TrayUpdate.Checking, TrayUpdate.Installing -> Unit
+                is TrayUpdate.Restart -> actions.restartToUpdate()
+                TrayUpdate.Checking, TrayUpdate.Installing, is TrayUpdate.Downloading -> Unit
             }
         }
     }
+
+    /** "What's new in 1.0.2…", after the update item while a newer version is out. */
+    private val notesItem = MenuItem("What's new…").apply { addActionListener { actions.showUpdateNotes() } }
+
+    @Volatile
+    private var notesFor: String? = null
 
     /** "This computer…", in the menu only while signed in to the server this app runs. */
     private val thisComputerItem = MenuItem("This computer…").apply { addActionListener { actions.openThisComputer() } }
@@ -90,6 +106,7 @@ class DesktopTray(private val actions: TrayActions, settings: DesktopSettings, p
                 add(MenuItem("Open $ProductName").apply { addActionListener { actions.open(null) } })
                 add(MenuItem("Mark all read").apply { addActionListener { actions.markAllRead() } })
                 add(updateItem)
+                notesFor?.let { notesItem.label = notesLabel(it); add(notesItem) }
                 if (showingThisComputer) add(thisComputerItem)
                 addSeparator()
                 add(keepRunning.apply { addItemListener { actions.setKeepRunning(it.stateChange == ItemEvent.SELECTED) } })
@@ -103,6 +120,7 @@ class DesktopTray(private val actions: TrayActions, settings: DesktopSettings, p
                 })
                 add(doNotDisturb.apply { addItemListener { actions.setDoNotDisturb(it.stateChange == ItemEvent.SELECTED) } })
                 add(checkAutomatically.apply { addItemListener { actions.setCheckForUpdates(it.stateChange == ItemEvent.SELECTED) } })
+                add(updateAutomatically.apply { addItemListener { actions.setUpdateAutomatically(it.stateChange == ItemEvent.SELECTED) } })
                 addSeparator()
                 add(MenuItem("Quit $ProductName").apply { addActionListener { actions.quit() } })
             }
@@ -139,9 +157,34 @@ class DesktopTray(private val actions: TrayActions, settings: DesktopSettings, p
         showingThisComputer = show
         EventQueue.invokeLater {
             val menu = menu ?: return@invokeLater
-            if (show) menu.insert(thisComputerItem, 3) else menu.remove(thisComputerItem)
+            if (show) menu.insert(thisComputerItem, menu.indexOf(updateItem) + 1 + (if (notesFor != null) 1 else 0)) else menu.remove(thisComputerItem)
         }
     }
+
+    /** Keeps the "Update automatically" tick in step when it's changed from the window. */
+    fun showUpdateAutomatically(on: Boolean) {
+        EventQueue.invokeLater { if (updateAutomatically.state != on) updateAutomatically.state = on }
+    }
+
+    /** Shows "What's new in [version]…" after the update item, or takes it away when null. */
+    fun showUpdateNotes(version: String?) {
+        if (version == notesFor) return
+        val was = notesFor
+        notesFor = version
+        EventQueue.invokeLater {
+            val menu = menu ?: return@invokeLater
+            if (version == null) {
+                menu.remove(notesItem)
+                return@invokeLater
+            }
+            notesItem.label = notesLabel(version)
+            if (was == null) menu.insert(notesItem, menu.indexOf(updateItem) + 1)
+        }
+    }
+
+    private fun notesLabel(version: String) = "What's new in $version…"
+
+    private fun PopupMenu.indexOf(item: MenuItem): Int = (0 until itemCount).firstOrNull { getItem(it) === item } ?: (itemCount - 1)
 
     /** Shows [item] as the menu's update item. */
     fun showUpdate(item: TrayUpdate) {

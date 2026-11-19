@@ -37,6 +37,7 @@ import dev.wildware.agents.app.feed.AppCommand
 import dev.wildware.agents.app.local.ThisComputer
 import dev.wildware.agents.app.local.ThisComputerLayer
 import dev.wildware.agents.app.update.AppVersion
+import dev.wildware.agents.app.update.BackgroundUpdate
 import dev.wildware.agents.app.update.Installation
 import dev.wildware.agents.app.update.Release
 import dev.wildware.agents.app.update.ReleaseSource
@@ -141,9 +142,10 @@ fun main(args: Array<String>) {
             val viaTray = TrayNotifier(tray)
             if (DesktopOs.current() == DesktopOs.Linux) NotifySendNotifier(NotifySendNotifier.iconFile(dir), viaTray) else viaTray
         },
-        updatesFor = { settings ->
+        updatesFor = { settings, setUpdateAutomatically ->
             updateController(
                 settings = settings,
+                setUpdateAutomatically = setUpdateAutomatically,
                 // The demo is for a look round with nothing sent anywhere, update checks included.
                 inDemo = model.screen.map { (it as? AppScreen.Signed)?.demo == true }
                     .stateIn(scope, SharingStarted.Eagerly, false),
@@ -210,13 +212,15 @@ fun main(args: Array<String>) {
             LaunchedEffect(dark) { WindowsTitleBar.apply(frame, dark, colorsFor(dark).background.toArgb()) }
             val updates = shell.updates
             val available = updates?.available?.collectAsState()?.value
+            val staged = (updates?.background?.collectAsState()?.value as? BackgroundUpdate.Staged)?.release
+            val automaticUpdates = updates?.automatic?.collectAsState()?.value == true
             val screen by model.screen.collectAsState()
             val local = thisComputer?.takeIf { (screen as? AppScreen.Signed)?.session?.saved?.local == true }
             AgentsApp(
                 platform,
                 model,
                 navigator = navigator,
-                commands = updates?.let { updateCommands(it, available) }.orEmpty() + local?.let(::thisComputerCommands).orEmpty(),
+                commands = updates?.let { updateCommands(it, available, staged, automaticUpdates) }.orEmpty() + local?.let(::thisComputerCommands).orEmpty(),
                 overlay = {
                     updates?.let { UpdateLayer(it, showFolder = ::showFolder) }
                     local?.let { ThisComputerLayer(it) }
@@ -225,6 +229,9 @@ fun main(args: Array<String>) {
             )
         }
     }
+    // Quit with a new version downloaded and waiting: it goes in on the way out, without
+    // opening the app again, so the next start is the new one.
+    if (!exitWhenClosed && shell.updates?.applyOnQuit() == true) exitWhenClosed = true
     // The update helper waits for this process to end; make sure nothing keeps it alive.
     if (exitWhenClosed) exitProcess(0)
 }
@@ -232,6 +239,7 @@ fun main(args: Array<String>) {
 /** The update checker and installer, or null when this build's version can't be read. */
 private fun updateController(
     settings: StateFlow<DesktopSettings>,
+    setUpdateAutomatically: (Boolean) -> Unit,
     inDemo: StateFlow<Boolean>,
     releases: StateFlow<ReleaseSource?>,
     workDir: File,
@@ -242,18 +250,39 @@ private fun updateController(
     val current = SemVer.parse(AppVersion) ?: return null
     val automatic = combine(settings, inDemo) { s, demo -> s.checkForUpdates && !demo }
         .stateIn(scope, SharingStarted.Eagerly, settings.value.checkForUpdates && !inDemo.value)
+    // The demo downloads nothing either.
+    val updateAutomatically = combine(settings, inDemo) { s, demo -> s.updateAutomatically && !demo }
+        .stateIn(scope, SharingStarted.Eagerly, settings.value.updateAutomatically && !inDemo.value)
     val updater = Updater(Installation.current(), SystemInstaller(), workDir, beforeQuit, quit)
-    // Clear out the last update's download once the app has settled after it.
+    // Clear out the last update's download once the app has settled after it. One for a newer
+    // version, downloaded and waiting, stays.
     scope.launch(Dispatchers.IO) {
         delay(60_000)
-        if (!updater.busy) runCatching { workDir.deleteRecursively() }
+        runCatching { updater.cleanUp(current) }
     }
-    return UpdateController(AppVersion, UpdateChecker(current, releases, automatic), updater, releases, scope)
+    return UpdateController(
+        AppVersion,
+        UpdateChecker(current, releases, automatic),
+        updater,
+        releases,
+        scope,
+        automatic = updateAutomatically,
+        setAutomatic = setUpdateAutomatically,
+    )
 }
 
-/** "Check for updates", and "Update to …" while there is one, for the command bar. */
-private fun updateCommands(updates: UpdateController, available: Release?): List<AppCommand> = listOfNotNull(
-    available?.let { AppCommand("Update to ${it.version}", "Install it and restart", listOf("update", "upgrade", "install")) { updates.showOffer() } },
+/**
+ * "Check for updates", "Update to …" while there is one ("Restart to update to …" once it's
+ * downloaded), and the "Update automatically" switch, for the command bar.
+ */
+private fun updateCommands(updates: UpdateController, available: Release?, staged: Release?, automatic: Boolean): List<AppCommand> = listOfNotNull(
+    staged?.let { AppCommand("Restart to update to ${it.version}", "It's downloaded: restart into it now", listOf("update", "upgrade", "restart", "install")) { updates.restartToUpdate() } },
+    available?.let { AppCommand(if (staged != null) "What's new in ${it.version}" else "Update to ${it.version}", if (staged != null) "Its release notes" else "Install it and restart", listOf("update", "upgrade", "install", "notes")) { updates.showOffer() } },
+    AppCommand(
+        if (automatic) "Turn off automatic updates" else "Turn on automatic updates",
+        if (automatic) "Only offer new versions; download nothing until asked" else "Download new versions in the background, then restart when you like",
+        listOf("update", "automatic", "auto"),
+    ) { updates.setAutomatically(!automatic) },
     AppCommand("Check for updates", "You have $ProductName ${updates.current}", listOf("update", "upgrade", "version")) { updates.checkByHand() },
 )
 

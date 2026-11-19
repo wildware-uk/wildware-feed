@@ -6,6 +6,7 @@ import dev.wildware.agents.app.engine.AppScreen
 import dev.wildware.agents.app.engine.DashboardSession
 import dev.wildware.agents.app.ProductName
 import dev.wildware.agents.app.update.CheckResult
+import dev.wildware.agents.app.update.InstallState
 import dev.wildware.agents.app.update.UpdateController
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -37,8 +38,11 @@ class DesktopShell(
     private val windowFocused: () -> Boolean,
     private val quit: () -> Unit,
     notifierFor: (DesktopTray) -> Notifier,
-    /** The updater, when there is one; created once the settings say whether it checks by itself. */
-    updatesFor: (StateFlow<DesktopSettings>) -> UpdateController? = { null },
+    /**
+     * The updater, when there is one; created once the settings say whether it checks and
+     * updates by itself, and given a way to change "Update automatically".
+     */
+    updatesFor: (StateFlow<DesktopSettings>, setUpdateAutomatically: (Boolean) -> Unit) -> UpdateController? = { _, _ -> null },
     /** Opens the settings for the server this app runs, when there is one. */
     private val thisComputer: () -> Unit = {},
 ) : TrayActions {
@@ -57,7 +61,7 @@ class DesktopShell(
     private var watchingUpdates: Job? = null
     private var checkingUpdates: Job? = null
 
-    val updates: UpdateController? = updatesFor(settings)
+    val updates: UpdateController? = updatesFor(settings, ::setUpdateAutomatically)
 
     /** Whether closing the window should leave the app running: only with a tray to come back from. */
     val keepRunningOnClose: Boolean get() = tray.supported && mutableSettings.value.keepRunningInTray
@@ -66,7 +70,10 @@ class DesktopShell(
         tray.install()
         updates?.let { updates ->
             checkingUpdates = updates.start()
-            watchingUpdates = scope.launch { updates.trayItem.collect { tray.showUpdate(it) } }
+            watchingUpdates = scope.launch {
+                launch { updates.trayItem.collect { tray.showUpdate(it) } }
+                updates.available.collect { tray.showUpdateNotes(it?.version) }
+            }
         }
         watching = scope.launch {
             model.screen.collectLatest { screen ->
@@ -134,7 +141,8 @@ class DesktopShell(
         scope.launch {
             val result = updates.checkQuietly() ?: return@launch
             // An answer to the owner's own click, so it shows even with Do not disturb on.
-            notifier.show(updateNotice(result, updates.current)) {
+            val background = (result as? CheckResult.Newer)?.let { updates.downloadsInBackground(it.release) } == true
+            notifier.show(updateNotice(result, updates.current, background)) {
                 if (result is CheckResult.Newer) openUpdate() else open(null)
             }
         }
@@ -155,6 +163,22 @@ class DesktopShell(
 
     override fun setCheckForUpdates(on: Boolean) = update { it.copy(checkForUpdates = on) }
 
+    override fun restartToUpdate() {
+        val updates = updates ?: return
+        val job = updates.restartToUpdate() ?: return
+        // It quits when it works; when it doesn't, the window shows why.
+        scope.launch {
+            job.join()
+            val after = updates.install.value
+            if (after is InstallState.Failed || after is InstallState.Manual) openWindow(null)
+        }
+    }
+
+    override fun setUpdateAutomatically(on: Boolean) {
+        update { it.copy(updateAutomatically = on) }
+        tray.showUpdateAutomatically(on)
+    }
+
     override fun openThisComputer() {
         openWindow(null)
         thisComputer()
@@ -167,15 +191,24 @@ class DesktopShell(
     }
 }
 
-/** What a check from the tray found, as a notification. */
-fun updateNotice(result: CheckResult, current: String): DesktopNotice = when (result) {
+/** What a check from the tray found, as a notification. [background]: a newer one is downloading by itself. */
+fun updateNotice(result: CheckResult, current: String, background: Boolean = false): DesktopNotice = when (result) {
     CheckResult.UpToDate -> DesktopNotice(UpdateNoticeKey, "You're up to date", "You have $ProductName $current, the newest version.", null)
-    is CheckResult.Newer -> DesktopNotice(
-        UpdateNoticeKey,
-        "$ProductName ${result.release.version} is available",
-        "Choose Install update ${result.release.version} in the tray menu to install it and restart.",
-        null,
-    )
+    is CheckResult.Newer -> if (background) {
+        DesktopNotice(
+            UpdateNoticeKey,
+            "$ProductName ${result.release.version} is on its way",
+            "It's downloading. When it's ready, choose Restart to update in the tray menu, or just quit: it goes in on the way out.",
+            null,
+        )
+    } else {
+        DesktopNotice(
+            UpdateNoticeKey,
+            "$ProductName ${result.release.version} is available",
+            "Choose Install update ${result.release.version} in the tray menu to install it and restart.",
+            null,
+        )
+    }
     is CheckResult.Failed -> DesktopNotice(UpdateNoticeKey, "Couldn't check for updates", result.message, null)
 }
 

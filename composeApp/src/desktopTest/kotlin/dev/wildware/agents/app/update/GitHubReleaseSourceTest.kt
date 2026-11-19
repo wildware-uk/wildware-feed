@@ -150,6 +150,44 @@ class GitHubReleaseSourceTest {
     }
 
     @Test
+    fun aDownloadThatBrokeOffCarriesOnWithARange() = runTest {
+        val bytes = ByteArray(1000) { (it % 251).toByte() }
+        val out = File(Files.createTempDirectory("agents-download").toFile(), "a.dmg").apply { writeBytes(bytes.copyOfRange(0, 400)) }
+        val ranges = mutableListOf<String?>()
+        val github = GitHubReleaseSource(
+            MockEngine { request ->
+                ranges += request.headers[HttpHeaders.Range]
+                respond(
+                    bytes.copyOfRange(400, 1000),
+                    HttpStatusCode.PartialContent,
+                    headersOf(HttpHeaders.ContentLength to listOf("600"), HttpHeaders.ContentRange to listOf("bytes 400-999/1000")),
+                )
+            },
+            userAgent = "Agents-desktop/test",
+        )
+        val progress = mutableListOf<Pair<Long, Long>>()
+        github.download(ReleaseAsset("a.dmg", "mac-dmg", 1000, null, "$dl/a.dmg"), out) { d, t -> progress += d to t }
+        assertEquals(listOf<String?>("bytes=400-"), ranges)
+        assertContentEquals(bytes, out.readBytes())
+        assertEquals(400L to 1000L, progress.first())
+        assertEquals(1000L to 1000L, progress.last())
+        out.parentFile.deleteRecursively()
+    }
+
+    @Test
+    fun aServerThatIgnoresTheRangeStartsTheFileAgain() = runTest {
+        val bytes = ByteArray(1000) { (it % 251).toByte() }
+        val out = File(Files.createTempDirectory("agents-download").toFile(), "a.dmg").apply { writeBytes(ByteArray(400) { 7 }) }
+        val github = GitHubReleaseSource(
+            MockEngine { respond(bytes, HttpStatusCode.OK, headersOf(HttpHeaders.ContentLength, "1000")) },
+            userAgent = "Agents-desktop/test",
+        )
+        github.download(ReleaseAsset("a.dmg", "mac-dmg", 1000, null, "$dl/a.dmg"), out) { _, _ -> }
+        assertContentEquals(bytes, out.readBytes())
+        out.parentFile.deleteRecursively()
+    }
+
+    @Test
     fun aFailedDownloadSaysSo() = runTest {
         val out = File(Files.createTempDirectory("agents-download").toFile(), "a.dmg")
         val e = assertFailsWith<ReleaseSourceException> {

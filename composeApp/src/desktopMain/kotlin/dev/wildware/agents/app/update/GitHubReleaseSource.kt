@@ -22,6 +22,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import java.io.File
+import java.io.FileOutputStream
 
 /** The GitHub repo whose releases update the app. A fork points this at its own. */
 const val ReleasesRepo = "wildware-uk/wildware-feed"
@@ -90,19 +91,30 @@ class GitHubReleaseSource(
 
     override suspend fun download(asset: ReleaseAsset, out: File, progress: (Long, Long) -> Unit) {
         try {
+            val have = withContext(Dispatchers.IO) { if (out.isFile) out.length() else 0L }
             http.prepareGet(asset.download) {
                 header(HttpHeaders.UserAgent, userAgent)
                 header(HttpHeaders.Accept, "application/octet-stream")
+                if (have > 0) header(HttpHeaders.Range, "bytes=$have-")
                 timeout { connectTimeoutMillis = 15_000; socketTimeoutMillis = 60_000 }
             }.execute { response ->
-                if (!response.status.isSuccess()) throw ReleaseSourceException("The download failed (GitHub answered ${response.status.value}).")
-                val total = response.contentLength() ?: asset.size.takeIf { it > 0 } ?: -1L
+                val status = response.status.value
+                if (status == 416) {
+                    // What was kept is no start of this file (or all of it, but wrong): start again next time.
+                    withContext(Dispatchers.IO) { out.delete() }
+                    throw ReleaseSourceException("The download has to start again. Try again.")
+                }
+                if (!response.status.isSuccess()) throw ReleaseSourceException("The download failed (GitHub answered $status).")
+                // 206 carries on from what is kept; anything else is the whole file again.
+                val from = if (status == 206 && have > 0 && rangeStart(response) == have) have else 0L
+                val length = response.contentLength()
+                val total = length?.let { it + from } ?: asset.size.takeIf { it > 0 } ?: -1L
                 val channel = response.bodyAsChannel()
                 withContext(Dispatchers.IO) {
-                    out.outputStream().use { stream ->
+                    FileOutputStream(out, from > 0).use { stream ->
                         val buffer = ByteArray(64 * 1024)
-                        var done = 0L
-                        progress(0, total)
+                        var done = from
+                        progress(done, total)
                         while (true) {
                             val read = channel.readAvailable(buffer, 0, buffer.size)
                             if (read < 0) break
@@ -123,6 +135,10 @@ class GitHubReleaseSource(
             throw ReleaseSourceException("The download failed: ${e.message ?: e::class.simpleName}.", e)
         }
     }
+
+    /** Where a 206's `Content-Range: bytes 100-199/200` starts, or null. */
+    private fun rangeStart(response: HttpResponse): Long? =
+        response.headers[HttpHeaders.ContentRange]?.trim()?.removePrefix("bytes")?.trim()?.substringBefore('-')?.toLongOrNull()
 
     private suspend fun call(url: String, api: Boolean = true): HttpResponse {
         if (now() < quietUntil) throw ReleaseSourceException(SlowDownMessage)

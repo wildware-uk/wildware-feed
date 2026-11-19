@@ -91,7 +91,7 @@ class UpdaterTest {
         val events = mutableListOf<String>()
         val installer = object : Installer by FakeInstaller() {
             val calls = mutableListOf<String>()
-            override fun prepare(installation: Installation, download: File, workDir: File, pid: Long) = Prepared.Restart(Helper(download, listOf("x")))
+            override fun prepare(installation: Installation, download: File, workDir: File, pid: Long, relaunch: Boolean) = Prepared.Restart(Helper(download, listOf("x")))
             override fun launch(helper: Helper) = throw InstallException("Couldn't start the step that finishes the update. Nothing was installed.")
             override fun abandon(installation: Installation, workDir: File) { calls += "abandon" }
         }

@@ -25,16 +25,37 @@ sealed interface TrayUpdate {
         override val label get() = "Update to $version…"
     }
 
+    /** Downloading [version] in the background; it can't be clicked until it's ready. */
+    data class Downloading(val version: String) : TrayUpdate {
+        override val label get() = "Downloading update $version…"
+        override val enabled = false
+    }
+
+    /** [version] is downloaded and checked: a click quits, puts it in and opens the app again. */
+    data class Restart(val version: String, val asksForPassword: Boolean = false) : TrayUpdate {
+        override val label get() = if (asksForPassword) "Restart to update to $version (asks for your password)" else "Restart to update to $version"
+    }
+
     data object Installing : TrayUpdate {
         override val label = "Installing update…"
         override val enabled = false
     }
 
     companion object {
-        fun of(checking: Boolean, available: Release?, install: InstallState, canInstall: Boolean): TrayUpdate = when {
+        fun of(
+            checking: Boolean,
+            available: Release?,
+            install: InstallState,
+            canInstall: Boolean,
+            background: BackgroundUpdate = BackgroundUpdate.Off,
+            asksForPassword: Boolean = false,
+        ): TrayUpdate = when {
             install is InstallState.Downloading || install == InstallState.Verifying ||
                 install == InstallState.Installing || install == InstallState.Restarting -> Installing
+            background is BackgroundUpdate.Staged -> Restart(background.release.version, asksForPassword)
             checking -> Checking
+            background is BackgroundUpdate.Downloading -> Downloading(background.release.version)
+            background is BackgroundUpdate.Retrying && background.attempt < AutoUpdater.ShowAfterFailures -> Downloading(background.release.version)
             available == null -> Check
             canInstall && install !is InstallState.Manual -> Install(available.version)
             else -> Open(available.version)

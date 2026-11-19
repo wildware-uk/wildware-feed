@@ -99,4 +99,45 @@ class UpdateUiTest {
         onNodeWithText("Wildware Feed is up to date").assertExists()
         scope.cancel()
     }
+
+    @Test
+    fun withAutomaticUpdatesThePillSaysRestartAndOneClickRestartsWithNoDialog() = runComposeUiTest {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val fake = FakeReleaseSource(release("1.0.2"))
+        val source = MutableStateFlow<ReleaseSource?>(fake)
+        val automatic = MutableStateFlow(true)
+        val installer = FakeInstaller()
+        var quit = false
+        val work: File = Files.createTempDirectory("agents-ui-auto").toFile()
+        val updater = Updater(Installation.LinuxPackage("/opt/agents/bin/Agents", AssetKind.LinuxDeb), installer, work, beforeQuit = {}, quit = { quit = true }, arch = "amd64")
+        val updates = UpdateController(
+            "1.0.1", UpdateChecker(SemVer.parse("1.0.1")!!, source, MutableStateFlow(true)), updater, source, scope,
+            automatic = automatic, setAutomatic = { automatic.value = it },
+        )
+        updates.start()
+        setContent {
+            AgentTheme(false) { Box(Modifier.fillMaxSize()) { UpdateLayer(updates) {} } }
+        }
+        val label = "Restart to update to 1.0.2. Your computer will ask for your password."
+        waitUntil(timeoutMillis = 5_000) { updates.background.value is BackgroundUpdate.Staged }
+        onNodeWithContentDescription("Update to 1.0.2 available").assertDoesNotExist()
+        onNodeWithText("RESTART TO UPDATE · ASKS FOR PASSWORD").assertExists()
+
+        // The menu: the notes, and the setting.
+        onNodeWithContentDescription("Update options").performClick()
+        onNodeWithText("What's new in 1.0.2").assertExists()
+        onNodeWithText("Update automatically").performClick()
+        waitUntil(timeoutMillis = 5_000) { !automatic.value }
+        automatic.value = true
+        waitUntil(timeoutMillis = 5_000) { updates.background.value is BackgroundUpdate.Staged }
+        waitForIdle()
+
+        onNodeWithContentDescription(label).performClick()
+        waitUntil(timeoutMillis = 5_000) { quit }
+        assertEquals(listOf("prepare wildware-feed_1.0.2_amd64.deb", "launch"), installer.calls)
+        assertEquals(1, fake.downloads)
+        onNodeWithText("Wildware Feed will open again in a moment.").assertDoesNotExist()
+        scope.cancel()
+        work.deleteRecursively()
+    }
 }

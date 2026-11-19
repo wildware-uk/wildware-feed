@@ -1,6 +1,16 @@
 package dev.wildware.agents.app.update
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.MenuDefaults
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import dev.wildware.agents.app.design.focusRing
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
@@ -101,11 +111,173 @@ fun UpdatePill(version: String, modifier: Modifier = Modifier, onClick: () -> Un
  */
 @Composable
 fun BoxScope.UpdatePillPlaced(version: String, onClick: () -> Unit) {
+    PillPlaced { UpdatePill(version, it, onClick) }
+}
+
+/** Puts [pill] where the update pill goes, passing it the modifier that places it. */
+@Composable
+fun BoxScope.PillPlaced(pill: @Composable (Modifier) -> Unit) {
     BoxWithConstraints(Modifier.matchParentSize()) {
         if (maxWidth < PhoneBreakpoint) {
-            UpdatePill(version, Modifier.align(Alignment.BottomEnd).padding(end = 12.dp, bottom = 84.dp), onClick)
+            pill(Modifier.align(Alignment.BottomEnd).padding(end = 12.dp, bottom = 84.dp))
         } else {
-            UpdatePill(version, Modifier.align(Alignment.TopEnd).offset(y = (-1).dp).padding(end = 10.dp), onClick)
+            pill(Modifier.align(Alignment.TopEnd).offset(y = (-1).dp).padding(end = 10.dp))
+        }
+    }
+}
+
+/** The restart pill's spoken label. */
+fun restartPillLabel(version: String, asksForPassword: Boolean) =
+    "Restart to update to $version" + if (asksForPassword) ". Your computer will ask for your password." else ""
+
+/** What the restart pill's menu does. */
+class RestartActions(
+    val restart: () -> Unit = {},
+    val showNotes: () -> Unit = {},
+    val setAutomatic: (Boolean) -> Unit = {},
+)
+
+private val pillText @Composable get() = AgentTheme.type.overline.copy(fontWeight = FontWeight.SemiBold, fontSize = 10.5.sp, lineHeight = 12.sp, letterSpacing = 0.5.sp)
+
+/**
+ * "RESTART TO UPDATE", once a newer version has downloaded in the background: a click quits,
+ * puts it in and opens the app again. The small arrow beside it opens a menu with the release
+ * notes and the "Update automatically" switch. It never takes focus by itself, so it can't
+ * interrupt typing. For a Linux package it says the computer will ask for a password.
+ *
+ * [busy] replaces it with what the restart is doing ("Restarting…"), not clickable.
+ */
+@Composable
+fun RestartPill(
+    version: String,
+    modifier: Modifier = Modifier,
+    asksForPassword: Boolean = false,
+    automatic: Boolean = true,
+    busy: String? = null,
+    menuOpen: Boolean = false,
+    actions: RestartActions = RestartActions(),
+) {
+    val colors = AgentTheme.colors
+    val left = RoundedCornerShape(topStartPercent = 50, bottomStartPercent = 50)
+    val right = RoundedCornerShape(topEndPercent = 50, bottomEndPercent = 50)
+    var open by remember { mutableStateOf(menuOpen) }
+    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+        if (busy != null) {
+            Box(Modifier.heightIn(min = 44.dp).semantics { contentDescription = busy; liveRegion = LiveRegionMode.Polite }, contentAlignment = Alignment.Center) {
+                Row(
+                    Modifier.height(24.dp).clip(AgentTheme.shapes.pill).background(colors.accent.copy(alpha = 0.75f)).padding(horizontal = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(Icons.Refresh, null, tint = colors.onAccent, modifier = Modifier.size(12.dp))
+                    Text(busy.uppercase(), Modifier.padding(start = 5.dp), color = colors.onAccent, style = pillText, maxLines = 1)
+                }
+            }
+            return@Row
+        }
+        Box(
+            Modifier
+                .heightIn(min = 44.dp)
+                .focusRing(left)
+                .semantics { contentDescription = restartPillLabel(version, asksForPassword) }
+                .clickable(role = Role.Button, onClickLabel = "Restart to update", onClick = actions.restart),
+            contentAlignment = Alignment.Center,
+        ) {
+            Row(
+                Modifier.height(24.dp).clip(left).background(colors.accent).padding(start = 10.dp, end = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(Icons.Refresh, null, tint = colors.onAccent, modifier = Modifier.size(12.dp))
+                Text(
+                    if (asksForPassword) "RESTART TO UPDATE · ASKS FOR PASSWORD" else "RESTART TO UPDATE",
+                    Modifier.padding(start = 5.dp),
+                    color = colors.onAccent,
+                    style = pillText,
+                    maxLines = 1,
+                )
+            }
+        }
+        Box(
+            Modifier
+                .heightIn(min = 44.dp)
+                .focusRing(right)
+                .semantics { contentDescription = "Update options" }
+                .clickable(role = Role.Button, onClickLabel = "Update options") { open = true },
+            contentAlignment = Alignment.Center,
+        ) {
+            Row(
+                Modifier.height(24.dp).clip(right).background(colors.accent),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(Modifier.width(1.dp).height(14.dp).background(colors.onAccent.copy(alpha = 0.35f)))
+                Icon(Icons.ChevronDown, null, tint = colors.onAccent, modifier = Modifier.padding(start = 5.dp, end = 8.dp).size(12.dp))
+            }
+            DropdownMenu(
+                expanded = open,
+                onDismissRequest = { open = false },
+                shape = AgentTheme.shapes.medium,
+                containerColor = colors.surfaceRaised,
+                border = BorderStroke(1.dp, colors.border),
+            ) {
+                MenuRow("Restart to update to $version", Icons.Refresh) { open = false; actions.restart() }
+                if (asksForPassword) {
+                    MetaText("Your computer will ask for your password.", Modifier.padding(start = 44.dp, end = 16.dp, bottom = 6.dp), color = colors.textMuted)
+                }
+                MenuRow("What's new in $version", Icons.Details) { open = false; actions.showNotes() }
+                DropdownMenuItem(
+                    text = { Text("Update automatically", style = AgentTheme.type.label) },
+                    leadingIcon = { TickBox(automatic) },
+                    onClick = { actions.setAutomatic(!automatic) },
+                    modifier = Modifier.semantics { contentDescription = "Update automatically, " + if (automatic) "on" else "off" },
+                    colors = MenuDefaults.itemColors(textColor = colors.text),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun MenuRow(label: String, icon: androidx.compose.ui.graphics.vector.ImageVector, onClick: () -> Unit) {
+    val colors = AgentTheme.colors
+    DropdownMenuItem(
+        text = { Text(label, style = AgentTheme.type.label) },
+        leadingIcon = { Icon(icon, null, modifier = Modifier.size(16.dp)) },
+        onClick = onClick,
+        colors = MenuDefaults.itemColors(textColor = colors.text, leadingIconColor = colors.textMuted),
+    )
+}
+
+/** A small tick box, ticked when [on]. */
+@Composable
+private fun TickBox(on: Boolean) {
+    val colors = AgentTheme.colors
+    Box(
+        Modifier
+            .size(16.dp)
+            .clip(AgentTheme.shapes.small)
+            .background(if (on) colors.accent else Color.Transparent)
+            .border(1.5.dp, if (on) colors.accent else colors.borderStrong, AgentTheme.shapes.small),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (on) Icon(Icons.Check, null, tint = colors.onAccent, modifier = Modifier.size(12.dp))
+    }
+}
+
+/** "Update automatically", with a tick box: the setting, in the update dialog. */
+@Composable
+fun AutomaticRow(on: Boolean, onToggle: (Boolean) -> Unit, modifier: Modifier = Modifier) {
+    val colors = AgentTheme.colors
+    Row(
+        modifier
+            .clip(AgentTheme.shapes.small)
+            .heightIn(min = 36.dp)
+            .toggleable(value = on, role = Role.Checkbox) { onToggle(it) }
+            .padding(end = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        TickBox(on)
+        Column(Modifier.padding(start = 10.dp)) {
+            Text("Update automatically", color = colors.text, style = AgentTheme.type.label)
+            MetaText("Downloads quietly, then one click restarts.", color = colors.textMuted)
         }
     }
 }
@@ -117,6 +289,7 @@ class UpdateActions(
     val dismiss: () -> Unit = {},
     val checkAgain: () -> Unit = {},
     val showFolder: (String) -> Unit = {},
+    val setAutomatic: (Boolean) -> Unit = {},
 )
 
 /**
@@ -133,6 +306,10 @@ fun UpdateDialog(
     cannotInstall: String? = null,
     /** The system will ask for a password (a Linux package): say so before it does. */
     asksForPassword: Boolean = false,
+    /** The "Update automatically" setting, shown with the notes; null leaves it out. */
+    automatic: Boolean? = null,
+    /** The new version is already downloaded and checked, so installing is only a restart. */
+    staged: Boolean = false,
 ) {
     val colors = AgentTheme.colors
     val shape = AgentTheme.shapes.large
@@ -168,7 +345,7 @@ fun UpdateDialog(
                 .padding(20.dp),
         ) {
             when (install) {
-                is InstallState.Idle -> PromptBody(prompt, current, cannotInstall, actions)
+                is InstallState.Idle -> PromptBody(prompt, current, cannotInstall, actions, automatic, staged)
                 is InstallState.Downloading -> Progress(
                     "Downloading the update…",
                     install.fraction,
@@ -197,7 +374,7 @@ fun UpdateDialog(
 }
 
 @Composable
-private fun PromptBody(prompt: UpdatePrompt, current: String, cannotInstall: String?, actions: UpdateActions) {
+private fun PromptBody(prompt: UpdatePrompt, current: String, cannotInstall: String?, actions: UpdateActions, automatic: Boolean?, staged: Boolean) {
     val colors = AgentTheme.colors
     when (prompt) {
         is UpdatePrompt.Offer -> {
@@ -221,9 +398,11 @@ private fun PromptBody(prompt: UpdatePrompt, current: String, cannotInstall: Str
             if (cannotInstall != null) {
                 Text(cannotInstall, Modifier.padding(top = 12.dp), color = colors.textMuted, style = AgentTheme.type.body)
             }
+            if (automatic != null && cannotInstall == null) AutomaticRow(automatic, actions.setAutomatic, Modifier.padding(top = 14.dp))
             Buttons {
                 AppButton("Not now", ButtonTone.Quiet, onClick = actions.dismiss)
-                AppButton("Install and restart", ButtonTone.Primary, icon = Icons.Download, enabled = cannotInstall == null, onClick = actions.install)
+                if (staged) AppButton("Restart to update", ButtonTone.Primary, icon = Icons.Refresh, enabled = cannotInstall == null, onClick = actions.install)
+                else AppButton("Install and restart", ButtonTone.Primary, icon = Icons.Download, enabled = cannotInstall == null, onClick = actions.install)
             }
         }
         UpdatePrompt.Checking -> Progress("Checking for updates…", null, null)
@@ -297,16 +476,50 @@ private fun megabytes(bytes: Long) = "%.1f MB".format(bytes / 1_048_576.0)
 /**
  * The pill in the top right corner while a newer version is out, and the dialog when it is open.
  * Drawn over the whole window.
+ *
+ * With "Update automatically" on, nothing shows while the new version downloads; then the pill
+ * reads "Restart to update". If the download keeps failing, the old "Update available" pill comes
+ * back so the update is never stuck out of sight. A restart from the pill opens no dialog unless
+ * something needs saying.
  */
 @Composable
 fun BoxScope.UpdateLayer(controller: UpdateController, showFolder: (String) -> Unit) {
     val available by controller.available.collectAsState()
     val prompt by controller.prompt.collectAsState()
     val install by controller.install.collectAsState()
-    available?.let { release ->
-        UpdatePillPlaced(release.version, onClick = controller::showOffer)
+    val background by controller.background.collectAsState()
+    val automatic by controller.automatic.collectAsState()
+    val quiet by controller.quiet.collectAsState()
+    val busy = install is InstallState.Downloading || install is InstallState.Verifying ||
+        install is InstallState.Installing || install is InstallState.Restarting
+    val staged = (background as? BackgroundUpdate.Staged)?.release
+    when {
+        quiet && busy -> PillPlaced {
+            RestartPill(available?.version.orEmpty(), it, busy = if (install == InstallState.Restarting) "Restarting…" else "Installing…")
+        }
+        staged != null -> PillPlaced {
+            RestartPill(
+                staged.version,
+                it,
+                asksForPassword = controller.asksForPassword,
+                automatic = automatic,
+                actions = RestartActions(
+                    restart = { controller.restartToUpdate() },
+                    showNotes = controller::showOffer,
+                    setAutomatic = controller::setAutomatically,
+                ),
+            )
+        }
+        else -> available?.let { release ->
+            val stillTrying = when (val b = background) {
+                is BackgroundUpdate.Downloading -> true
+                is BackgroundUpdate.Retrying -> b.attempt < AutoUpdater.ShowAfterFailures
+                else -> controller.downloadsInBackground(release)
+            }
+            if (!stillTrying) UpdatePillPlaced(release.version, onClick = controller::showOffer)
+        }
     }
-    val showing = prompt ?: available?.takeIf { install != InstallState.Idle }?.let { UpdatePrompt.Offer(it) }
+    val showing = prompt ?: available?.takeIf { install != InstallState.Idle && (!quiet || !busy) }?.let { UpdatePrompt.Offer(it) }
     if (showing != null) {
         UpdateDialog(
             prompt = showing,
@@ -314,12 +527,15 @@ fun BoxScope.UpdateLayer(controller: UpdateController, showFolder: (String) -> U
             current = controller.current,
             cannotInstall = controller.cannotInstallReason,
             asksForPassword = controller.asksForPassword,
+            automatic = automatic,
+            staged = staged != null && (showing as? UpdatePrompt.Offer)?.release?.version == staged.version,
             actions = UpdateActions(
-                install = controller::installNow,
+                install = { if (staged != null && controller.restartToUpdate() != null) Unit else controller.installNow() },
                 cancel = controller::cancel,
                 dismiss = controller::dismiss,
                 checkAgain = controller::checkByHand,
                 showFolder = showFolder,
+                setAutomatic = controller::setAutomatically,
             ),
         )
     }

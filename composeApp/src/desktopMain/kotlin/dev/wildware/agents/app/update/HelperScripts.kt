@@ -33,9 +33,10 @@ object HelperScripts {
 
     /**
      * Mac: copies the new bundle from the mounted disk image beside the old one, swaps the two
-     * with renames, unmounts the image, clears the download quarantine flag, and opens the app.
+     * with renames, unmounts the image, clears the download quarantine flag, and opens the app
+     * (unless [relaunch] is off: the owner quit, and an update waiting went in on the way out).
      */
-    fun mac(pid: Long, app: String, newApp: String, mountPoint: String, log: String) = """
+    fun mac(pid: Long, app: String, newApp: String, mountPoint: String, log: String, relaunch: Boolean = true) = """
         |#!/bin/sh
         |# Wildware Feed updater: swaps in the new app once the old one has quit, then opens it again.
         |exec >>${sh(log)} 2>&1
@@ -69,31 +70,31 @@ object HelperScripts {
         |rm -rf "${'$'}staged"
         |hdiutil detach "${'$'}mount" -quiet || hdiutil detach "${'$'}mount" -force -quiet
         |xattr -dr com.apple.quarantine "${'$'}app" 2>/dev/null
-        |open "${'$'}app"
+        |${if (relaunch) "open \"${'$'}app\"" else "echo \"not opening it: the app was quit\""}
         |
     """.trimMargin()
 
     /**
      * Windows, installed from the .msi: runs the new one (it upgrades in place), then opens the
-     * first of [exes] that is there (the program may have moved with a rename).
+     * first of [exes] that is there (the program may have moved with a rename), unless [relaunch] is off.
      */
-    fun windowsMsi(pid: Long, msi: String, exes: List<String>, log: String, msiLog: String) = """
+    fun windowsMsi(pid: Long, msi: String, exes: List<String>, log: String, msiLog: String, relaunch: Boolean = true) = """
         |# Wildware Feed updater: installs the new version once the app has quit, then opens it again.
         |Start-Transcript -Path ${ps(log)} -Append | Out-Null
         |${psWait(pid)}
         |${'$'}install = Start-Process -FilePath 'msiexec.exe' -ArgumentList ${ps("/i \"$msi\" /passive /norestart /l*v \"$msiLog\"")} -Wait -PassThru
         |"msiexec finished with ${'$'}(${'$'}install.ExitCode)"
         |${'$'}exe = @(${exes.joinToString(", ") { ps(it) }}) | Where-Object { Test-Path -LiteralPath ${'$'}_ } | Select-Object -First 1
-        |if (${'$'}exe) { Start-Process -FilePath ${'$'}exe }
+        |${if (relaunch) "if (${'$'}exe) { Start-Process -FilePath ${'$'}exe }" else "\"not opening it: the app was quit\""}
         |Stop-Transcript | Out-Null
         |
     """.trimMargin()
 
     /**
      * Windows, unzipped from the portable .zip: the new folder is already unpacked beside the old
-     * one as [staged]; this swaps the two with renames and opens the app.
+     * one as [staged]; this swaps the two with renames and opens the app, unless [relaunch] is off.
      */
-    fun windowsPortable(pid: Long, folder: String, staged: String, exe: String, log: String) = """
+    fun windowsPortable(pid: Long, folder: String, staged: String, exe: String, log: String, relaunch: Boolean = true) = """
         |# Wildware Feed updater: swaps in the new folder once the app has quit, then opens it again.
         |Start-Transcript -Path ${ps(log)} -Append | Out-Null
         |${psWait(pid)}
@@ -122,7 +123,7 @@ object HelperScripts {
         |} else {
         |  "the old folder stayed in use; kept it"
         |}
-        |Start-Process -FilePath ${ps(exe)}
+        |${if (relaunch) "Start-Process -FilePath ${ps(exe)}" else "\"not opening it: the app was quit\""}
         |Stop-Transcript | Out-Null
         |
     """.trimMargin()
