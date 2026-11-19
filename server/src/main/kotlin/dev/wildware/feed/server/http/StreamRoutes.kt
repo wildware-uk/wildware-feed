@@ -3,7 +3,6 @@ package dev.wildware.feed.server.http
 import dev.wildware.feed.server.App
 import dev.wildware.feed.server.events.Ring
 import io.ktor.http.HttpMethod
-import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
 
 /** A resume point: `<seq>` (within this boot) or `<boot>-<seq>`. */
@@ -29,7 +28,7 @@ fun Route.streamRoutes(app: App) {
             val cursor = parseCursor(call.request.headers["Last-Event-ID"]) ?: parseCursor(call.request.queryParameters["last_event_id"])
             val key = Guard.bearer(call.request.headers["Authorization"])
             val bus = app.bus
-            call.respond(
+            call.respondSse(
                 SseContent(
                     stillAllowed = key?.let { k -> { app.devices.authenticate(k) != null } },
                     now = app.clock,

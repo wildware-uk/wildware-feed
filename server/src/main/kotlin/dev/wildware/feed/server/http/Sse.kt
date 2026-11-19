@@ -5,6 +5,8 @@ import io.ktor.http.ContentType
 import io.ktor.http.Headers
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.content.OutgoingContent
+import io.ktor.server.application.ApplicationCall
+import io.ktor.server.response.respond
 import io.ktor.utils.io.ByteWriteChannel
 import io.ktor.utils.io.writeStringUtf8
 import kotlinx.coroutines.channels.Channel
@@ -63,6 +65,11 @@ object Frames {
  * when the stream ends; frames sent through [Sink] are written in order. The stream ends when the
  * client goes away, when [Sink.close] is called, or when [stillAllowed] turns false (checked every
  * [checkEveryMs]).
+ *
+ * Send it with [respondSse], not `respond`: the engine sends the response headers before it calls
+ * [writeTo], so a stream that only subscribed there would miss whatever was published between the
+ * client seeing the headers and the subscription. [respondSse] subscribes first, as the TS server
+ * did (spec/04-stream-and-events.md §3.3).
  */
 class SseContent(
     private val heartbeatMs: Long = Frames.HEARTBEAT_MS,
@@ -91,10 +98,29 @@ class SseContent(
         append("X-Accel-Buffering", "no")
     }
 
+    private val frames = Channel<String?>(Channel.UNLIMITED)
+    private val sink = Sink(frames)
+    private val lock = Any()
+    private var stop: (() -> Unit)? = null
+    private var ended = false
+
+    /** Subscribe now and queue the opening frames; a second call does nothing. */
+    fun open() = synchronized(lock) {
+        if (stop == null && !ended) stop = start(sink)
+    }
+
+    /** Unsubscribe and drop what is queued; safe to call more than once. */
+    fun release() {
+        val undo = synchronized(lock) {
+            ended = true
+            stop.also { stop = null }
+        }
+        undo?.invoke()
+        frames.close()
+    }
+
     override suspend fun writeTo(channel: ByteWriteChannel) {
-        val frames = Channel<String?>(Channel.UNLIMITED)
-        val sink = Sink(frames)
-        val stop = start(sink)
+        open()
         try {
             coroutineScope {
                 val beats = launch {
@@ -123,8 +149,17 @@ class SseContent(
                 }
             }
         } finally {
-            stop()
-            frames.close()
+            release()
         }
+    }
+}
+
+/** Subscribe, then send the headers and the stream; unsubscribe however it ends. */
+suspend fun ApplicationCall.respondSse(content: SseContent) {
+    content.open()
+    try {
+        respond(content)
+    } finally {
+        content.release()
     }
 }

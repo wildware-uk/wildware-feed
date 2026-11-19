@@ -9,7 +9,6 @@ import dev.wildware.feed.server.domain.invalid
 import dev.wildware.feed.server.domain.notFound
 import dev.wildware.feed.server.events.AppEvent
 import io.ktor.server.application.ApplicationCall
-import io.ktor.server.response.respond
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
@@ -57,7 +56,7 @@ internal suspend fun ApplicationCall.agentStream(app: App, agent: Agents.Agent, 
         put("at", JsonPrimitive(Wire.isoOf(app.clock())))
     })
 
-    respond(
+    respondSse(
         SseContent(stillAllowed = { app.agents.authenticate(token).first != null }, now = app.clock) { sink ->
             var last: AgentWork.Counts? = null
             val (_, stop) = app.bus.subscribeFrom(
