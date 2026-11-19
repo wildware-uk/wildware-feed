@@ -635,11 +635,13 @@ fun Composer(
             onAsked()
         }
     }
-    // Read as a yes/no, so typing redraws only the text, not the whole box, on every key.
-    val blank by remember { derivedStateOf { text.text.isBlank() } }
+    // Read as a yes/no, so typing redraws only the text, not the whole box, on every key. Keyed on
+    // the box's text, which is a new one for each draft: unkeyed, it kept watching the first, and
+    // the mic stayed up while typing after a switch to another project or thread.
+    val blank by remember(text) { derivedStateOf { text.text.isBlank() } }
     // The @mention under the cursor, if any: only the word at the cursor is read, so other typing
     // redraws nothing here.
-    val typing by remember { derivedStateOf { if (text.selection.collapsed) MentionText.at(text.text.toString(), text.selection.end) else null } }
+    val typing by remember(text) { derivedStateOf { if (text.selection.collapsed) MentionText.at(text.text.toString(), text.selection.end) else null } }
     var mentionClosedAt by remember { mutableStateOf<Int?>(null) }
     var mentionSelected by remember { mutableIntStateOf(0) }
     val mention = typing?.takeIf { open && it.start != mentionClosedAt }
