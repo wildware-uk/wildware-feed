@@ -265,6 +265,8 @@ sealed interface Threaded : FeedItem {
     val starter: Author
     val replies: List<Reply>
     val unreadReplies: Int
+    /** Pinned above the rest of the feed, as the dashboard last said. */
+    val pinned: Boolean
 }
 
 sealed interface FeedItem {
@@ -299,7 +301,7 @@ sealed interface FeedItem {
         /** The agent marked it critical: it pages phones that allow it. A solid red "Critical" chip. */
         val critical: Boolean = false,
         /** Pinned above the rest of the feed. */
-        val pinned: Boolean = false,
+        override val pinned: Boolean = false,
         /** When it was last changed, as "Edited Monday 3 August 2026 at 14:05"; null when never. Drawn as "edited". */
         val edited: String? = null,
         /** The whole instant behind [time], as "Posted Monday 3 August 2026 at 14:05 · updated …". Shown on hover, read aloud. */
@@ -352,7 +354,7 @@ sealed interface FeedItem {
         val tags: List<CardTag> = emptyList(),
         val fields: List<CardField> = emptyList(),
         val reactions: List<Reaction> = emptyList(),
-        val pinned: Boolean = false,
+        override val pinned: Boolean = false,
         /** The talk about the question before it is answered: its own thread, oldest first. */
         override val replies: List<Reply> = emptyList(),
         override val unreadReplies: Int = 0,
@@ -397,7 +399,7 @@ sealed interface FeedItem {
         /** Its work state, when someone marked it as work. */
         val status: WorkStatus? = null,
         /** Pinned above the rest of the feed. */
-        val pinned: Boolean = false,
+        override val pinned: Boolean = false,
         /** The owner wrote it, sent it a while ago, and no agent has it: nobody is listening. */
         val undelivered: Boolean = false,
     ) : Threaded {

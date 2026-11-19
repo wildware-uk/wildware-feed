@@ -735,7 +735,10 @@ fun PhoneThreadScreen(ui: FeedUi, item: Threaded, widthPx: Float, safeArea: Safe
                     style = AgentTheme.type.bodyStrong,
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                 )
-                IconAction(Icons.More, "More thread actions")
+                // The card's own menu, as a long press on it gives: pin, tags, details, work state, delete.
+                IconAction(Icons.More, "More thread actions") {
+                    ui.menu = menuTargetFor(item, ui.isPinned(item.id, item.pinned))
+                }
             }
             // A preview showing a swiped reply opens scrolled to the replies.
             val scroll = rememberScrollState(if (preview.replySwipe != null) 100_000 else 0)

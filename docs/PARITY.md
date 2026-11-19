@@ -105,7 +105,7 @@ It doesn't, beyond oldest first.
 | 61 | Optimistic send ("Sending…") | Done | Shows at once, 60 % opacity (`outgoing.ts`) | Yes: Shows at once, faded, "Sending…" | Yes | — | P0 |
 | 62 | Unread divider / per-card unread | Done | Badge per card; mark read when viewed 700 ms (`unread.svelte.ts`, `visible.ts`) | Yes: "N new" line; marked read after 1.5 s on screen | Yes | — | P2 |
 | 63 | Attachments in replies | Done | Paste/drop/Add file | Yes (paperclip, paste, drop) | Yes | — | — |
-| 64 | Thread "More thread actions" | Open | — | **Dead** button (`Overlays.kt`) | **Dead** (`Panels.kt` ThreadPane) | Wire or remove | P2 |
+| 64 | Thread "More thread actions" | Done | — | Yes: the "…" at the top of a thread opens the card's own menu (pin, tags, details, work state, delete) | No thread pane: threads sit under their cards, each with its own menu | — | P2 |
 | **Acks / receipts** |||||||
 | 65 | "is thinking…" | Done | Sweeping bar, online + <10 min (`Ack.svelte`) | Yes on posts (`Content.kt` AckLine) | Yes | Only on post cards, not on replies in thread | P1 |
 | 66 | "has read this" | Done | Tick + names | Yes on posts | Yes | Not on replies | P1 |

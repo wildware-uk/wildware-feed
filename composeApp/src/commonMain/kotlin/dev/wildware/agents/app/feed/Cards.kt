@@ -333,7 +333,7 @@ fun UpdateCard(
     val ui = LocalFeedUi.current
     val indent = if (density == Density.Compact) 0.dp else BodyIndent
     val pinned = ui?.isPinned(item.id, item.pinned) ?: item.pinned
-    val target = MenuTarget(item.id, item.agent.name, item.title, own = false, taggable = true, work = true, status = item.status, pinned = pinned, deletable = true, hasDetails = true)
+    val target = menuTargetFor(item, pinned)
     val tags = ui?.tagsFor(item.id, item.tags) ?: item.tags
     val reactions = ui?.reactionsFor(item.id, item.reactions) ?: item.reactions
     val chooseStatus = { ui?.emit(FeedEvent.ChooseStatus(item.id, item.status)); Unit }
@@ -499,7 +499,7 @@ fun QuestionCard(
     // The card menu as on every card: pin, tags, details, react, copy. A question is never work and
     // can't be deleted here; the agent withdraws it.
     val pinned = ui?.isPinned(item.id, item.pinned) ?: item.pinned
-    val target = MenuTarget(item.id, item.agent.name, item.prompt, own = false, taggable = true, pinned = pinned, deletable = false, hasDetails = true)
+    val target = menuTargetFor(item, pinned)
     val tags = ui?.tagsFor(item.id, item.tags) ?: item.tags
     val reactions = ui?.reactionsFor(item.id, item.reactions) ?: item.reactions
     WithMenu(target, modifier) { gestures ->
@@ -906,7 +906,7 @@ fun PostCard(item: FeedItem.Post, modifier: Modifier = Modifier, density: Densit
     val own = item.author is Author.Owner
     val indent = if (density == Density.Compact) 0.dp else BodyIndent
     val pinned = ui?.isPinned(item.id, item.pinned) ?: item.pinned
-    val target = MenuTarget(item.id, if (own) "You" else item.author.name, item.body, own = own, taggable = true, work = true, status = item.status, pinned = pinned, hasDetails = true)
+    val target = menuTargetFor(item, pinned)
     val tags = ui?.tagsFor(item.id, item.tags) ?: item.tags
     val reactions = ui?.reactionsFor(item.id, item.reactions) ?: item.reactions
     val chooseStatus = { ui?.emit(FeedEvent.ChooseStatus(item.id, item.status)); Unit }
@@ -974,6 +974,19 @@ internal fun PostMedia(attachments: List<Attachment>, sounds: List<Sound>, files
     if (sounds.isNotEmpty()) Sounds(sounds, Modifier.padding(top = 10.dp))
     if (files.isNotEmpty()) Files(files, Modifier.padding(top = 10.dp))
     Embeds(embeds, Modifier.padding(top = 10.dp))
+}
+
+/**
+ * The menu a card opens, whether from the card itself or from the top of its thread. A question is
+ * never work and can't be deleted here (the agent withdraws it); any update can be deleted; a post
+ * only by the owner who wrote it.
+ */
+internal fun menuTargetFor(item: FeedItem, pinned: Boolean): MenuTarget = when (item) {
+    is FeedItem.Update -> MenuTarget(item.id, item.agent.name, item.title, own = false, taggable = true, work = true, status = item.status, pinned = pinned, deletable = true, hasDetails = true)
+    is FeedItem.Question -> MenuTarget(item.id, item.agent.name, item.prompt, own = false, taggable = true, pinned = pinned, deletable = false, hasDetails = true)
+    is FeedItem.Post -> (item.author is Author.Owner).let { own ->
+        MenuTarget(item.id, if (own) "You" else item.author.name, item.body, own = own, taggable = true, work = true, status = item.status, pinned = pinned, hasDetails = true)
+    }
 }
 
 @Composable
