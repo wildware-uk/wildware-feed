@@ -272,6 +272,8 @@ actual fun rememberPlatformMediaHandler(engine: () -> HttpClientEngine): MediaHa
 class DesktopMediaHandler(
     private val engine: () -> HttpClientEngine,
     private val downloads: File = defaultDownloads(),
+    /** Shows a saved file in its folder ([SavedFiles.reveal]). */
+    private val reveal: (File) -> Boolean = { SavedFiles.reveal(it) },
 ) : MediaHandler {
     override suspend fun open(item: Playable, auth: MediaAuth?): String = "Plays in the app"
 
@@ -283,7 +285,9 @@ class DesktopMediaHandler(
         val target = freeName(downloads, safeFileName(file.name))
         download(file.url, auth, target)
         saved[file.id] = target
-        return "Saved to Downloads as ${target.name}"
+        // Downloads can be moved (say to D:\Downloads) and keeps its name; with none, files go to the home folder.
+        val where = if (downloads.name.equals("Downloads", ignoreCase = true)) "Downloads" else downloads.path
+        return "Saved to $where as ${target.name}"
     }
 
     override val showsSavedFiles: Boolean get() = true
@@ -291,16 +295,7 @@ class DesktopMediaHandler(
     /** Never opens the file itself, only its folder: a file from an agent could be a program. */
     override fun showSaved(file: FileAttachment): Boolean {
         val target = saved[file.id]?.takeIf { it.exists() } ?: return false
-        val folder = target.parentFile ?: return false
-        return runCatching {
-            val desktop = java.awt.Desktop.getDesktop().takeIf { java.awt.Desktop.isDesktopSupported() }
-            when {
-                desktop?.isSupported(java.awt.Desktop.Action.BROWSE_FILE_DIR) == true -> desktop.browseFileDirectory(target)
-                desktop?.isSupported(java.awt.Desktop.Action.OPEN) == true -> Thread { desktop.open(folder) }.start()
-                else -> ProcessBuilder("xdg-open", folder.absolutePath).start()
-            }
-            true
-        }.getOrDefault(false)
+        return reveal(target)
     }
 
     private suspend fun download(url: String, auth: MediaAuth?, target: File) = withContext(Dispatchers.IO) {
@@ -318,10 +313,10 @@ class DesktopMediaHandler(
     }
 
     companion object {
-        fun defaultDownloads(): File {
-            val home = File(System.getProperty("user.home"))
-            return File(home, "Downloads").takeIf { it.isDirectory } ?: home
-        }
+        /** Downloads as this computer has it, read once: on Windows it can be moved, and the registry says where. */
+        private val downloadsFolder: File by lazy { SavedFiles.downloads() }
+
+        fun defaultDownloads(): File = downloadsFolder
 
         /** [name] with nothing that could climb out of the folder or upset a file system. */
         fun safeFileName(name: String): String {
