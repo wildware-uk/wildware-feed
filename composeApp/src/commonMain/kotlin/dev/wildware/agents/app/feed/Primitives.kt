@@ -93,6 +93,7 @@ fun Avatar(author: Author, size: Dp, modifier: Modifier = Modifier, showPresence
     val colors = AgentTheme.colors
     val hue = when (author) {
         is Author.AgentAuthor -> colors.agent(author.agent.hue)
+        is Author.Person -> colors.agent(author.hue)
         is Author.Owner -> colors.text
     }
     val shape = RoundedCornerShape(size * 0.26f)

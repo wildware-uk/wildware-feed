@@ -97,6 +97,23 @@ class AppModel(private val platform: AppPlatform, private val scope: CoroutineSc
         open(saved)
     }
 
+    /** A person's sign-in on a team server (migration 055): their email and password. */
+    suspend fun signInWithEmail(server: String, email: String, password: String, deviceName: String) {
+        val signed = if (platform.homeServer != null) SignIn.signInWithEmailCookie(server, email, password, deviceName, platform.httpEngine())
+        else SignIn.signInWithEmail(server, email, password, deviceName, platform.httpEngine())
+        val saved = SavedSession(signed.server, signed.token, signed.device.name, signed.device.id)
+        platform.sessions.save(saved)
+        open(saved)
+    }
+
+    /** Joins a team with an invite's link or code, as a new person, and opens the feed. */
+    suspend fun acceptInvite(server: String, invite: String, name: String, email: String, password: String, deviceName: String) {
+        val signed = SignIn.acceptInvite(server, invite, name, email, password, deviceName, platform.httpEngine(), cookie = platform.homeServer != null)
+        val saved = SavedSession(signed.server, signed.token, signed.device.name, signed.device.id)
+        platform.sessions.save(saved)
+        open(saved)
+    }
+
     /** The demo's dashboard while one is open; thrown away when it is left. */
     private var demoServer: DemoServer? = null
 

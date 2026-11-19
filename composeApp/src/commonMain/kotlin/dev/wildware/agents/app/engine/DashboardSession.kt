@@ -108,6 +108,9 @@ class DashboardSession(
     private val mutableDevices = MutableStateFlow(DeviceList())
     private val mutableSecrets = MutableStateFlow(SecretList())
 
+    /** The people of the team, read when the session starts and when the People sheet opens. */
+    private val mutableTeam = MutableStateFlow(dev.wildware.agents.app.feed.TeamState())
+
     /** The open agent's OAuth connections. */
     private val mutableConnections = MutableStateFlow(dev.wildware.agents.app.feed.ConnectionList())
 
@@ -178,14 +181,16 @@ class DashboardSession(
 
     val state: StateFlow<FeedState> = combine(
         combine(
-            combine(feeds.flatMapLatest { it.state }, dashboard.waiting, ::Pair),
+            combine(feeds.flatMapLatest { it.state }, dashboard.waiting, mutableTeam, ::Triple),
             dashboard.projects,
             dashboard.online,
             outbox.items,
             selected,
-        ) { (feed, questions), projects, online, items, slug ->
+        ) { (feed, questions, team), projects, online, items, slug ->
+            // Who wrote what, once there is more than one person (migration 055).
+            mapper.team = team
             // Every waiting question, thread ones included: the engine's feed leaves those out of its top.
-            mapper.map(feed, projects, online, items, slug, everyQuestion = questions)
+            mapper.map(feed, projects, online, items, slug, everyQuestion = questions).copy(team = team)
         },
         dashboard.everything.state,
         dashboard.projects,
@@ -231,6 +236,82 @@ class DashboardSession(
             mutableDevices.value.copy(problem = "Couldn't read the devices. ${refused.message}")
         } catch (failed: Throwable) {
             mutableDevices.value.copy(problem = "Couldn't read the devices. Check the connection and try again.")
+        }
+    }
+
+    /**
+     * Reads who this device belongs to and the people of the team, and the waiting invites for an
+     * owner or admin. A server from before teams has no `/api/me`: then there is only you.
+     */
+    private suspend fun loadTeam() {
+        mutableTeam.value = try {
+            val me = client.me() ?: return run { mutableTeam.value = mutableTeam.value.copy(supported = false, loaded = true) }
+            val people = client.people().map { p ->
+                dev.wildware.agents.app.feed.PersonRow(
+                    id = p.id, name = p.name, handle = p.handle, role = p.role, email = p.email,
+                    you = p.id == me.person.id, removed = p.removed, founder = p.founder,
+                )
+            }
+            val manages = me.person.role == "owner" || me.person.role == "admin"
+            val invites = if (!manages) emptyList() else client.invites().map { i ->
+                dev.wildware.agents.app.feed.InviteRow(
+                    id = i.id, role = i.role, email = i.email,
+                    expires = isoMillis(i.expiresAt)?.let { "Expires ${mapper.shortDay(it)}" } ?: "",
+                )
+            }
+            mutableTeam.value.copy(
+                me = people.firstOrNull { it.you }, people = people, invites = invites, team = me.team || people.size > 1,
+                supported = true, loaded = true, problem = null,
+            )
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (refused: DashboardException) {
+            mutableTeam.value.copy(loaded = true, problem = "Couldn't read the team. ${refused.message}")
+        } catch (failed: Throwable) {
+            mutableTeam.value.copy(loaded = true, problem = "Couldn't read the team. Check the connection and try again.")
+        }
+    }
+
+    /** One change to the team, then the team read again; [busy] marks what is being changed meanwhile. */
+    private fun changeTeam(busy: String, what: String, call: suspend () -> Unit) {
+        if (mutableTeam.value.busy != null) return
+        mutableTeam.value = mutableTeam.value.copy(busy = busy, problem = null)
+        scope.launch {
+            val problem = try {
+                call()
+                null
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (refused: DashboardException) {
+                "Couldn't $what. ${refused.message}"
+            } catch (failed: Throwable) {
+                "Couldn't $what. Check the connection and try again."
+            }
+            mutableTeam.value = mutableTeam.value.copy(busy = null)
+            loadTeam()
+            if (problem != null) mutableTeam.value = mutableTeam.value.copy(problem = problem)
+        }
+    }
+
+    private fun handleTeam(event: FeedEvent) {
+        when (event) {
+            is FeedEvent.ReadPeople -> scope.launch { loadTeam() }
+            is FeedEvent.InvitePerson -> changeTeam("invite", "make the invite") {
+                val made = client.createInvite(event.role, event.email)
+                mutableTeam.value = mutableTeam.value.copy(
+                    created = dev.wildware.agents.app.feed.CreatedInviteRow(made.link, made.token, made.invite.role, made.invite.email),
+                )
+            }
+            is FeedEvent.DismissInvite -> mutableTeam.value = mutableTeam.value.copy(created = null)
+            is FeedEvent.RevokeInvite -> changeTeam(event.inviteId, "revoke the invite") { client.revokeInvite(event.inviteId) }
+            is FeedEvent.SetRole -> changeTeam(event.personId, "change the role") { client.setRole(event.personId, event.role) }
+            is FeedEvent.RemovePerson -> changeTeam(event.personId, "remove them") {
+                client.removePerson(event.personId)
+                // Leaving signs this device out with the rest.
+                if (event.personId == mutableTeam.value.me?.id) revokedHere.value = true
+            }
+            is FeedEvent.Rename -> changeTeam("me", "rename you") { client.rename(event.name.trim()) }
+            else -> Unit
         }
     }
 
@@ -555,6 +636,18 @@ class DashboardSession(
         dashboard.start()
         scope.launch { loadAlerts() }
         scope.launch { loadRetention() }
+        scope.launch { loadTeam() }
+        // Someone new wrote something (the first teammate, or a later one): read the team again, so
+        // their words carry their name rather than showing as yours.
+        scope.launch {
+            dashboard.everything.state.map { feed ->
+                feed.allCards.flatMap { card -> card.replies + listOfNotNull((card as? dev.wildware.agents.PostCard)?.post) }
+                    .mapNotNullTo(HashSet()) { it.message.personId } as Set<String>
+            }.distinctUntilChanged().collect { ids ->
+                val known = mutableTeam.value
+                if (known.supported && known.loaded && ids.any { id -> known.people.none { it.id == id } }) loadTeam()
+            }
+        }
         // Read now, and again when an agent comes online or goes: it may be one the list has not heard of.
         scope.launch { dashboard.online.map { list -> list.map { it.agentId }.toSet() }.distinctUntilChanged().collect { loadAgents() } }
         // Early, so the account sheet knows whether this dashboard has secrets at all.
@@ -666,6 +759,8 @@ class DashboardSession(
             is FeedEvent.RevealSecret -> revealSecret(event.secretId, event.copy, event.result)
             // Straight to the dashboard, never the outbox: a secret is never written to this device's disk.
             is FeedEvent.ProvideSecret -> changeNow(event.done) { client.provideSecret(event.questionId, event.value) }
+            is FeedEvent.ReadPeople, is FeedEvent.InvitePerson, is FeedEvent.DismissInvite, is FeedEvent.RevokeInvite,
+            is FeedEvent.SetRole, is FeedEvent.RemovePerson, is FeedEvent.Rename -> handleTeam(event)
             is FeedEvent.RevokeDevice -> revokeDevice(event.deviceId)
             is FeedEvent.ReadConnections -> scope.launch { loadConnections(event.agentId) }
             is FeedEvent.RevokeConnection -> revokeConnection(event.agentId, event.connectionId)

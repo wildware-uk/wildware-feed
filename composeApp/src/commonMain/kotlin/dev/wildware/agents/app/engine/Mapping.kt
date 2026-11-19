@@ -393,7 +393,7 @@ internal class FeedMapper(
         index: CardIndex,
     ): List<Reply> {
         // The engine counts unread comments per card; they are the newest ones not written by the owner.
-        val unreadIds = lines.filter { !it.message.isOwner }.takeLast(unread).mapTo(HashSet()) { it.message.id }
+        val unreadIds = lines.filter { author(it, agents) !is Author.Owner }.takeLast(unread).mapTo(HashSet()) { it.message.id }
         val byId = lines.associateBy { it.message.id }
         return lines.map { line ->
             Reply(
@@ -415,7 +415,7 @@ internal class FeedMapper(
                 acks = acks(line, agents),
                 edited = editedLabel(line.message.editedAt),
                 // Only a line in this same thread: the card's own head needs no saying.
-                answering = line.message.answers?.let(byId::get)?.let { if (it.message.isOwner) "you" else author(it, agents).name },
+                answering = line.message.answers?.let(byId::get)?.let { author(it, agents).let { a -> if (a is Author.Owner) "you" else a.name } },
             )
         }
     }
@@ -429,8 +429,25 @@ internal class FeedMapper(
         line.message.isOwner && !line.sending && line.acks.isEmpty() && line.deliveries.isEmpty() &&
             now() - line.message.createdAt >= UndeliveredAfterMillis
 
+    /** The people of the team; names show on what others wrote once there is more than one (migration 055). */
+    var team: dev.wildware.agents.app.feed.TeamState = dev.wildware.agents.app.feed.TeamState()
+
     private fun author(line: ThreadLine, agents: AgentDirectory): Author =
-        line.message.agentId?.let { Author.AgentAuthor(agents.agent(it, line.authorName)) } ?: OwnerAuthor
+        line.message.agentId?.let { Author.AgentAuthor(agents.agent(it, line.authorName)) } ?: person(line.message.personId)
+
+    /** You, or another person by name ("Sam", "Sam (left)") on a team. */
+    private fun person(id: String?): Author {
+        val known = team
+        if (!known.team || id == null) return OwnerAuthor
+        if (id == (known.me?.id ?: dev.wildware.agents.FounderId)) return OwnerAuthor
+        val row = known.people.firstOrNull { it.id == id }
+        val name = row?.let { if (it.removed) "${it.name} (left)" else it.name } ?: "Someone"
+        return Author.Person(name, row?.handle ?: "", hue(id))
+    }
+
+    /** Whether a person's reaction is yours. */
+    private fun mine(view: ReactionView): Boolean =
+        view.isOwner && (!team.team || view.personId == (team.me?.id ?: dev.wildware.agents.FounderId))
 
     /**
      * Each agent once, by the furthest thing it said: done, then thinking, then read. A delivery
@@ -450,7 +467,7 @@ internal class FeedMapper(
     }
 
     private fun reactions(views: List<ReactionView>): List<Reaction> =
-        views.groupBy { it.emoji }.map { (emoji, all) -> Reaction(emoji, all.size, mine = all.any { it.isOwner }, spoken = emoji) }
+        views.groupBy { it.emoji }.map { (emoji, all) -> Reaction(emoji, all.size, mine = all.any(::mine), spoken = emoji) }
 
     private fun List<MediaView>.images() = filter { it.kind == "image" && it.isReady }
 
