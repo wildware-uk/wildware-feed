@@ -65,6 +65,7 @@ import androidx.compose.foundation.text.input.rememberTextFieldState
 import dev.wildware.agents.app.design.PickMode
 import dev.wildware.agents.app.design.PictureGrid
 import dev.wildware.agents.app.design.PictureOption
+import dev.wildware.agents.app.design.gesture.LocalSwipeGuard
 import dev.wildware.agents.app.design.gesture.GestureAction
 import dev.wildware.agents.app.design.gesture.SwipeActions
 import dev.wildware.agents.app.design.gesture.SwipeActionsState
@@ -503,6 +504,7 @@ fun QuestionCard(
     val target = menuTargetFor(item, pinned)
     val tags = ui?.tagsFor(item.id, item.tags) ?: item.tags
     val reactions = ui?.reactionsFor(item.id, item.reactions) ?: item.reactions
+    val swipeGuard = LocalSwipeGuard.current
     WithMenu(target, modifier) { gestures ->
     SwipeActions(
         shape = shape,
@@ -527,7 +529,9 @@ fun QuestionCard(
             .then(frame)
             .semantics(mergeDescendants = false) { contentDescription = (if (item.critical) "Critical question" else "Question") + " from ${item.agent.name}, waiting on you" }
             .onKeyEvent { e ->
-                if (e.type != KeyEventType.KeyUp || folded) return@onKeyEvent false
+                // Not while writing in a box on the card: its keys reach here too (the box takes the
+                // letter, not the key going up), and N would dismiss mid-word.
+                if (e.type != KeyEventType.KeyUp || folded || swipeGuard?.typing == true) return@onKeyEvent false
                 val number = listOf(Key.One, Key.Two, Key.Three, Key.Four, Key.Five).indexOf(e.key)
                 when {
                     gathers && (e.key == Key.Enter || e.key == Key.Y) -> { send(); true }

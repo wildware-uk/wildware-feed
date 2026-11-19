@@ -16,6 +16,8 @@ import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.text.TextStyle
+import dev.wildware.agents.app.design.gesture.LocalSwipeGuard
+import dev.wildware.agents.app.design.gesture.SwipeGuard
 
 /** What the person has asked the system for. Read from the platform, overridable in settings. */
 @Immutable
@@ -72,6 +74,8 @@ fun AgentTheme(
             motion = AgentMotion(reduced = accessibility.reduceMotion),
         )
     }
+    // One per window: a theme nested inside keeps the outer one, so its boxes guard the same rows.
+    val swipeGuard = LocalSwipeGuard.current ?: remember { SwipeGuard() }
     // Material components (text fields, menus) still read MaterialTheme, so it gets the same values.
     MaterialTheme(
         colorScheme = colors.toMaterial(),
@@ -79,6 +83,7 @@ fun AgentTheme(
     ) {
         CompositionLocalProvider(
             LocalAgentTheme provides values,
+            LocalSwipeGuard provides swipeGuard,
             LocalContentColor provides colors.text,
             // iOS-style: dim (and shrink, if small) on touch, rather than Android's ripple.
             LocalIndication provides PressIndication(colors.text, reduced = accessibility.reduceMotion),

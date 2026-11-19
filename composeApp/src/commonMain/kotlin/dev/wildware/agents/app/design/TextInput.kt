@@ -10,6 +10,8 @@ import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.text.input.TextObfuscationMode
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.SolidColor
@@ -25,6 +27,8 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
+import dev.wildware.agents.app.design.gesture.LocalSwipeGuard
+import dev.wildware.agents.app.design.gesture.guardsSwipes
 
 /**
  * A bare text input in the theme's type and colours, for the app's own boxes to wrap. [label] is
@@ -57,7 +61,12 @@ fun TextInput(
         if (wantsSend) submit()
         wantsSend
     }
+    // Writing here never swipes the card around it: not from a drag inside, not while it has focus.
+    val guard = LocalSwipeGuard.current
+    val input = remember { Any() }
+    if (guard != null) DisposableEffect(guard) { onDispose { guard.focus(input, false) } }
     val decorated = modifier
+        .then(if (guard != null) Modifier.guardsSwipes(guard, input) else Modifier)
         .defaultMinSize(minHeight = MinTouchTarget)
         .then(keys)
         .semantics { contentDescription = label }

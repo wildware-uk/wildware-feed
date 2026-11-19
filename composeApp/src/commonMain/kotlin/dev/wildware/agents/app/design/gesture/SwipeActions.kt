@@ -16,6 +16,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.Stable
+import androidx.compose.runtime.mutableStateSetOf
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -25,11 +27,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerId
 import androidx.compose.ui.input.pointer.PointerType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
@@ -68,11 +73,51 @@ data class GestureAction(
  */
 val EdgeZone: Dp = 24.dp
 
+/** How much more sideways than up or down a drag must be to swipe a row rather than scroll the list. */
+private const val SidewaysRatio = 1.5f
+
 /** How far a row must travel before letting go commits its action. */
 val SwipeCommitDistance: Dp = 96.dp
 
 /** Swipes are for fingers. Mouse users get right-click menus and visible buttons instead. */
 internal fun PointerType.isTouchLike() = this == PointerType.Touch || this == PointerType.Stylus
+
+/**
+ * Keeps row swipes away from text boxes. A swipe that starts inside a box is the owner moving the
+ * cursor or picking words, and while a box has focus the keyboard is up and they are writing: in
+ * both cases a swipe must not answer or dismiss anything. One per window, from the theme.
+ */
+@Stable
+class SwipeGuard {
+    /** The pointer whose touch went down inside a text box, if the latest one did. */
+    internal var downInInput: PointerId? = null
+
+    private val focused = mutableStateSetOf<Any>()
+
+    /** A text box has focus, so the keyboard is up. */
+    val typing: Boolean get() = focused.isNotEmpty()
+
+    internal fun focus(input: Any, on: Boolean) {
+        if (on) focused.add(input) else focused.remove(input)
+    }
+}
+
+val LocalSwipeGuard = staticCompositionLocalOf<SwipeGuard?> { null }
+
+/**
+ * Marks a text box for [SwipeGuard]: a touch that starts here, or any swipe while this box has
+ * focus, never swipes the row around it. [input] names the box; drop it with [SwipeGuard.focus]
+ * off when the box leaves.
+ */
+fun Modifier.guardsSwipes(guard: SwipeGuard, input: Any): Modifier = this
+    .onFocusChanged { guard.focus(input, it.hasFocus) }
+    // The first pass runs before any row's own, so the row knows where this touch began.
+    .pointerInput(guard) {
+        awaitEachGesture {
+            val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+            guard.downInInput = down.id
+        }
+    }
 
 /** Where a row is in its swipe. Hoisted so a screen (or a screenshot) can start it part-way. */
 @Stable
@@ -96,6 +141,7 @@ fun SwipeActions(
     content: @Composable () -> Unit,
 ) {
     val haptics = LocalHapticFeedback.current
+    val guard = LocalSwipeGuard.current
     val scope = rememberCoroutineScope()
     val motion = AgentTheme.motion
     var rootX by remember { mutableFloatStateOf(0f) }
@@ -144,16 +190,21 @@ fun SwipeActions(
         Box(
             Modifier
                 .offset { IntOffset(state.offsetPx.roundToInt(), 0) }
-                .pointerInput(startAction, endAction) {
+                .pointerInput(startAction, endAction, guard) {
                     val commitPx = SwipeCommitDistance.toPx()
                     val edgePx = EdgeZone.toPx()
                     awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false)
                         if (!down.type.isTouchLike() || rootX + down.position.x < edgePx) return@awaitEachGesture
+                        // Not from inside a text box, and not while the keyboard is up.
+                        if (guard != null && (guard.downInInput == down.id || guard.typing)) return@awaitEachGesture
                         val tracker = VelocityTracker()
                         val start = awaitHorizontalTouchSlopOrCancellation(down.id) { change, over ->
                             val allowed = (over > 0 && startAction != null) || (over < 0 && endAction != null)
-                            if (allowed) {
+                            // Only a mostly sideways drag: a thumb scrolling in an arc is a scroll, and the list keeps it.
+                            val moved = change.position - down.position
+                            val sideways = abs(moved.x) > abs(moved.y) * SidewaysRatio
+                            if (allowed && sideways) {
                                 change.consume()
                                 state.offsetPx += over
                             }
