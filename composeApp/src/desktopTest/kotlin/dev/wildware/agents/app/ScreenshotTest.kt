@@ -5,6 +5,7 @@ import dev.wildware.agents.app.feed.LocalCardFolds
 import dev.wildware.agents.app.feed.Choice
 import dev.wildware.agents.app.feed.PickBounds
 import dev.wildware.agents.app.feed.Reply
+import dev.wildware.agents.app.feed.Unsent
 import dev.wildware.agents.app.feed.FormField
 import dev.wildware.agents.app.feed.QuestionKind
 import androidx.compose.runtime.CompositionLocalProvider
@@ -667,6 +668,23 @@ class ScreenshotTest {
             val mode = if (dark) "dark" else "light"
             shoot("phone-$mode-choice-default", Size.Phone, dark) { AgentsPreview(dark = dark, state = state, safeArea = Size.Phone.safeArea) }
             shoot("desktop-$mode-choice-default", Size.Desktop, dark) { AgentsPreview(dark = dark, state = state, safeArea = Size.Desktop.safeArea) }
+        }
+    }
+
+    /** An answer the dashboard refused: the card says why, keeps the words in the box, and offers Try again or Drop it. */
+    @Test
+    fun unsentAnswer() {
+        val base = FakeFeed.state.sections.flatMap { it.items }.filterIsInstance<FeedItem.Question>().first()
+        val q = base.copy(
+            prompt = "What should the release notes lead with?", body = "", kind = QuestionKind.Text, choices = emptyList(), allowsText = true,
+            text = FormField(placeholder = "A line or two"),
+            unsent = Unsent("o1", "The question was already answered on another device.", "Faster sync on slow networks", "Faster sync on slow networks"),
+        )
+        val state = FakeFeed.state.copy(sections = listOf(FakeFeed.state.sections.first().copy(items = listOf(q))))
+        for (dark in listOf(false, true)) {
+            val mode = if (dark) "dark" else "light"
+            shoot("phone-$mode-unsent-answer", Size.Phone, dark) { AgentsPreview(dark = dark, state = state, safeArea = Size.Phone.safeArea) }
+            shoot("desktop-$mode-unsent-answer", Size.Desktop, dark) { AgentsPreview(dark = dark, state = state, safeArea = Size.Desktop.safeArea) }
         }
     }
 

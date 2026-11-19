@@ -10,6 +10,14 @@ import dev.wildware.agents.MediaView
 import dev.wildware.agents.removedMediaLabel
 import dev.wildware.agents.Outbox
 import dev.wildware.agents.OutboxItem
+import dev.wildware.agents.OutboxKind
+import dev.wildware.agents.app.feed.Unsent
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.contentOrNull
 import dev.wildware.agents.PlainText
 import dev.wildware.agents.PostCard
 import dev.wildware.agents.ProjectSummary
@@ -95,20 +103,20 @@ internal class FeedMapper(
         }
         fun project(id: String?) = id?.let { byId[it] } ?: current
 
-        val threads = ThreadIndex(feed)
+        val index = CardIndex(feed, outbox)
         val inScope = when {
             everyQuestion == null -> feed.waiting
             selectedSlug == null -> everyQuestion
             else -> everyQuestion.filter { it.request.projectId == current.id }
         }
         val sections = buildList {
-            val waiting = inScope.map { it.toQuestion(agents, ::project, threads) }
+            val waiting = inScope.map { it.toQuestion(agents, ::project, index) }
             if (waiting.isNotEmpty()) add(FeedSection("Waiting on you", waiting))
-            val pinned = feed.pinned.mapNotNull { it.toItem(agents, ::project, threads) }
+            val pinned = feed.pinned.mapNotNull { it.toItem(agents, ::project, index) }
             if (pinned.isNotEmpty()) add(FeedSection("Pinned", pinned))
             feed.cards
                 .groupBy { dayOf(it.activityAt) }
-                .forEach { (day, cards) -> add(FeedSection(dayLabel(day), cards.mapNotNull { it.toItem(agents, ::project, threads) })) }
+                .forEach { (day, cards) -> add(FeedSection(dayLabel(day), cards.mapNotNull { it.toItem(agents, ::project, index) })) }
         }
         val waiting = Outbox.waiting(outbox)
         val failed = Outbox.failed(outbox)
@@ -159,9 +167,16 @@ internal class FeedMapper(
     private fun ProjectSummary.toView() =
         Project(project.id, project.name, unread = unread, waiting = waiting, hue = hue(project.id), slug = project.slug, archived = project.isArchived)
 
-    /** Where each thread line is, so a question asked under one can say what it answers and jump there. */
-    private class ThreadIndex(feed: EngineFeed) {
+    /**
+     * Where each thread line is, so a question asked under one can say what it answers and jump there;
+     * and each answer the dashboard refused, by question, so its card can say so.
+     */
+    private class CardIndex(feed: EngineFeed, outbox: List<OutboxItem>) {
         private val lines = HashMap<String, Pair<String, ThreadLine>>()
+        private val refused = Outbox.failed(outbox).filter { it.requestId != null }.associateBy { it.requestId!! }
+
+        /** The answer to [requestId] the dashboard refused, if it did. */
+        fun refused(requestId: String): OutboxItem? = refused[requestId]
 
         init {
             feed.allCards.forEach { card ->
@@ -174,7 +189,7 @@ internal class FeedMapper(
         fun find(messageId: String): Pair<String, ThreadLine>? = lines[messageId]
     }
 
-    private fun FeedCard.toItem(agents: AgentDirectory, project: (String?) -> Project, threads: ThreadIndex): FeedItem? = when (this) {
+    private fun FeedCard.toItem(agents: AgentDirectory, project: (String?) -> Project, index: CardIndex): FeedItem? = when (this) {
         is UpdateCard -> {
             val (title, body) = titleAndBody(update.title, update.body)
             FeedItem.Update(
@@ -191,7 +206,7 @@ internal class FeedMapper(
                 files = update.media.files(),
                 embeds = update.embeds.embeds(),
                 reactions = reactions(reactions),
-                replies = replies(replies, unread, agents, project, threads),
+                replies = replies(replies, unread, agents, project, index),
                 unreadReplies = unread,
                 tags = tags.map { it.toCardTag() },
                 fields = fields.map { CardField(it.name, it.value) },
@@ -211,13 +226,13 @@ internal class FeedMapper(
             files = post.media.files(),
             embeds = post.embeds.embeds(),
             acks = acks(this, agents),
-            replies = replies(replies, unread, agents, project, threads),
+            replies = replies(replies, unread, agents, project, index),
             unreadReplies = unread,
             tags = tags.map { it.toCardTag() },
             fields = fields.map { CardField(it.name, it.value) },
             reactions = reactions(reactions),
             sending = post.sending,
-            questions = post.questions.map { it.toQuestion(agents, project, threads) },
+            questions = post.questions.map { it.toQuestion(agents, project, index) },
             status = workStatus(status),
             pinned = pinned,
             // Work says where it has got to, which answers "has anybody got this" better.
@@ -225,7 +240,7 @@ internal class FeedMapper(
         )
     }
 
-    private fun RequestCard.toQuestion(agents: AgentDirectory, project: (String?) -> Project, threads: ThreadIndex): FeedItem.Question {
+    private fun RequestCard.toQuestion(agents: AgentDirectory, project: (String?) -> Project, index: CardIndex): FeedItem.Question {
         val options = request.options.orEmpty()
         // A picture question carries one picture per option; the engine says which is which.
         fun choice(option: String, primary: Boolean = false) =
@@ -290,16 +305,17 @@ internal class FeedMapper(
                 null
             },
             inReplyTo = request.messageId?.let { id ->
-                threads.find(id)?.second?.let { "${it.authorName}: ${PlainText.clip(PlainText.fromMarkdown(it.message.body), 80)}" }
+                index.find(id)?.second?.let { "${it.authorName}: ${PlainText.clip(PlainText.fromMarkdown(it.message.body), 80)}" }
                     ?: "Asked in a thread"
             },
-            threadId = request.messageId?.let { threads.find(it)?.first } ?: request.updateId,
-            replies = replies(discussion, unread, agents, project, threads),
+            threadId = request.messageId?.let { index.find(it)?.first } ?: request.updateId,
+            replies = replies(discussion, unread, agents, project, index),
             unreadReplies = unread,
             picks = if (kind == QuestionKind.MultiChoice) pickBounds(config, options.size) else PickBounds(),
             critical = request.priority == "critical",
             // As the website does: a choice question opens on the agent's default, when it is one of the options.
             preset = config?.defaultValue?.takeIf { kind == QuestionKind.Choice && it in options },
+            unsent = index.refused(id)?.let(::unsent),
         )
     }
 
@@ -308,7 +324,7 @@ internal class FeedMapper(
         unread: Int,
         agents: AgentDirectory,
         project: (String?) -> Project,
-        threads: ThreadIndex,
+        index: CardIndex,
     ): List<Reply> {
         // The engine counts unread comments per card; they are the newest ones not written by the owner.
         val unreadIds = lines.filter { !it.message.isOwner }.takeLast(unread).mapTo(HashSet()) { it.message.id }
@@ -321,7 +337,7 @@ internal class FeedMapper(
                 reactions = reactions(line.reactions),
                 unread = line.message.id in unreadIds,
                 sending = line.sending,
-                questions = line.questions.map { it.toQuestion(agents, project, threads) },
+                questions = line.questions.map { it.toQuestion(agents, project, index) },
                 undelivered = undelivered(line),
                 attachments = line.media.tiles().map { tile(it) },
                 sounds = line.media.sounds(),
@@ -549,6 +565,27 @@ internal fun pickBounds(config: RequestConfig?, options: Int): PickBounds {
     val min = (config?.min ?: 1).coerceIn(0, options)
     val max = (config?.max ?: options).coerceIn(min, options)
     return PickBounds(min, max, bounded = min != 1 || max < options)
+}
+
+/**
+ * An answer the dashboard refused, as its card shows it: why, what the owner said, and any words they
+ * typed, to put back in the box. The answer is JSON as it was sent: words, picks, yes or no, or a form's action and text.
+ */
+internal fun unsent(item: OutboxItem): Unsent {
+    val value = item.value?.let { runCatching { Json.parseToJsonElement(it) }.getOrNull() }
+    val typed = when (value) {
+        is JsonPrimitive -> value.contentOrNull?.takeIf { value.isString }
+        is JsonObject -> (value["text"] as? JsonPrimitive)?.contentOrNull?.ifBlank { null }
+        else -> null
+    } ?: item.answer?.typedText
+    val said = when {
+        item.kind == OutboxKind.Dismiss -> "Not now"
+        value is JsonPrimitive && !value.isString -> if (value.booleanOrNull == false) FeedMapper.No else FeedMapper.Yes
+        value is JsonArray -> value.mapNotNull { (it as? JsonPrimitive)?.contentOrNull }.joinToString(", ")
+        value is JsonObject -> listOfNotNull((value["action"] as? JsonPrimitive)?.contentOrNull, typed).joinToString(": ")
+        else -> typed ?: item.answer?.actionId
+    }
+    return Unsent(item.id, item.lastError ?: "The dashboard refused it.", said?.ifBlank { null }, typed)
 }
 
 /** A colour slot that stays the same for the same id on every device. */

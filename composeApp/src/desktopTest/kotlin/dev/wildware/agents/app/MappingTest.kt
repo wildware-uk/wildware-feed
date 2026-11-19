@@ -9,6 +9,10 @@ import dev.wildware.agents.CardRef
 import dev.wildware.agents.MessageView
 import dev.wildware.agents.MediaView
 import dev.wildware.agents.RequestConfig
+import dev.wildware.agents.OutboxItem
+import dev.wildware.agents.OutboxKind
+import dev.wildware.agents.app.engine.unsent
+import dev.wildware.agents.app.feed.Unsent
 import dev.wildware.agents.ProjectSummary
 import dev.wildware.agents.ProjectView
 import dev.wildware.agents.ReactionView
@@ -196,6 +200,38 @@ class MappingTest {
         assertEquals(null, choice(RequestConfig(defaultValue = "Z")).preset)
         // Only choice questions: a buttons question answers on the spot.
         assertEquals(null, choice(RequestConfig(defaultValue = "B"), kind = "buttons").preset)
+    }
+
+    private fun refused(kind: OutboxKind, value: String?, id: String = "o1") = OutboxItem(
+        id = id, createdAtMillis = 1, kind = kind, label = "Answer lumen", card = CardRef(CardKinds.Request, "r5"),
+        value = value, gaveUp = true, lastError = "That answer is too long.",
+    )
+
+    private fun questionWith(outbox: List<OutboxItem>): FeedItem.Question {
+        val request = RequestCard(
+            RequestView(id = "r5", agentId = "a1", kind = "text", question = "Why?"),
+            agentName = "lumen", projectName = null, discussion = emptyList(), unread = 0, sending = false, tags = emptyList(), fields = emptyList(),
+        )
+        return mapper.map(feed(emptyList(), listOf(request)), listOf(mega), emptyList(), outbox, null).sections.single().items.single() as FeedItem.Question
+    }
+
+    @Test
+    fun aRefusedAnswerShowsOnItsQuestion() {
+        assertEquals(Unsent("o1", "That answer is too long.", "Because", "Because"), questionWith(listOf(refused(OutboxKind.RequestAnswer, "\"Because\""))).unsent)
+        assertEquals(null, questionWith(emptyList()).unsent)
+        // Still trying is not refused: the card says it is waiting to send instead.
+        assertEquals(null, questionWith(listOf(refused(OutboxKind.RequestAnswer, "\"Because\"").copy(gaveUp = false))).unsent)
+    }
+
+    @Test
+    fun aRefusedAnswerSaysWhatTheOwnerSaid() {
+        assertEquals("Mac, Windows", unsent(refused(OutboxKind.RequestAnswer, """["Mac","Windows"]""")).answer)
+        assertEquals("No", unsent(refused(OutboxKind.RequestAnswer, "false")).answer)
+        assertEquals("Yes", unsent(refused(OutboxKind.RequestAnswer, "true")).answer)
+        val form = unsent(refused(OutboxKind.RequestAnswer, """{"action":"Commit","text":"Fix the build"}"""))
+        assertEquals("Commit: Fix the build", form.answer)
+        assertEquals("Fix the build", form.typed)
+        assertEquals(Unsent("o1", "That answer is too long.", "Not now", null), unsent(refused(OutboxKind.Dismiss, null)))
     }
 
     @Test

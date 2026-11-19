@@ -55,7 +55,7 @@ It doesn't, beyond oldest first.
 | 14 | number / date kinds | N/A | Don't exist | — | — | Not a gap | — |
 | 15 | Picture options | Done | Thumbnail on each option; excluded from card grid (`:298-305`) | Yes: PictureGrid, hold to look closer (`PictureGrid.kt`) | Yes | App richer | — |
 | 16 | Dismiss | Done | "Dismiss" → agent told cancelled | Yes "Not now" / swipe left | Yes, N key | — | — |
-| 17 | Answer error | Partial | Alert, keeps typed text (`:566-568`) | Partial: outbox "couldn't send" + Retry/Drop in header (`Panels.kt` OutboxLine) | Partial | Not shown on the card itself | P2 |
+| 17 | Answer error | Done | Alert, keeps typed text (`:566-568`) | Yes: the card says "Couldn't send your answer", why, and what was said, puts typed words back in the box, with Try again / Drop it | Yes | — | P2 |
 | 18 | Offline answer | Done | — | Yes: outbox, "Answer waiting to send" | Yes | App only | — |
 | 19 | Discussion thread on a request | Done | Reply/react/acks under the controls (`RequestCard.svelte:686-705`) | Yes: Discuss opens the question's own thread (#53) | Yes: inline under the controls (#53) | — | P1 |
 | 20 | Reactions / tags / fields / pin on request | Open | Same as other cards | No | No | See rows 40-48 | P2 |

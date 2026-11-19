@@ -1,5 +1,7 @@
 package dev.wildware.agents.app.feed
 
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.selected
 import androidx.compose.runtime.Immutable
 import dev.wildware.agents.app.ProductName
@@ -555,9 +557,13 @@ fun QuestionCard(
                 AppButton("Not now", ButtonTone.Secondary, enabled = !item.sending, onClick = dismiss)
             }
         }
+        // A refused answer's words go back in the box, as the website keeps them, to fix and send again.
+        val retyped = item.unsent?.typed
         item.form?.let { form ->
-            key(item.id) {
-                FormAnswer(form, enabled = !item.sending) { action, text -> ui?.emit(FeedEvent.AnswerForm(item.id, action, text)) }
+            key(item.id, item.unsent?.outboxId) {
+                FormAnswer(if (retyped != null) form.copy(initial = retyped) else form, enabled = !item.sending) { action, text ->
+                    ui?.emit(FeedEvent.AnswerForm(item.id, action, text))
+                }
             }
         }
         if (item.kind == QuestionKind.Unsupported) {
@@ -565,8 +571,9 @@ fun QuestionCard(
         }
         if (item.allowsText) {
             Spacer(Modifier.height(10.dp))
-            key(item.id) {
-                AnswerField(item.text, enabled = !item.sending) { text -> ui?.emit(FeedEvent.AnswerText(item.id, text)) }
+            key(item.id, item.unsent?.outboxId) {
+                val field = if (retyped != null) (item.text ?: FormField()).copy(initial = retyped) else item.text
+                AnswerField(field, enabled = !item.sending) { text -> ui?.emit(FeedEvent.AnswerText(item.id, text)) }
             }
         }
         if (item.sending) {
@@ -574,6 +581,8 @@ fun QuestionCard(
                 Icon(Icons.Clock, null, tint = colors.textMuted, modifier = Modifier.size(14.dp))
                 MetaText("Answer waiting to send", Modifier.padding(start = 6.dp), color = colors.textMuted)
             }
+        } else {
+            item.unsent?.let { UnsentAnswer(it) }
         }
         if (LocalIsPhone.current) {
             Text(
@@ -596,6 +605,40 @@ fun QuestionCard(
         }
     }
 }
+}
+
+/**
+ * The dashboard refused the owner's answer: says so on the card, as the website does, with why and
+ * what they said, and lets them try again or drop it. Answering again replaces it.
+ */
+@Composable
+private fun UnsentAnswer(unsent: Unsent) {
+    val colors = AgentTheme.colors
+    val type = AgentTheme.type
+    val shape = AgentTheme.shapes.medium
+    val ui = LocalFeedUi.current
+    Column(
+        Modifier
+            .padding(top = 10.dp)
+            .fillMaxWidth()
+            .clip(shape)
+            .background(colors.error.copy(alpha = if (colors.isDark) 0.14f else 0.07f))
+            .border(1.dp, colors.error.copy(alpha = 0.45f), shape)
+            .padding(start = 12.dp, end = 6.dp, top = 8.dp, bottom = 4.dp)
+            .semantics(mergeDescendants = false) { liveRegion = LiveRegionMode.Polite },
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Close, null, tint = colors.error, modifier = Modifier.size(14.dp))
+            Text("Couldn't send your answer", Modifier.padding(start = 6.dp), color = colors.error, style = type.meta.copy(fontWeight = FontWeight.SemiBold))
+        }
+        Text(unsent.problem, color = colors.text, style = type.meta)
+        unsent.answer?.let { Text("You answered: $it", color = colors.textMuted, style = type.meta, maxLines = 3, overflow = TextOverflow.Ellipsis) }
+        Row(Modifier.padding(top = 2.dp)) {
+            MetaAction("Try again") { ui?.emit(FeedEvent.RetrySend(unsent.outboxId)) }
+            MetaAction("Drop it") { ui?.emit(FeedEvent.DropUnsent(unsent.outboxId)) }
+        }
+    }
 }
 
 /** On a phone: opens the question's own thread, to talk it over. Says how many replies, and how many are new. */

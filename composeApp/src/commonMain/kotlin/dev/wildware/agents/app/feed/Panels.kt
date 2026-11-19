@@ -435,15 +435,15 @@ private fun OutboxLine(ui: FeedUi) {
                 Modifier.padding(start = 5.dp),
                 color = colors.error,
             )
-            TextAction("Retry") { ui.emit(FeedEvent.RetrySend(failed)) }
-            TextAction("Drop") { ui.emit(FeedEvent.DropUnsent(failed)) }
+            MetaAction("Retry") { ui.emit(FeedEvent.RetrySend(failed)) }
+            MetaAction("Drop") { ui.emit(FeedEvent.DropUnsent(failed)) }
         }
     }
 }
 
 /** A small word you can press, sized for a finger however small it looks. */
 @Composable
-private fun TextAction(label: String, onClick: () -> Unit) {
+internal fun MetaAction(label: String, onClick: () -> Unit) {
     val shape = AgentTheme.shapes.small
     Box(Modifier.clip(shape).pressable(label, shape, labelIsShown = true, onClick = onClick).padding(horizontal = 6.dp), contentAlignment = Alignment.Center) {
         Text(label, color = AgentTheme.colors.text, style = AgentTheme.type.meta.copy(fontWeight = FontWeight.SemiBold))

@@ -179,6 +179,13 @@ data class PickBounds(val min: Int = 1, val max: Int = Int.MAX_VALUE, val bounde
     }
 }
 
+/**
+ * An answer the dashboard refused for good. [problem] says why; [answer] is what the owner said, as
+ * they'd say it ("Yes", "Mac, Windows"); [typed] is any words they wrote, to put back in the box.
+ */
+@Immutable
+data class Unsent(val outboxId: String, val problem: String, val answer: String? = null, val typed: String? = null)
+
 @Immutable
 data class Choice(
     val label: String,
@@ -327,6 +334,8 @@ sealed interface FeedItem {
         val picks: PickBounds = PickBounds(),
         /** The option a choice question starts picked on: the agent's default. Null picks nothing. */
         val preset: String? = null,
+        /** The owner's answer the dashboard refused, to retry or drop. Null when there is none. */
+        val unsent: Unsent? = null,
         /** The talk about the question before it is answered: its own thread, oldest first. */
         override val replies: List<Reply> = emptyList(),
         override val unreadReplies: Int = 0,

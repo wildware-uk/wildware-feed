@@ -9,6 +9,7 @@ import dev.wildware.agents.FeedCache
 import dev.wildware.agents.DraftPrefix
 import dev.wildware.agents.DashboardClient
 import dev.wildware.agents.Feed
+import dev.wildware.agents.Outbox
 import dev.wildware.agents.OutboxQueue
 import dev.wildware.agents.OwnerActions
 import dev.wildware.agents.ProjectRef
@@ -269,6 +270,14 @@ class DashboardSession(
 
     /** Does what the owner asked. Sign-out and screen-only events are handled elsewhere. */
     fun handle(event: FeedEvent) {
+        // A new answer replaces one the dashboard refused: the refused one is not sent as well.
+        when (event) {
+            is FeedEvent.Answer -> dropRefused(event.questionId)
+            is FeedEvent.AnswerText -> dropRefused(event.questionId)
+            is FeedEvent.AnswerForm -> dropRefused(event.questionId)
+            is FeedEvent.DismissQuestion -> dropRefused(event.questionId)
+            else -> Unit
+        }
         when (event) {
             is FeedEvent.Answer -> request(event.questionId)?.let { card ->
                 actions.answer(card.request, card.agentName, answerValue(card, event.choices))
@@ -334,6 +343,10 @@ class DashboardSession(
     /** Every question in view: the feed's own, and those asked inside a thread. */
     private fun requests(): List<RequestCard> =
         dashboard.waiting.value + latest.waiting + allLines().flatMap { it.questions }
+
+    private fun dropRefused(requestId: String) {
+        Outbox.failed(outbox.items.value).filter { it.requestId == requestId }.forEach { outbox.remove(it.id) }
+    }
 
     private fun request(id: String): RequestCard? = requests().firstOrNull { it.id == id }
 
