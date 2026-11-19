@@ -270,6 +270,28 @@ class DashboardClient(
         http.delete("api/updates/${updateId.encodeURLPathPart()}") { authorise() }.requireSuccess()
     }
 
+    /** Every agent waiting to be allowed in. A dashboard from before pairing answers 404. */
+    @Throws(Exception::class)
+    suspend fun pairings(): PairingsSnapshot = http.get("api/pairings") { authorise() }.decoded()
+
+    /**
+     * Lets an agent in, under [name] (null keeps the name it asked for). A name another agent has
+     * is refused with code `name_taken`: choose another.
+     */
+    @Throws(Exception::class)
+    suspend fun approvePairing(pairingId: String, name: String?) {
+        http.post("api/pairings/${pairingId.encodeURLPathPart()}/approve") {
+            authorise()
+            jsonBody(buildJsonObject { if (name != null) put("name", name) })
+        }.requireSuccess()
+    }
+
+    /** Turns an agent away: it hears "denied". */
+    @Throws(Exception::class)
+    suspend fun denyPairing(pairingId: String) {
+        http.post("api/pairings/${pairingId.encodeURLPathPart()}/deny") { authorise() }.requireSuccess()
+    }
+
     /** Lets an agent go without an answer: it hears "cancelled". */
     @Throws(Exception::class)
     suspend fun dismissRequest(requestId: String) {

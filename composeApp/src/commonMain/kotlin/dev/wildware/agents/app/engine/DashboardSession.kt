@@ -105,6 +105,29 @@ class DashboardSession(
     /** This device's own key was revoked from its Devices sheet: it is signed out at once. */
     private val revokedHere = MutableStateFlow(false)
 
+    /** Allow or Deny on its way, or refused, per pairing; decided ones are hidden until the stream says so. */
+    private data class JoinStatus(val busy: Boolean = false, val error: String? = null, val done: Boolean = false)
+    private val joinStatus = MutableStateFlow<Map<String, JoinStatus>>(emptyMap())
+
+    /** Agents asking to join, as the prompt shows them. */
+    private val joining = combine(dashboard.pairings, joinStatus) { pairings, status ->
+        pairings.filter { status[it.id]?.done != true }.map { p ->
+            val s = status[p.id]
+            dev.wildware.agents.app.feed.JoinRequest(
+                id = p.id, name = p.name, code = p.code, host = p.host, cwd = p.cwd, address = p.address,
+                askedBy = p.askedBy?.let { it.name ?: "another agent" }, expiresAt = p.expiresAt.takeIf { it > 0 },
+                busy = s?.busy == true, error = s?.error,
+            )
+        }
+    }
+
+    private class Extras(
+        val alerts: AlertSettings,
+        val retention: RetentionSettings,
+        val mentionable: List<dev.wildware.agents.app.feed.Mentionable>,
+        val joining: List<dev.wildware.agents.app.feed.JoinRequest>,
+    )
+
     private val selected = MutableStateFlow<String?>(null)
     private var feed: Feed = dashboard.everything
     private val feeds = MutableStateFlow(feed)
@@ -142,14 +165,16 @@ class DashboardSession(
         dashboard.everything.state,
         dashboard.projects,
         dashboard.notifications,
-        combine(combine(mutableAlerts, mutableRetention, mentionables, ::Triple), lastProject, mutableDevices, ::Triple),
-    ) { shown, everything, projects, notifications, (settings, postTarget, devices) ->
-        val (alerts, retention, mentionable) = settings
+        combine(combine(mutableAlerts, mutableRetention, mentionables, joining, ::Extras), lastProject, mutableDevices, ::Triple),
+    ) { shown, everything, projects, notifications, (extras, postTarget, devices) ->
+        val alerts = extras.alerts
+        val retention = extras.retention
+        val mentionable = extras.mentionable
         // Search looks across every project's loaded cards, whichever feed is on screen.
         val all = if (shown.current.slug == null) shown else mapper.map(everything, projects, emptyList(), emptyList(), null)
         // Parse what the feed will draw before handing it over, here off the UI thread, so a card
         // that scrolls into view (or arrives) finds its markdown ready instead of parsing mid-frame.
-        shown.copy(searchIndex = searchEntriesOf(all.sections), bell = mapper.bell(notifications), alerts = alerts, retention = retention, mentionable = mentionable, postTarget = postTarget, devices = devices).also { MarkdownCache.warm(markdownIn(it).asIterable()) }
+        shown.copy(searchIndex = searchEntriesOf(all.sections), bell = mapper.bell(notifications), alerts = alerts, retention = retention, mentionable = mentionable, postTarget = postTarget, devices = devices, joining = extras.joining).also { MarkdownCache.warm(markdownIn(it).asIterable()) }
     }.stateIn(scope, SharingStarted.Eagerly, mapper.map(feed.state.value, emptyList(), emptyList(), emptyList(), null))
 
     /** True once the dashboard has stopped taking this device's key. */
@@ -199,6 +224,35 @@ class DashboardSession(
             }
             mutableDevices.value = mutableDevices.value.copy(removing = null)
         }
+    }
+
+    /**
+     * Allow or Deny, straight to the dashboard rather than through the outbox: an agent waits on it,
+     * and a name already taken has to come back to the owner to change. Decided, the prompt goes at
+     * once; refused, it stays and says why.
+     */
+    private fun decideJoin(pairingId: String, call: suspend () -> Unit) {
+        joinStatus.value = joinStatus.value + (pairingId to JoinStatus(busy = true))
+        scope.launch {
+            val problem = try {
+                call()
+                null
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (refused: DashboardException) {
+                joinProblem(refused)
+            } catch (failed: Throwable) {
+                "Couldn't reach the dashboard. Check the connection and try again."
+            }
+            joinStatus.value = joinStatus.value + (pairingId to (if (problem == null) JoinStatus(done = true) else JoinStatus(error = problem)))
+        }
+    }
+
+    private fun joinProblem(refused: DashboardException): String = when {
+        refused.code == "name_taken" -> "Another agent is already called that. Choose another name."
+        refused.status == 409 -> "This request was already decided, or it has expired."
+        refused.status == 404 -> "This request is gone: it expired, or this dashboard can't pair agents yet."
+        else -> refused.message ?: "The dashboard refused that."
     }
 
     private suspend fun loadAlerts() {
@@ -368,6 +422,8 @@ class DashboardSession(
                 })
             }
             is FeedEvent.DismissQuestion -> request(event.questionId)?.let { actions.dismiss(it.request, it.agentName) }
+            is FeedEvent.AllowAgent -> decideJoin(event.pairingId) { client.approvePairing(event.pairingId, event.name) }
+            is FeedEvent.DenyAgent -> decideJoin(event.pairingId) { client.denyPairing(event.pairingId) }
             is FeedEvent.React -> cardRef(event.targetId)?.let { actions.toggleReaction(it, event.emoji, reactionsOn(event.targetId)) }
             is FeedEvent.SendReply -> cardRef(event.threadId)?.let {
                 actions.reply(it, event.text.ifBlank { null }, answers = event.answers, files = event.files.map(::upload))

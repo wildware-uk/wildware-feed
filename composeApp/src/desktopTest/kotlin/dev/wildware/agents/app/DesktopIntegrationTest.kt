@@ -83,6 +83,20 @@ class DesktopIntegrationTest {
     }
 
     @Test
+    fun `an agent asking to join is announced once even on a device that hears only questions`() {
+        val rules = NotificationRules()
+        val first = dev.wildware.agents.PairingView(id = "pr0", name = "old", code = "AAA-BBB")
+        rules.next(true, emptyList(), feed(), null, slugs, listOf(first))
+        val asking = dev.wildware.agents.PairingView(id = "pr1", name = "laptop-personal", host = "laptop", code = "K7Q-3MD")
+        val onlyQuestions = AlertPrefs(types = listOf(AlertPrefs.Request))
+        assertEquals(
+            listOf(DesktopNotice("pairing-pr1", "laptop-personal wants to join", "From laptop. Code K7Q-3MD. Allow or deny it in the app.", null)),
+            rules.next(true, emptyList(), feed(), onlyQuestions, slugs, listOf(first, asking)),
+        )
+        assertTrue(rules.next(true, emptyList(), feed(), onlyQuestions, slugs, listOf(first, asking)).isEmpty())
+    }
+
+    @Test
     fun `an ordinary new update is still left to the feed`() {
         val rules = NotificationRules()
         rules.next(true, emptyList(), feed())

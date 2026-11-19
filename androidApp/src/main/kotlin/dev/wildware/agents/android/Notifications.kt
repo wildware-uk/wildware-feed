@@ -79,7 +79,8 @@ class AndroidNotifier(private val context: Context) {
         ) {
             return
         }
-        val question = notice.key.startsWith("request-")
+        // An agent asking to join waits on the owner as a question does: the same loud channel.
+        val question = notice.key.startsWith("request-") || notice.key.startsWith("pairing-")
         val open = PendingIntent.getActivity(
             context,
             notice.key.hashCode(),
@@ -156,10 +157,10 @@ class Alerts(
     private suspend fun follow(session: DashboardSession) {
         val dashboard = session.dashboard
         val rules = NotificationRules()
-        combine(dashboard.ready, dashboard.waiting, dashboard.everything.state) { ready, waiting, feed ->
+        combine(dashboard.ready, dashboard.waiting, dashboard.everything.state, dashboard.pairings) { ready, waiting, feed, joining ->
             onWaiting(waiting.size)
             val slugs = dashboard.projects.value.associate { it.project.id to it.project.slug }
-            rules.next(ready, waiting, feed, session.alerts.value.prefs) { id -> id?.let(slugs::get) }
+            rules.next(ready, waiting, feed, session.alerts.value.prefs, { id -> id?.let(slugs::get) }, joining)
         }.collectLatest { notices ->
             // A page goes out even with the app open: it is meant to be impossible to miss.
             notices.filter { it.critical || !onScreen() }.forEach(notifier::show)

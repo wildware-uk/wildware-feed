@@ -200,6 +200,7 @@ class Dashboard internal constructor(
     private val requests = RequestsReader(client, confined, ::changed).also { it.cache = cache }
     private val presence = PresenceReader(client, confined, ::changed).also { it.cache = cache }
     private val bell = NotificationsReader(client, confined, ::changed)
+    private val joining = PairingsReader(client, confined, ::changed)
     private val feeds = mutableMapOf<String?, Feed>()
     private var timers: Job? = null
     private var now = clock()
@@ -223,6 +224,11 @@ class Dashboard internal constructor(
     val projects: StateFlow<List<ProjectSummary>> = mutableProjects.asStateFlow()
 
     private val mutableNotifications = MutableStateFlow(NotificationList())
+
+    private val mutablePairings = MutableStateFlow<List<PairingView>>(emptyList())
+
+    /** Agents asking to join, oldest first, each waiting on the owner to allow or deny it. */
+    val pairings: StateFlow<List<PairingView>> = mutablePairings.asStateFlow()
 
     /** The bell: what the owner was told about, newest first, and how many are new. */
     val notifications: StateFlow<NotificationList> = mutableNotifications.asStateFlow()
@@ -249,6 +255,7 @@ class Dashboard internal constructor(
         requests.start()
         presence.start()
         bell.start()
+        joining.start()
         feeds.values.forEach { it.startReaders() }
         timers = confined.launch {
             launch {
@@ -341,6 +348,7 @@ class Dashboard internal constructor(
         requests.refreshNow(replace = true)
         presence.refreshNow(replace = true)
         bell.refreshNow(replace = true)
+        joining.refreshNow(replace = true)
         feeds.values.forEach { it.refreshNow() }
     }
 
@@ -370,12 +378,13 @@ class Dashboard internal constructor(
         }
     }
 
-    private fun readers(): List<FeedReader> = listOf(requests, presence, bell) + feeds.values.flatMap { it.readers }
+    private fun readers(): List<FeedReader> = listOf(requests, presence, bell, joining) + feeds.values.flatMap { it.readers }
 
     private suspend fun receive(event: StreamEvent) {
         requests.receive(event)
         presence.receive(event)
         bell.receive(event)
+        joining.receive(event)
         feeds.values.toList().forEach { it.receive(event) }
     }
 
@@ -409,6 +418,7 @@ class Dashboard internal constructor(
         feeds.values.forEach { it.publish(context, stream.status.value, requests.loading) }
         mutableProjects.value = summaries(everything.state.value)
         mutableNotifications.value = bell.list
+        if (mutablePairings.value != joining.items) mutablePairings.value = joining.items
         if (!mutableReady.value && requests.loaded && everything.state.value.loaded) mutableReady.value = true
     }
 

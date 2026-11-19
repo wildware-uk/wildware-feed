@@ -29,6 +29,10 @@ sealed interface FeedEvent {
     /** A form's answer: the agent's [action] the owner chose, with the field's [text]. */
     data class AnswerForm(val questionId: String, val action: String, val text: String) : FeedEvent
     data class DismissQuestion(val questionId: String) : FeedEvent
+    /** Let an agent that asked to join in, under [name]. */
+    data class AllowAgent(val pairingId: String, val name: String) : FeedEvent
+    /** Turn an agent that asked to join away. */
+    data class DenyAgent(val pairingId: String) : FeedEvent
     data class React(val targetId: String, val emoji: String) : FeedEvent
     /** Start replying to a line in a thread: the reply box says who it answers. */
     data class Reply(val targetId: String) : FeedEvent

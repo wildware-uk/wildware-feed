@@ -250,6 +250,8 @@ private fun FeedScreenBody(
             ui.projectDialog?.let { ProjectDialogView(ui, it) }
             ui.agentOpen?.let { AgentDialog(ui, it) }
             if (ui.devicesOpen) DevicesSheet(ui, if (phone) safeArea else SafeArea())
+            // Over everything else: an agent asking to join waits on the owner, and only for ten minutes.
+            JoinPrompt(ui, if (phone) safeArea else SafeArea())
         }
         FollowNavigation(ui, navigator)
         FollowSystemBack(ui, widthPx)

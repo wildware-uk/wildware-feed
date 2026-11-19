@@ -685,6 +685,39 @@ internal class RequestsReader(
     }
 }
 
+/**
+ * Agents asking to join, waiting on the owner. A decided or expired one leaves at once; anything
+ * else re-reads. A dashboard from before pairing answers 404: the read fails and the list stays empty.
+ */
+internal class PairingsReader(
+    private val client: DashboardClient,
+    scope: CoroutineScope,
+    onChange: () -> Unit,
+) : FeedReader(scope, onChange) {
+    var items: List<PairingView> = emptyList(); private set
+
+    override val watched = setOf("pairing.created", "pairing.updated", StreamEvent.Resync)
+
+    override fun handle(event: StreamEvent) {
+        if (event.type == "pairing.updated" && event.payload.string("state") != "pending") {
+            val id = event.payload.string("pairingId")
+            if (id != null && items.any { it.id == id }) {
+                items = items.filter { it.id != id }
+                onChange()
+            }
+        }
+        super.handle(event)
+    }
+
+    override suspend fun load(replace: Boolean) = apply(client.pairings())
+
+    internal fun apply(next: PairingsSnapshot) {
+        items = next.pairings.filter { it.state == "pending" }
+        seq = next.seq
+        loaded = true
+    }
+}
+
 /** The bell's list. Re-read whenever one is added or the owner clears some, on this device or another. */
 internal class NotificationsReader(
     private val client: DashboardClient,

@@ -4,6 +4,7 @@ import dev.wildware.agents.AlertPrefs
 import dev.wildware.agents.FeedCard
 import dev.wildware.agents.FeedState
 import dev.wildware.agents.MessageView
+import dev.wildware.agents.PairingView
 import dev.wildware.agents.PlainText
 import dev.wildware.agents.PostCard
 import dev.wildware.agents.RequestCard
@@ -31,7 +32,8 @@ data class DesktopNotice(
  *   the owner's post, or lands in an update, task or question thread the owner has written in
  *   (the server's own "replied to you" rule);
  * - an agent's message that mentions the owner: `@you` or `@owner`;
- * - an update an agent marked critical (other updates stay in the feed and under the bell).
+ * - an update an agent marked critical (other updates stay in the feed and under the bell);
+ * - an agent asking to join, whatever the device's choice of alerts: it waits on the owner.
  *
  * Something marked critical is flagged [DesktopNotice.critical] where the device's choice lets it
  * page ([AlertPrefs.pages]).
@@ -54,12 +56,15 @@ class NotificationRules(private val maxBody: Int = 140) {
         prefs: AlertPrefs? = null,
         /** A project's slug by its id, for a device that lets only some projects page it. */
         slugOf: (String?) -> String? = { null },
+        /** Agents asking to join. */
+        joining: List<PairingView> = emptyList(),
     ): List<DesktopNotice> {
         if (!ready) return emptyList()
         val threads = threadsOf(feed, waiting)
         if (!baselined) {
             baselined = true
             waiting.forEach { seen += requestKey(it.id) }
+            joining.forEach { seen += pairingKey(it.id) }
             feed.allCards.filterIsInstance<UpdateCard>().forEach { seen += updateKey(it.id) }
             threads.forEach { thread -> thread.lines.forEach { seen += messageKey(it.message.id) } }
             watermark = threads.flatMap { it.lines }.maxOfOrNull { it.message.createdAt } ?: Long.MIN_VALUE
@@ -67,6 +72,11 @@ class NotificationRules(private val maxBody: Int = 140) {
         }
 
         val notices = mutableListOf<DesktopNotice>()
+        for (pairing in joining) {
+            if (!seen.add(pairingKey(pairing.id))) continue
+            val from = pairing.host?.let { "From $it. " }.orEmpty()
+            notices += DesktopNotice(pairingKey(pairing.id), "${pairing.name} wants to join", "${from}Code ${pairing.code}. Allow or deny it in the app.", null)
+        }
         for (card in waiting) {
             if (!seen.add(requestKey(card.id))) continue
             val request = card.request
@@ -142,6 +152,7 @@ class NotificationRules(private val maxBody: Int = 140) {
         fun mentionsOwner(body: String): Boolean = OwnerMention.containsMatchIn(body)
 
         private fun requestKey(id: String) = "request-$id"
+        private fun pairingKey(id: String) = "pairing-$id"
         private fun messageKey(id: String) = "message-$id"
         private fun updateKey(id: String) = "update-$id"
     }

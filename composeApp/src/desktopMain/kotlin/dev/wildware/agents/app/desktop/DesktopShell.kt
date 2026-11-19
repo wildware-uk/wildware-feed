@@ -84,10 +84,10 @@ class DesktopShell(
     private suspend fun follow(session: DashboardSession) {
         val dashboard = session.dashboard
         val rules = NotificationRules()
-        combine(dashboard.ready, dashboard.waiting, dashboard.everything.state, dashboard.status) { ready, waiting, feed, status ->
+        combine(dashboard.ready, dashboard.waiting, dashboard.everything.state, dashboard.status, dashboard.pairings) { ready, waiting, feed, status, joining ->
             tray.show(TrayLook.of(waiting.size, offline = status == StreamStatus.Offline))
             val slugs = dashboard.projects.value.associate { it.project.id to it.project.slug }
-            rules.next(ready, waiting, feed, session.alerts.value.prefs) { id -> id?.let(slugs::get) }
+            rules.next(ready, waiting, feed, session.alerts.value.prefs, { id -> id?.let(slugs::get) }, joining)
         }.collectLatest { notices ->
             if (mutableSettings.value.doNotDisturb || windowFocused()) return@collectLatest
             notices.forEach { notice -> notifier.show(notice) { open(notice.focusId) } }

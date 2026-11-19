@@ -37,6 +37,8 @@ class FakeDashboard(scheduler: TestCoroutineScheduler) {
     var requests = listOf<RequestView>()
     var agents = listOf<LiveAgentView>()
     var notifications = listOf<NotificationView>()
+    /** Null is a dashboard from before pairing: `/api/pairings` is a 404. */
+    var pairings: List<PairingView>? = null
 
     /** An older dashboard, from before the bell: `/api/notifications` is a 404. */
     var notificationsMissing = false
@@ -154,6 +156,8 @@ class FakeDashboard(scheduler: TestCoroutineScheduler) {
                 reactions = reactions,
             )))
             "/api/snapshot/requests" -> ok(json.encodeToString(RequestsSnapshot.serializer(), RequestsSnapshot(seq, requests = requests)))
+            "/api/pairings" -> pairings?.let { ok(json.encodeToString(PairingsSnapshot.serializer(), PairingsSnapshot(seq, pairings = it))) }
+                ?: ok("""{"error":"not_found","message":"no such API route: /api/pairings"}""", HttpStatusCode.NotFound)
             "/api/snapshot/agents" -> ok(json.encodeToString(AgentsSnapshot.serializer(), AgentsSnapshot(seq, agents = agents)))
             "/api/notifications" -> if (notificationsMissing) ok("""{"error":"not_found"}""", HttpStatusCode.NotFound) else ok(json.encodeToString(NotificationsSnapshot.serializer(), NotificationsSnapshot(
                 seq = seq,

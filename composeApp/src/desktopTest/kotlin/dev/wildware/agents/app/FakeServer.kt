@@ -65,6 +65,10 @@ class FakeServer {
         LiveAgentView(agentId = "a1", name = "forge", lastHeartbeatAt = now(), host = "build-box", cwd = "/work/garden-game", model = "claude-opus-5-5"),
     )
     var notifications = listOf<NotificationView>()
+    /** Agents asking to join, as `GET /api/pairings` lists them. */
+    var pairings = listOf<dev.wildware.agents.PairingView>()
+    /** When set, Allow is refused with this error code, as a taken name is (409). */
+    @Volatile var refuseApprove: String? = null
     /** This device's alert choice, as `{"prefs":…}` JSON. */
     var alertPrefs = """{"prefs":null}"""
     /** The devices signed in as the owner, as `GET /api/devices` answers. */
@@ -117,6 +121,9 @@ class FakeServer {
                 path == "/api/projects" -> ok("""{"project":{"id":"p-new","slug":"harbor-app","name":"harbor-app"},"created":true}""", HttpStatusCode.Created)
                 path.startsWith("/api/projects/") -> ok("""{"project":{"id":"p1","slug":"${path.substringAfterLast('/')}","name":"x"}}""")
                 path == "/api/media" -> ok("""{"media":{"id":"md-up","kind":"image","mime":"image/png","status":"pending"}}""", HttpStatusCode.Created)
+                path.startsWith("/api/pairings/") && path.endsWith("/approve") -> refuseApprove?.let {
+                    ok("""{"error":"$it","message":"an agent is already called \"forge\"; choose another name"}""", HttpStatusCode.Conflict)
+                } ?: ok("{}")
                 else -> ok("{}")
             }
         }
@@ -143,6 +150,7 @@ class FakeServer {
             "/api/devices/current/alert-prefs" -> ok(alertPrefs)
             "/api/devices" -> ok(devices)
             "/api/settings/media-retention" -> mediaRetention?.let { ok(it) } ?: ok("""{"error":"forbidden","message":"Only the owner can change this."}""", HttpStatusCode.Forbidden)
+            "/api/pairings" -> ok(json.encodeToString(dev.wildware.agents.PairingsSnapshot.serializer(), dev.wildware.agents.PairingsSnapshot(seq, pairings = pairings)))
             "/api/snapshot/agents" -> ok(json.encodeToString(AgentsSnapshot.serializer(), AgentsSnapshot(seq, agents = agents)))
             "/api/notifications" -> ok(json.encodeToString(NotificationsSnapshot.serializer(), NotificationsSnapshot(
                 seq, notifications = notifications, unseen = notifications.count { it.seenAt == null },

@@ -365,6 +365,36 @@ data class RequestsSnapshot(
     val requests: List<RequestView> = emptyList(),
 )
 
+/** The agent that asked for a pairing over MCP, with a token it already holds. */
+@Serializable
+data class PairingAsker(val id: String, val name: String? = null)
+
+/**
+ * An agent asking to join the dashboard under [name] (`GET /api/pairings`). The owner checks
+ * [code] against what the agent says, may change the name, and allows or denies it.
+ */
+@Serializable
+data class PairingView(
+    val id: String,
+    val name: String,
+    val host: String? = null,
+    val cwd: String? = null,
+    val address: String? = null,
+    val code: String = "",
+    val state: String = "pending",
+    val askedBy: PairingAsker? = null,
+    val createdAt: Long = 0,
+    val expiresAt: Long = 0,
+)
+
+/** `GET /api/pairings`: every agent waiting to be allowed in. */
+@Serializable
+data class PairingsSnapshot(
+    val seq: Long,
+    val at: String = "",
+    val pairings: List<PairingView> = emptyList(),
+)
+
 /** `GET /api/snapshot/agents`: who has beaten lately. */
 @Serializable
 data class AgentsSnapshot(

@@ -188,6 +188,35 @@ class EngineWiringTest {
         waitForLabel("Connection: Live")
     }
 
+    private fun joining() = dev.wildware.agents.PairingView(
+        id = "pr1", name = "laptop-personal", host = "laptop", code = "K7Q-3MD",
+        createdAt = System.currentTimeMillis(), expiresAt = System.currentTimeMillis() + 600_000,
+    )
+
+    @Test
+    fun anAgentAskingToJoinIsAllowedUnderTheChosenName() = runDesktopComposeUiTest(width = 1440, height = 900) {
+        server.pairings = listOf(joining())
+        app()
+        waitFor("laptop-personal wants to join")
+        onNode(hasContentDescription("Agent name") and hasSetTextAction()).performTextReplacement("laptop")
+        onNode(hasText("Allow") and hasClickAction()).performClick()
+        val body = waitForWrite("POST", "/api/pairings/pr1/approve")
+        assertEquals("""{"name":"laptop"}""", body)
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasText("laptop-personal wants to join")).fetchSemanticsNodes().isEmpty() }
+    }
+
+    @Test
+    fun aTakenNameKeepsThePromptOpenAndSaysWhy() = runDesktopComposeUiTest(width = 1440, height = 900) {
+        server.pairings = listOf(joining().copy(name = "forge"))
+        server.refuseApprove = "name_taken"
+        app()
+        waitFor("forge wants to join")
+        onNode(hasText("Allow") and hasClickAction()).performClick()
+        waitFor("Another agent is already called that. Choose another name.")
+        onNode(hasText("Deny") and hasClickAction()).performClick()
+        waitForWrite("POST", "/api/pairings/pr1/deny")
+    }
+
     @Test
     fun answeringAQuestionSendsTheAnswer() = runDesktopComposeUiTest(width = 1440, height = 900) {
         app()

@@ -505,6 +505,8 @@ data class FeedState(
     val postTarget: String? = null,
     /** The devices signed in as the owner, read when the Devices sheet opens. */
     val devices: DeviceList = DeviceList(),
+    /** Agents asking to join, oldest first: each waits on the owner to allow or deny it. */
+    val joining: List<JoinRequest> = emptyList(),
 ) {
     fun item(id: String): FeedItem? = sections.firstNotNullOfOrNull { s -> s.items.firstOrNull { it.id == id } }
 }
@@ -609,6 +611,25 @@ data class Mentionable(
     val hue: Int = 0,
     /** A short line beside the name, as for a group. */
     val hint: String? = null,
+)
+
+/**
+ * An agent asking to join under [name], from [host] (what it says) and [address] (what the
+ * dashboard saw), with the [code] it was given. [askedBy] names the agent that asked for it, when
+ * one that is already in did. [busy] while Allow or Deny is on its way; [error] when it was refused.
+ */
+@Immutable
+data class JoinRequest(
+    val id: String,
+    val name: String,
+    val code: String,
+    val host: String? = null,
+    val cwd: String? = null,
+    val address: String? = null,
+    val askedBy: String? = null,
+    val expiresAt: Long? = null,
+    val busy: Boolean = false,
+    val error: String? = null,
 )
 
 /** Something marked critical, for the red banner on desktop: who, and what, in one line. */
