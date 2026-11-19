@@ -210,9 +210,9 @@ class OwnerActions(
     private val clock: () -> Long = { Clock.System.now().toEpochMilliseconds() },
     private val newId: () -> String = { Uuid.random().toString() },
 ) {
-    /** Writes a new post into a project's feed. */
-    fun post(project: ProjectRef, text: String?, files: List<Attachment> = emptyList()): String =
-        queue(files) { id, stored -> Outbox.message(id, clock(), "To ${project.name}", mapOf("project" to project.slug), text, stored) }
+    /** Writes a new post into a project's feed, wearing [tags] once it is up. */
+    fun post(project: ProjectRef, text: String?, files: List<Attachment> = emptyList(), tags: List<OutboxTag> = emptyList()): String =
+        queue(files) { id, stored -> Outbox.message(id, clock(), "To ${project.name}", mapOf("project" to project.slug), text, stored).copy(tags = tags) }
 
     /** Posts and marks it as work, so an agent on the project picks it up. */
     fun ticket(project: ProjectRef, text: String): String = queue(emptyList()) { id, _ -> Outbox.ticket(id, clock(), project, text) }

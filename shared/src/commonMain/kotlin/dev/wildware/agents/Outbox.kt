@@ -60,6 +60,10 @@ data class OutboxAnswer(
     val typedText: String? = null,
 )
 
+/** A tag a post goes up wearing: a tag's id, or with [create] a new word the project doesn't have yet. */
+@Serializable
+data class OutboxTag(val tag: String, val create: Boolean = false)
+
 /**
  * One thing the owner sent that hasn't reached the dashboard yet. Every send goes through the outbox,
  * so nothing typed, said or shared is lost when there's no signal.
@@ -97,6 +101,8 @@ data class OutboxItem(
     val create: Boolean? = null,
     /** For a field: its name. */
     val field: String? = null,
+    /** For a post: the tags it goes up wearing, put on once it is posted. */
+    val tags: List<OutboxTag> = emptyList(),
 ) {
     /** Items in one thread go in the order they were written. */
     val threadKey: String
@@ -309,7 +315,20 @@ internal suspend fun DashboardClient.deliverQueued(item: OutboxItem, attachments
     var sent: MessageView? = null
     return try {
         when (item.kind) {
-            OutboxKind.Message -> sent = sendMessage(item.thread + listOfNotNull(item.answers?.let { "answers" to it }), item.text, attachments).message
+            OutboxKind.Message -> {
+                val posted = sendMessage(item.thread + listOfNotNull(item.answers?.let { "answers" to it }), item.text, attachments).message
+                sent = posted
+                // As on the website, a tag that won't go on doesn't undo the post: the words matter more.
+                val card = posted?.let { CardRef(CardKinds.Message, it.id) }
+                if (card != null) item.tags.forEach { t ->
+                    try {
+                        tagCard(card, t.tag, true, create = t.create)
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (_: Exception) {
+                    }
+                }
+            }
             OutboxKind.Ticket -> {
                 val slug = item.thread["project"] ?: return DeliveryResult(DeliveryOutcome.GiveUp, message = "It has no project.")
                 ticketMessageId = ticketMessageId ?: postToProject(slug, item.text.orEmpty())

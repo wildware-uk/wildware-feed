@@ -37,6 +37,29 @@ class OwnerActionsTest {
     }
 
     @Test
+    fun `a post goes up then wears its tags and a tag that fails does not post it again`() = runTest {
+        val server = FakeDashboard(testScheduler)
+        var tagged = 0
+        server.onWrite = { request, _ ->
+            if (request.url.encodedPath.endsWith("/tags") && ++tagged == 1) respond("""{"error":"internal"}""", HttpStatusCode.InternalServerError) else null
+        }
+        val (queue, actions) = setUp(server)
+
+        actions.post(ProjectRef("mega", "Mega"), "Ship it", tags = listOf(OutboxTag("t1"), OutboxTag("needs review", create = true)))
+        runCurrent()
+
+        assertEquals(
+            listOf(
+                "POST /api/messages" to """{"project":"mega","body":"Ship it"}""",
+                "POST /api/cards/message/m-new/tags" to """{"tag":"t1","on":true}""",
+                "POST /api/cards/message/m-new/tags" to """{"tag":"needs review","on":true,"create":true}""",
+            ),
+            server.writes,
+        )
+        assertTrue(queue.items.value.isEmpty(), "sent once, even though the first tag failed")
+    }
+
+    @Test
     fun `a reply answering a line says which line on the right thread`() = runTest {
         val server = FakeDashboard(testScheduler)
         val (_, actions) = setUp(server)

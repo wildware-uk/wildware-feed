@@ -36,7 +36,7 @@ sealed interface FeedEvent {
     data class SendReply(val threadId: String, val text: String, val answers: String?, val files: List<PendingFile> = emptyList()) : FeedEvent
     /** Write a new post into the project on screen. */
     /** Write a new post: into [project] (a slug) when given, as from "All projects", else the project on screen. */
-    data class Post(val text: String, val files: List<PendingFile> = emptyList(), val project: String? = null) : FeedEvent
+    data class Post(val text: String, val files: List<PendingFile> = emptyList(), val project: String? = null, val tags: List<CardTag> = emptyList()) : FeedEvent
     data class CopyText(val targetId: String) : FeedEvent
     /** Phones: show this card's or line's words with all of them selected, to pick some out. */
     data class SelectText(val targetId: String) : FeedEvent
@@ -494,6 +494,15 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
     var tagging by mutableStateOf<String?>(null)
 
     /**
+     * Tags picked for the next post, before it is written, by project id: the tag picker opens on
+     * [NewPostTags] to choose them. They go with the post and are cleared once it is sent.
+     */
+    val postTags = mutableStateMapOf<String, List<CardTag>>()
+
+    /** The tags picked for the next post in [projectId], handed over and forgotten: the post is going. */
+    fun takePostTags(projectId: String): List<CardTag> = postTags.remove(projectId).orEmpty()
+
+    /**
      * Only cards wearing this tag are shown, by name; null for all. Setting one takes the feed to
      * its top, where the header says which tag it is showing and how to show everything again.
      */
@@ -540,6 +549,17 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
         is FeedItem.Update -> item.tags
         is FeedItem.Post -> item.tags
         is FeedItem.Question -> item.tags
+    }
+
+    /** A tag put on or taken off the post not yet written, in [projectId]. Nothing is sent until it is. */
+    fun tagNewPost(projectId: String, tag: String, on: Boolean, create: Boolean) {
+        val picked = if (create) {
+            CardTag("new:${tag.lowercase()}", tag, null, projectId).also { made -> if (madeHere.none { it.id == made.id }) madeHere += made }
+        } else {
+            vocabularyFor(projectId).firstOrNull { it.id == tag || it.name.equals(tag, ignoreCase = true) } ?: return
+        }
+        val now = postTags[projectId].orEmpty().filterNot { it.id == picked.id || it.name.equals(picked.name, ignoreCase = true) }
+        postTags[projectId] = if (on) now + picked else now
     }
 
     private fun noteTag(event: FeedEvent.Tag) {

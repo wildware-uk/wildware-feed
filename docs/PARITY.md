@@ -120,7 +120,7 @@ It doesn't, beyond oldest first.
 | 73 | Post to a project | Done | Textarea, Cmd/Ctrl+Enter, media-only OK | Yes (shown only when a project is open) | Yes | — | — |
 | 74 | Post from All projects | Open | "Choose a project" select (`Composer.svelte:170-189`) | **No**: composer hidden on All projects (`FeedScreen.kt`) | **No** | Port the project picker | P1 |
 | 75 | Attachments | Done | Paste, drop, Add file, progress bar, max 24 (`Attachments.svelte`, `uploads.svelte.ts`) | Yes; 25 MB cap; no progress bar | Yes | No upload progress | P2 |
-| 76 | Tags at post time | Open | Pick tags before posting | No | No | With row 47 | P2 |
+| 76 | Tags at post time | Done | Pick tags before posting | Yes: "#" by the message box picks tags (or makes one); they show above the box and go on the post once it is up | Yes | — | P2 |
 | 77 | Voice dictation | Done | — | Yes hold-to-talk (`Voice.kt`) | Yes if available | App only | — |
 | 78 | Share into the app | Done | — | Yes, iOS share extension | Desktop drop | App only | — |
 | 79 | @mention | Done | Plain text only, server routes | Yes: typing @ in any message box lists the agents, online first; letters filter, a tap picks (`Mentions.kt`) | Yes: same, with arrows, Enter or Tab, and an "@" button | App richer: the website had no list | P2 |

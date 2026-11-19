@@ -520,6 +520,8 @@ fun Composer(
     focus: FocusRequester? = null,
     /** Which draft this box writes: "project:<slug>", "thread:<id>". */
     draftKey: String? = null,
+    /** A new post's box: the project (by id) whose tags it can go up wearing. Replies have none. */
+    tagProject: String? = null,
 ) {
     val colors = AgentTheme.colors
     val shape = AgentTheme.shapes.large
@@ -634,6 +636,7 @@ fun Composer(
             }
             .padding(start = 6.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
     ) {
+        if (ui != null && tagProject != null) NewPostTagChips(ui, tagProject, Modifier.padding(start = 8.dp, top = 8.dp, bottom = 2.dp))
         AttachmentStrip(files, onRemove = { files.remove(it) }, Modifier.padding(start = 8.dp, top = 8.dp, bottom = 4.dp))
         refused?.let { MetaText(it, Modifier.padding(start = 8.dp, top = 4.dp), color = colors.error) }
         recorder?.note?.let { MetaText(it, Modifier.padding(start = 8.dp, top = 4.dp), color = colors.textMuted) }
@@ -645,6 +648,10 @@ fun Composer(
                 IconAction(Icons.Paperclip, "Attach files") { picker.pick { picked -> add(picked) } }
             } else {
                 Spacer(Modifier.width(8.dp))
+            }
+            // Tags to post it with, chosen before it is written, as on the website.
+            if (ui != null && tagProject != null) {
+                IconAction(Icons.Hash, "Add a tag") { ui.tagging = NewPostTags + tagProject }
             }
             if (recorder?.active == true) RecordingStrip(recorder, Modifier.weight(1f)) else TextInput(
                 text,

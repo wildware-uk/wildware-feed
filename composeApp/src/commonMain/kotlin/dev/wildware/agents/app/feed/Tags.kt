@@ -85,6 +85,30 @@ private fun TagLabel(tag: CardTag, trailing: (@Composable () -> Unit)? = null) {
     }
 }
 
+/**
+ * The tags the next post will wear, above the message box, each with a cross to take it off; and a
+ * way to add more. Nothing when the post has none: the box's "#" button adds the first.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun NewPostTagChips(ui: FeedUi, projectId: String, modifier: Modifier = Modifier) {
+    val picked = ui.postTags[projectId].orEmpty()
+    if (picked.isEmpty()) return
+    val shape = AgentTheme.shapes.small
+    FlowRow(modifier, horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        picked.forEach { tag ->
+            Box(
+                Modifier.clip(shape).pressable("Take the tag ${tag.name} off this post", shape) { ui.tagNewPost(projectId, tag.id, on = false, create = false) },
+                contentAlignment = Alignment.Center,
+            ) {
+                TagLabel(tag) {
+                    Icon(Icons.Close, null, tint = AgentTheme.colors.textMuted, modifier = Modifier.padding(start = 4.dp).size(12.dp))
+                }
+            }
+        }
+    }
+}
+
 /** "#bug ✕" above the feed while it shows only one tag. Tapping it shows everything again. */
 @Composable
 fun TagFilterChip(modifier: Modifier = Modifier) {
@@ -99,31 +123,36 @@ fun TagFilterChip(modifier: Modifier = Modifier) {
     }
 }
 
+/** What [FeedUi.tagging] holds while the picker chooses tags for a post not yet written: this, then the project's id. */
+const val NewPostTags = "new-post:"
+
 /**
  * The tags a card can wear, ticked where it wears them. One tap puts a tag on or takes it off, at
- * once; a new word is typed at the bottom and goes straight on the card.
+ * once; a new word is typed at the bottom and goes straight on the card. Opened on [NewPostTags], it
+ * chooses the tags the next post goes up wearing instead, and sends nothing.
  */
 @Composable
 fun TagPicker(ui: FeedUi, cardId: String) {
     val colors = AgentTheme.colors
+    val newPost = cardId.takeIf { it.startsWith(NewPostTags) }?.removePrefix(NewPostTags)
     val item = ui.state.item(cardId)
-    val (project, base) = when (item) {
-        is FeedItem.Update -> item.project.id to item.tags
-        is FeedItem.Post -> item.project.id to item.tags
+    val (project, base) = when {
+        newPost != null -> newPost to ui.postTags[newPost].orEmpty()
+        item is FeedItem.Update -> item.project.id to item.tags
+        item is FeedItem.Post -> item.project.id to item.tags
         else -> null to emptyList()
     }
-    val wearing = ui.tagsFor(cardId, base)
+    val wearing = if (newPost != null) base else ui.tagsFor(cardId, base)
+    val toggle = { tag: String, on: Boolean, create: Boolean ->
+        if (newPost != null) ui.tagNewPost(newPost, tag, on, create) else ui.emit(FeedEvent.Tag(cardId, tag, on, create))
+    }
     val words = ui.vocabularyFor(project)
     val typed = rememberTextFieldState()
     val add = {
         val name = typed.text.toString().trim().take(TagMaxLength)
         if (name.isNotEmpty()) {
             val known = words.firstOrNull { it.name.equals(name, ignoreCase = true) && !it.id.startsWith("new:") }
-            if (known != null) {
-                ui.emit(FeedEvent.Tag(cardId, known.id, on = true))
-            } else {
-                ui.emit(FeedEvent.Tag(cardId, name, on = true, create = true))
-            }
+            if (known != null) toggle(known.id, true, false) else toggle(name, true, true)
             typed.clearText()
         }
     }
@@ -143,7 +172,7 @@ fun TagPicker(ui: FeedUi, cardId: String) {
                         val on = wearing.any { it.id == tag.id || it.name.equals(tag.name, ignoreCase = true) }
                         TagRow(tag, on) {
                             val made = tag.id.startsWith("new:")
-                            ui.emit(FeedEvent.Tag(cardId, if (made) tag.name else tag.id, on = !on, create = made && !on))
+                            toggle(if (made) tag.name else tag.id, !on, made && !on)
                         }
                     }
                 }

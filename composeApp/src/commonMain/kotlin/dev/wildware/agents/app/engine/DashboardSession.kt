@@ -3,6 +3,7 @@ package dev.wildware.agents.app.engine
 import dev.wildware.agents.UpdateCard
 import kotlinx.coroutines.flow.distinctUntilChanged
 import dev.wildware.agents.CardKinds
+import dev.wildware.agents.OutboxTag
 import dev.wildware.agents.CardRef
 import dev.wildware.agents.Dashboard
 import dev.wildware.agents.FeedCache
@@ -322,7 +323,9 @@ class DashboardSession(
             }
             is FeedEvent.Post -> (event.project?.let(::projectRef) ?: postTarget())?.let {
                 remember(it.slug)
-                actions.post(it, event.text.ifBlank { null }, event.files.map(::upload))
+                // A word made in the picker isn't on the dashboard yet: it is made as it goes on.
+                val tags = event.tags.map { t -> if (t.id.startsWith("new:")) OutboxTag(t.name, create = true) else OutboxTag(t.id) }
+                actions.post(it, event.text.ifBlank { null }, event.files.map(::upload), tags)
             }
             is FeedEvent.Delete -> cardRef(event.targetId)?.let { actions.delete(it) }
             is FeedEvent.Tag -> cardRef(event.targetId)?.let { actions.tag(it, event.tag, event.on, event.create) }
