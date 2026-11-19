@@ -77,7 +77,7 @@ class MediaRetentionTest {
     // --- The form --------------------------------------------------------------------------------
 
     @Test
-    fun `a saved length opens on its preset, or on custom with its number`() {
+    fun `a saved length opens on its preset or on custom with its number`() {
         assertEquals(RetentionPeriod.Forever, RetentionForm.of(MediaRetention()).period)
         assertEquals(RetentionPeriod.Preset(30), RetentionForm.of(MediaRetention(30)).period)
         val custom = RetentionForm.of(MediaRetention(45))
@@ -117,7 +117,7 @@ class MediaRetentionTest {
     }
 
     @Test
-    fun `turning it on, shortening it or adding a kind asks first, the rest does not`() {
+    fun `turning it on or shortening it or adding a kind asks first and the rest does not`() {
         val off = RetentionForm.of(MediaRetention())
         assertTrue(off.choose(RetentionPeriod.Preset(90)).deletesMore, "turning it on")
         assertFalse(off.deletesMore, "nothing changed")
@@ -162,7 +162,7 @@ class MediaRetentionTest {
     }
 
     @Test
-    fun `saving sends days, null for forever, and the kinds`() = runTest {
+    fun `saving sends days and null for forever and the kinds`() = runTest {
         val stored = client(body = """{"days":7,"kinds":["image"]}""").setMediaRetention(MediaRetention(7, listOf("image")))
         client(body = """{"days":null,"kinds":["image"]}""").setMediaRetention(MediaRetention(null, listOf("image")))
 

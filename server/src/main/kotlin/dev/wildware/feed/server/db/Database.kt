@@ -105,7 +105,12 @@ class Database private constructor(
         if (dialect == Dialect.SQLITE) "$expr COLLATE NOCASE"
         else "translate($expr, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz') COLLATE \"C\""
 
+    private var closed = false
+
+    /** Closes once; a second close (an App and a test both holding it) does nothing. */
     override fun close() = lock.withLock {
+        if (closed) return@withLock
+        closed = true
         try {
             connection.close()
         } finally {
