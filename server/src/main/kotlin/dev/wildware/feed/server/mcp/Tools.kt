@@ -3,6 +3,8 @@ package dev.wildware.feed.server.mcp
 import dev.wildware.feed.server.App
 import dev.wildware.feed.server.domain.Agents
 import dev.wildware.feed.server.domain.DomainError
+import dev.wildware.feed.server.domain.Groups
+import dev.wildware.feed.server.domain.feed
 import dev.wildware.feed.server.domain.Js
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.json.Json
@@ -17,6 +19,22 @@ import kotlinx.serialization.json.jsonPrimitive
 /** Who is calling and with what: the agent is fixed by its token; no tool takes an agent argument. */
 class ToolCall(val app: App, val agent: Agents.Agent, val args: JsonObject) {
     val author get() = "agent:${agent.id}"
+
+    /**
+     * The channel the call names: `channel`, or `project`, its older name (migration 053). Both may
+     * be sent only when they say the same.
+     */
+    fun channel(): String? {
+        val channel = (args["channel"] as? JsonPrimitive)?.takeIf { it.isString }?.content
+        val project = (args["project"] as? JsonPrimitive)?.takeIf { it.isString }?.content
+        if (channel != null && project != null && channel.trim().lowercase() != project.trim().lowercase()) {
+            throw DomainError("invalid_argument", "pass channel or project (its older name), not both", 400)
+        }
+        return channel ?: project
+    }
+
+    /** [channel], where one is needed. */
+    fun requiredChannel(): String = channel() ?: throw DomainError("invalid_argument", "channel is required", 400)
 }
 
 /** A tool's answer, in the TS `ok`/`failed` envelope (spec/05-mcp.md §3). */
@@ -94,6 +112,19 @@ class ToolRegistry {
         return if (issues.isEmpty()) null else pretty.encodeToString(JsonElement.serializer(), JsonArray(issues))
     }
 
+    /**
+     * A channel reference that names a group instead says so (migration 053): the app calls a group
+     * a project, so an agent told "the X project" may pass a group's slug as `project`.
+     */
+    private fun groupHint(app: App, e: DomainError): String {
+        val prefix = "no such project: "
+        if (e.code != "not_found" || !e.message.startsWith(prefix)) return e.message
+        val ref = e.message.removePrefix(prefix)
+        if (runCatching { Groups(app.feed).find(ref) }.getOrNull() == null) return e.message
+        return "${e.message} (that is a project, a group of channels: pass it as group where a tool takes one, " +
+            "or name one of its channels; list_projects shows them)"
+    }
+
     /** `tools/call`, as the SDK would answer it. */
     suspend fun call(app: App, agent: Agents.Agent, params: JsonObject?): ToolResult {
         val name = (params?.get("name") as? JsonPrimitive)?.content ?: ""
@@ -106,7 +137,7 @@ class ToolRegistry {
         return try {
             handler(ToolCall(app, agent, args!!))
         } catch (e: DomainError) {
-            ToolResult.failed(e.code, e.message)
+            ToolResult.failed(e.code, groupHint(app, e))
         } catch (e: Exception) {
             System.err.println("mcp tool failed: $e")
             e.printStackTrace()

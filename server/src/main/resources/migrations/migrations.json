@@ -362,5 +362,12 @@
   "file": "052-subscriptions.sql",
   "rebuildsTables": false,
   "checksum": "29e9657d78daa8927c8650c5942453e060d3c226873b5613202299f868389e1e"
+ },
+ {
+  "version": 53,
+  "name": "channels-and-projects",
+  "file": "053-channels-and-projects.sql",
+  "rebuildsTables": false,
+  "checksum": "77971e79f52f9916a824229b9dc5ecae478ce7a8cd152c2ecca5735472b97414"
  }
 ]

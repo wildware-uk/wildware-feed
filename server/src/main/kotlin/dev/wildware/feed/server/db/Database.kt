@@ -320,7 +320,8 @@ object PostgresMigrations {
         Json.decodeFromString<List<Migration>>(text).sortedBy { it.version }
     }
 
-    fun run(db: Database) {
+    /** Apply every migration not applied yet, up to [upTo] (tests stop early to seed older data). */
+    fun run(db: Database, upTo: Int = Int.MAX_VALUE) {
         db.withConnection { c ->
             c.createStatement().use {
                 it.execute(
@@ -340,7 +341,7 @@ object PostgresMigrations {
                 "Migrations are append-only: migration $version has changed since it was applied."
             }
         }
-        for (migration in all.filter { it.version !in applied }) {
+        for (migration in all.filter { it.version !in applied && it.version <= upTo }) {
             db.transaction { c ->
                 c.createStatement().use { st -> SqlScript.split(migration.sql).forEach { st.execute(it) } }
                 c.prepareStatement("INSERT INTO ${Database.MIGRATIONS_TABLE} (version, name, checksum, applied_at) VALUES (?, ?, ?, ?)").use {

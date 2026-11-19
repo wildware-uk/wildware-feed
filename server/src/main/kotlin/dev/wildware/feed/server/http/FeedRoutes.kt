@@ -3,6 +3,8 @@ package dev.wildware.feed.server.http
 import dev.wildware.feed.server.App
 import dev.wildware.feed.server.domain.CardRef
 import dev.wildware.feed.server.domain.Given
+import dev.wildware.feed.server.domain.Groups
+import dev.wildware.feed.server.domain.groups
 import dev.wildware.feed.server.domain.Messages
 import dev.wildware.feed.server.domain.Projects
 import dev.wildware.feed.server.domain.Subscriptions
@@ -51,6 +53,7 @@ fun Route.feedRoutes(app: App) {
                 pinned = if ("pinned" in body) flag(body["pinned"], "pinned") else null,
                 theme = if ("theme" in body) Given(themePatch(body["theme"]!!)) else null,
                 board = if ("board" in body) Given(body["board"]!!) else null,
+                group = if ("groupId" in body) Given(nullableText(body["groupId"], "groupId")) else null,
             )
             call.respondOwner(200, buildJsonObject { put("project", app.feed.projects.update(param("reference"), patch).json) })
         },
@@ -254,19 +257,77 @@ fun Route.feedRoutes(app: App) {
         },
     )
 
+    // A level, or null to clear it: a channel then follows its group, a group the default (spec/12).
+    fun level(body: JsonObject): String? {
+        if ("level" !in body) throw invalid("level must be a string")
+        val level = nullableText(body["level"], "level")
+        if (level != null && level !in Subscriptions.LEVELS) throw invalid("level must be one of: ${Subscriptions.LEVELS.joinToString(", ")}")
+        return level
+    }
+
     endpoint(
         "/api/projects/{reference}/subscription",
         HttpMethod.Put to {
-            val level = text(call.jsonObjectBody()["level"], "level")
+            val level = level(call.jsonObjectBody())
             val project = app.feed.projects.resolve(param("reference"))
             val subs = Subscriptions(app.db, app.clock)
-            if (subs.ownerLevel(project.id) != level) {
+            if (subs.ownerChannelLevel(project.id) != level) {
                 subs.setOwnerLevel(project.id, level)
                 changed()
-            } else if (level !in Subscriptions.LEVELS) {
-                throw invalid("level must be one of: ${Subscriptions.LEVELS.joinToString(", ")}")
             }
-            call.respondOwner(200, buildJsonObject { put("projectId", project.id); put("level", subs.ownerLevel(project.id)) })
+            call.respondOwner(200, buildJsonObject {
+                put("projectId", project.id)
+                put("level", subs.ownerLevel(project.id))
+                put("inherited", subs.ownerChannelLevel(project.id) == null)
+            })
+        },
+    )
+
+    // Groups of channels (migration 053): the app calls them projects.
+    endpoint(
+        "/api/groups",
+        HttpMethod.Get to {
+            call.respondOwner(200, buildJsonObject { put("groups", JsonArray(app.feed.groups.list().map { it.json })) })
+        },
+        HttpMethod.Post to {
+            val body = call.jsonObjectBody()
+            val name = text(body["name"], "name")
+            val slug = if ("slug" in body) text(body["slug"], "slug") else null
+            val (group, created) = app.feed.groups.create(name, slug)
+            call.respondOwner(if (created) 201 else 200, buildJsonObject { put("group", group.json); put("created", created) })
+        },
+    )
+
+    endpoint(
+        "/api/groups/{reference}",
+        HttpMethod.Patch to {
+            val body = call.jsonObjectBody()
+            val patch = Groups.Patch(
+                name = if ("name" in body) text(body["name"], "name") else null,
+                slug = if ("slug" in body) text(body["slug"], "slug") else null,
+                status = if ("status" in body) projectStatus(body["status"]) else null,
+                theme = if ("theme" in body) Given(themePatch(body["theme"]!!)) else null,
+            )
+            call.respondOwner(200, buildJsonObject { put("group", app.feed.groups.update(param("reference"), patch).json) })
+        },
+        HttpMethod.Delete to {
+            val group = app.feed.groups.delete(param("reference"))
+            changed()
+            call.respondOwner(200, buildJsonObject { put("deleted", true); put("groupId", group.id) })
+        },
+    )
+
+    endpoint(
+        "/api/groups/{reference}/subscription",
+        HttpMethod.Put to {
+            val level = level(call.jsonObjectBody())
+            val group = app.feed.groups.resolve(param("reference"))
+            val subs = Subscriptions(app.db, app.clock)
+            if (subs.ownerGroupLevel(group.id) != level) {
+                subs.setOwnerGroupLevel(group.id, level)
+                changed()
+            }
+            call.respondOwner(200, buildJsonObject { put("groupId", group.id); put("level", subs.ownerGroupLevel(group.id)) })
         },
     )
 
@@ -279,6 +340,7 @@ fun Route.feedRoutes(app: App) {
                 put("seq", seq)
                 put("at", Wire.isoOf(app.clock()))
                 put("projects", JsonArray(choices.levels.map { (id, level) -> buildJsonObject { put("projectId", id); put("level", level) } }))
+                put("groups", JsonArray(choices.groups.map { (id, level) -> buildJsonObject { put("groupId", id); put("level", level) } }))
                 put("threads", JsonArray(choices.threads.map { (t, on) ->
                     buildJsonObject { put("kind", t.kind); put("id", t.id); put("following", on) }
                 }))

@@ -34,5 +34,11 @@
   "name": "subscriptions",
   "file": "052-subscriptions.sql",
   "checksum": "8549f7dda8037032537a86b6493d394a837594ed2c5e71b846b3d9544b2f6f47"
+ },
+ {
+  "version": 53,
+  "name": "channels-and-projects",
+  "file": "053-channels-and-projects.sql",
+  "checksum": "781625a14576bf1c639011a0bed0559746ede347fc00ca987473664268c7ea10"
  }
 ]

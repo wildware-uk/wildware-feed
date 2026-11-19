@@ -28,6 +28,16 @@ class ProjectRow(val json: JsonObject) {
     val createdAt get() = json.number("createdAt")!!
     val updatedAt get() = json.number("updatedAt")!!
     val theme: JsonElement get() = json["theme"] ?: JsonNull
+    val groupId get() = json.text("groupId")
+}
+
+/** A group of channels (migration 053); the app calls it a project. */
+class GroupRow(val json: JsonObject) {
+    val id get() = json.text("id")!!
+    val slug get() = json.text("slug")!!
+    val name get() = json.text("name")!!
+    val status get() = json.text("status")!!
+    val theme: JsonElement get() = json["theme"] ?: JsonNull
 }
 
 class UpdateRow(val json: JsonObject) {

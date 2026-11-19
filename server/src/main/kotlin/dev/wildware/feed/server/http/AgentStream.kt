@@ -97,14 +97,15 @@ private val WATCHED = setOf(
 )
 
 private fun ApplicationCall.subscription(app: App): Subscription {
-    val wanted = request.queryParameters.getAll("project").orEmpty()
+    // `?channel=` is the newer name for `?project=` (migration 053); old bridges send `?project=`.
+    val wanted = (request.queryParameters.getAll("project").orEmpty() + request.queryParameters.getAll("channel").orEmpty())
         .flatMap { it.split(',') }.map { it.trim() }.filter { it.isNotEmpty() }
     if (wanted.isEmpty()) return Subscription.Derived
     if ("*" in wanted) {
-        if (wanted.size > 1) throw invalid("* means every project, so it cannot be listed beside others")
+        if (wanted.size > 1) throw invalid("* means every channel, so it cannot be listed beside others")
         return Subscription.Everything
     }
-    return Subscription.Projects(wanted.map { ref -> app.reads.findProject(ref)?.id ?: throw notFound("no such project: $ref") })
+    return Subscription.Projects(wanted.map { ref -> app.reads.findProject(ref)?.id ?: throw notFound("no such channel: $ref") })
 }
 
 private fun inScope(projectId: String?, subscribed: Subscription) =

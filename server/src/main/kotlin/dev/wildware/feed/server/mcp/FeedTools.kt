@@ -12,6 +12,8 @@ import dev.wildware.feed.server.domain.MessageRow
 import dev.wildware.feed.server.domain.Messages
 import dev.wildware.feed.server.domain.ProjectRow
 import dev.wildware.feed.server.domain.Projects
+import dev.wildware.feed.server.domain.GroupRow
+import dev.wildware.feed.server.domain.groups
 import dev.wildware.feed.server.domain.ReactionRow
 import dev.wildware.feed.server.domain.UpdateRow
 import dev.wildware.feed.server.domain.Updates
@@ -43,14 +45,30 @@ fun ToolRegistry.registerFeedTools(app: App) {
 
     register("list_projects") { call ->
         val projects = app.feed.projects.list(call.text("status"))
+        val groups = app.feed.groups.list()
+        val byId = groups.associateBy { it.id }
         val summary = if (projects.isEmpty()) {
-            "No projects yet. Create one with create_project."
+            "No channels yet. Create one with create_project."
         } else {
-            "${projects.size} project${plural(projects.size)}: ${projects.joinToString(", ") { it.slug }}."
+            "${projects.size} channel${plural(projects.size)}: ${projects.joinToString(", ") { p ->
+                p.slug + (p.groupId?.let(byId::get)?.let { " (in ${it.slug})" } ?: "")
+            }}."
         }
         ToolResult.ok(summary, buildJsonObject {
-            put("projects", JsonArray(projects.map(FeedViews::project)))
+            // Each channel says which group (a project, in the app) it is in (migration 053).
+            put("projects", JsonArray(projects.map { p ->
+                JsonObject(FeedViews.project(p) + ("group" to (p.groupId?.let(byId::get)?.let(FeedViews::groupRef) ?: JsonNull)))
+            }))
             put("count", projects.size)
+            put("groups", JsonArray(groups.map { g ->
+                buildJsonObject {
+                    put("id", g.id)
+                    put("slug", g.slug)
+                    put("name", g.name)
+                    put("status", g.status)
+                    put("channels", JsonArray(projects.filter { it.groupId == g.id }.map { JsonPrimitive(it.slug) }))
+                }
+            }))
         })
     }
 
@@ -61,14 +79,14 @@ fun ToolRegistry.registerFeedTools(app: App) {
             logoMediaId = call.given("logo_media_id") { it.jsString },
             logoReplacesName = call.given("logo_replaces_name") { it.jsBoolean },
         )
-        val project = app.feed.projects.update(call.text("project")!!, Projects.Patch(theme = Given(theme)))
+        val project = app.feed.projects.update(call.requiredChannel(), Projects.Patch(theme = Given(theme)))
         ToolResult.ok("Styled project ${project.slug}.", buildJsonObject { put("project", FeedViews.project(project)) })
     }
 
     register("post_update") { call ->
         val update = app.feed.updates.post(
             Updates.Post(
-                project = call.text("project")!!,
+                project = call.requiredChannel(),
                 agentId = call.agent.id,
                 body = call.text("body")!!,
                 title = call.text("title"),
@@ -82,7 +100,7 @@ fun ToolRegistry.registerFeedTools(app: App) {
         )
         val apps = if (call.list("apps").isNullOrEmpty()) emptyList() else FeedAttachments.appsOn(app.db, CardRef("update", update.id))
         ToolResult.ok(
-            "Posted a ${update.level} update to project ${call.text("project")} as agent \"${call.agent.name}\".",
+            "Posted a ${update.level} update to project ${call.channel()} as agent \"${call.agent.name}\".",
             buildJsonObject {
                 put("update", FeedViews.update(update))
                 if (apps.isNotEmpty()) put("apps", FeedViews.apps(apps))
@@ -116,7 +134,7 @@ fun ToolRegistry.registerFeedTools(app: App) {
     }
 
     register("list_work") { call ->
-        val project = call.text("project")
+        val project = call.channel()
         val projectIds = if (!project.isNullOrEmpty()) listOf(app.feed.projects.resolve(project).id) else app.feed.messages.projectsForAgent(call.agent.id)
         val statuses = call.texts("status")
         // The statuses are checked first, as `listWorkInScope` does; the enum schema makes that moot.
@@ -147,7 +165,7 @@ fun ToolRegistry.registerFeedTools(app: App) {
     }
 
     register("list_tags") { call ->
-        val tags = app.feed.tags.list(call.text("project"))
+        val tags = app.feed.tags.list(call.channel())
         val summary = if (tags.isEmpty()) {
             "No tags yet. tag_card with create: true decides the first one."
         } else {
@@ -212,7 +230,7 @@ fun ToolRegistry.registerFeedTools(app: App) {
 
     register("get_messages") { call ->
         val messages = app.feed.messages
-        val page = messages.read(call.agent.id, call.text("since"), call.text("project"), call.args["mark_read"].jsBoolean)
+        val page = messages.read(call.agent.id, call.text("since"), call.channel(), call.args["mark_read"].jsBoolean)
         val count = page.messages.size
         val attachments = Attachments.forMessages(app, page.messages.map { it.id })
         val read = when {
@@ -259,7 +277,7 @@ fun ToolRegistry.registerFeedTools(app: App) {
             Messages.Post(
                 author = call.author,
                 body = call.text("body")!!,
-                project = call.text("project"),
+                project = call.channel(),
                 updateId = call.text("update_id"),
                 replyTo = call.text("message_id"),
                 answers = call.text("answers"),
@@ -324,6 +342,9 @@ private fun ToolCall.apps(): List<FeedAttachments.AppInput>? = list("apps")?.map
 
 /** The MCP shapes (spec/05 §3.1): snake_case, ISO times, keys in the TS order. */
 internal object FeedViews {
+    /** A group (a project, in the app), as a channel names it. */
+    fun groupRef(g: GroupRow): JsonObject = buildJsonObject { put("id", g.id); put("slug", g.slug); put("name", g.name) }
+
     fun project(p: ProjectRow): JsonObject = buildJsonObject {
         put("id", p.id)
         put("slug", p.slug)

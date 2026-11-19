@@ -35,7 +35,7 @@ fun ToolRegistry.registerRequestTools(app: App) {
             default = a["default"].jsString,
             min = a["min"].jsNumber,
             max = a["max"].jsNumber,
-            project = a["project"].jsString,
+            project = call.channel(),
             update = a["update"].jsString,
             message = a["message_id"].jsString,
             timeoutS = a["timeout_s"].jsNumber,

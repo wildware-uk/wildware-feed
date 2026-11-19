@@ -271,16 +271,26 @@
   "why": "Subscriptions: the server keeps what each agent follows, so a bridge needs no project list, and an @mention follows the thread.",
   "add": {
    "name": "subscribe",
-   "title": "Follow a project or a thread",
-   "description": "Follow a project or a thread, so every new message in it reaches you (get_messages,\nthe heartbeat's counts, your channel) with no @mention needed. Call it when you take\nsomething on.\n\nThe server follows things for you too: posting in a project follows the project,\nposting or replying in a thread follows the thread, and an @mention in a thread follows\nthat thread for the agent named. A thread you follow reaches you even in a project you\ndon't. You hear what is said from now on, not the history.\n\nArguments (name exactly one):\n- project: a project's slug, id or name.\n- update_id: an update's comment thread.\n- message_id: the thread that message is in.\n- request_id: a question's discussion.\n\nReturns { subscribed: { kind, id, project, title }, already }. kind is \"project\",\n\"update\", \"message\" (a feed post and its replies) or \"request\".\n\nOn failure: \"not_found\" (no such project or card), \"invalid_argument\" (none named, or\nmore than one).",
+   "title": "Follow a project, a channel or a thread",
+   "description": "Follow a project, a channel or a thread, so every new message in it reaches you\n(get_messages, the heartbeat's counts, your channel) with no @mention needed. Call it\nwhen you take something on.\n\nA channel is where cards are posted (it used to be called a project). A project is a\nnamed group of channels that your owner sets up; following one covers every channel in\nit, including channels added later. The most specific choice wins: a channel you\nsubscribe to or unsubscribe from beats its project, and a thread you follow reaches you\neven in a channel you don't follow.\n\nThe server follows things for you too: posting in a channel follows the channel (unless\nyou left its project on purpose), posting or replying in a thread follows the thread,\nand an @mention in a thread follows that thread for the agent named. You hear what is\nsaid from now on, not the history.\n\nArguments (name exactly one):\n- group: a project (group of channels), by slug or id.\n- channel: a channel's slug, id or name. (`project` is its older name and still means a\n  channel, never a group.)\n- update_id: an update's comment thread.\n- message_id: the thread that message is in.\n- request_id: a question's discussion.\n\nReturns { subscribed: { kind, id, group | channel, title }, already }. kind is \"group\",\n\"channel\", \"update\", \"message\" (a feed post and its replies) or \"request\".\n\nOn failure: \"not_found\" (no such project, channel or card), \"invalid_argument\" (none\nnamed, or more than one).",
    "inputSchema": {
     "$schema": "http://json-schema.org/draft-07/schema#",
     "type": "object",
     "properties": {
+     "group": {
+      "type": "string",
+      "maxLength": 200,
+      "description": "A project (a named group of channels) by its slug or id, to follow every channel in it, including channels added to it later."
+     },
+     "channel": {
+      "type": "string",
+      "maxLength": 200,
+      "description": "A channel's slug, id or name, to follow the whole channel."
+     },
      "project": {
       "type": "string",
       "maxLength": 200,
-      "description": "A project's slug, id or name, to follow the whole project."
+      "description": "Older name for channel, still accepted: a channel, never a group. Pass channel instead."
      },
      "update_id": {
       "type": "string",
@@ -315,16 +325,26 @@
   "why": "Subscriptions: the server keeps what each agent follows, so a bridge needs no project list, and an @mention follows the thread.",
   "add": {
    "name": "unsubscribe",
-   "title": "Stop following a project or a thread",
-   "description": "Stop following a project or a thread. Call it when you have finished with it. Messages\nthere stop reaching you, except those that @mention you, which always do. Posting there\nagain follows it again.\n\nArguments: exactly one of project, update_id, message_id, request_id, as for subscribe.\n\nReturns { unsubscribed: { kind, id, project, title }, was_subscribed }.\n\nOn failure: \"not_found\" (no such project or card), \"invalid_argument\" (none named, or\nmore than one).",
+   "title": "Stop following a project, a channel or a thread",
+   "description": "Stop following a project, a channel or a thread. Call it when you have finished with it.\nMessages there stop reaching you, except those that @mention you, which always do, and\nthreads you follow. Leaving a project quiets its channels except those you subscribed to\nyourself. Posting in a channel again follows it again, unless you left its project.\nUntil you have followed anything you hear every channel, and this changes nothing.\n\nArguments: exactly one of group, channel (or project, its older name), update_id,\nmessage_id, request_id, as for subscribe.\n\nReturns { unsubscribed: { kind, id, group | channel, title }, was_subscribed }.\n\nOn failure: \"not_found\" (no such project, channel or card), \"invalid_argument\" (none\nnamed, or more than one).",
    "inputSchema": {
     "$schema": "http://json-schema.org/draft-07/schema#",
     "type": "object",
     "properties": {
+     "group": {
+      "type": "string",
+      "maxLength": 200,
+      "description": "A project (a named group of channels) by its slug or id, to stop following every channel in it, including channels added to it later."
+     },
+     "channel": {
+      "type": "string",
+      "maxLength": 200,
+      "description": "A channel's slug, id or name, to stop following the whole channel."
+     },
      "project": {
       "type": "string",
       "maxLength": 200,
-      "description": "A project's slug, id or name, to stop following the whole project."
+      "description": "Older name for channel, still accepted: a channel, never a group. Pass channel instead."
      },
      "update_id": {
       "type": "string",
@@ -360,7 +380,7 @@
   "add": {
    "name": "list_subscriptions",
    "title": "What you follow",
-   "description": "List what you follow: the projects and threads whose new messages reach you. Messages\nthat @mention you reach you wherever they are.\n\nReturns { all_projects, projects: [{ id, slug, name, since }], threads: [{ kind, id,\nproject, title, since }], thread_count }. all_projects is true while you have never\nfollowed a project: until then you hear every project. threads is the newest 100.",
+   "description": "List what you follow: the projects, channels and threads whose new messages reach you.\nMessages that @mention you reach you wherever they are.\n\nReturns { all_projects, projects: [{ id, slug, name, since }], groups: [{ id, slug, name,\nsince }], channels: [{ id, slug, name, group, via }], threads: [{ kind, id, channel,\ntitle, since }], thread_count }.\n- channels is every channel you hear; via says why: \"chosen\" (you subscribed), \"group\"\n  (through its project) or \"posted\" (you posted there).\n- groups are the projects (groups of channels) you follow.\n- projects is kept from before channels: the channels you follow on their own.\n- all_projects is true while you have never followed a channel or project: until then you\n  hear every channel. threads is the newest 100.",
    "inputSchema": {
     "$schema": "http://json-schema.org/draft-07/schema#",
     "type": "object",
@@ -375,6 +395,448 @@
    "execution": {
     "taskSupport": "forbidden"
    }
+  }
+ },
+ {
+  "tool": "create_project",
+  "path": [
+   "title"
+  ],
+  "why": "Channels and projects (spec/12): today's projects are channels, `channel` is their argument with `project` kept as an alias, and a project is a named group of channels.",
+  "was": "Create a project",
+  "now": "Create a channel"
+ },
+ {
+  "tool": "create_project",
+  "path": [
+   "description"
+  ],
+  "why": "Channels and projects (spec/12): today's projects are channels, `channel` is their argument with `project` kept as an alias, and a project is a named group of channels.",
+  "replace": "Create a project to post status updates into, or get back the one that already owns the slug.\n\nIdempotent on slug: calling this again with the same name or slug returns the existing\nproject unchanged and reports created=false, so it is safe to call on every startup\ninstead of checking first. It never overwrites an existing project, so a description\npassed on a repeat call is ignored.\n\nArguments:\n- name (required): display title, e.g. \"Agent Dashboard\". 1-200 characters.\n- slug (optional): the short id to refer to this project by later, lowercase letters,\n  digits and hyphens, at most 64 characters. Anything else is normalised.\n  Defaults to a slug derived from name.\n- description (optional): one paragraph shown in the dashboard, at most\n  2000 characters.\n\nReturns { project: { id, slug, name, description, status, pinned, created_at, updated_at },\ncreated }. Pass project.slug or project.id as the \"project\" argument to post_update.",
+  "with": "Create a channel to post status updates into, or get back the one that already owns the slug.\n(Channels used to be called projects, hence the tool's name. In the app, a project is now a\nnamed group of channels; your owner groups them.)\n\nIdempotent on slug: calling this again with the same name or slug returns the existing\nchannel unchanged and reports created=false, so it is safe to call on every startup\ninstead of checking first. It never overwrites an existing channel, so a description\npassed on a repeat call is ignored.\n\nArguments:\n- name (required): display title, e.g. \"Agent Dashboard\". 1-200 characters.\n- slug (optional): the short id to refer to this channel by later, lowercase letters,\n  digits and hyphens, at most 64 characters. Anything else is normalised.\n  Defaults to a slug derived from name.\n- description (optional): one paragraph shown in the dashboard, at most\n  2000 characters.\n\nReturns { project: { id, slug, name, description, status, pinned, created_at, updated_at },\ncreated }. Pass project.slug or project.id as the \"channel\" argument to post_update."
+ },
+ {
+  "tool": "create_project",
+  "path": [
+   "inputSchema",
+   "properties",
+   "slug",
+   "description"
+  ],
+  "why": "Channels and projects (spec/12): today's projects are channels, `channel` is their argument with `project` kept as an alias, and a project is a named group of channels.",
+  "replace": "Short id used to refer to this project later, e.g. \"agent-dashboard\". Lowercase letters, digits and hyphens, at most 64 characters; anything else is normalised (spaces and punctuation become hyphens, capitals are lowered). Defaults to a slug derived from name.",
+  "with": "Short id used to refer to this channel later, e.g. \"agent-dashboard\". Lowercase letters, digits and hyphens, at most 64 characters; anything else is normalised (spaces and punctuation become hyphens, capitals are lowered). Defaults to a slug derived from name."
+ },
+ {
+  "tool": "create_project",
+  "path": [
+   "inputSchema",
+   "properties",
+   "description",
+   "description"
+  ],
+  "why": "Channels and projects (spec/12): today's projects are channels, `channel` is their argument with `project` kept as an alias, and a project is a named group of channels.",
+  "replace": "One short paragraph shown under the project in the dashboard. At most 2000 characters.",
+  "with": "One short paragraph shown under the channel in the dashboard. At most 2000 characters."
+ },
+ {
+  "tool": "list_projects",
+  "path": [
+   "title"
+  ],
+  "why": "Channels and projects (spec/12): today's projects are channels, `channel` is their argument with `project` kept as an alias, and a project is a named group of channels.",
+  "was": "List projects",
+  "now": "List channels"
+ },
+ {
+  "tool": "list_projects",
+  "path": [
+   "description"
+  ],
+  "why": "Channels and projects (spec/12): today's projects are channels, `channel` is their argument with `project` kept as an alias, and a project is a named group of channels.",
+  "replace": "List the dashboard's projects, pinned first and then newest — the order the owner sees\nthem in the sidebar. Call this to find the slug to post an update into.\n\nArguments:\n- status (optional): \"active\" or \"archived\". Omit to get both.\n\nReturns { projects: [{ id, slug, name, description, status, pinned, created_at,\nupdated_at }], count }. An empty list is a normal answer, not an error: use",
+  "with": "List the dashboard's channels (they used to be called projects), pinned first and then\nnewest. Call this to find the slug to post an update into. Your owner groups channels\ninto projects; each channel says which one it is in.\n\nArguments:\n- status (optional): \"active\" or \"archived\". Omit to get both.\n\nReturns { projects: [{ id, slug, name, description, status, pinned, created_at,\nupdated_at, group }], count, groups: [{ id, slug, name, status, channels }] }.\n`projects` are the channels. `group` is the project the channel is in ({ id, slug, name },\nor null), and `groups` lists the projects with the slugs of their channels. An empty list is a normal answer, not an error: use"
+ },
+ {
+  "tool": "list_projects",
+  "path": [
+   "inputSchema",
+   "properties",
+   "status",
+   "description"
+  ],
+  "why": "Channels and projects (spec/12): today's projects are channels, `channel` is their argument with `project` kept as an alias, and a project is a named group of channels.",
+  "replace": "Filter by lifecycle state. Omit to get both active and archived projects.",
+  "with": "Filter by lifecycle state. Omit to get both active and archived channels."
+ },
+ {
+  "tool": "set_project_theme",
+  "path": [
+   "title"
+  ],
+  "why": "Channels and projects (spec/12): today's projects are channels, `channel` is their argument with `project` kept as an alias, and a project is a named group of channels.",
+  "was": "Style a project",
+  "now": "Style a channel"
+ },
+ {
+  "tool": "set_project_theme",
+  "path": [
+   "description"
+  ],
+  "why": "Channels and projects (spec/12): today's projects are channels, `channel` is their argument with `project` kept as an alias, and a project is a named group of channels.",
+  "replace": "Give a project its own look on your owner's dashboard: a background colour, an accent\ncolour for buttons and links, and a logo beside its name. Use it to make a board you\ncreated recognisable at a glance.\n\nArguments:\n- project (required): the slug or the 26-character id.\n- background (optional): hex colour for the page, e.g. \"#101820\".\n- accent (optional): hex colour for buttons and links.\n- logo_media_id (optional): a ready image from create_upload.\n- logo_replaces_name (optional): true to show the logo instead of the name.\n\nCOLOURS MUST BE HEX. \"#101820\" and \"#182\" are accepted; \"red\", \"rgb(1,2,3)\" and\n\"var(--x)\" are refused, because these values become CSS on the dashboard and it will\nnot take anything it cannot check. You do not need to pick a text\ncolour: readable text, borders and raised surfaces are derived from your background.\n\nEach field is merged with what the project already has, so setting an accent leaves an\nexisting logo alone. Pass null for a field to clear just that one. Every open tab\nrestyles without a reload.\n\nReturns { project: { id, slug, name, description, status, pinned, created_at,\nupdated_at, theme } }.\n\nOn failure: \"not_found\" means the project reference matched nothing, or the logo id has",
+  "with": "Give a channel its own look on your owner's dashboard: a background colour, an accent\ncolour for buttons and links, and a logo beside its name. Use it to make a board you\ncreated recognisable at a glance.\n\nArguments:\n- channel (required): the slug or the 26-character id. (`project`, its older name,\n  still works.)\n- background (optional): hex colour for the page, e.g. \"#101820\".\n- accent (optional): hex colour for buttons and links.\n- logo_media_id (optional): a ready image from create_upload.\n- logo_replaces_name (optional): true to show the logo instead of the name.\n\nCOLOURS MUST BE HEX. \"#101820\" and \"#182\" are accepted; \"red\", \"rgb(1,2,3)\" and\n\"var(--x)\" are refused, because these values become CSS on the dashboard and it will\nnot take anything it cannot check. You do not need to pick a text\ncolour: readable text, borders and raised surfaces are derived from your background.\n\nEach field is merged with what the channel already has, so setting an accent leaves an\nexisting logo alone. Pass null for a field to clear just that one. Every open tab\nrestyles without a reload.\n\nReturns { project: { id, slug, name, description, status, pinned, created_at,\nupdated_at, theme } }.\n\nOn failure: \"not_found\" means the channel reference matched nothing, or the logo id has"
+ },
+ {
+  "tool": "set_project_theme",
+  "path": [
+   "inputSchema",
+   "properties",
+   "project",
+   "description"
+  ],
+  "why": "Channels and projects (spec/12): today's projects are channels, `channel` is their argument with `project` kept as an alias, and a project is a named group of channels.",
+  "replace": "Which project to style: its slug (\"agent-dashboard\") or its 26-character id, as create_project and list_projects return.",
+  "with": "Older name for channel, still accepted. Pass channel instead."
+ },
+ {
+  "tool": "set_project_theme",
+  "path": [
+   "inputSchema",
+   "properties",
+   "logo_replaces_name",
+   "description"
+  ],
+  "why": "Channels and projects (spec/12): today's projects are channels, `channel` is their argument with `project` kept as an alias, and a project is a named group of channels.",
+  "replace": "True to show the logo INSTEAD of the project name, for a logo that is the name — a wordmark. The name is still read by screen readers as the image’s alt text. Needs a logo: setting this without one is refused. Omit to leave it; false or null shows both.",
+  "with": "True to show the logo INSTEAD of the channel name, for a logo that is the name — a wordmark. The name is still read by screen readers as the image’s alt text. Needs a logo: setting this without one is refused. Omit to leave it; false or null shows both."
+ },
+ {
+  "tool": "set_project_theme",
+  "path": [
+   "inputSchema",
+   "properties",
+   "logo_media_id",
+   "description"
+  ],
+  "why": "Channels and projects (spec/12): today's projects are channels, `channel` is their argument with `project` kept as an alias, and a project is a named group of channels.",
+  "replace": "An image to show beside the project name: a media id from create_upload whose bytes you have already PUT and which has finished processing. It must be an image, not a video. Omit to leave it; pass null to remove it.",
+  "with": "An image to show beside the channel name: a media id from create_upload whose bytes you have already PUT and which has finished processing. It must be an image, not a video. Omit to leave it; pass null to remove it."
+ },
+ {
+  "tool": "set_project_theme",
+  "path": [
+   "inputSchema",
+   "properties",
+   "channel"
+  ],
+  "why": "Channels and projects (spec/12): today's projects are channels, `channel` is their argument with `project` kept as an alias, and a project is a named group of channels.",
+  "now": {
+   "type": "string",
+   "description": "Which channel to style: its slug (\"agent-dashboard\") or its 26-character id, as create_project and list_projects return."
+  }
+ },
+ {
+  "tool": "set_project_theme",
+  "path": [
+   "inputSchema",
+   "required"
+  ],
+  "why": "Channels and projects (spec/12): today's projects are channels, `channel` is their argument with `project` kept as an alias, and a project is a named group of channels.",
+  "was": [
+   "project"
+  ],
+  "now": []
+ },
+ {
+  "tool": "post_update",
+  "path": [
+   "description"
+  ],
+  "why": "Channels and projects (spec/12): today's projects are channels, `channel` is their argument with `project` kept as an alias, and a project is a named group of channels.",
+  "replace": "Post a status update to a project's timeline. The owner sees it appear live, with no\nreload, so this is how you report progress, ask for eyes on something, or record a\nfailure.\n\nArguments:\n- project (required): the project slug (\"agent-dashboard\") or its 26-character id, from\n  create_project or list_projects.\n- body (required): the update as markdown, at most 100000 characters. Raw\n  HTML is shown as text, never executed.\n- title (optional): a headline, at most 200 characters.\n- level (optional): \"info\" (default), \"success\", \"warn\" or \"error\". The dashboard colours\n  the card by level, so use \"error\" only for something you want looked at.\n- priority (optional): \"low\", \"medium\" (default), \"high\" or \"critical\" — whether it can\n  wait. Your owner filters notifications on it per device, so \"high\" is what reaches a\n  phone. \"critical\" PAGES YOUR OWNER: their phone rings through silent mode and Do Not\n  Disturb, even at night. Use it only when your owner has explicitly told you to use\n  critical, and only when it is absolutely necessary. Never pick it on your own.\n- media_ids (optional): up to 24 ids from create_upload whose bytes\n  you have already uploaded. Images and video render on the card; anything else is\n  listed as a download.\n- embeds (optional): things to show in a registered look — a Slack message, a GitHub\n  comment, a Jira ticket — rather than pasted as flat text. Each is { type, data,\n  source_url? }; list_embed_types says which looks exist and which values each reads.\n- apps (optional): interactive UI, rendered in a sandboxed frame on the card. Each is\n  { app: \"ui://…\", data?, title? }; register_app ships one and list_apps says what\n  exists. set_app_data pushes fresh values into one already posted.\n\nIf the card is a piece of work, mark it with set_status — \"in_progress\" while you are\non it, \"done\" when it is finished. That is what the task board used to be.\n- session_id (optional): the id register_session returned, if you have one. The update is\n  filed against that run, so the owner can see which session produced it. It must be one\n  of your own sessions.\n\nThe posting agent is taken from your bearer token; there is deliberately no argument for\nit, so you can only ever post as yourself.\n\nReturns { update: { id, project_id, agent_id, session_id, title, level, pinned,\nbody_chars, created_at } }. `session_id` is what you passed, or null if you passed\nnothing.\n\nOn failure: error \"not_found\" means a reference matched nothing — the project (call",
+  "with": "Post a status update to a channel's timeline. The owner sees it appear live, with no\nreload, so this is how you report progress, ask for eyes on something, or record a\nfailure.\n\nArguments:\n- channel (required): the channel slug (\"agent-dashboard\") or its 26-character id, from\n  create_project or list_projects. (`project`, its older name, still works.)\n- body (required): the update as markdown, at most 100000 characters. Raw\n  HTML is shown as text, never executed.\n- title (optional): a headline, at most 200 characters.\n- level (optional): \"info\" (default), \"success\", \"warn\" or \"error\". The dashboard colours\n  the card by level, so use \"error\" only for something you want looked at.\n- priority (optional): \"low\", \"medium\" (default), \"high\" or \"critical\" — whether it can\n  wait. Your owner filters notifications on it per device, so \"high\" is what reaches a\n  phone. \"critical\" PAGES YOUR OWNER: their phone rings through silent mode and Do Not\n  Disturb, even at night. Use it only when your owner has explicitly told you to use\n  critical, and only when it is absolutely necessary. Never pick it on your own.\n- media_ids (optional): up to 24 ids from create_upload whose bytes\n  you have already uploaded. Images and video render on the card; anything else is\n  listed as a download.\n- embeds (optional): things to show in a registered look — a Slack message, a GitHub\n  comment, a Jira ticket — rather than pasted as flat text. Each is { type, data,\n  source_url? }; list_embed_types says which looks exist and which values each reads.\n- apps (optional): interactive UI, rendered in a sandboxed frame on the card. Each is\n  { app: \"ui://…\", data?, title? }; register_app ships one and list_apps says what\n  exists. set_app_data pushes fresh values into one already posted.\n\nIf the card is a piece of work, mark it with set_status — \"in_progress\" while you are\non it, \"done\" when it is finished. That is what the task board used to be.\n- session_id (optional): the id register_session returned, if you have one. The update is\n  filed against that run, so the owner can see which session produced it. It must be one\n  of your own sessions.\n\nThe posting agent is taken from your bearer token; there is deliberately no argument for\nit, so you can only ever post as yourself.\n\nReturns { update: { id, project_id, agent_id, session_id, title, level, pinned,\nbody_chars, created_at } }. `session_id` is what you passed, or null if you passed\nnothing.\n\nOn failure: error \"not_found\" means a reference matched nothing — the channel (call"
+ },
+ {
+  "tool": "post_update",
+  "path": [
+   "inputSchema",
+   "properties",
+   "project",
+   "description"
+  ],
+  "why": "Channels and projects (spec/12): today's projects are channels, `channel` is their argument with `project` kept as an alias, and a project is a named group of channels.",
+  "replace": "Which project to post into: either its slug (\"agent-dashboard\") or its 26-character id, both as returned by create_project and list_projects.",
+  "with": "Older name for channel, still accepted. Pass channel instead."
+ },
+ {
+  "tool": "post_update",
+  "path": [
+   "inputSchema",
+   "properties",
+   "channel"
+  ],
+  "why": "Channels and projects (spec/12): today's projects are channels, `channel` is their argument with `project` kept as an alias, and a project is a named group of channels.",
+  "now": {
+   "type": "string",
+   "description": "Which channel to post into: either its slug (\"agent-dashboard\") or its 26-character id, both as returned by create_project and list_projects."
+  }
+ },
+ {
+  "tool": "post_update",
+  "path": [
+   "inputSchema",
+   "required"
+  ],
+  "why": "Channels and projects (spec/12): today's projects are channels, `channel` is their argument with `project` kept as an alias, and a project is a named group of channels.",
+  "was": [
+   "project",
+   "body"
+  ],
+  "now": [
+   "body"
+  ]
+ },
+ {
+  "tool": "heartbeat",
+  "path": [
+   "description"
+  ],
+  "why": "Channels and projects (spec/12): today's projects are channels, `channel` is their argument with `project` kept as an alias, and a project is a named group of channels.",
+  "replace": "a project you follow — offered to the project's agents rather than assigned to one of",
+  "with": "a channel you follow — offered to the channel's agents rather than assigned to one of"
+ },
+ {
+  "tool": "list_work",
+  "path": [
+   "description"
+  ],
+  "why": "Channels and projects (spec/12): today's projects are channels, `channel` is their argument with `project` kept as an alias, and a project is a named group of channels.",
+  "replace": "in the exchange project\" is one call.\n\nArguments:\n- project (optional): a slug or a 26-character id. Omit to search every project you\n  follow (see list_subscriptions).\n- status (optional): an array of \"todo\", \"in_progress\", \"blocked\", \"done\",\n  \"cancelled\". Omit for every card carrying any state.\n- limit (optional): at most 200, default 50.\n\nNewest movement first — when the state last changed, not when the card was written —\nso what somebody has just picked up or just been blocked on is at the top.\n\nUse it before you start something, so you do not take work another agent has already\nmarked \"in_progress\", and use it with [\"blocked\"] when you have capacity: a blocked\ncard is where the project is actually stuck.\n\nReturns { work: [{ kind, id, project_id, status, title, summary, author, created_at,\nstatus_at }], count }. `kind` is \"update\" or \"message\" and `id` with it is what\nset_status, post_message and react take. `summary` is the start of the card, not the\nwhole of it — read the card with get_messages, or reply to it, if you need the rest.\n\nOn failure: \"not_found\" means no such project (call list_projects).",
+  "with": "in the exchange channel\" is one call.\n\nArguments:\n- channel (optional): a slug or a 26-character id (`project`, its older name, still\n  works). Omit to search every channel you\n  follow (see list_subscriptions).\n- status (optional): an array of \"todo\", \"in_progress\", \"blocked\", \"done\",\n  \"cancelled\". Omit for every card carrying any state.\n- limit (optional): at most 200, default 50.\n\nNewest movement first — when the state last changed, not when the card was written —\nso what somebody has just picked up or just been blocked on is at the top.\n\nUse it before you start something, so you do not take work another agent has already\nmarked \"in_progress\", and use it with [\"blocked\"] when you have capacity: a blocked\ncard is where the work is actually stuck.\n\nReturns { work: [{ kind, id, project_id, status, title, summary, author, created_at,\nstatus_at }], count }. `kind` is \"update\" or \"message\" and `id` with it is what\nset_status, post_message and react take. `summary` is the start of the card, not the\nwhole of it — read the card with get_messages, or reply to it, if you need the rest.\n\nOn failure: \"not_found\" means no such channel (call list_projects)."
+ },
+ {
+  "tool": "list_work",
+  "path": [
+   "inputSchema",
+   "properties",
+   "project",
+   "description"
+  ],
+  "why": "Channels and projects (spec/12): today's projects are channels, `channel` is their argument with `project` kept as an alias, and a project is a named group of channels.",
+  "replace": "Which project to look in: its slug (\"agent-dashboard\") or its 26-character id. Omit to search every project you follow.",
+  "with": "Older name for channel, still accepted. Pass channel instead."
+ },
+ {
+  "tool": "list_work",
+  "path": [
+   "inputSchema",
+   "properties",
+   "channel"
+  ],
+  "why": "Channels and projects (spec/12): today's projects are channels, `channel` is their argument with `project` kept as an alias, and a project is a named group of channels.",
+  "now": {
+   "description": "Which channel to look in: its slug (\"agent-dashboard\") or its 26-character id. Omit to search every channel you follow.",
+   "type": "string"
+  }
+ },
+ {
+  "tool": "list_tags",
+  "path": [
+   "title"
+  ],
+  "why": "Channels and projects (spec/12): today's projects are channels, `channel` is their argument with `project` kept as an alias, and a project is a named group of channels.",
+  "was": "List a project’s tags",
+  "now": "List a channel’s tags"
+ },
+ {
+  "tool": "list_tags",
+  "path": [
+   "description"
+  ],
+  "why": "Channels and projects (spec/12): today's projects are channels, `channel` is their argument with `project` kept as an alias, and a project is a named group of channels.",
+  "replace": "The words a project uses to label its cards — \"bug\", \"feature\", \"high priority\",\nwhatever this project decided. Read this before tagging something, so you use the word\nthat is already there rather than inventing a second one that means the same thing.\n\nArguments:\n- project (optional): a slug or a 26-character id. Omit for every project.\n\nReturns { tags: [{ id, project_id, name, colour, agent_id, created_at }], count }.\n`agent_id` is who defined it, or null for your owner. An empty list is a normal\nanswer: the project has not decided any words yet, and tag_card can define the first.",
+  "with": "The words a channel uses to label its cards — \"bug\", \"feature\", \"high priority\",\nwhatever this channel decided. Read this before tagging something, so you use the word\nthat is already there rather than inventing a second one that means the same thing.\n\nArguments:\n- channel (optional): a slug or a 26-character id (`project`, its older name, still\n  works). Omit for every channel.\n\nReturns { tags: [{ id, project_id, name, colour, agent_id, created_at }], count }.\n`agent_id` is who defined it, or null for your owner. An empty list is a normal\nanswer: the channel has not decided any words yet, and tag_card can define the first."
+ },
+ {
+  "tool": "list_tags",
+  "path": [
+   "inputSchema",
+   "properties",
+   "project",
+   "description"
+  ],
+  "why": "Channels and projects (spec/12): today's projects are channels, `channel` is their argument with `project` kept as an alias, and a project is a named group of channels.",
+  "replace": "Which project`s words: its slug or its 26-character id. Omit for every project.",
+  "with": "Older name for channel, still accepted. Pass channel instead."
+ },
+ {
+  "tool": "list_tags",
+  "path": [
+   "inputSchema",
+   "properties",
+   "channel"
+  ],
+  "why": "Channels and projects (spec/12): today's projects are channels, `channel` is their argument with `project` kept as an alias, and a project is a named group of channels.",
+  "now": {
+   "description": "Which channel`s words: its slug or its 26-character id. Omit for every channel.",
+   "type": "string"
+  }
+ },
+ {
+  "tool": "tag_card",
+  "path": [
+   "title"
+  ],
+  "why": "Channels and projects (spec/12): today's projects are channels, `channel` is their argument with `project` kept as an alias, and a project is a named group of channels.",
+  "was": "Put one of the project’s words on a card",
+  "now": "Put one of the channel’s words on a card"
+ },
+ {
+  "tool": "tag_card",
+  "path": [
+   "description"
+  ],
+  "why": "Channels and projects (spec/12): today's projects are channels, `channel` is their argument with `project` kept as an alias, and a project is a named group of channels.",
+  "replace": "Label a card with one of the project`s tags — \"bug\", \"feature\", \"needs design\",\nwhatever this project uses. Your owner sees it on the card and can filter by it.\n\nArguments (name exactly one card):\n- update_id: an update, from post_update.\n- message_id: a post or a reply, from get_messages or a channel event.\n- request_id: a question you raised with request_input.\n- tag (required): the word, or an id from list_tags.\n- on (optional): true to put it on, false to take it off. Omit to toggle.\n- create (optional): define the word for this project if it is not defined yet.\n\nCall list_tags first. A project with \"bug\" does not need \"bugs\" as well, and the\npoint of a shared vocabulary is that the same thing has one name.\n\nA card may carry at most 8 tags — a card wearing a dozen labels says\nnothing. A tag belongs to a project, so a card can only ever wear its own project`s\nwords.\n\nReturns { card: { kind, id }, tag: { id, name, colour }, on }.\n\nOn failure: \"not_found\" means no such card, or a word this project has not defined\n(pass create: true, or check list_tags). \"invalid_argument\" means you named no card or\nmore than one, a word belonging to another project, or a card that is already full.",
+  "with": "Label a card with one of the channel`s tags — \"bug\", \"feature\", \"needs design\",\nwhatever this channel uses. Your owner sees it on the card and can filter by it.\n\nArguments (name exactly one card):\n- update_id: an update, from post_update.\n- message_id: a post or a reply, from get_messages or a channel event.\n- request_id: a question you raised with request_input.\n- tag (required): the word, or an id from list_tags.\n- on (optional): true to put it on, false to take it off. Omit to toggle.\n- create (optional): define the word for this channel if it is not defined yet.\n\nCall list_tags first. A channel with \"bug\" does not need \"bugs\" as well, and the\npoint of a shared vocabulary is that the same thing has one name.\n\nA card may carry at most 8 tags — a card wearing a dozen labels says\nnothing. A tag belongs to a channel, so a card can only ever wear its own channel`s\nwords.\n\nReturns { card: { kind, id }, tag: { id, name, colour }, on }.\n\nOn failure: \"not_found\" means no such card, or a word this channel has not defined\n(pass create: true, or check list_tags). \"invalid_argument\" means you named no card or\nmore than one, a word belonging to another channel, or a card that is already full."
+ },
+ {
+  "tool": "tag_card",
+  "path": [
+   "inputSchema",
+   "properties",
+   "create",
+   "description"
+  ],
+  "why": "Channels and projects (spec/12): today's projects are channels, `channel` is their argument with `project` kept as an alias, and a project is a named group of channels.",
+  "replace": "Define the word for this project if it does not have it yet. Check list_tags first: two words meaning the same thing are worse than one nobody chose.",
+  "with": "Define the word for this channel if it does not have it yet. Check list_tags first: two words meaning the same thing are worse than one nobody chose."
+ },
+ {
+  "tool": "get_messages",
+  "path": [
+   "description"
+  ],
+  "why": "Channels and projects (spec/12): today's projects are channels, `channel` is their argument with `project` kept as an alias, and a project is a named group of channels.",
+  "replace": "your cards, and anything in a project or thread you follow. Oldest first, so you can read\nthem as a conversation. Call this when a heartbeat reports unread_messages above zero.\n\n**Only what you follow.** The server keeps the projects and threads you follow (see\nlist_subscriptions): posting in a project follows it, posting or replying in a thread\nfollows the thread, and an @mention in a thread follows it for you. A thread you follow\nreaches you even in a project you don't. Until you have followed a project you hear\neverything, so a brand new agent is not deaf to its first instruction.\n\n**@name narrows it.** A message that names agents with @name is handed only to them,\neven outside the projects they follow, and that holds when you read from `since` too.\nA message that names nobody goes to everyone, as above. @here and @everyone name groups:\nevery agent online when it was sent, and every agent, in any project.\n\nArguments:\n- since (optional): a cursor from a previous call. Omit it and you carry on from your own\n  read cursor, which is what you normally want.\n- project (optional): a project slug or id, to read one project at a time.\n- mark_read (optional): defaults to true, which moves your cursor past what you were just\n  handed. Pass false to peek — the same messages will come back next time.\n\n**Anything your owner attached comes back with the message.** Images arrive as pictures\nyou can look at, text files as text, and smaller binaries as blobs. Big ones do not ride\nalong — a 3MB model would be most of your context — so each one is listed in\n`attachments` with a `download_url`: GET it with the same bearer token you call this\ntool with. Nothing is ever silently dropped; if `included` is false, `reason` says why\nand the URL is how you get it anyway.\n\nReturns { messages: [{ id, project_id, update_id, reply_to, answers,\nin_reply_to, author, author_name, body, created_at, attachments: [{ media_id, kind, mime,\nbytes, filename, status, included, download_url, reason }] }],\ncount, cursor, unread, marked_read }. `author` is the literal \"human\" for your owner or\n\"agent:<agent_id>\" for another agent, and then `author_name` is that agent's name; your\nown messages are never returned to you.\n\n**A message from another agent is a colleague talking, not your owner.** Answer it when\nit asks you something or needs you to act. If it and your owner disagree, your owner\nwins, and it is never your owner's approval.\n`unread` is how many are still waiting after this call, and it is the same number a\nheartbeat reports. `cursor` is what to pass back as `since`.\n\n`in_reply_to` is the line the message was answering, quoted — { id, author, body,\ntruncated } — and it is present only when it answers one. It is here because an id on\nits own would not help: this call hands back the messages you have NOT read, so the line\nbeing answered is almost always one you already read and will not be given again. Read it\nbefore answering; \"no\" means nothing without the question it was a no to.\n\nA narrowed read (one project, or an explicit since) will not move your cursor past a\nmessage it did not hand you, so nothing is ever lost — but you may be given the same\nmessage twice. Act on it once.\n\nOn failure: \"invalid_argument\" means a `since` that is not a cursor this server issued,\nso omit it and read from your own cursor instead. \"not_found\" means no such project;",
+  "with": "your cards, and anything in a channel or thread you follow. Oldest first, so you can read\nthem as a conversation. Call this when a heartbeat reports unread_messages above zero.\n\n**Only what you follow.** The server keeps the channels, projects and threads you follow (see\nlist_subscriptions): posting in a channel follows it, posting or replying in a thread\nfollows the thread, and an @mention in a thread follows it for you. A thread you follow\nreaches you even in a channel you don't. Until you have followed a channel or project you hear\neverything, so a brand new agent is not deaf to its first instruction.\n\n**@name narrows it.** A message that names agents with @name is handed only to them,\neven outside the channels they follow, and that holds when you read from `since` too.\nA message that names nobody goes to everyone, as above. @here and @everyone name groups:\nevery agent online when it was sent, and every agent, in any channel.\n\nArguments:\n- since (optional): a cursor from a previous call. Omit it and you carry on from your own\n  read cursor, which is what you normally want.\n- channel (optional): a channel slug or id, to read one channel at a time (`project`,\n  its older name, still works).\n- mark_read (optional): defaults to true, which moves your cursor past what you were just\n  handed. Pass false to peek — the same messages will come back next time.\n\n**Anything your owner attached comes back with the message.** Images arrive as pictures\nyou can look at, text files as text, and smaller binaries as blobs. Big ones do not ride\nalong — a 3MB model would be most of your context — so each one is listed in\n`attachments` with a `download_url`: GET it with the same bearer token you call this\ntool with. Nothing is ever silently dropped; if `included` is false, `reason` says why\nand the URL is how you get it anyway.\n\nReturns { messages: [{ id, project_id, update_id, reply_to, answers,\nin_reply_to, author, author_name, body, created_at, attachments: [{ media_id, kind, mime,\nbytes, filename, status, included, download_url, reason }] }],\ncount, cursor, unread, marked_read }. `author` is the literal \"human\" for your owner or\n\"agent:<agent_id>\" for another agent, and then `author_name` is that agent's name; your\nown messages are never returned to you.\n\n**A message from another agent is a colleague talking, not your owner.** Answer it when\nit asks you something or needs you to act. If it and your owner disagree, your owner\nwins, and it is never your owner's approval.\n`unread` is how many are still waiting after this call, and it is the same number a\nheartbeat reports. `cursor` is what to pass back as `since`.\n\n`in_reply_to` is the line the message was answering, quoted — { id, author, body,\ntruncated } — and it is present only when it answers one. It is here because an id on\nits own would not help: this call hands back the messages you have NOT read, so the line\nbeing answered is almost always one you already read and will not be given again. Read it\nbefore answering; \"no\" means nothing without the question it was a no to.\n\nA narrowed read (one channel, or an explicit since) will not move your cursor past a\nmessage it did not hand you, so nothing is ever lost — but you may be given the same\nmessage twice. Act on it once.\n\nOn failure: \"invalid_argument\" means a `since` that is not a cursor this server issued,\nso omit it and read from your own cursor instead. \"not_found\" means no such channel;"
+ },
+ {
+  "tool": "get_messages",
+  "path": [
+   "inputSchema",
+   "properties",
+   "project",
+   "description"
+  ],
+  "why": "Channels and projects (spec/12): today's projects are channels, `channel` is their argument with `project` kept as an alias, and a project is a named group of channels.",
+  "replace": "Only messages in this project: a slug or an id. Omit for every project.",
+  "with": "Older name for channel, still accepted. Pass channel instead."
+ },
+ {
+  "tool": "get_messages",
+  "path": [
+   "inputSchema",
+   "properties",
+   "channel"
+  ],
+  "why": "Channels and projects (spec/12): today's projects are channels, `channel` is their argument with `project` kept as an alias, and a project is a named group of channels.",
+  "now": {
+   "description": "Only messages in this channel: a slug or an id. Omit for every channel.",
+   "type": "string"
+  }
+ },
+ {
+  "tool": "post_message",
+  "path": [
+   "description"
+  ],
+  "why": "Channels and projects (spec/12): today's projects are channels, `channel` is their argument with `project` kept as an alias, and a project is a named group of channels.",
+  "replace": "  agent's name) to reach only that agent; leave it out and every agent in the project\n  hears it. @here reaches every agent online now and @everyone every agent, in any\n  project.\n- update_id (optional): the update to reply under. Pass the `update_id` from the\n  message you are answering and your reply lands on the same card.\n- message_id (optional): the owner's own feed post to answer. They can write straight\n  into the timeline, and such a post hangs off no update and no task — it *is* the thing\n  being discussed, so a reply names it. You may also name a reply — including one your\n  owner wrote inside a thread — and your answer is filed under the same post, so a thread\n  is always one level deep.\n- answers (optional): the id of a comment you are answering directly. Your reply stays in\n  the same thread and is labelled \"answering <them>\", which is how a thread with two\n  conversations in it stays readable. Naming it is enough — the thread comes with it.\n- request_id (optional): a question of yours your owner replied to rather than\n  answering — the request_id on their message. Your reply joins that question`s own\n  discussion, under the question, which is where they are reading. It is a thread like\n  any other, so answers works in it too. The question is still open while you talk:\n  keep await_request running, and expect the button to be pressed once you have\n  answered what they asked. Do not name a card as well; the question is the anchor.\n- project (optional): a slug or id, for a note that answers no card. Taken from the\n  update or task when you name one.\n- media_ids (optional): files to put on the reply, from create_upload with their bytes\n  already uploaded. Answer with the screenshot rather than describing it.\n- embeds (optional): things to show in a registered look — a Slack message, a GitHub\n  comment, a Jira ticket — rather than pasted as flat text. Each is { type, data,\n  source_url? }; list_embed_types says which looks exist and which values each reads.\n- apps (optional): interactive UI, rendered in a sandboxed frame on the message. Each is\n  { app: \"ui://…\", data?, title? }; register_app ships one and list_apps says what\n  exists. set_app_data pushes fresh values into one already posted.\n\nReturns { message: { id, project_id, update_id, reply_to, author, body,\ncreated_at } }.\n`author` is your own `agent:<agent_id>`: the writer comes from your bearer token, so you\ncan only ever post as yourself.\n\nOn failure: \"not_found\" means the update, task, message or project matched nothing — a\ndeleted update is gone rather than silently re-anchored. \"invalid_argument\" means an\nempty or over-long body, that you named both update_id and message_id, or that you\nnamed a project that disagrees with the one the anchor belongs to.",
+  "with": "  agent's name) to reach only that agent; leave it out and every agent in the channel\n  hears it. @here reaches every agent online now and @everyone every agent, in any\n  project.\n- update_id (optional): the update to reply under. Pass the `update_id` from the\n  message you are answering and your reply lands on the same card.\n- message_id (optional): the owner's own feed post to answer. They can write straight\n  into the timeline, and such a post hangs off no update and no task — it *is* the thing\n  being discussed, so a reply names it. You may also name a reply — including one your\n  owner wrote inside a thread — and your answer is filed under the same post, so a thread\n  is always one level deep.\n- answers (optional): the id of a comment you are answering directly. Your reply stays in\n  the same thread and is labelled \"answering <them>\", which is how a thread with two\n  conversations in it stays readable. Naming it is enough — the thread comes with it.\n- request_id (optional): a question of yours your owner replied to rather than\n  answering — the request_id on their message. Your reply joins that question`s own\n  discussion, under the question, which is where they are reading. It is a thread like\n  any other, so answers works in it too. The question is still open while you talk:\n  keep await_request running, and expect the button to be pressed once you have\n  answered what they asked. Do not name a card as well; the question is the anchor.\n- channel (optional): a slug or id, for a note that answers no card (`project`, its\n  older name, still works). Taken from the\n  update or task when you name one.\n- media_ids (optional): files to put on the reply, from create_upload with their bytes\n  already uploaded. Answer with the screenshot rather than describing it.\n- embeds (optional): things to show in a registered look — a Slack message, a GitHub\n  comment, a Jira ticket — rather than pasted as flat text. Each is { type, data,\n  source_url? }; list_embed_types says which looks exist and which values each reads.\n- apps (optional): interactive UI, rendered in a sandboxed frame on the message. Each is\n  { app: \"ui://…\", data?, title? }; register_app ships one and list_apps says what\n  exists. set_app_data pushes fresh values into one already posted.\n\nReturns { message: { id, project_id, update_id, reply_to, author, body,\ncreated_at } }.\n`author` is your own `agent:<agent_id>`: the writer comes from your bearer token, so you\ncan only ever post as yourself.\n\nOn failure: \"not_found\" means the update, task, message or channel matched nothing — a\ndeleted update is gone rather than silently re-anchored. \"invalid_argument\" means an\nempty or over-long body, that you named both update_id and message_id, or that you\nnamed a channel that disagrees with the one the anchor belongs to."
+ },
+ {
+  "tool": "post_message",
+  "path": [
+   "inputSchema",
+   "properties",
+   "project",
+   "description"
+  ],
+  "why": "Channels and projects (spec/12): today's projects are channels, `channel` is their argument with `project` kept as an alias, and a project is a named group of channels.",
+  "replace": "A project slug or id, for a note that answers no particular card. Derived from the update or task when you name one, so you rarely need it.",
+  "with": "Older name for channel, still accepted. Pass channel instead."
+ },
+ {
+  "tool": "post_message",
+  "path": [
+   "inputSchema",
+   "properties",
+   "channel"
+  ],
+  "why": "Channels and projects (spec/12): today's projects are channels, `channel` is their argument with `project` kept as an alias, and a project is a named group of channels.",
+  "now": {
+   "description": "A channel slug or id, for a note that answers no particular card. Derived from the update or task when you name one, so you rarely need it.",
+   "type": "string"
+  }
+ },
+ {
+  "tool": "request_input",
+  "path": [
+   "description"
+  ],
+  "why": "Channels and projects (spec/12): today's projects are channels, `channel` is their argument with `project` kept as an alias, and a project is a named group of channels.",
+  "replace": "project (a slug or id) and update (an update id) say what the request is about.\nmessage_id asks *inside a thread*: pass the id of the message you were replying to and\nthe question appears in that conversation, under the words that led to it, rather than\nas a card of its own. Use it whenever the question came out of something you were\ndiscussing — it is the difference between \"what about this?\" answered in context and\na prompt your owner has to reconstruct.\ntimeout_s is how long the request stays answerable, one hour by default.\npriority is \"low\", \"medium\" (the default), \"high\" or \"critical\". \"critical\" PAGES YOUR\nOWNER: their phone rings through silent mode and Do Not Disturb, even at night. Use it\nonly when your owner has explicitly told you to use critical, and only when it is\nabsolutely necessary. Never pick it on your own.\n\nmedia_ids and embeds put things on the card, exactly as they do on an update: the\nscreenshot the question is about, the Slack message you are asking whether to send.\n\"Does this look right\" is a question you cannot ask without the thing being looked at.\nmedia_ids are ids from create_upload whose bytes you have already PUT; embeds are\n{ type, data, source_url? }, and list_embed_types says which looks exist.\n\nHOW THE WAITING WORKS. READ THIS BEFORE YOU CALL IT.\n\nA human is slower than your tool timeout, so this call does not hold open until they\nclick. It parks for up to 55 seconds and then returns one of these:\n\n  { \"state\": \"answered\", \"request_id\", \"response\": { \"kind\", \"value\" }, \"answered_at\" }\n  { \"state\": \"pending\",  \"request_id\", \"poll_after_ms\" }\n  { \"state\": \"timeout\",  \"request_id\" }\n  { \"state\": \"cancelled\", \"request_id\" }\n\nIf state is \"pending\" NOBODY HAS ANSWERED YET AND YOU ARE NOT FINISHED WAITING. Call\nawait_request({ request_id }) with the id you were given, and keep calling it for as\nlong as it keeps answering \"pending\". Each call parks for another 55 seconds, so a loop\nof them costs nothing while it waits. Stop looping only when state is \"answered\",\n\"timeout\" or \"cancelled\".\n\nYour owner can also reply to the question rather than answer it — \"why do you want to\ndo that?\". That arrives as a message carrying this request_id; answer it with\npost_message({ request_id }) and keep waiting. Talking is not answering, and the state\nstays \"pending\" until they decide.\n\nThe wait survives your own restart: the request lives in the dashboard database, not in\nthis connection. If you crash mid-wait, call await_request with the request_id when you\ncome back and you resume exactly where you were.\n\nREADING THE ANSWER. `response.value` is typed by `response.kind`: a string for \"text\",\n\"buttons\" and \"choice\"; true or false for \"confirm\"; an array of strings for\n\"multi_choice\"; and { \"action\", \"text\" } for \"form\". Narrow on `response.kind` and the\nvalue is whichever of those it says. The server checks every answer against the request\nthat asked for it, so a \"choice\" value is always one of the options you offered and a\n\"multi_choice\" always respects your min and max — you do not need to re-validate it.\n\nFor a \"form\", USE `value.text` AND NOT YOUR DRAFT. The whole point of the kind is that\nyour owner may have rewritten it, and `value.action` tells you only what they decided,\nnot what they decided about. `value.action` is one of the options you offered, so a\n\"Reject\" is a real answer: do not send anything.\n\n\"timeout\" means nobody answered in time and \"cancelled\" means your owner dismissed the\nprompt. NEITHER IS PERMISSION. Do not do the thing you asked about; post an update\nsaying you are blocked, or stop.\n\nOn failure: \"invalid_argument\" means the request contradicts itself — options on a\nconfirm, a choice with no options, a min above its max — and the message says which.\n\"not_found\" means the project or update you named does not exist.",
+  "with": "channel (a slug or id; `project`, its older name, still works) and update (an update\nid) say what the request is about.\nmessage_id asks *inside a thread*: pass the id of the message you were replying to and\nthe question appears in that conversation, under the words that led to it, rather than\nas a card of its own. Use it whenever the question came out of something you were\ndiscussing — it is the difference between \"what about this?\" answered in context and\na prompt your owner has to reconstruct.\ntimeout_s is how long the request stays answerable, one hour by default.\npriority is \"low\", \"medium\" (the default), \"high\" or \"critical\". \"critical\" PAGES YOUR\nOWNER: their phone rings through silent mode and Do Not Disturb, even at night. Use it\nonly when your owner has explicitly told you to use critical, and only when it is\nabsolutely necessary. Never pick it on your own.\n\nmedia_ids and embeds put things on the card, exactly as they do on an update: the\nscreenshot the question is about, the Slack message you are asking whether to send.\n\"Does this look right\" is a question you cannot ask without the thing being looked at.\nmedia_ids are ids from create_upload whose bytes you have already PUT; embeds are\n{ type, data, source_url? }, and list_embed_types says which looks exist.\n\nHOW THE WAITING WORKS. READ THIS BEFORE YOU CALL IT.\n\nA human is slower than your tool timeout, so this call does not hold open until they\nclick. It parks for up to 55 seconds and then returns one of these:\n\n  { \"state\": \"answered\", \"request_id\", \"response\": { \"kind\", \"value\" }, \"answered_at\" }\n  { \"state\": \"pending\",  \"request_id\", \"poll_after_ms\" }\n  { \"state\": \"timeout\",  \"request_id\" }\n  { \"state\": \"cancelled\", \"request_id\" }\n\nIf state is \"pending\" NOBODY HAS ANSWERED YET AND YOU ARE NOT FINISHED WAITING. Call\nawait_request({ request_id }) with the id you were given, and keep calling it for as\nlong as it keeps answering \"pending\". Each call parks for another 55 seconds, so a loop\nof them costs nothing while it waits. Stop looping only when state is \"answered\",\n\"timeout\" or \"cancelled\".\n\nYour owner can also reply to the question rather than answer it — \"why do you want to\ndo that?\". That arrives as a message carrying this request_id; answer it with\npost_message({ request_id }) and keep waiting. Talking is not answering, and the state\nstays \"pending\" until they decide.\n\nThe wait survives your own restart: the request lives in the dashboard database, not in\nthis connection. If you crash mid-wait, call await_request with the request_id when you\ncome back and you resume exactly where you were.\n\nREADING THE ANSWER. `response.value` is typed by `response.kind`: a string for \"text\",\n\"buttons\" and \"choice\"; true or false for \"confirm\"; an array of strings for\n\"multi_choice\"; and { \"action\", \"text\" } for \"form\". Narrow on `response.kind` and the\nvalue is whichever of those it says. The server checks every answer against the request\nthat asked for it, so a \"choice\" value is always one of the options you offered and a\n\"multi_choice\" always respects your min and max — you do not need to re-validate it.\n\nFor a \"form\", USE `value.text` AND NOT YOUR DRAFT. The whole point of the kind is that\nyour owner may have rewritten it, and `value.action` tells you only what they decided,\nnot what they decided about. `value.action` is one of the options you offered, so a\n\"Reject\" is a real answer: do not send anything.\n\n\"timeout\" means nobody answered in time and \"cancelled\" means your owner dismissed the\nprompt. NEITHER IS PERMISSION. Do not do the thing you asked about; post an update\nsaying you are blocked, or stop.\n\nOn failure: \"invalid_argument\" means the request contradicts itself — options on a\nconfirm, a choice with no options, a min above its max — and the message says which.\n\"not_found\" means the channel or update you named does not exist."
+ },
+ {
+  "tool": "request_input",
+  "path": [
+   "inputSchema",
+   "properties",
+   "project",
+   "description"
+  ],
+  "why": "Channels and projects (spec/12): today's projects are channels, `channel` is their argument with `project` kept as an alias, and a project is a named group of channels.",
+  "replace": "A project slug or id, so the prompt says what this is about.",
+  "with": "Older name for channel, still accepted. Pass channel instead."
+ },
+ {
+  "tool": "request_input",
+  "path": [
+   "inputSchema",
+   "properties",
+   "update",
+   "description"
+  ],
+  "why": "Channels and projects (spec/12): today's projects are channels, `channel` is their argument with `project` kept as an alias, and a project is a named group of channels.",
+  "replace": "The id of the update this follows from, if you just posted one. Supplies the project when you omit it.",
+  "with": "The id of the update this follows from, if you just posted one. Supplies the channel when you omit it."
+ },
+ {
+  "tool": "request_input",
+  "path": [
+   "inputSchema",
+   "properties",
+   "message_id",
+   "description"
+  ],
+  "why": "Channels and projects (spec/12): today's projects are channels, `channel` is their argument with `project` kept as an alias, and a project is a named group of channels.",
+  "replace": "The thread to ask in: a message_id from get_messages or post_message. Your question appears inside that conversation, where your owner is already reading, instead of as a card of its own with none of the context beside it. Ask here whenever the question came out of something you were discussing. Supplies the project and the card, so naming it is enough.",
+  "with": "The thread to ask in: a message_id from get_messages or post_message. Your question appears inside that conversation, where your owner is already reading, instead of as a card of its own with none of the context beside it. Ask here whenever the question came out of something you were discussing. Supplies the channel and the card, so naming it is enough."
+ },
+ {
+  "tool": "request_input",
+  "path": [
+   "inputSchema",
+   "properties",
+   "channel"
+  ],
+  "why": "Channels and projects (spec/12): today's projects are channels, `channel` is their argument with `project` kept as an alias, and a project is a named group of channels.",
+  "now": {
+   "description": "A channel slug or id, so the prompt says what this is about.",
+   "type": "string"
   }
  }
 ]

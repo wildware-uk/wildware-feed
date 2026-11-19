@@ -161,10 +161,10 @@ class SubscriptionStreamTest {
             }
             val off = send("PUT", "/api/cards/update/${update.id}/follow", """{"following":false}""")
             assertEquals("""{"following":false,"chosen":true}""", Wire.encode(off["owner"]!!))
-            assertEquals("""{"projectId":"${update.projectId}","level":"muted"}""",
+            assertEquals("""{"projectId":"${update.projectId}","level":"muted","inherited":false}""",
                 Wire.encode(send("PUT", "/api/projects/p/subscription", """{"level":"muted"}""")))
             val mine = JsonObject(send("GET", "/api/subscriptions", "").filterKeys { it != "seq" && it != "at" })
-            assertEquals("""{"projects":[{"projectId":"${update.projectId}","level":"muted"}],"threads":[{"kind":"update","id":"${update.id}","following":false}]}""",
+            assertEquals("""{"projects":[{"projectId":"${update.projectId}","level":"muted"}],"groups":[],"threads":[{"kind":"update","id":"${update.id}","following":false}]}""",
                 Wire.encode(mine))
         } finally {
             server.stop()

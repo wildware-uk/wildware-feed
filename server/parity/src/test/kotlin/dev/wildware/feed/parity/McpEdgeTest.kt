@@ -143,7 +143,13 @@ class McpEdgeTest : ParityTest() {
 
         val p = obj("project" to "p", "body" to "b")
         fun pu(vararg extra: Pair<String, Any?>) = JsonObject(p + obj(*extra))
-        a.sdk("post_update", obj(), "Invalid input: expected string, received undefined at project\nInvalid input: expected string, received undefined at body")
+        // The Kotlin server takes channel or project (its older name), so the tool, not the schema, asks for one.
+        if (Parity.kotlin) {
+            a.sdk("post_update", obj(), "Invalid input: expected string, received undefined at body")
+            a.refused("post_update", obj("body" to "b"), "invalid_argument", "channel is required")
+        } else {
+            a.sdk("post_update", obj(), "Invalid input: expected string, received undefined at project\nInvalid input: expected string, received undefined at body")
+        }
         a.sdk("post_update", pu("level" to "loud"), "Invalid option: expected one of \"info\"|\"success\"|\"warn\"|\"error\" at level")
         // The Kotlin server also takes "critical" (tools-list-kotlin-changes.json).
         val priorities = if (Parity.kotlin) "\"low\"|\"medium\"|\"high\"|\"critical\"" else "\"low\"|\"medium\"|\"high\""

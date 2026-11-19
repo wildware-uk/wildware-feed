@@ -27,12 +27,24 @@ import dev.wildware.feed.server.db.Ulid
 class Subscriptions(private val db: Database, private val clock: () -> Long = System::currentTimeMillis) {
     data class Thread(val kind: String, val id: String)
 
-    data class ProjectFollow(val projectId: String, val slug: String, val name: String, val since: Long)
+    data class ProjectFollow(val projectId: String, val slug: String, val name: String, val since: Long, val chosen: Boolean = false)
+
+    data class GroupFollow(val groupId: String, val slug: String, val name: String, val since: Long)
+
+    /** A subscriber's own choice for a channel or group: following (with its level) or not. */
+    data class Choice(val following: Boolean, val level: String, val chosen: Boolean)
 
     data class ThreadFollow(val thread: Thread, val projectId: String?, val since: Long)
 
-    /** The owner's own choices: a level per project, and threads followed (true) or unfollowed (false). */
-    data class OwnerChoices(val levels: List<Pair<String, String>>, val threads: List<Pair<Thread, Boolean>>)
+    /**
+     * The owner's own choices: a level per channel and per group (only those set), and threads
+     * followed (true) or unfollowed (false).
+     */
+    data class OwnerChoices(
+        val levels: List<Pair<String, String>>,
+        val threads: List<Pair<Thread, Boolean>>,
+        val groups: List<Pair<String, String>> = emptyList(),
+    )
 
     /** Which messages reach an agent, besides the @mention rule (a message naming agents reaches only them). */
     sealed interface Reach {
@@ -48,13 +60,32 @@ class Subscriptions(private val db: Database, private val clock: () -> Long = Sy
 
     // ---- agents: what reaches them ----------------------------------------------------------------
 
-    /** The projects the agent follows now, or null when it has never followed one (then it hears them all). */
+    /**
+     * The channels the agent hears now, or null when it has never followed a channel or a group (then
+     * it hears them all). The most specific choice wins (spec/12): a channel it chose, then the
+     * channel's group, then a channel it follows because it posted there.
+     */
     fun followedProjects(agentId: String): List<String>? {
-        val rows = db.query(
-            "SELECT project_id, unsubscribed_at IS NULL FROM project_subscriptions WHERE subscriber = ? ORDER BY seq", agent(agentId),
-        ) { it.getString(1) to it.getBoolean(2) }
-        if (rows.isEmpty()) return null
-        return rows.filter { it.second }.map { it.first }
+        val me = agent(agentId)
+        val channels = db.query(
+            "SELECT project_id, unsubscribed_at IS NULL, chosen FROM project_subscriptions WHERE subscriber = ? ORDER BY seq", me,
+        ) { it.getString(1) to Choice(it.getBoolean(2), ALL, it.getInt(3) == 1) }
+        val groups = db.query("SELECT group_id, unsubscribed_at IS NULL FROM group_subscriptions WHERE subscriber = ?", me) {
+            it.getString(1) to it.getBoolean(2)
+        }.toMap()
+        if (channels.isEmpty() && groups.isEmpty()) return null
+        val own = channels.toMap()
+        val all = db.query("SELECT id, group_id FROM projects ORDER BY seq") { it.getString(1) to it.getString(2) }
+        val heard = all.filter { (id, groupId) ->
+            val choice = own[id]
+            when {
+                choice != null && choice.chosen -> choice.following
+                groupId != null && groupId in groups -> groups.getValue(groupId)
+                else -> choice?.following == true
+            }
+        }.map { it.first }.toSet()
+        // Followed channels in the order they were followed, then those heard only through a group.
+        return channels.map { it.first }.filter { it in heard } + all.map { it.first }.filter { it in heard && it !in own }
     }
 
     /** [Reach.Followed] made concrete: [Reach.All] for an agent that has never followed a project. */
@@ -68,8 +99,9 @@ class Subscriptions(private val db: Database, private val clock: () -> Long = Sy
     fun reachSql(agentId: String, reach: Reach, args: MutableList<Any?>): String = when (val r = resolve(agentId, reach)) {
         Reach.All -> ""
         Reach.Followed -> {
-            args += agent(agentId); args += agent(agentId); args += agentId
-            " AND ($FOLLOWS_PROJECT OR $FOLLOWS_THREAD OR $NAMES_READER)"
+            repeat(5) { args += agent(agentId) }
+            args += agent(agentId); args += agentId
+            " AND ($HEARS_CHANNEL OR $FOLLOWS_THREAD OR $NAMES_READER)"
         }
         is Reach.Projects -> {
             val inProjects = if (r.ids.isEmpty()) "0 = 1" else "m.project_id IN (${r.ids.joinToString(", ") { "?" }})"
@@ -91,17 +123,61 @@ class Subscriptions(private val db: Database, private val clock: () -> Long = Sy
     /**
      * [who] follows a project, hearing messages after [afterSeq]. Already following keeps its start.
      * Following again after unsubscribing starts from now, so the time away does not come back as unread.
+     * [chosen]: on purpose (`subscribe`), so it beats the channel's group; posting there is not.
      */
-    fun followProject(who: String, projectId: String, afterSeq: Long = now()) {
+    fun followProject(who: String, projectId: String, afterSeq: Long = now(), chosen: Boolean = false) {
+        // Choosing a channel the agent was not hearing (it left the group) starts it from now too.
+        val restart = chosen && who.startsWith(AGENT) && followedProjects(who.removePrefix(AGENT))?.contains(projectId) == false
         db.update(
-            "INSERT INTO project_subscriptions (id, subscriber, project_id, level, after_seq, created_at) VALUES (?, ?, ?, 'all', ?, ?) " +
+            "INSERT INTO project_subscriptions (id, subscriber, project_id, level, after_seq, created_at, chosen) VALUES (?, ?, ?, 'all', ?, ?, ?) " +
                 "ON CONFLICT (subscriber, project_id) DO UPDATE SET " +
-                "after_seq = CASE WHEN project_subscriptions.unsubscribed_at IS NULL THEN project_subscriptions.after_seq ELSE ? END, " +
+                "chosen = CASE WHEN excluded.chosen = 1 THEN 1 ELSE project_subscriptions.chosen END, " +
+                "after_seq = CASE WHEN project_subscriptions.unsubscribed_at IS NULL AND ${if (restart) "1 = 0" else "1 = 1"} " +
+                "THEN project_subscriptions.after_seq ELSE ? END, " +
                 "created_at = CASE WHEN project_subscriptions.unsubscribed_at IS NULL THEN project_subscriptions.created_at ELSE excluded.created_at END, " +
                 "unsubscribed_at = NULL",
-            Ulid.next(clock()), who, projectId, afterSeq, clock(), maxOf(afterSeq, now()),
+            Ulid.next(clock()), who, projectId, afterSeq, clock(), if (chosen) 1 else 0, maxOf(afterSeq, now()),
         )
     }
+
+    /** [who] follows a group, so every channel in it, as [followProject] does a channel. */
+    fun followGroup(who: String, groupId: String, afterSeq: Long = now()) {
+        db.update(
+            "INSERT INTO group_subscriptions (id, subscriber, group_id, level, after_seq, created_at) VALUES (?, ?, ?, 'all', ?, ?) " +
+                "ON CONFLICT (subscriber, group_id) DO UPDATE SET " +
+                "after_seq = CASE WHEN group_subscriptions.unsubscribed_at IS NULL THEN group_subscriptions.after_seq ELSE ? END, " +
+                "created_at = CASE WHEN group_subscriptions.unsubscribed_at IS NULL THEN group_subscriptions.created_at ELSE excluded.created_at END, " +
+                "unsubscribed_at = NULL",
+            Ulid.next(clock()), who, groupId, afterSeq, clock(), maxOf(afterSeq, now()),
+        )
+    }
+
+    /**
+     * [who] stops following a group. The row stays, stamped, so the choice still beats the channels
+     * the agent follows only because it posted there. False when it was not followed.
+     */
+    fun unfollowGroup(who: String, groupId: String): Boolean {
+        val before = groupState(who, groupId)
+        if (before == false) return false
+        if (before == null) {
+            if (!hasChosenAnything(who)) return false
+            db.update(
+                "INSERT INTO group_subscriptions (id, subscriber, group_id, level, after_seq, created_at, unsubscribed_at) VALUES (?, ?, ?, 'all', ?, ?, ?)",
+                Ulid.next(clock()), who, groupId, now(), clock(), clock(),
+            )
+            return false
+        }
+        db.update("UPDATE group_subscriptions SET unsubscribed_at = ? WHERE subscriber = ? AND group_id = ?", clock(), who, groupId)
+        return true
+    }
+
+    /** Whether [who] has any channel or group row; an agent with none hears every channel. */
+    fun hasChosenAnything(who: String): Boolean =
+        db.one("SELECT 1 FROM project_subscriptions WHERE subscriber = ? UNION ALL SELECT 1 FROM group_subscriptions WHERE subscriber = ?", who, who) { true } == true
+
+    /** True when [who] follows the group, false when it left it, null when it never chose. */
+    fun groupState(who: String, groupId: String): Boolean? =
+        db.one("SELECT unsubscribed_at IS NULL FROM group_subscriptions WHERE subscriber = ? AND group_id = ?", who, groupId) { it.getBoolean(1) }
 
     /** [who] follows a thread, as [followProject] does a project. True when that is new (or follows again). */
     fun followThread(who: String, thread: Thread, projectId: String?, afterSeq: Long = now()): Boolean {
@@ -117,11 +193,25 @@ class Subscriptions(private val db: Database, private val clock: () -> Long = Sy
         return before != true
     }
 
-    /** Stop following a project; false when it was not followed. */
-    fun unfollowProject(who: String, projectId: String): Boolean = db.update(
-        "UPDATE project_subscriptions SET unsubscribed_at = ? WHERE subscriber = ? AND project_id = ? AND unsubscribed_at IS NULL",
-        clock(), who, projectId,
-    ) > 0
+    /**
+     * Stop following a channel, on purpose, so it beats the channel's group. False when it was not
+     * followed on its own. Still recorded then, so a group [who] follows no longer brings this
+     * channel, unless [who] has never followed anything (and so hears everything).
+     */
+    fun unfollowProject(who: String, projectId: String): Boolean {
+        val was = db.update(
+            "UPDATE project_subscriptions SET unsubscribed_at = ?, chosen = 1 WHERE subscriber = ? AND project_id = ? AND unsubscribed_at IS NULL",
+            clock(), who, projectId,
+        ) > 0
+        if (!was && hasChosenAnything(who)) {
+            db.update(
+                "INSERT INTO project_subscriptions (id, subscriber, project_id, level, after_seq, created_at, unsubscribed_at, chosen) " +
+                    "VALUES (?, ?, ?, 'all', ?, ?, ?, 1) ON CONFLICT (subscriber, project_id) DO UPDATE SET chosen = 1",
+                Ulid.next(clock()), who, projectId, now(), clock(), clock(),
+            )
+        }
+        return was
+    }
 
     /** Stop following a thread; false when it was not followed. */
     fun unfollowThread(who: String, thread: Thread): Boolean = db.update(
@@ -134,11 +224,24 @@ class Subscriptions(private val db: Database, private val clock: () -> Long = Sy
         "SELECT unsubscribed_at IS NULL FROM thread_subscriptions WHERE subscriber = ? AND kind = ? AND thread_id = ?", who, thread.kind, thread.id,
     ) { it.getBoolean(1) }
 
+    /** The channels [who] follows on their own (not through a group), in the order followed. */
     fun projects(who: String): List<ProjectFollow> = db.query(
-        "SELECT ps.project_id, p.slug, p.name, ps.created_at FROM project_subscriptions AS ps JOIN projects AS p ON p.id = ps.project_id " +
+        "SELECT ps.project_id, p.slug, p.name, ps.created_at, ps.chosen FROM project_subscriptions AS ps JOIN projects AS p ON p.id = ps.project_id " +
             "WHERE ps.subscriber = ? AND ps.unsubscribed_at IS NULL ORDER BY ps.seq",
         who,
-    ) { ProjectFollow(it.getString(1), it.getString(2), it.getString(3), it.getLong(4)) }
+    ) { ProjectFollow(it.getString(1), it.getString(2), it.getString(3), it.getLong(4), it.getInt(5) == 1) }
+
+    /** The channels [who] chose not to follow, by id. */
+    fun leftProjects(who: String): List<String> = db.query(
+        "SELECT project_id FROM project_subscriptions WHERE subscriber = ? AND unsubscribed_at IS NOT NULL AND chosen = 1 ORDER BY seq", who,
+    ) { it.getString(1) }
+
+    /** The groups [who] follows, in the order followed. */
+    fun groups(who: String): List<GroupFollow> = db.query(
+        "SELECT gs.group_id, g.slug, g.name, gs.created_at FROM group_subscriptions AS gs JOIN project_groups AS g ON g.id = gs.group_id " +
+            "WHERE gs.subscriber = ? AND gs.unsubscribed_at IS NULL ORDER BY gs.seq",
+        who,
+    ) { GroupFollow(it.getString(1), it.getString(2), it.getString(3), it.getLong(4)) }
 
     /** The threads [who] follows, newest first, [limit] at most. */
     fun threads(who: String, limit: Int): List<ThreadFollow> = db.query(
@@ -180,17 +283,53 @@ class Subscriptions(private val db: Database, private val clock: () -> Long = Sy
 
     // ---- the owner --------------------------------------------------------------------------------
 
-    /** The owner's level for a project: `all` unless they chose otherwise. */
-    fun ownerLevel(projectId: String?): String = projectId?.let {
-        db.one("SELECT level FROM project_subscriptions WHERE subscriber = ? AND project_id = ?", OWNER, it) { rs -> rs.getString(1) }
-    } ?: ALL
+    /**
+     * The owner's level for a channel: the channel's own, else its group's, else `all` (spec/12:
+     * the most specific setting wins).
+     */
+    fun ownerLevel(projectId: String?): String = projectId?.let { ownerChannelLevel(it) ?: ownerGroupLevelOf(it) } ?: ALL
 
-    fun setOwnerLevel(projectId: String, level: String) {
+    /** The level the owner set on this channel itself, or null when it follows its group. */
+    fun ownerChannelLevel(projectId: String): String? = db.one(
+        "SELECT level FROM project_subscriptions WHERE subscriber = ? AND project_id = ? AND unsubscribed_at IS NULL", OWNER, projectId,
+    ) { it.getString(1) }
+
+    /** The level the owner set on a group, or null. */
+    fun ownerGroupLevel(groupId: String): String? = db.one(
+        "SELECT level FROM group_subscriptions WHERE subscriber = ? AND group_id = ? AND unsubscribed_at IS NULL", OWNER, groupId,
+    ) { it.getString(1) }
+
+    private fun ownerGroupLevelOf(projectId: String): String? = db.one(
+        "SELECT gs.level FROM group_subscriptions AS gs JOIN projects AS p ON p.group_id = gs.group_id " +
+            "WHERE gs.subscriber = ? AND p.id = ? AND gs.unsubscribed_at IS NULL",
+        OWNER, projectId,
+    ) { it.getString(1) }
+
+    /** Set the owner's level on a channel; null clears it, so the channel follows its group again. */
+    fun setOwnerLevel(projectId: String, level: String?) {
+        if (level == null) {
+            db.update("UPDATE project_subscriptions SET unsubscribed_at = ? WHERE subscriber = ? AND project_id = ? AND unsubscribed_at IS NULL", clock(), OWNER, projectId)
+            return
+        }
         if (level !in LEVELS) throw invalid("level must be one of: ${LEVELS.joinToString(", ")}")
         db.update(
-            "INSERT INTO project_subscriptions (id, subscriber, project_id, level, after_seq, created_at) VALUES (?, ?, ?, ?, 0, ?) " +
-                "ON CONFLICT (subscriber, project_id) DO UPDATE SET level = excluded.level, unsubscribed_at = NULL",
+            "INSERT INTO project_subscriptions (id, subscriber, project_id, level, after_seq, created_at, chosen) VALUES (?, ?, ?, ?, 0, ?, 1) " +
+                "ON CONFLICT (subscriber, project_id) DO UPDATE SET level = excluded.level, unsubscribed_at = NULL, chosen = 1",
             Ulid.next(clock()), OWNER, projectId, level, clock(),
+        )
+    }
+
+    /** Set the owner's level on a group, for every channel in it without its own; null clears it. */
+    fun setOwnerGroupLevel(groupId: String, level: String?) {
+        if (level == null) {
+            db.update("UPDATE group_subscriptions SET unsubscribed_at = ? WHERE subscriber = ? AND group_id = ? AND unsubscribed_at IS NULL", clock(), OWNER, groupId)
+            return
+        }
+        if (level !in LEVELS) throw invalid("level must be one of: ${LEVELS.joinToString(", ")}")
+        db.update(
+            "INSERT INTO group_subscriptions (id, subscriber, group_id, level, after_seq, created_at) VALUES (?, ?, ?, ?, 0, ?) " +
+                "ON CONFLICT (subscriber, group_id) DO UPDATE SET level = excluded.level, unsubscribed_at = NULL",
+            Ulid.next(clock()), OWNER, groupId, level, clock(),
         )
     }
 
@@ -212,7 +351,10 @@ class Subscriptions(private val db: Database, private val clock: () -> Long = Sy
     }
 
     fun ownerChoices(): OwnerChoices = OwnerChoices(
-        levels = db.query("SELECT project_id, level FROM project_subscriptions WHERE subscriber = ? ORDER BY seq", OWNER) {
+        levels = db.query("SELECT project_id, level FROM project_subscriptions WHERE subscriber = ? AND unsubscribed_at IS NULL ORDER BY seq", OWNER) {
+            it.getString(1) to it.getString(2)
+        },
+        groups = db.query("SELECT group_id, level FROM group_subscriptions WHERE subscriber = ? AND unsubscribed_at IS NULL ORDER BY seq", OWNER) {
             it.getString(1) to it.getString(2)
         },
         threads = db.query("SELECT kind, thread_id, unsubscribed_at IS NULL FROM thread_subscriptions WHERE subscriber = ? ORDER BY seq", OWNER) {
@@ -319,8 +461,19 @@ class Subscriptions(private val db: Database, private val clock: () -> Long = Sy
 
         private const val NAMES_READER = "EXISTS (SELECT 1 FROM message_mentions AS mm WHERE mm.message_id = m.id AND mm.agent_id = ?)"
 
-        private const val FOLLOWS_PROJECT = "EXISTS (SELECT 1 FROM project_subscriptions AS ps WHERE ps.subscriber = ? " +
-            "AND ps.project_id = m.project_id AND ps.unsubscribed_at IS NULL AND m.seq > ps.after_seq)"
+        /**
+         * The agent hears the message's channel ([followedProjects] in SQL, five times the subscriber):
+         * a channel it chose, else the channel's group, else a channel it follows from posting there.
+         */
+        private const val HEARS_CHANNEL = "(EXISTS (SELECT 1 FROM project_subscriptions AS ps WHERE ps.subscriber = ? " +
+            "AND ps.project_id = m.project_id AND ps.chosen = 1 AND ps.unsubscribed_at IS NULL AND m.seq > ps.after_seq) " +
+            "OR (NOT EXISTS (SELECT 1 FROM project_subscriptions AS ps WHERE ps.subscriber = ? AND ps.project_id = m.project_id AND ps.chosen = 1) " +
+            "AND CASE WHEN EXISTS (SELECT 1 FROM group_subscriptions AS gs JOIN projects AS gp ON gp.group_id = gs.group_id " +
+            "WHERE gs.subscriber = ? AND gp.id = m.project_id) " +
+            "THEN EXISTS (SELECT 1 FROM group_subscriptions AS gs JOIN projects AS gp ON gp.group_id = gs.group_id " +
+            "WHERE gs.subscriber = ? AND gp.id = m.project_id AND gs.unsubscribed_at IS NULL AND m.seq > gs.after_seq) " +
+            "ELSE EXISTS (SELECT 1 FROM project_subscriptions AS ps WHERE ps.subscriber = ? " +
+            "AND ps.project_id = m.project_id AND ps.unsubscribed_at IS NULL AND m.seq > ps.after_seq) END))"
 
         /** The same thread rule as [threadOf], in SQL. */
         private const val FOLLOWS_THREAD = "EXISTS (SELECT 1 FROM thread_subscriptions AS ts WHERE ts.subscriber = ? " +

@@ -471,6 +471,7 @@ class Reads(private val db: Database, private val clock: () -> Long = System::cu
         val embeds = embedsForMany("message_id", messageIds)
         return listOf(
             "projects" to JsonArray(projects),
+            "groups" to JsonArray(db.query("SELECT ${Groups.COLUMNS} FROM project_groups ORDER BY lower(name), seq") { Groups.json(it) }),
             "tags" to JsonArray(listTags(query.project)),
             "cardTags" to JsonArray(cardTags),
             "cardFields" to JsonArray(cardFields),

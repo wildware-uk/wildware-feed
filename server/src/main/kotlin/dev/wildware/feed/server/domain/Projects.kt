@@ -31,6 +31,8 @@ class Projects(private val feed: Feed) {
         val theme: Given<ThemeInput?>? = null,
         /** Anything; checked by [assertBoard]. `Given(JsonNull)` is the default board. */
         val board: Given<JsonElement>? = null,
+        /** The group (a project, in the app) to put this channel in, by id or slug; `Given(null)` ungroups it. */
+        val group: Given<String?>? = null,
     )
 
     fun byId(id: String): ProjectRow? = row("id", id)
@@ -95,6 +97,7 @@ class Projects(private val feed: Feed) {
         if (patch.pinned != null) { sets["pinned"] = if (patch.pinned) 1 else 0; given = true }
         if (patch.theme != null) { sets["theme"] = theme?.let(Wire::encode); given = true }
         if (patch.board != null) { sets["board"] = board?.let(Wire::encode); given = true }
+        if (patch.group != null) { sets["group_id"] = patch.group.value?.let { feed.groups.resolve(it).id }; given = true }
         if (!given) throw invalid("update requires at least one field to change")
         sets["updated_at"] = feed.now()
 
