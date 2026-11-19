@@ -1,6 +1,6 @@
 # Web app vs native app: feature inventory
 
-First audit 2026-11-18 against app 3347c01. **Refreshed 2026-11-18 against app master e450b05**, after the day's merge train; each row now has a Status.
+First audit 2026-11-18 against app 3347c01. **Refreshed 2026-11-18 against app master e450b05**, after the day's merge train; each row now has a Status. Rows 11, 12, 19, 31 and 36 marked Done after #53-#64 landed.
 
 - **Web** = old Svelte app, `agent-dashboard` repo at 5887479. Refs are relative to `src/`.
 - **App** = `wildware-feed` at origin/master e450b05 (first audit: 3347c01). `app/…` means `composeApp/src/commonMain/kotlin/dev/wildware/agents/app/…`; `shared/…` means `shared/src/commonMain/kotlin/dev/wildware/agents/…`.
@@ -49,15 +49,15 @@ It doesn't, beyond oldest first.
 | 8 | Kind `confirm` | Done | Approve (true) / Reject (false) (`RequestCard.svelte:571-587`) | Yes as "Yes"/"No" buttons + swipe (`Mapping.kt` Confirm) | Yes, plus Y/N keys | Labels differ (Yes/No vs Approve/Reject) | P2 |
 | 9 | Kind `buttons` | Done | One button per option (`RequestCard.svelte:603-625`) | Yes, swipe right = first, left = last | Yes, number keys 1-5 | — | — |
 | 10 | Kind `choice` | Partial | Radio list, pre-picked from `config.default` (`:508-533`) | Partial: pick then Send; no default pre-pick | Partial | Pre-pick `config.default` | P2 |
-| 11 | Kind `multi_choice` | Partial | Checkboxes, enforce `config.min`/`max`, "Choose between X and Y" (`:535-564`) | Partial: any number; no min/max | Partial | Enforce min/max + hint | P1 |
-| 12 | Kind `text` | Partial | Input/textarea (`multiline`), placeholder, maxlength, default, min chars (`:469-506`) | Partial: one-line box only; ignores config | Partial | Honour multiline/placeholder/default/min/max | P1 |
+| 11 | Kind `multi_choice` | Done | Checkboxes, enforce `config.min`/`max`, "Choose between X and Y" (`:535-564`) | Yes: checkboxes; picks bounded by `config.min`/`max`; a "Choose between 2 and 3" style hint (#57) | Yes | — | P1 |
+| 12 | Kind `text` | Done | Input/textarea (`multiline`), placeholder, maxlength, default, min chars (`:469-506`) | Yes: multiline, placeholder, default, min/max length, with a problem line (#60) | Yes | — | P1 |
 | 13 | Kind `form` | Done | Labelled field + agent's own action buttons, sends `{action,text}` (`:588-602`) | Yes: Form answers (PR #12) | Yes | — | P0 |
 | 14 | number / date kinds | N/A | Don't exist | — | — | Not a gap | — |
 | 15 | Picture options | Done | Thumbnail on each option; excluded from card grid (`:298-305`) | Yes: PictureGrid, hold to look closer (`PictureGrid.kt`) | Yes | App richer | — |
 | 16 | Dismiss | Done | "Dismiss" → agent told cancelled | Yes "Not now" / swipe left | Yes, N key | — | — |
 | 17 | Answer error | Partial | Alert, keeps typed text (`:566-568`) | Partial: outbox "couldn't send" + Retry/Drop in header (`Panels.kt` OutboxLine) | Partial | Not shown on the card itself | P2 |
 | 18 | Offline answer | Done | — | Yes: outbox, "Answer waiting to send" | Yes | App only | — |
-| 19 | Discussion thread on a request | Open | Reply/react/acks under the controls (`RequestCard.svelte:686-705`) | **No** (QuestionCard has no replies) | **No** | Port: can't discuss a question before answering | P1 |
+| 19 | Discussion thread on a request | Done | Reply/react/acks under the controls (`RequestCard.svelte:686-705`) | Yes: Discuss opens the question's own thread (#53) | Yes: inline under the controls (#53) | — | P1 |
 | 20 | Reactions / tags / fields / pin on request | Open | Same as other cards | No | No | See rows 40-48 | P2 |
 | 21 | "edited" marker on request | Open | Shown when agent rewrote it (`:386-399`) | No | No | — | P2 |
 | 22 | Collapse request | Open | Fold to one line | No | No | See row 31 | P2 |
@@ -70,12 +70,12 @@ It doesn't, beyond oldest first.
 | 28 | Card time label | Partial | Relative "5m ago", "updated …", tooltip with exact times (`days.ts:119-155`) | Partial: "14:05" today, else day name; no "updated" | Partial | No relative time, no "updated", no exact-time tooltip | P2 |
 | 29 | "N new updates" pill | Open | Holds live arrivals while scrolled down (`Timeline.svelte:686-707`) | No (arrivals insert live; engine supports hold, unused) | No | Works differently; low risk | P2 |
 | 30 | Back to top | Done | Round ↑ after one screen | Yes pill + status-bar tap | Yes pill + Home key | — | — |
-| 31 | Collapse a card / fold memory | Open | Chevron or header click; remembered (500) (`CardActions.svelte:89-113`, `collapse.svelte.ts`) | No | No | Port | P1 |
+| 31 | Collapse a card / fold memory | Done | Chevron or header click; remembered (500) (`CardActions.svelte:89-113`, `collapse.svelte.ts`) | Yes: chevron folds a card; remembered (500) across restarts (#62) | Yes | — | P1 |
 | 32 | Long body clamp | Done | 420 px with fade, "Show the whole update" (`Clamp.svelte`) | Yes: Folds at 420 dp with "Show more" (`app/feed/Clamp.kt`) | Yes | — | P1 |
 | 33 | Load older | Done | Button, pages of 50 | Yes, auto at end | Yes, auto | — | — |
 | 34 | New-card / bump animation | Open | Enter animation, FLIP slide, bump ring (`bumps.svelte.ts`) | No | No | Polish | P2 |
 | 35 | Empty feed | Done | "Nothing here yet…" | Yes, loading vs empty vs filtered (`FeedScreen.kt` EmptyFeed) | Yes | — | — |
-| 36 | Deep link / focus to card | Partial | `?focus=id`, ring 4 s, loads up to 5 pages, "Could not find…" (`Timeline.svelte:159-310,753-763`) | Partial: reveal scrolls, waits 10 s, clears filter (`FeedScreen.kt` ScrollToRevealed) | Partial | No highlight ring, no older-page loading, no "not found" message | P1 |
+| 36 | Deep link / focus to card | Done | `?focus=id`, ring 4 s, loads up to 5 pages, "Could not find…" (`Timeline.svelte:159-310,753-763`) | Yes: finds the card, loads up to 5 older pages, rings it 4 s, unfolds it, or says it can't (#64) | Yes | — | P1 |
 | 37 | Pull to refresh | Done | — | Yes | F5 / Cmd-R | App only | — |
 | 38 | Connection status | Done | Live/Reconnecting dot in header | Yes in feed header (`Panels.kt` LinkBadge) | Yes | — | — |
 | 39 | Offscreen skipping (perf) | Done | `content-visibility:auto` (`app.css:441-457`) | LazyColumn (inherent) | LazyColumn; PR #5 memoises | — | — |
