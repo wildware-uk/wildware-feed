@@ -143,6 +143,34 @@ class DashboardClient(
         }.requireSuccess()
     }
 
+    /**
+     * The owner opened these cards: the bell's rows about them are seen, and every device takes
+     * their notifications down. Never "everything", whatever [cards] holds.
+     */
+    @Throws(Exception::class)
+    suspend fun markCardsSeen(cards: List<String>) {
+        if (cards.isEmpty()) return
+        http.post("api/notifications/cards-seen") {
+            authorise()
+            jsonBody(buildJsonObject { put("cards", JsonArray(cards.map(::JsonPrimitive))) })
+        }.requireSuccess()
+    }
+
+    /**
+     * Of the notification [tags] this device still shows, the ones the owner has dealt with on
+     * some device, so they can come down. Empty on a dashboard too old to say.
+     */
+    @Throws(Exception::class)
+    suspend fun handledNotifications(tags: List<String>): List<String> {
+        if (tags.isEmpty()) return emptyList()
+        val response = http.post("api/notifications/handled") {
+            authorise()
+            jsonBody(buildJsonObject { put("tags", JsonArray(tags.take(MaxClearTags).map(::JsonPrimitive))) })
+        }
+        if (response.status.value == 404) return emptyList()
+        return response.decoded<HandledNotifications>().handled
+    }
+
     // --- The owner's actions, sent straight away. The outbox calls these. ----------------------
 
     /** Posts or replies as the owner. The live stream brings it back into the feed. */

@@ -468,6 +468,33 @@ Notification JSON (key order: row `db/notifications.ts:34-48`, then view `notifi
 
 ---
 
+### 5.3 `POST /api/notifications/cards-seen` (Kotlin addition)
+
+The owner opened these cards on some device (the app sends it when a thread opens, a moment
+after, with any others opened meanwhile).
+
+- Body `{"cards":["<id>", …]}`: a required list of 1–200-character strings, at most 500. Anything
+  else → 400 `invalid_argument`. Never means "everything", unlike a missing `ids` on `/seen`.
+- Marks seen every unseen row whose `update_id`, `request_id` or `message_id` is one of the ids,
+  and every row for a line in their threads (`messages.update_id`, `reply_to`, `request_id` or
+  `task_id` is one of them). So an update, post, question or single line can be named.
+- 200 `{"changed": n, "unseen": <count>}`. Publishes `notifications.seen {count}` and
+  `notifications.cleared {tags}` when anything changed (spec/08 §6.9).
+
+### 5.4 `POST /api/notifications/handled` (Kotlin addition)
+
+A device asks which of the alerts it still shows are done with, by the tag each alert carried
+(spec/08 §6.7), to catch up on clears it missed while closed or offline.
+
+- Body `{"tags":["message-01J…", …]}`: same limits as `cards` above.
+- 200 `{"handled":[…]}`: the asked tags that are done with, in the order asked, no repeats.
+  - `request-<id>`: not pending, past its deadline, or no such request.
+  - `pairing-<id>`: not pending, past its deadline, or no such pairing (settled ones are purged).
+  - `update-<id>` / `message-<id>`: deleted, or its bell row is seen. One the dashboard never had
+    is **not** done with (it may be an app's own notice, such as the desktop's `update-check`).
+  - Any other shape: never done with.
+- An older dashboard answers 404; apps take that as "none".
+
 ## 6. Summary and phone pushes (iOS contract)
 
 ### `GET /api/summary` (`http/owner/devices.ts:225`, `domain/summary.ts:40`)

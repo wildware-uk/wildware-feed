@@ -125,6 +125,27 @@ class RequestRoutesTest {
     }
 
     @Test
+    fun `a card read on one device clears its alerts and the bell on all of them`() = withApp { app, key ->
+        app.db.update("INSERT INTO agents (id, name, token_hash, created_at) VALUES ('A1', 'a', 'h', 1)")
+        app.db.update("INSERT INTO updates (id, project_id, agent_id, body, created_at) VALUES ('U1', 'P1', 'A1', 'b', 1)")
+        app.bus.publish("update.created", buildJsonObject { put("updateId", "U1") })
+        val cleared = mutableListOf<String>()
+        app.bus.subscribe { if (it.type == "notifications.cleared") cleared += Wire.encode(it.payload) }
+
+        assertEquals("""{"handled":[]}""", send(key, "POST", "/api/notifications/handled", """{"tags":["update-U1","update-check"]}""").bodyAsText())
+        assertEquals("""{"changed":1,"unseen":0}""", send(key, "POST", "/api/notifications/cards-seen", """{"cards":["U1"]}""").bodyAsText())
+        assertEquals(listOf("""{"tags":["update-U1"]}"""), cleared)
+        assertEquals("""{"handled":["update-U1"]}""", send(key, "POST", "/api/notifications/handled", """{"tags":["update-U1","update-check"]}""").bodyAsText())
+
+        // Never "everything", as a missing ids is on /seen.
+        assertEquals(400, send(key, "POST", "/api/notifications/cards-seen", "{}").status.value)
+        assertEquals(400, send(key, "POST", "/api/notifications/handled", """{"tags":"update-U1"}""").status.value)
+        assertEquals(400, send(key, "POST", "/api/notifications/handled", """{"tags":[1]}""").status.value)
+        val tooMany = (0..500).joinToString(",") { "\"message-$it\"" }
+        assertEquals(400, send(key, "POST", "/api/notifications/handled", """{"tags":[$tooMany]}""").status.value)
+    }
+
+    @Test
     fun `an app view keeps the owner's state`() = withApp { app, key ->
         app.db.update("INSERT INTO agents (id, name, token_hash, created_at) VALUES ('A1', 'a', 'h', 1)")
         app.db.update("INSERT INTO updates (id, project_id, agent_id, body, created_at) VALUES ('U1', 'P1', 'A1', 'b', 1)")

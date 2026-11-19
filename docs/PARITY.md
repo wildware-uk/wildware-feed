@@ -161,6 +161,7 @@ It doesn't, beyond oldest first.
 | 108 | Push alerts | Done | Web Push "Notify me" | Yes APNs: requests, replies, messages; rich content ext | Desktop notices by same rules (`NotificationRules.kt`) + Do not disturb | Parity or better | — |
 | 109 | Per-device alert prefs | Done | Types (Questions/Replies/Comments/Updates), levels, priority (`NotifyToggle.svelte:41-202`) | Yes: Per-device alert settings (PR #34, server migration 047) | Yes | — | P1 |
 | 110 | Mark all read | Done | Bell only | Yes: Header button, bell and command bar | Yes | — | — |
+| 122 | Notifications clear once dealt with | Done | — | Yes: read, answered, allowed/denied, withdrawn or deleted on any device clears the lock screen (background push, plus catch-up on open) and the bell | Yes: Android shade and Linux notices clear; Mac/Windows tray notices can't be taken down | Better | — |
 | **Settings / account** |||||||
 | 111 | Theme toggle | Done | Header Dark/Light, remembered | Command bar "Switch light or dark" only | Sidebar moon + command bar | No visible toggle on phone | P2 |
 | 112 | Sign in / out | Done | Password page; logout confirm page | Yes sign-in screen; Sign out in drawer, no confirm | Yes, sidebar icon, no confirm | Add confirm | P2 |

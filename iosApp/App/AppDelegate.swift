@@ -35,6 +35,21 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         Task { @MainActor in AppModel.shared.receivedApnsToken(hex) }
     }
 
+    /// A quiet push from the dashboard naming alerts the owner has dealt with, here or on another
+    /// device: read, answered, allowed, denied, withdrawn or deleted. They come off the lock screen.
+    /// iOS delivers these when it chooses, and never to an app swiped away in the app switcher, so
+    /// opening the app catches up as well (the Compose session asks on every return).
+    func application(
+        _ application: UIApplication,
+        didReceiveRemoteNotification userInfo: [AnyHashable: Any]
+    ) async -> UIBackgroundFetchResult {
+        guard let tags = userInfo["clear"] as? [String] else { return .noData }
+        let client = Dashboard.client()
+        defer { client?.close() }
+        try? await IosSystemNotices.shared.clearDelivered(tags: tags, client: client)
+        return .newData
+    }
+
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         willPresent notification: UNNotification

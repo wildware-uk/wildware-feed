@@ -262,4 +262,41 @@ class PushTest {
             Wire.encode((Apns.alertPayload(alert, page = "critical")["aps"] as kotlinx.serialization.json.JsonObject)["sound"]!!),
         )
     }
+
+    @Test
+    fun `clears go to every phone as one quiet background push naming the alerts`() {
+        app.db.update("INSERT INTO owner_devices (id, name, token_hash, created_at, apns_token) VALUES ('D1', 'Phone', 'h1', 1, 'abc')")
+        app.db.update("INSERT INTO owner_devices (id, name, token_hash, created_at, apns_token) VALUES ('D2', 'Desk', 'h2', 1, NULL)")
+        val sent = java.util.concurrent.LinkedBlockingQueue<ApnsRequest>()
+        val apns = Apns(app, apnsConfig, clearDelayMs = 50) { sent += it; ApnsResponse(200, null) }
+        val stop = apns.start()
+        try {
+            fun clear(vararg tags: String) = app.bus.publish(
+                "notifications.cleared",
+                kotlinx.serialization.json.buildJsonObject { put("tags", kotlinx.serialization.json.JsonArray(tags.map(::JsonPrimitive))) },
+            )
+            clear("update-U1", "message-M1")
+            clear("request-R1", "update-U1")
+            val push = sent.poll(5, java.util.concurrent.TimeUnit.SECONDS)!!
+            assertEquals("abc", push.deviceToken)
+            assertEquals(
+                listOf("apns-push-type" to "background", "apns-topic" to "dev.example.feed", "apns-priority" to "5", "apns-expiration" to "1700021600"),
+                push.headers,
+            )
+            assertEquals("""{"aps":{"content-available":1},"clear":["update-U1","message-M1","request-R1"]}""", push.payload)
+            Thread.sleep(200)
+            assertNull(sent.poll(), "two clears close together are one push, and the phone without a token gets none")
+        } finally {
+            stop()
+        }
+    }
+
+    @Test
+    fun `a clear never outgrows the payload and never carries an alert`() {
+        val tags = (1..100).map { "message-01JABCDEFGHJKMNPQRSTVWXY%02d".format(it) }
+        val payload = Wire.encode(Apns.clearPayload(tags))
+        assertTrue(payload.toByteArray().size < 4096, "${payload.length} bytes")
+        assertTrue(payload.contains(tags.last()) && !payload.contains("\"${tags.first()}\""), "the newest are kept")
+        assertTrue(!payload.contains("alert") && !payload.contains("sound"))
+    }
 }

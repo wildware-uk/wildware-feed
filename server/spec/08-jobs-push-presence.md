@@ -172,7 +172,8 @@ Source: `src/domain/notifications.ts`, SQL `src/db/notifications.ts`, table
 `src/db/migrations/021-notifications.ts`.
 
 - One owner, so there is no recipient column. Every row is for the owner.
-- Created by a bus subscriber (`startNotificationRecorder`, `:231-264`) on exactly three events:
+- Created by a bus subscriber (`startNotificationRecorder`, `:231-264`) on exactly three events
+  (the same subscriber also marks rows seen when what they are about is settled or deleted: §6.9):
 
 | Event | Row | Skipped when | Title | Source |
 |-------|-----|--------------|-------|--------|
@@ -412,6 +413,36 @@ apns-collapse-id: <tag cut to 64 UTF-8 bytes, no split characters>
   The device row is never deleted.
 - Anything else, or a thrown transport error → `failures += 1` (never acted on).
 - No retry. Never throws.
+
+### 6.9 Clearing alerts once they are dealt with (Kotlin addition)
+
+Once the owner has seen or handled something on any device, its notifications come down on all
+of them. Every alert carries a stable `tag` (§6.7) that is also its `apns-collapse-id`:
+`request-<id>`, `pairing-<id>`, `update-<id>`, `message-<id>`. The apps that raise their own
+notices (Android, desktop) use the same strings as the notification tag.
+
+- **What counts as dealt with** — the bell recorder (§4) publishes `notifications.cleared {tags}`:
+  - a bell row becomes seen (bell, "Mark all read", or a card opened: spec/03 §5.3): its
+    `update-<id>` or `message-<id>`. A `request` row being seen clears nothing: the question's
+    alert keeps its answer buttons until it settles.
+  - `request.answered` (answered, cancelled, withdrawn, timed out): the request's bell row and
+    its discussion's rows are marked seen, and `request-<id>` is cleared even if they already were.
+  - `message.deleted` / `update.deleted`: rows for it and its thread marked seen, their tags cleared.
+  - `pairing.updated` with a state other than `pending` (allowed, denied, expired): `pairing-<id>`.
+- **Live** — the owner stream carries the event; each running app takes those tags down
+  (iOS `removeDeliveredNotifications`, Android `cancel(tag, id)`, Linux notify-send interrupted).
+- **iPhone in the background** — the APNs pusher gathers cleared tags for 2 s, then sends one
+  background push to every phone with a token:
+  headers `apns-push-type: background`, `apns-topic`, `apns-priority: 5`,
+  `apns-expiration: now + 6 h`, no collapse id; payload
+  `{"aps":{"content-available":1},"clear":["<tag>", …]}` (the newest 60 tags at most). The app
+  wakes (`application(_:didReceiveRemoteNotification:)`), takes those down, and asks
+  `/api/notifications/handled` about everything else still showing.
+  Best effort: iOS rations and merges background pushes, and never delivers them to an app the
+  owner swiped away.
+- **Catch-up (the reliable path)** — whenever an app's live connection comes up, and each time
+  the iPhone app returns to the front, it asks `/api/notifications/handled` about every alert it
+  still shows and takes down what is done with.
 
 ---
 

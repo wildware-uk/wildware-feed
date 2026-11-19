@@ -4,8 +4,11 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.drop
@@ -434,17 +437,52 @@ class Dashboard internal constructor(
         }
     }
 
-    /** Marks a card's comments as seen: its unread badge clears. */
+    /**
+     * Marks a card's comments as seen: its unread badge clears. The dashboard hears of it too, a
+     * moment later with any others opened meanwhile, so the bell and every device's notifications
+     * about the card clear ([clearedNotices]).
+     */
     fun markRead(cardId: String) {
         confined.launch {
             feeds.values.firstNotNullOfOrNull { it.commentsOn(cardId) }?.let { readMarks.markRead(cardId, it) }
             changed()
+            cardsSeen += cardId
+            if (cardsSeenSend?.isActive != true) cardsSeenSend = confined.launch { sendCardsSeen() }
         }
     }
+
+    /** Cards opened and not yet told to the dashboard. */
+    private val cardsSeen = LinkedHashSet<String>()
+    private var cardsSeenSend: Job? = null
+
+    private suspend fun sendCardsSeen() {
+        delay(CardsSeenBatchMillis)
+        val cards = cardsSeen.toList()
+        cardsSeen.clear()
+        // Only a convenience: a card that fails stays lit in the bell, where the owner can clear it.
+        for (chunk in cards.chunked(MaxClearTags)) {
+            try {
+                client.markCardsSeen(chunk)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Throwable) {
+            }
+        }
+    }
+
+    private val mutableCleared = MutableSharedFlow<List<String>>(extraBufferCapacity = 64)
+
+    /**
+     * Tags of notifications the owner has dealt with, on this device or another: read, answered,
+     * allowed, denied, withdrawn or deleted. A device takes the notifications it showed with those
+     * tags off its screen.
+     */
+    val clearedNotices: SharedFlow<List<String>> = mutableCleared.asSharedFlow()
 
     private fun readers(): List<FeedReader> = listOf(requests, presence, bell, joining, follows) + feeds.values.flatMap { it.readers }
 
     private suspend fun receive(event: StreamEvent) {
+        if (event.type == ClearedEvent) clearedTags(event)?.let { mutableCleared.tryEmit(it) }
         requests.receive(event)
         presence.receive(event)
         bell.receive(event)
@@ -518,6 +556,17 @@ class Dashboard internal constructor(
 
         /** A tick this much later than due means the device was asleep, not just busy. */
         const val SleepMillis = 30_000L
+
+        /** Cards opened within this long of each other are told to the dashboard together. */
+        const val CardsSeenBatchMillis = 1_000L
+
+        /** `notifications.cleared {tags}`: notifications the owner has dealt with somewhere. */
+        const val ClearedEvent = "notifications.cleared"
+
+        fun clearedTags(event: StreamEvent): List<String>? =
+            (event.payload?.get("tags") as? kotlinx.serialization.json.JsonArray)
+                ?.mapNotNull { (it as? kotlinx.serialization.json.JsonPrimitive)?.takeIf { p -> p.isString }?.content }
+                ?.takeIf { it.isNotEmpty() }
     }
 }
 

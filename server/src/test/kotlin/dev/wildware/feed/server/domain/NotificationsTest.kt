@@ -89,7 +89,137 @@ class NotificationsTest {
         assertEquals(1, notifications.markSeen(listOf(first, "nope")))
         assertEquals(1L, notifications.unseen())
         assertEquals(1, notifications.markSeen(null))
-        assertEquals(listOf("""{"count":1}""", """{"count":1}"""), events.map { Wire.encode(it.payload) })
+        assertEquals(
+            listOf("""{"count":1}""", """{"tags":["update-U1"]}""", """{"count":1}""", """{"tags":["update-U2"]}"""),
+            events.map { Wire.encode(it.payload) },
+        )
     }
 
+    // ---- clearing alerts once they are dealt with (spec/08 §6.9) ---------------------------------
+
+    private fun cleared() = events.filter { it.type == "notifications.cleared" }.map { e ->
+        (e.payload["tags"] as JsonArray).map { (it as JsonPrimitive).content }
+    }
+
+    private fun unseenTargets() = db.query("SELECT coalesce(update_id, message_id, request_id) FROM notifications WHERE seen_at IS NULL ORDER BY seq") { it.getString(1) }
+
+    private fun threadOnUpdate() {
+        db.update("INSERT INTO updates (id, project_id, agent_id, title, body, created_at) VALUES ('U1', 'P1', 'A1', NULL, 'did a thing', 1)")
+        db.update("INSERT INTO updates (id, project_id, agent_id, title, body, created_at) VALUES ('U2', 'P1', 'A1', NULL, 'other', 1)")
+        db.update("INSERT INTO messages (id, project_id, update_id, author, body, created_at) VALUES ('M1', 'P1', 'U1', 'agent:A1', 'first', 1)")
+        db.update("INSERT INTO messages (id, project_id, update_id, author, body, created_at) VALUES ('M2', 'P1', 'U2', 'agent:A1', 'elsewhere', 1)")
+        for (u in listOf("U1", "U2")) bus.publish("update.created", buildJsonObject { put("updateId", u) })
+        for (m in listOf("M1", "M2")) bus.publish("message.created", buildJsonObject { put("messageId", m) })
+        events.clear()
+    }
+
+    @Test
+    fun `reading a card clears its update and every line in its thread and nothing else`() {
+        threadOnUpdate()
+        assertEquals(2, notifications.markCardsSeen(listOf("U1")))
+        assertEquals(listOf("U2", "M2"), unseenTargets())
+        assertEquals(listOf("notifications.seen", "notifications.cleared"), events.map { it.type })
+        assertEquals(listOf(listOf("update-U1", "message-M1")), cleared())
+
+        events.clear()
+        assertEquals(0, notifications.markCardsSeen(listOf("U1")))
+        assertEquals(emptyList(), events.map { it.type }, "nothing new: no event, no push")
+    }
+
+    @Test
+    fun `a post's replies and a single line clear by their card`() {
+        db.update("INSERT INTO messages (id, project_id, author, body, created_at) VALUES ('POST', 'P1', 'agent:A1', 'a post', 1)")
+        db.update("INSERT INTO messages (id, project_id, author, body, created_at, reply_to) VALUES ('R1', 'P1', 'agent:A1', 'reply', 1, 'POST')")
+        db.update("INSERT INTO messages (id, project_id, author, body, created_at) VALUES ('LONE', 'P1', 'agent:A1', 'alone', 1)")
+        for (m in listOf("POST", "R1", "LONE")) bus.publish("message.created", buildJsonObject { put("messageId", m) })
+        events.clear()
+        notifications.markCardsSeen(listOf("POST"))
+        assertEquals(listOf(listOf("message-POST", "message-R1")), cleared())
+        notifications.markCardsSeen(listOf("LONE"))
+        assertEquals(listOf("message-LONE"), cleared().last())
+    }
+
+    @Test
+    fun `seen in the bell clears updates and lines but a question's alert waits for its answer`() {
+        threadOnUpdate()
+        val requests = Requests(db, bus, Reads(db) { now }, { now })
+        requests.create("A1", NewRequest(kind = "confirm", question = "Ship?", project = "web"))
+        events.clear()
+        assertEquals(5, notifications.markSeen(null))
+        assertEquals(listOf(listOf("update-U1", "update-U2", "message-M1", "message-M2")), cleared())
+    }
+
+    @Test
+    fun `answering a question clears its alert and its bell row even when the bell was already seen`() {
+        val requests = Requests(db, bus, Reads(db) { now }, { now })
+        val asked = requests.create("A1", NewRequest(kind = "confirm", question = "Ship?", project = "web")).first
+        val dismissed = requests.create("A1", NewRequest(kind = "confirm", question = "Again?", project = "web")).first
+        events.clear()
+        requests.answer(asked.id, JsonPrimitive(true))
+        assertEquals(listOf(dismissed.id), unseenTargets())
+        assertEquals(listOf(listOf("request-${asked.id}")), cleared())
+        assertEquals(listOf("request.answered", "notifications.seen", "notifications.cleared"), events.map { it.type })
+
+        notifications.markSeen(null)
+        events.clear()
+        requests.cancel(dismissed.id)
+        assertEquals(listOf(listOf("request-${dismissed.id}")), cleared(), "seen in the bell, still on the lock screen")
+    }
+
+    @Test
+    fun `a question the agent withdraws or that runs out clears too`() {
+        var clock = now
+        val requests = Requests(db, bus, Reads(db) { clock }, { clock })
+        val withdrawn = requests.create("A1", NewRequest(kind = "confirm", question = "Ship?", project = "web")).first
+        val expiring = requests.create("A1", NewRequest(kind = "confirm", question = "Soon?", project = "web", timeoutS = 60.0)).first
+        events.clear()
+        requests.withdraw(withdrawn.id, "A1")
+        clock += 61_000
+        requests.expireDue()
+        assertEquals(listOf(listOf("request-${withdrawn.id}"), listOf("request-${expiring.id}")), cleared())
+    }
+
+    @Test
+    fun `allowing or denying an agent clears its alert`() {
+        val pairings = Pairings(db, bus, "t".repeat(32)) { now }
+        val allowed = pairings.start("laptop", null, null, null, null).pairing
+        val denied = pairings.start("desk", null, null, null, null).pairing
+        events.clear()
+        pairings.approve(allowed.id, null)
+        pairings.deny(denied.id)
+        assertEquals(listOf(listOf("pairing-${allowed.id}"), listOf("pairing-${denied.id}")), cleared())
+    }
+
+    @Test
+    fun `a deleted line or update clears its alert`() {
+        threadOnUpdate()
+        db.update("UPDATE messages SET deleted_at = 2 WHERE id = 'M2'")
+        bus.publish("message.deleted", buildJsonObject { put("messageId", "M2") })
+        db.update("UPDATE updates SET deleted_at = 2 WHERE id = 'U1'")
+        bus.publish("update.deleted", buildJsonObject { put("updateId", "U1") })
+        assertEquals(listOf(listOf("message-M2"), listOf("update-U1", "message-M1")), cleared())
+        assertEquals(listOf("U2"), unseenTargets())
+    }
+
+    @Test
+    fun `handled names the alerts a phone still shows that are done with`() {
+        threadOnUpdate()
+        val requests = Requests(db, bus, Reads(db) { now }, { now })
+        val open = requests.create("A1", NewRequest(kind = "confirm", question = "Ship?", project = "web")).first
+        val answered = requests.create("A1", NewRequest(kind = "confirm", question = "Done?", project = "web")).first
+        requests.answer(answered.id, JsonPrimitive(true))
+        val pairings = Pairings(db, bus, "t".repeat(32)) { now }
+        val waiting = pairings.start("laptop", null, null, null, null).pairing
+        notifications.markCardsSeen(listOf("U2"))
+        db.update("UPDATE messages SET deleted_at = 2 WHERE id = 'M1'")
+
+        val asked = listOf(
+            "request-${open.id}", "request-${answered.id}", "request-gone", "pairing-${waiting.id}", "pairing-gone",
+            "update-U1", "update-U2", "message-M1", "message-M2", "message-gone", "update-check", "something-else", "request-${answered.id}",
+        )
+        assertEquals(
+            listOf("request-${answered.id}", "request-gone", "pairing-gone", "update-U2", "message-M1", "message-M2"),
+            notifications.handled(asked),
+        )
+    }
 }

@@ -442,6 +442,8 @@ class DashboardSession(
         // Another process queued, sent or dropped something: show it, and send what is new.
         scope.launch { outboxChanged.collect { outbox.reload() } }
         scope.launch { foreground.collect { resume() } }
+        // Pushed notifications the owner dealt with, here or elsewhere, come off the lock screen.
+        platform.notices?.let { notices -> scope.launch { NoticeCleanup(dashboard, notices, foreground).run() } }
     }
 
     private fun markdownIn(state: FeedState): Sequence<String> = state.sections.asSequence().flatMap { it.items.asSequence() }.flatMap { item ->

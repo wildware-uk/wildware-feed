@@ -538,6 +538,13 @@ data class NotificationView(
     val path: String = "/",
 )
 
+/** `POST /api/notifications/handled`: which of the asked tags are done with. */
+@Serializable
+data class HandledNotifications(val handled: List<String> = emptyList())
+
+/** The most notification tags one `handled` call asks about; the dashboard takes no more. */
+const val MaxClearTags = 500
+
 /** `GET /api/notifications`: newest first, with how many are still new. */
 @Serializable
 data class NotificationsSnapshot(

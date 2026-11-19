@@ -4,6 +4,8 @@ import dev.wildware.agents.StreamStatus
 import dev.wildware.agents.app.engine.AppModel
 import dev.wildware.agents.app.engine.AppScreen
 import dev.wildware.agents.app.engine.DashboardSession
+import dev.wildware.agents.app.engine.NoticeCleanup
+import dev.wildware.agents.app.engine.SystemNotices
 import dev.wildware.agents.app.ProductName
 import dev.wildware.agents.app.update.CheckResult
 import dev.wildware.agents.app.update.InstallState
@@ -11,6 +13,7 @@ import dev.wildware.agents.app.update.UpdateController
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -88,8 +91,10 @@ class DesktopShell(
         }
     }
 
-    private suspend fun follow(session: DashboardSession) {
+    private suspend fun follow(session: DashboardSession) = coroutineScope {
         val dashboard = session.dashboard
+        // Notices the owner dealt with, here or on another device, come down (where the system allows).
+        launch { NoticeCleanup(dashboard, NotifierNotices(notifier)).run() }
         val rules = NotificationRules()
         combine(dashboard.ready, dashboard.waiting, dashboard.everything.state, dashboard.status, dashboard.pairings) { ready, waiting, feed, status, joining ->
             tray.show(TrayLook.of(waiting.size, offline = status == StreamStatus.Offline))
@@ -213,3 +218,9 @@ fun updateNotice(result: CheckResult, current: String, background: Boolean = fal
 }
 
 private const val UpdateNoticeKey = "update-check"
+
+/** A [Notifier]'s notices, as [NoticeCleanup] takes them down. */
+internal class NotifierNotices(private val notifier: Notifier) : SystemNotices {
+    override suspend fun shown(): Set<String> = notifier.shown()
+    override fun remove(tags: Set<String>) = notifier.remove(tags)
+}

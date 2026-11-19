@@ -105,11 +105,21 @@ data class PushDevice(
 /**
  * iOS alerts (spec/08 §6): on `request.created`, `update.created` and `message.created`, an alert to
  * every phone with an APNs token that wants the project; on `pairing.created`, to every phone. The alert is built inside the event, as the
- * TS server does, and sent off the bus thread.
+ * TS server does, and sent off the bus thread. On `notifications.cleared`, a background push to
+ * every phone naming the alerts it can take down (§6.9).
  */
-class Apns(private val app: App, private val settings: Config.Apns, private val transport: ApnsTransport = HttpApnsTransport(settings, app.clock)) {
+class Apns(
+    private val app: App,
+    private val settings: Config.Apns,
+    /** How long clears gather before one background push takes them all (spec/08 §6.9). */
+    private val clearDelayMs: Long = CLEAR_DELAY_MS,
+    private val transport: ApnsTransport = HttpApnsTransport(settings, app.clock),
+) {
     private val messages = PushMessages(app)
-    private val sender = Executors.newFixedThreadPool(2) { r -> Thread(r, "apns").apply { isDaemon = true } }
+    private val sender = Executors.newScheduledThreadPool(2) { r -> Thread(r, "apns").apply { isDaemon = true } }
+
+    /** Tags waiting for the next background clear, oldest first; a flush is due while it is not empty. */
+    private val clearing = LinkedHashSet<String>()
 
     /** One alert, with room for optional fields after today's (they are appended in order). */
     class Alert(
@@ -188,6 +198,7 @@ class Apns(private val app: App, private val settings: Config.Apns, private val 
     /** Start listening; returns how to stop. */
     fun start(): () -> Unit {
         val stop = app.bus.subscribe { event ->
+            if (event.type == "notifications.cleared") return@subscribe queueClear(event)
             val alert = runCatching { alertFor(event) }.onFailure { System.err.println("apple push failed: $it") }.getOrNull() ?: return@subscribe
             // What the owner follows decides whether to alert at all; each phone's preferences then decide where.
             if (!alert.followed) return@subscribe
@@ -208,6 +219,28 @@ class Apns(private val app: App, private val settings: Config.Apns, private val 
             }
         }
         return { stop(); sender.shutdownNow() }
+    }
+
+    /**
+     * Gather a `notifications.cleared` event's tags. iOS rations background pushes, so clears that
+     * land close together (a few cards read in a row) go out as one, [clearDelayMs] after the first.
+     */
+    private fun queueClear(event: AppEvent) {
+        val tags = (event.payload["tags"] as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.content }.orEmpty()
+        if (tags.isEmpty()) return
+        val first = synchronized(clearing) { clearing.isEmpty().also { clearing += tags } }
+        if (first) runCatching { sender.schedule(::flushClears, clearDelayMs, java.util.concurrent.TimeUnit.MILLISECONDS) }
+    }
+
+    /** One background push to every phone, naming the alerts it can take off its screen. */
+    fun flushClears() {
+        val tags = synchronized(clearing) { clearing.toList().also { clearing.clear() } }
+        if (tags.isEmpty()) return
+        val phones = devices().filter { it.apnsToken != null }
+        if (phones.isEmpty()) return
+        val headers = clearHeaders(settings.bundleId, app.clock())
+        val payload = Wire.encode(clearPayload(tags))
+        for (device in phones) deliver(device, "apns_token", headers, payload)
     }
 
     /** Send to one device's token in [column]; `sent`, `removed` (a dead token was cleared) or `failed`. */
@@ -242,6 +275,16 @@ class Apns(private val app: App, private val settings: Config.Apns, private val 
 
     companion object {
         const val EXPIRATION_S = 15 * 60
+
+        /** A clear is still worth having after a phone was off for a while: its own catch-up covers the rest. */
+        const val CLEAR_EXPIRATION_S = 6 * 60 * 60
+        const val CLEAR_DELAY_MS = 2_000L
+
+        /**
+         * At most this many tags in one clear, to stay well inside Apple's 4 KB. The phone asks the
+         * dashboard about everything it still shows when the push wakes it, so none are lost.
+         */
+        const val CLEAR_MAX_TAGS = 60
         const val COLLAPSE_ID_MAX_BYTES = 64
         const val MARKDOWN_MAX_BYTES = 2048
 
@@ -269,6 +312,23 @@ class Apns(private val app: App, private val settings: Config.Apns, private val 
             "apns-expiration" to (now / 1000 + EXPIRATION_S).toString(),
             "apns-collapse-id" to truncateBytes(tag, COLLAPSE_ID_MAX_BYTES),
         )
+
+        /**
+         * A background push (spec/08 §6.9): no alert, no sound, low priority. It wakes the app,
+         * which takes these alerts off the screen and then catches up with the dashboard.
+         */
+        fun clearHeaders(bundleId: String, now: Long) = listOf(
+            "apns-push-type" to "background",
+            "apns-topic" to bundleId,
+            "apns-priority" to "5",
+            "apns-expiration" to (now / 1000 + CLEAR_EXPIRATION_S).toString(),
+        )
+
+        /** `{"aps":{"content-available":1},"clear":[tag, …]}`: the newest [CLEAR_MAX_TAGS] tags. */
+        fun clearPayload(tags: List<String>): JsonObject = buildJsonObject {
+            put("aps", buildJsonObject { put("content-available", JsonPrimitive(1)) })
+            put("clear", JsonArray(tags.takeLast(CLEAR_MAX_TAGS).map(::JsonPrimitive)))
+        }
 
         /**
          * How a page reaches a phone that turned critical alerts on: "time-sensitive" for now, which

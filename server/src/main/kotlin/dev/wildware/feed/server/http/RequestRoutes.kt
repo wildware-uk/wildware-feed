@@ -56,6 +56,30 @@ fun Route.requestRoutes(app: App) {
         },
     )
 
+    // The owner opened these cards on some device: what the bell said about them is seen (spec/03 §5.3).
+    endpoint(
+        "/api/notifications/cards-seen",
+        HttpMethod.Post to {
+            val cards = idList(call.lenientObjectBody()["cards"], "cards", "card ids")
+            val changed = app.notifications.markCardsSeen(cards)
+            call.respondOwner(200, buildJsonObject {
+                put("changed", changed)
+                put("unseen", app.notifications.unseen())
+            })
+        },
+    )
+
+    // Which of the alerts a device still shows are done with (spec/03 §5.4).
+    endpoint(
+        "/api/notifications/handled",
+        HttpMethod.Post to {
+            val tags = idList(call.lenientObjectBody()["tags"], "tags", "alert tags")
+            call.respondOwner(200, buildJsonObject {
+                put("handled", JsonArray(app.notifications.handled(tags).map(::JsonPrimitive)))
+            })
+        },
+    )
+
     endpoint(
         "/api/apps/{view}/state",
         HttpMethod.Post to {
@@ -95,4 +119,14 @@ internal fun jsStringOf(value: JsonElement?): String = when (value) {
     is JsonPrimitive -> if (value.isString) value.content else Js.normalize(value).let { (it as JsonPrimitive).content }
     is JsonArray -> value.joinToString(",") { if (it is JsonNull) "" else jsStringOf(it) }
     is JsonObject -> "[object Object]"
+}
+
+/** At most this many ids in one clearing call. */
+internal const val MAX_CLEAR_IDS = 500
+
+/** A required list of short strings, such as card ids or alert tags. */
+internal fun idList(value: JsonElement?, name: String, what: String): List<String> {
+    if (value !is JsonArray) throw invalid("$name must be a list of $what")
+    if (value.size > MAX_CLEAR_IDS) throw invalid("$name holds at most $MAX_CLEAR_IDS $what")
+    return value.map { item -> item.jsString?.takeIf { it.isNotEmpty() && it.length <= 200 } ?: throw invalid("$name must be a list of $what") }
 }

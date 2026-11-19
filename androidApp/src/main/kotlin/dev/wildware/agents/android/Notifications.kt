@@ -15,9 +15,12 @@ import dev.wildware.agents.app.desktop.NotificationRules
 import dev.wildware.agents.app.engine.AppModel
 import dev.wildware.agents.app.engine.AppScreen
 import dev.wildware.agents.app.engine.DashboardSession
+import dev.wildware.agents.app.engine.NoticeCleanup
+import dev.wildware.agents.app.engine.SystemNotices
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
@@ -69,8 +72,11 @@ object Channels {
     }
 }
 
-/** Puts notices on screen. A tap opens the app at the notice's card. */
-class AndroidNotifier(private val context: Context) {
+/**
+ * Puts notices on screen. A tap opens the app at the notice's card. Each is tagged with its key
+ * (`request-<id>`, `message-<id>`…), so [remove] can take it down once it is dealt with.
+ */
+class AndroidNotifier(private val context: Context) : SystemNotices {
     private val manager = NotificationManagerCompat.from(context)
 
     fun show(notice: DesktopNotice) {
@@ -111,6 +117,14 @@ class AndroidNotifier(private val context: Context) {
         runCatching { manager.notify(notice.key, NoticeId, notification) }
     }
 
+    override suspend fun shown(): Set<String> =
+        runCatching { manager.activeNotifications.mapNotNullTo(HashSet()) { it.tag } }.getOrDefault(emptySet())
+
+    override fun remove(tags: Set<String>) {
+        if (tags.isEmpty()) return
+        runCatching { manager.activeNotifications.filter { it.tag in tags }.forEach { manager.cancel(it.tag, it.id) } }
+    }
+
     /** Clears every question and reply notice (not the "staying connected" one). */
     fun clearAll() {
         manager.activeNotifications.filter { it.tag != null }.forEach { manager.cancel(it.tag, it.id) }
@@ -124,7 +138,8 @@ class AndroidNotifier(private val context: Context) {
 
 /**
  * Notifies new questions and mentions while the app runs, by the desktop's own rules: never over
- * the app while it is on screen, never for what was already there at sign-in. Also tells
+ * the app while it is on screen, never for what was already there at sign-in. Takes them down
+ * again once the owner deals with them, on this device or another. Also tells
  * [onWaiting] how many questions wait (null when signed out), for the connection notice and the
  * app shortcuts.
  */
@@ -154,8 +169,11 @@ class Alerts(
         }
     }
 
-    private suspend fun follow(session: DashboardSession) {
+    private suspend fun follow(session: DashboardSession) = coroutineScope {
         val dashboard = session.dashboard
+        // Notices the owner dealt with, here or on another device, come down: as the live
+        // connection says so, and each time it comes back for whatever happened while it was away.
+        launch { NoticeCleanup(dashboard, notifier).run() }
         val rules = NotificationRules()
         combine(dashboard.ready, dashboard.waiting, dashboard.everything.state, dashboard.pairings) { ready, waiting, feed, joining ->
             onWaiting(waiting.size)

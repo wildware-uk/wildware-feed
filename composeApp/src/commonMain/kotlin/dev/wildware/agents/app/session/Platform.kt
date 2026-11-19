@@ -63,6 +63,12 @@ class AppPlatform(
      * password, and the session rides on a cookie the page can't read rather than a key the app keeps.
      */
     val homeServer: String? = null,
+    /**
+     * The system notifications the dashboard pushed this device (an iPhone's), for the session to
+     * take down once the owner has dealt with them. Null where the app raises its own: those
+     * platforms clear them alongside the code that raises them.
+     */
+    val notices: dev.wildware.agents.app.engine.SystemNotices? = null,
 ) {
     companion object {
         /** Everything in memory: for tests and previews. */
