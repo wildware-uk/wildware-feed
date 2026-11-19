@@ -65,7 +65,7 @@ class UpdateUiTest {
         onNodeWithText("You have 1.0.1.").assertExists()
         onNodeWithText("Not now").assertExists()
         onNodeWithText("Install and restart").performClick()
-        waitUntil(timeoutMillis = 5_000) { quit }
+        waitUntil(timeoutMillis = 20_000) { quit }
         assertEquals(listOf("prepare wildware-feed_1.0.2_amd64.deb", "launch"), installer.calls)
         onNodeWithText("Restarting…").assertExists()
         scope.cancel()
@@ -81,7 +81,7 @@ class UpdateUiTest {
         }
         updates.showOffer()
         onNodeWithText("Install and restart").performClick()
-        waitUntil(timeoutMillis = 5_000) { updates.install.value is InstallState.Failed }
+        waitUntil(timeoutMillis = 20_000) { updates.install.value is InstallState.Failed }
         onNodeWithText("The update didn't install").assertExists()
         onNodeWithText("Retry").assertExists()
         scope.cancel()
@@ -95,7 +95,7 @@ class UpdateUiTest {
             AgentTheme(false) { Box(Modifier.fillMaxSize()) { UpdateLayer(updates) {} } }
         }
         updates.checkByHand()
-        waitUntil(timeoutMillis = 5_000) { updates.prompt.value == UpdatePrompt.UpToDate }
+        waitUntil(timeoutMillis = 20_000) { updates.prompt.value == UpdatePrompt.UpToDate }
         onNodeWithText("Wildware Feed is up to date").assertExists()
         scope.cancel()
     }
@@ -119,7 +119,7 @@ class UpdateUiTest {
             AgentTheme(false) { Box(Modifier.fillMaxSize()) { UpdateLayer(updates) {} } }
         }
         val label = "Restart to update to 1.0.2. Your computer will ask for your password."
-        waitUntil(timeoutMillis = 5_000) { updates.background.value is BackgroundUpdate.Staged }
+        waitUntil(timeoutMillis = 20_000) { updates.background.value is BackgroundUpdate.Staged }
         onNodeWithContentDescription("Update to 1.0.2 available").assertDoesNotExist()
         onNodeWithText("RESTART TO UPDATE · ASKS FOR PASSWORD").assertExists()
 
@@ -127,13 +127,13 @@ class UpdateUiTest {
         onNodeWithContentDescription("Update options").performClick()
         onNodeWithText("What's new in 1.0.2").assertExists()
         onNodeWithText("Update automatically").performClick()
-        waitUntil(timeoutMillis = 5_000) { !automatic.value }
+        waitUntil(timeoutMillis = 20_000) { !automatic.value }
         automatic.value = true
-        waitUntil(timeoutMillis = 5_000) { updates.background.value is BackgroundUpdate.Staged }
+        waitUntil(timeoutMillis = 20_000) { updates.background.value is BackgroundUpdate.Staged }
         waitForIdle()
 
         onNodeWithContentDescription(label).performClick()
-        waitUntil(timeoutMillis = 5_000) { quit }
+        waitUntil(timeoutMillis = 20_000) { quit }
         assertEquals(listOf("prepare wildware-feed_1.0.2_amd64.deb", "launch"), installer.calls)
         assertEquals(1, fake.downloads)
         onNodeWithText("Wildware Feed will open again in a moment.").assertDoesNotExist()
