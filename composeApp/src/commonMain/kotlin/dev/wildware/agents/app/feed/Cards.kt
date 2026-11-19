@@ -393,7 +393,7 @@ fun UpdateCard(
                             if (showThread) ThreadButton(item)
                         }
                     }
-                    if (item.acks.read.isNotEmpty() || item.acks.thinking.isNotEmpty()) {
+                    if (!item.acks.isEmpty) {
                         Spacer(Modifier.height(if (hasFooter) 4.dp else 12.dp))
                         AckLine(item.acks)
                     }
@@ -949,7 +949,7 @@ fun PostCard(item: FeedItem.Post, modifier: Modifier = Modifier, density: Densit
                         if (showThread) ThreadButton(item)
                     }
                 }
-                if (item.acks.read.isNotEmpty() || item.acks.thinking.isNotEmpty()) {
+                if (!item.acks.isEmpty) {
                     Spacer(Modifier.height(10.dp))
                     AckLine(item.acks)
                 }

@@ -149,7 +149,7 @@ object FakeFeed {
         author = owner,
         project = dashboard,
         body = "Can someone find out why the Mac build takes 9 minutes? It used to be 4.",
-        acks = Acks(read = listOf(scout), thinking = listOf(relay)),
+        acks = Acks(thinking = listOf(relay), done = listOf(scout), read = listOf(forge), delivered = listOf(lumen)),
     )
 
     private val disk = FeedItem.Update(

@@ -34,6 +34,8 @@ object Icons {
         "M1 14H7", "M9 8H15", "M17 16H23",
     )
     val Check = icon("check", "M20 6 9 17 4 12")
+    /** A paper plane: the dashboard handed something over. */
+    val Delivered = icon("delivered", "M22 2 11 13", "M22 2 15 22 11 13 2 9Z")
     val Reply = icon("reply", "M9 14 4 9 9 4", "M20 20V13A4 4 0 0 0 16 9H4")
     /** A text cursor (I-beam): select text. */
     val SelectText = icon("select-text", "M9 4h6", "M9 20h6", "M12 4v16")

@@ -93,9 +93,21 @@ sealed interface Author {
 @Immutable
 data class Reaction(val emoji: String, val count: Int, val mine: Boolean, val spoken: String)
 
-/** What agents have said about a line: who has read it, and who is working on a reply. */
+/**
+ * What agents have said about a line: who is working on a reply, who finished with it, who has read
+ * it, and who has it but has said nothing yet. An agent is in one list only, the furthest along.
+ */
 @Immutable
-data class Acks(val read: List<Agent> = emptyList(), val thinking: List<Agent> = emptyList())
+data class Acks(
+    val read: List<Agent> = emptyList(),
+    val thinking: List<Agent> = emptyList(),
+    /** Agents that marked it done. */
+    val done: List<Agent> = emptyList(),
+    /** Agents the dashboard handed it to that have said nothing about it yet. */
+    val delivered: List<Agent> = emptyList(),
+) {
+    val isEmpty: Boolean get() = read.isEmpty() && thinking.isEmpty() && done.isEmpty() && delivered.isEmpty()
+}
 
 // The iPhone framework also exports the engine's own Attachment, so this one goes by another name there.
 @ObjCName("FeedAttachment")

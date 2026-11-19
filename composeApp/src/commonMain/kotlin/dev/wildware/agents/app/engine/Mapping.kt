@@ -1,6 +1,5 @@
 package dev.wildware.agents.app.engine
 
-import dev.wildware.agents.AckView
 import dev.wildware.agents.app.feed.PickBounds
 import dev.wildware.agents.RequestConfig
 import dev.wildware.agents.app.feed.CriticalNotice
@@ -73,6 +72,9 @@ internal val OwnerAuthor = Author.Owner("You")
 @OptIn(ExperimentalTime::class)
 /** How long the owner's line may sit with no agent before it says so: longer than any live round trip. */
 internal const val UndeliveredAfterMillis = 15_000L
+
+/** Ack states, furthest along first: an agent that said several is shown by the first. */
+private val AckOrder = listOf("done", "thinking", "read")
 
 internal class FeedMapper(
     private val serverUrl: String,
@@ -231,7 +233,7 @@ internal class FeedMapper(
             sounds = post.media.sounds(),
             files = post.media.files(),
             embeds = post.embeds.embeds(),
-            acks = acks(this, agents),
+            acks = acks(post, agents),
             replies = replies(replies, unread, agents, project, index),
             unreadReplies = unread,
             tags = tags.map { it.toCardTag() },
@@ -357,7 +359,7 @@ internal class FeedMapper(
                 sounds = line.media.sounds(),
                 files = line.media.files(),
                 embeds = line.embeds.embeds(),
-                acks = acks(line.acks, agents),
+                acks = acks(line, agents),
                 edited = editedLabel(line.message.editedAt),
             )
         }
@@ -375,12 +377,20 @@ internal class FeedMapper(
     private fun author(line: ThreadLine, agents: AgentDirectory): Author =
         line.message.agentId?.let { Author.AgentAuthor(agents.agent(it, line.authorName)) } ?: OwnerAuthor
 
-    private fun acks(post: PostCard, agents: AgentDirectory): Acks = acks(post.post.acks, agents)
-
-    private fun acks(acks: List<AckView>, agents: AgentDirectory): Acks {
+    /**
+     * Each agent once, by the furthest thing it said: done, then thinking, then read. A delivery
+     * shows only while its agent has said nothing, as the website does: any ack means it arrived.
+     */
+    private fun acks(line: ThreadLine, agents: AgentDirectory): Acks {
+        val said = line.acks.groupBy { it.agentId }.mapValues { (_, all) -> all.map { it.state }.toSet() }
+        fun saying(state: String) = said.filterValues { states ->
+            state in states && AckOrder.takeWhile { it != state }.none { it in states }
+        }.keys.map { agents.agent(it) }
         return Acks(
-            read = acks.filter { it.state == "read" || it.state == "done" }.map { agents.agent(it.agentId) }.distinct(),
-            thinking = acks.filter { it.state == "thinking" }.map { agents.agent(it.agentId) }.distinct(),
+            done = saying("done"),
+            thinking = saying("thinking"),
+            read = saying("read"),
+            delivered = line.deliveries.map { it.agentId }.distinct().filter { it !in said }.map { agents.agent(it) },
         )
     }
 

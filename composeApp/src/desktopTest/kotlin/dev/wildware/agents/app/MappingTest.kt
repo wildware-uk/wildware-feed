@@ -350,6 +350,28 @@ class MappingTest {
     }
 
     @Test
+    fun doneShowsApartFromReadAndADeliveryOnlyWhileItsAgentIsSilent() {
+        fun ack(agent: String, state: String, on: String = "m1") =
+            AckView("k-$agent-$on", agentId = agent, card = CardRef(CardKinds.Message, on), messageId = on, state = state)
+        fun handed(agent: String, on: String = "m1") = DeliveryView("d-$agent-$on", messageId = on, agentId = agent)
+        val post = postOf(
+            line(
+                "m1", "human", noon - 20_000,
+                acks = listOf(ack("a1", "done"), ack("a2", "read"), ack("a3", "thinking")),
+                deliveries = listOf(handed("a1"), handed("a2"), handed("a4"), handed("a4")),
+            ),
+            replies = listOf(line("m2", "human", noon - 10_000, acks = listOf(ack("a2", "done", on = "m2")), deliveries = listOf(handed("a1", on = "m2")))),
+        )
+        assertEquals(listOf("a1"), post.acks.done.map { it.id })
+        assertEquals(listOf("a2"), post.acks.read.map { it.id }, "done is no longer folded into read")
+        assertEquals(listOf("a3"), post.acks.thinking.map { it.id })
+        assertEquals(listOf("a4"), post.acks.delivered.map { it.id }, "an agent that said something is not also 'delivered to'")
+        val reply = post.replies.single()
+        assertEquals(listOf("a2"), reply.acks.done.map { it.id })
+        assertEquals(listOf("a1"), reply.acks.delivered.map { it.id })
+    }
+
+    @Test
     fun anOwnersReplyNobodyHasIsNotDelivered() {
         val post = postOf(
             line("m1", "agent:a1", noon - 60_000),

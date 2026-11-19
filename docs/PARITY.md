@@ -109,8 +109,8 @@ It doesn't, beyond oldest first.
 | **Acks / receipts** |||||||
 | 65 | "is thinking…" | Done | Sweeping bar, online + <10 min (`Ack.svelte`) | Yes on posts (`Content.kt` AckLine) | Yes | Only on post cards, not on replies in thread | P1 |
 | 66 | "has read this" | Done | Tick + names | Yes on posts | Yes | Not on replies | P1 |
-| 67 | "marked this done" | Open | Bold tick | **No** (done folded into "read", `Mapping.kt` acks) | **No** | Show separately | P2 |
-| 68 | "delivered to X" | Open | Paper-plane per agent (`Ack.svelte:200-220`) | No (`deliveries` unmapped) | No | — | P2 |
+| 67 | "marked this done" | Done | Bold tick | Yes: "scout marked this done" with a tick in the success colour, apart from "has read this" | Yes | — | P2 |
+| 68 | "delivered to X" | Done | Paper-plane per agent (`Ack.svelte:200-220`) | Yes: "delivered to lumen" with a paper plane, while that agent has said nothing yet | Yes | — | P2 |
 | **Reactions** |||||||
 | 69 | Reaction chips | Done | Grouped, count, accent if mine | Shown | Shown | — | — |
 | 70 | Toggle by tapping chip | Done | Tap toggles yours (`Reactions.svelte:78-90`) | Yes: Tap toggles yours | Yes | — | P1 |

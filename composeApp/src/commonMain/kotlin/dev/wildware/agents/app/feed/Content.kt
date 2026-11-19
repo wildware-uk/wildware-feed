@@ -301,38 +301,61 @@ private fun AddReaction(react: (String) -> Unit) {
     }
 }
 
-/** "scout and relay have read this", with a live "relay is thinking" when an agent is replying. */
+/**
+ * "scout marked this done · relay has read this · delivered to lumen", with a live "relay is
+ * thinking…" when an agent is replying. Each agent once, by the furthest thing it said.
+ */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun AckLine(acks: Acks, modifier: Modifier = Modifier) {
-    if (acks.read.isEmpty() && acks.thinking.isEmpty()) return
+    if (acks.isEmpty) return
     val colors = AgentTheme.colors
-    val parts = buildList {
-        if (acks.thinking.isNotEmpty()) add("${names(acks.thinking)} ${if (acks.thinking.size == 1) "is" else "are"} thinking…")
-        if (acks.read.isNotEmpty()) add("${names(acks.read)} ${if (acks.read.size == 1) "has" else "have"} read this")
-    }
-    val text = parts.joinToString(" · ")
-    Row(
+    val parts = remember(acks) { ackParts(acks) }
+    val text = remember(parts) { parts.joinToString(" · ") { it.words } }
+    FlowRow(
         modifier.semantics(mergeDescendants = true) { contentDescription = text },
-        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+        itemVerticalAlignment = Alignment.CenterVertically,
     ) {
         Row(horizontalArrangement = Arrangement.spacedBy((-5).dp)) {
-            (acks.thinking + acks.read).distinct().take(3).forEach { agent ->
+            (acks.thinking + acks.done + acks.read + acks.delivered).distinct().take(3).forEach { agent ->
                 Box(Modifier.clip(CircleShape).background(colors.surface).padding(1.5.dp)) {
                     Avatar(Author.AgentAuthor(agent), 16.dp)
                 }
             }
         }
-        if (acks.thinking.isNotEmpty()) {
-            Box(Modifier.padding(start = 8.dp).size(6.dp).clip(CircleShape).background(colors.accent))
+        parts.forEach { part ->
+            Row(Modifier.clearAndSetSemantics { }, verticalAlignment = Alignment.CenterVertically) {
+                when (part.kind) {
+                    AckKind.Thinking -> Box(Modifier.padding(end = 6.dp).size(6.dp).clip(CircleShape).background(colors.accent))
+                    // A tick for done, in the success colour; a faint one for read: the same shape, so
+                    // they read as steps of one thing. A paper plane for what the dashboard did, not the agent.
+                    AckKind.Done -> Icon(Icons.Check, null, tint = colors.success, modifier = Modifier.padding(end = 4.dp).size(13.dp))
+                    AckKind.Read -> Icon(Icons.Check, null, tint = colors.textFaint, modifier = Modifier.padding(end = 4.dp).size(12.dp))
+                    AckKind.Delivered -> Icon(Icons.Delivered, null, tint = colors.textFaint, modifier = Modifier.padding(end = 4.dp).size(11.dp))
+                }
+                Text(
+                    part.words,
+                    color = if (part.kind == AckKind.Done) colors.textMuted else colors.textFaint,
+                    style = AgentTheme.type.meta,
+                    maxLines = 1,
+                )
+            }
         }
-        Text(
-            text,
-            Modifier.padding(start = 8.dp).clearAndSetSemantics { },
-            color = colors.textFaint,
-            style = AgentTheme.type.meta,
-            maxLines = 1,
-        )
     }
+}
+
+private enum class AckKind { Thinking, Done, Read, Delivered }
+
+private class AckPart(val kind: AckKind, val words: String)
+
+/** Furthest along first: who is on it now, who finished, who read it, who has it. */
+private fun ackParts(acks: Acks): List<AckPart> = buildList {
+    if (acks.thinking.isNotEmpty()) add(AckPart(AckKind.Thinking, "${names(acks.thinking)} ${if (acks.thinking.size == 1) "is" else "are"} thinking…"))
+    if (acks.done.isNotEmpty()) add(AckPart(AckKind.Done, "${names(acks.done)} marked this done"))
+    if (acks.read.isNotEmpty()) add(AckPart(AckKind.Read, "${names(acks.read)} ${if (acks.read.size == 1) "has" else "have"} read this"))
+    if (acks.delivered.isNotEmpty()) add(AckPart(AckKind.Delivered, "delivered to ${names(acks.delivered)}"))
 }
 
 private fun names(agents: List<Agent>): String = when (agents.size) {
