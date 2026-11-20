@@ -95,10 +95,10 @@ class SubscriptionStreamTest {
             say("human", "not for beta", inP.id)
             say("agent:${alpha.id}", "@beta can you check this?", inP.id)
             assertEquals("@beta can you check this?", stream.next())
-            assertEquals("@beta can you check this?", old.next())
+            assertEquals("@beta can you check this?", old.next(), "a mention reaches the agent anywhere")
             say("human", "Thanks, beta, go ahead", inP.id)
             assertEquals("Thanks, beta, go ahead", stream.next(), "a reply with no mention reaches the follower")
-            assertEquals("Thanks, beta, go ahead", old.next(), "an older bridge naming its projects hears it too")
+            assertNull(old.next(500), "a bridge that named only q hears no followed thread in p")
 
             say("human", "before beta follows", other.id)
             assertNull(stream.next(500))
@@ -123,6 +123,91 @@ class SubscriptionStreamTest {
             assertEquals(true, structured(twice)["already"]!!.jsonPrimitive.content.toBoolean())
             val both = tool(app, beta, "subscribe", buildJsonObject { put("project", JsonPrimitive("q")); put("update_id", JsonPrimitive(other.id)) })
             assertEquals("invalid_argument", structured(both)["error"]!!.jsonPrimitive.content)
+        } finally {
+            server.stop()
+        }
+    }
+
+    /** The names of the channels in the `message` frames, as they arrive, with the bodies. */
+    private fun open(server: FeedServer, token: String, query: String): Stream = Stream(
+        HttpClient.newHttpClient().sendAsync(
+            HttpRequest.newBuilder(URI.create("http://127.0.0.1:${server.port}/api/agent/stream$query"))
+                .header("Authorization", "Bearer $token").build(),
+            HttpResponse.BodyHandlers.ofLines(),
+        ).get(5, TimeUnit.SECONDS).also { assertEquals(200, it.statusCode()) }.body().iterator(),
+    ).also { Thread.sleep(300) }
+
+    @Test
+    fun `a bridge that names a channel never hears another, even one the agent follows`() {
+        val app = App(config, Database.memory())
+        val server = FeedServer(app).start()
+        try {
+            val (agent, token) = app.agents.mint("worker")
+            val feed = app.feed
+            feed.projects.create("Home", null, null)
+            feed.projects.create("Work", null, null)
+            tool(app, agent, "subscribe", buildJsonObject { put("channel", JsonPrimitive("home")) })
+            tool(app, agent, "subscribe", buildJsonObject { put("channel", JsonPrimitive("work")) })
+            val bound = open(server, token, "?project=home")
+            val newer = open(server, token, "?channel=home")
+            val free = open(server, token, "")
+
+            feed.messages.post(Messages.Post(author = "human", body = "work secret", project = "work"))
+            feed.messages.post(Messages.Post(author = "human", body = "@worker work secret for you", project = "work"))
+            feed.messages.post(Messages.Post(author = "human", body = "home news", project = "home"))
+            assertEquals("@worker work secret for you", bound.next(), "a mention reaches the agent anywhere, as always")
+            assertEquals("home news", bound.next(), "the named channel still comes through")
+            assertEquals("@worker work secret for you", newer.next())
+            assertEquals("home news", newer.next())
+            assertEquals(listOf("work secret", "@worker work secret for you", "home news"), listOf(free.next(), free.next(), free.next()))
+            assertNull(bound.next(500), "nothing else from work reaches a bridge set up for home")
+            assertNull(newer.next(100))
+
+            // An unsubscribe still applies at once, inside the bound too.
+            tool(app, agent, "unsubscribe", buildJsonObject { put("channel", JsonPrimitive("home")) })
+            feed.messages.post(Messages.Post(author = "human", body = "home after leaving", project = "home"))
+            assertNull(bound.next(500))
+
+            // A name that matches no channel narrows to nothing, never to everything.
+            val unknown = open(server, token, "?project=no-such-channel")
+            assertEquals("@worker work secret for you", unknown.next(), "only the unread mention, from the backlog")
+            feed.messages.post(Messages.Post(author = "human", body = "more work", project = "work"))
+            assertEquals("more work", free.next())
+            assertNull(unknown.next(500))
+        } finally {
+            server.stop()
+        }
+    }
+
+    @Test
+    fun `on connect the backlog keeps to the same reach as live messages`() {
+        val app = App(config, Database.memory())
+        val server = FeedServer(app).start()
+        try {
+            val (agent, token) = app.agents.mint("late")
+            val feed = app.feed
+            feed.projects.create("Home", null, null)
+            feed.projects.create("Work", null, null)
+            // Days of history it never followed, before and after it starts.
+            feed.messages.post(Messages.Post(author = "human", body = "old work", project = "work"))
+            val thread = feed.messages.post(Messages.Post(author = "human", body = "old home thread", project = "home"))
+            feed.messages.post(Messages.Post(author = "human", body = "old reply", replyTo = thread.id))
+            // It replies in the home thread: that follows the thread, not the channel.
+            feed.messages.post(Messages.Post(author = "agent:${agent.id}", body = "my reply", replyTo = thread.id))
+            feed.messages.post(Messages.Post(author = "human", body = "home channel, not the thread", project = "home"))
+            feed.messages.post(Messages.Post(author = "human", body = "reply after mine", replyTo = thread.id))
+            feed.messages.post(Messages.Post(author = "human", body = "@late look here", project = "work"))
+            tool(app, agent, "subscribe", buildJsonObject { put("channel", JsonPrimitive("work")) })
+            feed.messages.post(Messages.Post(author = "human", body = "work news", project = "work"))
+            assertEquals(3, app.work.countWork(agent.id).unreadMessages)
+            assertEquals(2, app.work.countWork(agent.id, listOf(feed.projects.resolve("home").id)).unreadMessages)
+
+            val first = open(server, token, "")
+            assertEquals(listOf("reply after mine", "@late look here", "work news"), listOf(first.next(), first.next(), first.next()))
+            assertNull(first.next(500), "no old history, and nothing from channels it does not follow")
+            val bound = open(server, token, "?project=home&client=other")
+            assertEquals(listOf("reply after mine", "@late look here"), listOf(bound.next(), bound.next()))
+            assertNull(bound.next(500), "the bound applies to the backlog too: no work news")
         } finally {
             server.stop()
         }

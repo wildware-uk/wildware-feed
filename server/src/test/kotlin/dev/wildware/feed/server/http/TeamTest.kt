@@ -117,6 +117,8 @@ class TeamTest {
 
     @Test
     fun `a team of one reads as before, and a team says who wrote what`() = withApp { app, owner ->
+        val (agent, _) = app.agents.mint("scout")
+        tool(app, agent, "subscribe", buildJsonObject { put("channel", "web") })
         send(owner, "POST", "/api/messages", """{"body":"from the owner","project":"web"}""")
         val alone = send(owner, "GET", "/api/snapshot").bodyAsText()
         assertFalse(alone.contains("\"people\"") || alone.contains("userId"), alone)
@@ -132,7 +134,6 @@ class TeamTest {
         assertNull(messages.single { it.s("body") == "from the owner" }["userId"], "the founder's rows say nothing extra")
 
         // Agents now see which person, as extra keys only.
-        val (agent, _) = app.agents.mint("scout")
         val read = tool(app, agent, "get_messages", buildJsonObject {})["structuredContent"]!!.jsonObject["messages"]!!.jsonArray.map { it.jsonObject }
         val fromSam = read.single { it.s("body") == "from sam" }
         assertEquals("human", fromSam.s("author"))
@@ -143,8 +144,9 @@ class TeamTest {
 
     @Test
     fun `agents see nothing new on a team of one`() = withApp { app, owner ->
-        send(owner, "POST", "/api/messages", """{"body":"hello","project":"web"}""")
         val (agent, _) = app.agents.mint("scout")
+        tool(app, agent, "subscribe", buildJsonObject { put("channel", "web") })
+        send(owner, "POST", "/api/messages", """{"body":"hello","project":"web"}""")
         val message = tool(app, agent, "get_messages", buildJsonObject {})["structuredContent"]!!.jsonObject["messages"]!!.jsonArray.single().jsonObject
         assertEquals(listOf("id", "project_id", "update_id", "task_id", "reply_to", "author", "body", "created_at"), message.keys.toList())
     }

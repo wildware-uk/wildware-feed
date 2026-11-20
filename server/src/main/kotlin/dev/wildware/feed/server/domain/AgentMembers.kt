@@ -15,8 +15,8 @@ class AgentMembers(private val feed: Feed) {
     private val subs get() = Subscriptions(feed.db, feed.clock)
 
     /**
-     * One agent of the team, for one channel or project. [via] says why it hears: `all` (it has
-     * never chosen, so it hears every channel), `chosen`, `group` or `posted`; null when it does not.
+     * One agent of the team, for one channel or project. [via] says why it hears: `chosen`, `group`
+     * or `posted`; null when it does not.
      * [removed]: the owner took it out, `channel` or `group` (through the channel's project).
      */
     class Member(val agentId: String, val name: String, val hears: Boolean, val via: String?, val removed: String?) {
@@ -41,11 +41,9 @@ class AgentMembers(private val feed: Feed) {
 
     private fun channelMember(agentId: String, name: String, projectId: String): Member {
         val removed = subs.removedFrom(agentId, projectId)
-        val followed = subs.followedProjects(agentId)
-        val hears = projectId in (followed ?: subs.heardChannels(agentId))
+        val hears = projectId in subs.followedProjects(agentId)
         val via = when {
             !hears -> null
-            followed == null -> "all"
             else -> {
                 val me = Subscriptions.agent(agentId)
                 val chosen = db.one(
@@ -67,11 +65,7 @@ class AgentMembers(private val feed: Feed) {
 
     private fun groupMember(agentId: String, name: String, groupId: String): Member {
         val hears = subs.hearsGroup(agentId, groupId)
-        val via = when {
-            !hears -> null
-            subs.groupState(Subscriptions.agent(agentId), groupId) == true -> "chosen"
-            else -> "all"
-        }
+        val via = if (hears) "chosen" else null
         return Member(agentId, name, hears, via, if (subs.removedFromGroup(agentId, groupId)) "group" else null)
     }
 

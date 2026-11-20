@@ -9,14 +9,19 @@ import dev.wildware.feed.server.db.Ulid
  * person (migration 055; the one owner was `human` before).
  *
  * For an agent it decides which messages reach it, so a bridge no longer has to be told its projects:
- * - Posting in a project follows it; posting or replying in a thread follows the thread.
+ * - An agent hears only what it follows: no follows, no channel. A new agent hears nothing but
+ *   messages that @mention it until it follows something. No state means "every channel".
+ * - A top-level post in a channel (a new card, or a feed post that answers nothing) follows the
+ *   channel. A reply in a thread follows only that thread, never its channel.
  * - Being @mentioned in a thread follows it (`@here` and `@everyone` for the agents they reached).
- * - An agent that has never followed a project hears every project, as a new agent always has.
- * - Only `unsubscribe` stops following. Posting there again follows it again.
+ * - Only `unsubscribe` stops following, and posting there never undoes it: only `subscribe` (or
+ *   the owner adding it) does.
  * - The owner can add an agent to a channel or a group, or remove it (migration 060). A removal
  *   sticks: posting there does not follow it again, and its own `subscribe` is refused, until the
- *   owner adds it back. An @mention still reaches it. Rows the owner made are not the agent's own
- *   choices, so an agent with only those still hears every other channel.
+ *   owner adds it back. An @mention still reaches it.
+ * - A bridge may also name channels (`?project=`): then it hears only those of what the agent
+ *   follows ([Reach.within]), so a bridge set up for one channel never hears another's messages
+ *   (an @mention of the agent still reaches it, as a mention reaches it anywhere).
  *
  * For each person it decides which alerts (phone push and the bell) are worth raising; each phone's
  * own alert preferences still decide whether that phone rings, see [hears]:
@@ -51,28 +56,28 @@ class Subscriptions(private val db: Database, private val clock: () -> Long = Sy
         val groups: List<Pair<String, String>> = emptyList(),
     )
 
-    /** Which messages reach an agent, besides the @mention rule (a message naming agents reaches only them). */
-    sealed interface Reach {
-        /** Every project. */
-        data object All : Reach
-
-        /** What the agent follows, plus mentions of it. */
-        data object Followed : Reach
-
-        /** These channels only: get_messages reading one channel it names. */
-        data class Projects(val ids: List<String>) : Reach
+    /**
+     * Which messages reach an agent, besides the @mention rule (a message naming agents reaches
+     * only them): what it follows (channels, threads), of that only what is in [within] when that is
+     * given (the channels a bridge named, or get_messages reading one channel), and mentions of it
+     * anywhere. A followed message in no channel passes [within] only with [channelless].
+     */
+    data class Reach(val within: List<String>? = null, val channelless: Boolean = true) {
+        companion object {
+            /** What the agent follows, plus mentions of it. */
+            val Followed = Reach()
+        }
     }
 
     // ---- agents: what reaches them ----------------------------------------------------------------
 
     /**
-     * The channels the agent hears now, or null when it has never followed a channel or a group (then
-     * it hears them all). The most specific choice wins (spec/12): a channel it chose, then the
-     * channel's group, then a channel it follows because it posted there.
+     * The channels the agent hears now; none when it follows none. The most specific choice wins
+     * (spec/12): a channel it chose, then the channel's group, then a channel it follows because it
+     * posted there.
      */
-    fun followedProjects(agentId: String): List<String>? {
+    fun followedProjects(agentId: String): List<String> {
         val me = agent(agentId)
-        if (!hasChosenAnything(me)) return null
         val channels = db.query(
             "SELECT project_id, unsubscribed_at IS NULL, chosen FROM project_subscriptions WHERE team_id = :team AND subscriber = ? ORDER BY seq", me,
         ) { it.getString(1) to Choice(it.getBoolean(2), ALL, it.getInt(3) == 1) }
@@ -93,32 +98,8 @@ class Subscriptions(private val db: Database, private val clock: () -> Long = Sy
         return channels.map { it.first }.filter { it in heard } + all.map { it.first }.filter { it in heard && it !in own }
     }
 
-    /**
-     * The channels an agent that has never chosen anything of its own still does not hear: the
-     * owner removed it (or it then left one the owner added it to), directly or through the
-     * channel's group, unless the channel itself was added back. Empty for any other agent.
-     */
-    fun leftWhileHearingAll(agentId: String): Set<String> {
-        val me = agent(agentId)
-        val channels = db.query("SELECT project_id, unsubscribed_at IS NULL, chosen FROM project_subscriptions WHERE team_id = :team AND subscriber = ?", me) {
-            it.getString(1) to (it.getBoolean(2) to (it.getInt(3) == 1))
-        }.toMap()
-        val groups = db.query("SELECT group_id FROM group_subscriptions WHERE team_id = :team AND subscriber = ? AND unsubscribed_at IS NOT NULL", me) { it.getString(1) }.toSet()
-        if (channels.isEmpty() && groups.isEmpty()) return emptySet()
-        return db.query("SELECT id, group_id FROM projects WHERE team_id = :team ORDER BY seq") { it.getString(1) to it.getString(2) }.filter { (id, groupId) ->
-            val own = channels[id]
-            when {
-                own != null && own.second -> !own.first
-                else -> groupId != null && groupId in groups
-            }
-        }.map { it.first }.toSet()
-    }
-
-    /** Every channel the agent hears now, by id: [followedProjects], or every channel but [leftWhileHearingAll]. */
-    fun heardChannels(agentId: String): List<String> = followedProjects(agentId) ?: run {
-        val left = leftWhileHearingAll(agentId)
-        db.query("SELECT id FROM projects WHERE team_id = :team ORDER BY seq") { it.getString(1) }.filter { it !in left }
-    }
+    /** Every channel the agent hears now, by id: [followedProjects]. */
+    fun heardChannels(agentId: String): List<String> = followedProjects(agentId)
 
     /**
      * Why the owner keeps [agentId] out of a channel, or null when nothing does: `channel` (removed
@@ -143,55 +124,37 @@ class Subscriptions(private val db: Database, private val clock: () -> Long = Sy
         "SELECT 1 FROM group_subscriptions WHERE team_id = :team AND subscriber = ? AND group_id = ? AND removed_at IS NOT NULL", agent(agentId), groupId,
     ) { true } == true
 
-    /**
-     * The channels whose work counts for the agent: [heardChannels], or null for every channel when
-     * it hears them all (none removed), so channels made later count too.
-     */
-    fun workChannels(agentId: String): List<String>? =
-        followedProjects(agentId) ?: if (leftWhileHearingAll(agentId).isEmpty()) null else heardChannels(agentId)
-
-    /** [Reach.Followed] made concrete: [Reach.All] for an agent that has never followed a project. */
-    fun resolve(agentId: String, reach: Reach): Reach =
-        if (reach == Reach.Followed && followedProjects(agentId) == null) Reach.All else reach
+    /** The channels whose work counts for the agent: [heardChannels]. */
+    fun workChannels(agentId: String): List<String> = followedProjects(agentId)
 
     /**
-     * SQL (for messages aliased `m`) that is true when [reach] takes the message to [agentId], or ""
-     * for every message. Appends its parameters to [args]. The @mention audience rule is the caller's
-     * ([audienceSql]).
+     * SQL (for messages aliased `m`) that is true when [reach] takes the message to [agentId].
+     * Appends its parameters to [args]. The @mention audience rule is the caller's ([audienceSql]).
      *
      * [oneMessage] picks the shape: for a query about a single message (`m.id = ?`) it checks each
      * rule with a small lookup; otherwise each rule is a set worked out once and probed per message,
      * since a lookup per message, over every message in the team, is what made counting slow.
      * Both say the same thing.
      */
-    fun reachSql(agentId: String, reach: Reach, args: MutableList<Any?>, oneMessage: Boolean = false): String = when (val r = resolve(agentId, reach)) {
-        Reach.All -> {
-            // Hearing every channel, but for those the owner took it out of: there only what names it
-            // or a thread it follows. A new agent has none, so this is usually nothing.
-            val left = leftWhileHearingAll(agentId)
-            if (left.isEmpty()) {
-                ""
-            } else {
-                args.addAll(left)
-                " AND (m.project_id IS NULL OR m.project_id NOT IN (${left.joinToString(", ") { "?" }}) OR " +
-                    followsThread(agentId, args, oneMessage) + " OR " + namesReader(agentId, args, oneMessage) + ")"
-            }
+    fun reachSql(agentId: String, reach: Reach, args: MutableList<Any?>, oneMessage: Boolean = false): String {
+        val hears = if (oneMessage) {
+            repeat(5) { args += agent(agentId) }
+            HEARS_CHANNEL
+        } else {
+            repeat(2) { args += agent(agentId) }
+            HEARS_CHANNEL_SET
         }
-        Reach.Followed -> {
-            val hears = if (oneMessage) {
-                repeat(5) { args += agent(agentId) }
-                HEARS_CHANNEL
-            } else {
-                repeat(2) { args += agent(agentId) }
-                HEARS_CHANNEL_SET
-            }
-            " AND ($hears OR " + followsThread(agentId, args, oneMessage) + " OR " + namesReader(agentId, args, oneMessage) + ")"
+        val follows = "($hears OR " + followsThread(agentId, args, oneMessage) + ")"
+        val within = reach.within
+        val narrowed = if (within == null) {
+            follows
+        } else {
+            args.addAll(within)
+            val inChannels = if (within.isEmpty()) "0 = 1" else "m.project_id IN (${within.joinToString(", ") { "?" }})"
+            "($follows AND (${if (reach.channelless) "m.project_id IS NULL OR " else ""}$inChannels))"
         }
-        is Reach.Projects -> {
-            val inProjects = if (r.ids.isEmpty()) "0 = 1" else "m.project_id IN (${r.ids.joinToString(", ") { "?" }})"
-            args.addAll(r.ids)
-            " AND $inProjects"
-        }
+        // A message that @mentions the agent reaches it wherever it is, as a mention always has.
+        return " AND ($narrowed OR " + namesReader(agentId, args, oneMessage) + ")"
     }
 
     private fun followsThread(agentId: String, args: MutableList<Any?>, oneMessage: Boolean): String = if (oneMessage) {
@@ -215,13 +178,22 @@ class Subscriptions(private val db: Database, private val clock: () -> Long = Sy
     /**
      * [who] follows a project, hearing messages after [afterSeq]. Already following keeps its start.
      * Following again after unsubscribing starts from now, so the time away does not come back as unread.
-     * [chosen]: on purpose (`subscribe`), so it beats the channel's group; posting there is not.
+     * [chosen]: on purpose (`subscribe`), so it beats the channel's group. Not [chosen] (posting
+     * there) only ever starts a follow: it never undoes an unsubscribe, and never makes a row chosen.
      */
     fun followProject(who: String, projectId: String, afterSeq: Long = now(), chosen: Boolean = false) {
         // The owner keeps it out: posting there does not bring it back (`subscribe` is refused first).
         if (who.startsWith(AGENT) && removedFrom(who.removePrefix(AGENT), projectId) != null) return
+        if (!chosen) {
+            db.update(
+                "INSERT INTO project_subscriptions (team_id, id, subscriber, project_id, level, after_seq, created_at, chosen) VALUES (:team, ?, ?, ?, 'all', ?, ?, 0) " +
+                    "ON CONFLICT (subscriber, project_id) DO NOTHING",
+                Ulid.next(clock()), who, projectId, afterSeq, clock(),
+            )
+            return
+        }
         // Choosing a channel the agent was not hearing (it left the group) starts it from now too.
-        val restart = chosen && who.startsWith(AGENT) && followedProjects(who.removePrefix(AGENT))?.contains(projectId) == false
+        val restart = who.startsWith(AGENT) && projectId !in followedProjects(who.removePrefix(AGENT))
         db.update(
             "INSERT INTO project_subscriptions (team_id, id, subscriber, project_id, level, after_seq, created_at, chosen) VALUES (:team, ?, ?, ?, 'all', ?, ?, ?) " +
                 "ON CONFLICT (subscriber, project_id) DO UPDATE SET " +
@@ -255,7 +227,6 @@ class Subscriptions(private val db: Database, private val clock: () -> Long = Sy
         val before = groupState(who, groupId)
         if (before == false) return false
         if (before == null) {
-            if (!hasChosenAnything(who)) return false
             db.update(
                 "INSERT INTO group_subscriptions (team_id, id, subscriber, group_id, level, after_seq, created_at, unsubscribed_at) VALUES (:team, ?, ?, ?, 'all', ?, ?, ?)",
                 Ulid.next(clock()), who, groupId, now(), clock(), clock(),
@@ -265,16 +236,6 @@ class Subscriptions(private val db: Database, private val clock: () -> Long = Sy
         db.update("UPDATE group_subscriptions SET unsubscribed_at = ? WHERE team_id = :team AND subscriber = ? AND group_id = ?", clock(), who, groupId)
         return true
     }
-
-    /**
-     * Whether [who] has a channel or group row of its own; an agent with none hears every channel
-     * (but those the owner removed it from). Rows the owner made for it do not count.
-     */
-    fun hasChosenAnything(who: String): Boolean = db.one(
-        "SELECT 1 FROM project_subscriptions WHERE team_id = :team AND subscriber = ? AND by_owner = 0 " +
-            "UNION ALL SELECT 1 FROM group_subscriptions WHERE team_id = :team AND subscriber = ? AND by_owner = 0",
-        who, who,
-    ) { true } == true
 
     /** True when [who] follows the group, false when it left it, null when it never chose. */
     fun groupState(who: String, groupId: String): Boolean? =
@@ -296,15 +257,14 @@ class Subscriptions(private val db: Database, private val clock: () -> Long = Sy
 
     /**
      * Stop following a channel, on purpose, so it beats the channel's group. False when it was not
-     * followed on its own. Still recorded then, so a group [who] follows no longer brings this
-     * channel, unless [who] has never followed anything (and so hears everything).
+     * followed on its own. Still recorded then, so a group [who] follows no longer brings this channel.
      */
     fun unfollowProject(who: String, projectId: String): Boolean {
         val was = db.update(
             "UPDATE project_subscriptions SET unsubscribed_at = ?, chosen = 1 WHERE team_id = :team AND subscriber = ? AND project_id = ? AND unsubscribed_at IS NULL",
             clock(), who, projectId,
         ) > 0
-        if (!was && hasChosenAnything(who)) {
+        if (!was) {
             db.update(
                 "INSERT INTO project_subscriptions (team_id, id, subscriber, project_id, level, after_seq, created_at, unsubscribed_at, chosen) " +
                     "VALUES (:team, ?, ?, ?, 'all', ?, ?, ?, 1) ON CONFLICT (subscriber, project_id) DO UPDATE SET chosen = 1",
@@ -362,10 +322,12 @@ class Subscriptions(private val db: Database, private val clock: () -> Long = Sy
     ) { it.getString(1) to it.getString(2) }
 
     /**
-     * After a message is posted or edited: its author follows the thread (an agent the project too),
-     * and every agent and person it mentions follows the thread. A thread is heard from after this
-     * message; the message itself reaches the mentioned agents as a mention. Answers the people who
-     * newly follow, by membership id.
+     * After a message is posted or edited: its author follows the thread, and every agent and person
+     * it mentions follows the thread. An agent's top-level post in a channel (one that answers or
+     * replies to nothing) follows the channel too, from this message on; a reply in a thread never
+     * does, so answering in someone's thread never brings in their whole channel. A thread is heard
+     * from after this message; the message itself reaches the mentioned agents as a mention. Answers
+     * the people who newly follow, by membership id.
      */
     fun afterPost(message: MessageRow, mentioned: List<String>, mentionedPeople: List<String> = emptyList()): List<String> {
         val thread = threadOf(message)
@@ -374,8 +336,10 @@ class Subscriptions(private val db: Database, private val clock: () -> Long = Sy
         val followed = ArrayList<String>()
         val person = if (author == HUMAN) message.userId else null
         if (authorId != null) {
-            // From the start, as working in a project always has: what the agent has not read yet stays unread.
-            message.projectId?.let { followProject(author, it, afterSeq = 0) }
+            val topLevel = message.updateId == null && message.requestId == null && message.replyTo == null &&
+                message.answers == null && message.taskId == null
+            // From this message on, so following never turns the channel's old history into unread.
+            if (topLevel) message.projectId?.let { followProject(author, it) }
             thread?.let { followThread(author, it, message.projectId, message.seq) }
         } else if (person != null && thread != null) {
             if (followThread(People.subscriber(person), thread, message.projectId, message.seq)) followed += person
@@ -389,11 +353,8 @@ class Subscriptions(private val db: Database, private val clock: () -> Long = Sy
 
     // ---- the owner adds and removes agents (migration 060) -----------------------------------------
 
-    /** Whether [agentId] hears the group: it follows it, or hears every channel and was not removed from it. */
-    fun hearsGroup(agentId: String, groupId: String): Boolean {
-        val state = groupState(agent(agentId), groupId)
-        return state ?: (followedProjects(agentId) == null)
-    }
+    /** Whether [agentId] hears the group: it follows it. */
+    fun hearsGroup(agentId: String, groupId: String): Boolean = groupState(agent(agentId), groupId) == true
 
     /**
      * The owner adds [agentId] to a channel: it hears it from now, and a removal is lifted. A row the

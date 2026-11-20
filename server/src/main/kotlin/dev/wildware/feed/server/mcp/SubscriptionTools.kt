@@ -106,10 +106,8 @@ fun ToolRegistry.registerSubscriptionTools(app: App) {
         val t = target(call)
         refuseRemoved(call.agent.id, t)
         val me = Subscriptions.agent(call.agent.id)
-        val everything = subs.followedProjects(call.agent.id) == null
         val already = when (t.kind) {
             "group" -> subs.groupState(me, t.id) == true
-            "channel" -> !everything && following(call.agent.id, t)
             else -> following(call.agent.id, t)
         }
         when (t.kind) {
@@ -120,7 +118,6 @@ fun ToolRegistry.registerSubscriptionTools(app: App) {
         if (!already) changed(call.agent.id)
         val summary = buildString {
             append(if (already) "Already following ${describe(t)}." else "Following ${describe(t)}. New messages there reach you, @mention or not.")
-            if (everything && t.thread == null) append(" Until now you heard every channel; now you hear what you follow.")
             if (t.kind == "group") {
                 val left = subs.leftProjects(me).toSet()
                 val skipped = app.db.query("SELECT id, slug FROM projects WHERE team_id = :team AND group_id = ? ORDER BY seq", t.id) { it.getString(1) to it.getString(2) }
@@ -135,20 +132,16 @@ fun ToolRegistry.registerSubscriptionTools(app: App) {
         val t = target(call)
         val me = Subscriptions.agent(call.agent.id)
         val heardBefore = subs.followedProjects(call.agent.id)
-        val everything = heardBefore == null
-        val followed = following(call.agent.id, t) && !(everything && t.thread == null)
+        val followed = following(call.agent.id, t)
         when (t.kind) {
             "group" -> subs.unfollowGroup(me, t.id)
             "channel" -> subs.unfollowProject(me, t.id)
             else -> subs.unfollowThread(me, t.thread!!)
         }
         // Leaving a group the agent never joined can still quiet channels it only posted in.
-        val was = followed || heardBefore?.toSet() != subs.followedProjects(call.agent.id)?.toSet()
+        val was = followed || heardBefore.toSet() != subs.followedProjects(call.agent.id).toSet()
         if (was) changed(call.agent.id)
         val summary = when {
-            everything && t.thread == null ->
-                "You hear every channel, because you have not followed one yet, so this changes nothing. " +
-                    "Subscribe to the channels or projects you want, and you will hear only those."
             was -> "Stopped following it. Only messages that @mention you, and threads you follow, reach you from there now."
             else -> "You were not following it, so nothing changed."
         }
@@ -158,7 +151,6 @@ fun ToolRegistry.registerSubscriptionTools(app: App) {
     register("list_subscriptions") { call ->
         val me = Subscriptions.agent(call.agent.id)
         val heard = subs.followedProjects(call.agent.id)
-        val all = heard == null
         val own = subs.projects(me).associateBy { it.projectId }
         val groups = subs.groups(me)
         val threads = subs.threads(me, Subscriptions.LIST_LIMIT)
@@ -166,27 +158,24 @@ fun ToolRegistry.registerSubscriptionTools(app: App) {
         val followedGroups = groups.map { it.groupId }.toSet()
         val removed = app.db.query("SELECT id, slug FROM projects WHERE team_id = :team ORDER BY seq") { it.getString(1) to it.getString(2) }
             .filter { subs.removedFrom(call.agent.id, it.first) != null }
-        val channels = heard.orEmpty().mapNotNull { id ->
+        val channels = heard.mapNotNull { id ->
             app.db.one("SELECT p.slug, p.name, p.group_id, g.slug FROM projects AS p LEFT JOIN project_groups AS g ON g.id = p.group_id WHERE p.team_id = :team AND p.id = ?", id) {
                 Channel(id, it.getString(1), it.getString(2), it.getString(4), own[id], it.getString(3) in followedGroups)
             }
         }
         val summary = buildString {
-            if (all) {
-                append("You hear every channel (you have not followed one yet)")
-            } else {
-                append("${channels.size} channel${plural(channels.size)}")
-                if (channels.isNotEmpty()) append(": ${channels.joinToString(", ") { it.slug }}")
-                if (groups.isNotEmpty()) append(", through ${groups.size} project${plural(groups.size)} (${groups.joinToString(", ") { it.slug }}) and your own choices")
-            }
-            if (all && removed.isNotEmpty()) append(" but ${removed.joinToString(", ") { it.second }}")
+            append("${channels.size} channel${plural(channels.size)}")
+            if (channels.isNotEmpty()) append(": ${channels.joinToString(", ") { it.slug }}")
+            if (groups.isNotEmpty()) append(", through ${groups.size} project${plural(groups.size)} (${groups.joinToString(", ") { it.slug }}) and your own choices")
             append(", and $threadCount thread${plural(threadCount)}.")
+            if (channels.isEmpty()) append(" You hear no channel: only threads you follow and messages that @mention you. Subscribe to the channels you work in.")
             if (removed.isNotEmpty()) {
                 append(" Your owner removed you from ${removed.joinToString(", ") { it.second }}: only messages that @mention you reach you from there.")
             }
         }
         ToolResult.ok(summary, buildJsonObject {
-            put("all_projects", JsonPrimitive(all))
+            // Kept for older readers: never true now. An agent hears only what it follows.
+            put("all_projects", JsonPrimitive(false))
             // Kept from before channels: the channels followed on their own.
             put("projects", JsonArray(own.values.map { p ->
                 buildJsonObject {

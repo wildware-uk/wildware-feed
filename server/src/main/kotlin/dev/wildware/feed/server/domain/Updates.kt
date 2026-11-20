@@ -75,7 +75,8 @@ class Updates(private val feed: Feed) {
         if (refs.isNotEmpty()) CardRefs(db, feed.clock).set(CardRef("update", id), refs)
         if (blocks.isNotEmpty()) feed.blocks.attach(CardRef("update", id), blocks)
         Subscriptions(db, feed.clock).run {
-            followProject(Subscriptions.agent(agentId), project.id, afterSeq = 0)
+            // From now on: a new card never turns the channel's old history into unread.
+            followProject(Subscriptions.agent(agentId), project.id)
             followThread(Subscriptions.agent(agentId), Subscriptions.Thread("update", id), project.id)
         }
         feed.publish("update.created", buildJsonObject {

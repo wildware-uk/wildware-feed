@@ -6,7 +6,6 @@ import dev.wildware.feed.server.events.Bus
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNull
 
 class SubscriptionsTest {
     private var now = 1_763_474_000_000L
@@ -88,23 +87,33 @@ class SubscriptionsTest {
     }
 
     @Test
-    fun `posting follows the project and the thread, and following again after unsubscribing replays nothing`() {
+    fun `a reply follows only its thread, a top-level post follows the channel from now, and following again replays nothing`() {
         twoAgents()
         val p = feed.projects.resolve("p").id
+        val q = feed.projects.resolve("q").id
+        say("human", "old history in p", project = "p")
         val post = say("human", "Owner's post in p", project = "p")
         assertEquals(emptyList(), unread("B"))
         say("agent:B", "I'll take it", replyTo = post.id)
-        assertEquals(listOf(feed.projects.resolve("q").id, p), subs.followedProjects("B"))
+        assertEquals(listOf(q), subs.followedProjects("B"), "a reply in a thread never follows its channel")
         say("human", "great", replyTo = post.id)
         say("human", "elsewhere in p", project = "p")
-        // Working in a project follows it from the start, as it always has: what beta never read is unread.
-        assertEquals(listOf("Owner's post in p", "great", "elsewhere in p"), unread("B"))
+        assertEquals(listOf("great"), unread("B"), "only the thread it replied in")
+
+        say("agent:B", "a post of my own in p", project = "p")
+        assertEquals(listOf(q, p), subs.followedProjects("B"), "a top-level post follows the channel")
+        assertEquals(emptyList(), unread("B"), "from now on: the channel's history never turns unread")
+        say("human", "next in p", project = "p")
+        assertEquals(listOf("next in p"), unread("B"))
 
         subs.unfollowProject(Subscriptions.agent("B"), p)
         subs.unfollowThread(Subscriptions.agent("B"), Subscriptions.Thread("message", post.id))
         say("human", "while away", project = "p")
         assertEquals(emptyList(), unread("B"))
-        subs.followProject(Subscriptions.agent("B"), p)
+        say("agent:B", "posting after unsubscribing", project = "p")
+        assertEquals(listOf(q), subs.followedProjects("B"), "posting never undoes an unsubscribe")
+        assertEquals(emptyList(), subs.projects(Subscriptions.agent("B")).filter { it.projectId == p })
+        subs.followProject(Subscriptions.agent("B"), p, chosen = true)
         assertEquals(emptyList(), unread("B"), "nothing from before")
         say("human", "back again", project = "p")
         assertEquals(listOf("back again"), unread("B"))
@@ -131,13 +140,21 @@ class SubscriptionsTest {
     }
 
     @Test
-    fun `a new agent hears everything until it follows a project, and unsubscribing its last does not make it hear everything`() {
+    fun `a new agent with no follows hears no channel, only what @mentions it`() {
         agent("N", "newbie")
         feed.projects.create("P", null, null)
-        assertNull(subs.followedProjects("N"))
-        say("human", "hello world", project = "p")
-        assertEquals(listOf("hello world"), unread("N"))
-        subs.followProject(Subscriptions.agent("N"), feed.projects.resolve("p").id)
+        assertEquals(emptyList(), subs.followedProjects("N"))
+        assertEquals(emptyList(), subs.heardChannels("N"))
+        val post = say("human", "hello world", project = "p")
+        say("human", "a reply", replyTo = post.id)
+        say("human", "@newbie this one is for you", project = "p")
+        assertEquals(1, work.countWork("N").unreadMessages)
+        assertEquals(0, work.countWork("N").openTasks)
+        assertEquals(listOf("@newbie this one is for you"), work.unread("N", 10).map { it.body })
+        assertEquals(listOf("@newbie this one is for you"), unread("N"))
+        assertEquals(emptyList(), feed.messages.read("N", null, "p", null).messages.map { it.body }, "naming a channel it does not hear reads nothing")
+
+        subs.followProject(Subscriptions.agent("N"), feed.projects.resolve("p").id, chosen = true)
         subs.unfollowProject(Subscriptions.agent("N"), feed.projects.resolve("p").id)
         assertEquals(emptyList(), subs.followedProjects("N"))
         say("human", "unheard", project = "p")
@@ -167,7 +184,7 @@ class SubscriptionSeedTest {
             }
             assertEquals(listOf(listOf("agent:A", "P1", "0", null), listOf("agent:A", "P2", "0", null), listOf("agent:B", "P3", "0", null)), rows)
             val subs = Subscriptions(db)
-            assertNull(subs.followedProjects("C"), "an agent that did nothing still hears everything")
+            assertEquals(emptyList(), subs.followedProjects("C"), "an agent that did nothing hears no channel")
             assertEquals(listOf("P3"), subs.followedProjects("B"))
         }
     }

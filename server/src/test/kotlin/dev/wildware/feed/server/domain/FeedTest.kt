@@ -295,8 +295,10 @@ class FeedTest {
     fun `a message that names an agent reaches only that agent`() {
         agent("A1", "scout")
         agent("A2", "builder")
-        human("@builder only you")
-        human("everyone")
+        val p = feed.projects.create("P", null, null).first.id
+        for (a in listOf("A1", "A2")) Subscriptions(db).followProject(Subscriptions.agent(a), p, chosen = true)
+        human("@builder only you", project = "p")
+        human("everyone", project = "p")
         assertEquals(listOf("everyone"), feed.messages.read("A1", null, null, null).messages.map { it.body })
         assertEquals(listOf("@builder only you", "everyone"), feed.messages.read("A2", null, null, null).messages.map { it.body })
     }

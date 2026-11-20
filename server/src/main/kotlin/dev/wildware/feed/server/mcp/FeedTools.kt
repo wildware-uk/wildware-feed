@@ -17,6 +17,7 @@ import dev.wildware.feed.server.domain.Projects
 import dev.wildware.feed.server.domain.GroupRow
 import dev.wildware.feed.server.domain.groups
 import dev.wildware.feed.server.domain.ReactionRow
+import dev.wildware.feed.server.domain.Subscriptions
 import dev.wildware.feed.server.domain.UpdateRow
 import dev.wildware.feed.server.domain.Updates
 import dev.wildware.feed.server.domain.feed
@@ -37,6 +38,9 @@ import kotlinx.serialization.json.put
 fun ToolRegistry.registerFeedTools(app: App) {
     register("create_project") { call ->
         val (project, created) = app.feed.projects.create(call.text("name")!!, call.text("slug"), call.text("description"))
+        // Setting up in a channel follows it, from now, as a top-level post there does. It never
+        // undoes an unsubscribe or the owner's removal.
+        Subscriptions(app.db, app.clock).followProject(Subscriptions.agent(call.agent.id), project.id)
         val summary = if (created) {
             "Created project \"${project.name}\" (slug ${project.slug})."
         } else {

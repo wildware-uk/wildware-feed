@@ -120,7 +120,7 @@ class ChannelsTest {
         say("before", "b")
         subs.followGroup(Subscriptions.agent("A"), group.id)
         say("in b", "b")
-        assertEquals(listOf(id("a"), id("c"), id("b")).sorted(), subs.followedProjects("A")!!.sorted())
+        assertEquals(listOf(id("a"), id("c"), id("b")).sorted(), subs.followedProjects("A").sorted())
         feed.projects.create("D", null, null)
         feed.projects.update("d", Projects.Patch(group = Given("g")))
         say("in d", "d")
@@ -151,25 +151,25 @@ class ChannelsTest {
     fun `a channel the agent unsubscribed from stays quiet inside a group it follows`() {
         val group = setup()
         subs.followGroup(Subscriptions.agent("A"), group.id)
-        assertTrue(id("b") in subs.followedProjects("A")!!)
+        assertTrue(id("b") in subs.followedProjects("A"))
         subs.unfollowProject(Subscriptions.agent("A"), id("b"))
-        assertFalse(id("b") in subs.followedProjects("A")!!)
+        assertFalse(id("b") in subs.followedProjects("A"))
         say("in b", "b")
         say("in a", "a")
         assertEquals(listOf("in a"), unread("A"))
     }
 
     @Test
-    fun `an agent that has followed nothing hears everything, and leaving a group then changes nothing`() {
+    fun `an agent that has followed nothing hears no channel, and leaving a group keeps it so`() {
         agent("N", "newcomer")
         feed.projects.create("A", null, null)
         val group = feed.groups.create("G", null).first
-        assertNull(subs.followedProjects("N"))
+        assertEquals(emptyList(), subs.followedProjects("N"))
         assertFalse(subs.unfollowGroup(Subscriptions.agent("N"), group.id))
         assertFalse(subs.unfollowProject(Subscriptions.agent("N"), id("a")))
-        assertNull(subs.followedProjects("N"), "still hears every channel")
+        assertEquals(emptyList(), subs.followedProjects("N"), "still hears no channel")
         say("hello", "a")
-        assertEquals(listOf("hello"), unread("N"))
+        assertEquals(emptyList(), unread("N"))
     }
 
     @Test
@@ -178,7 +178,7 @@ class ChannelsTest {
         subs.followGroup(Subscriptions.agent("A"), group.id)
         subs.unfollowProject(Subscriptions.agent("A"), id("a"))
         for (c in listOf("a", "b", "c")) say("in $c", c)
-        val heard = subs.followedProjects("A")!!.map { feed.projects.byId(it)!!.slug }.sorted()
+        val heard = subs.followedProjects("A").map { feed.projects.byId(it)!!.slug }.sorted()
         assertEquals(listOf("b", "c"), heard)
         assertEquals(listOf("in b", "in c"), unread("A"))
     }

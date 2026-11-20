@@ -139,24 +139,30 @@ class AgentMembersTest {
     }
 
     @Test
-    fun `an agent that hears every channel keeps hearing the rest when removed from one`() {
+    fun `an agent that follows nothing hears no channel, and the owner's add or remove opens no other`() {
         val app = App(config, Database.memory())
         val (alpha, _) = app.agents.mint("alpha")
         app.feed.projects.create("Web", null, null)
         app.feed.projects.create("Api", null, null)
-        assertEquals(true, tool(app, alpha, "list_subscriptions")["all_projects"]!!.jsonPrimitive.content.toBoolean())
+        assertEquals(false, tool(app, alpha, "list_subscriptions")["all_projects"]!!.jsonPrimitive.content.toBoolean())
+        say(app, "web before", "web")
+        assertEquals(emptyList(), heard(app, alpha))
 
         app.feed.agentMembers.setChannel(projectOf(app, "web"), alpha.id, hears = false, by = owner(app))
         heard(app, alpha)
         say(app, "web is quiet for alpha", "web")
-        say(app, "api is not", "api")
+        say(app, "api is quiet too", "api")
         app.feed.projects.create("Later", null, null)
-        say(app, "nor a channel made later", "later")
-        assertEquals(listOf("api is not", "nor a channel made later"), heard(app, alpha))
-        assertEquals(true, tool(app, alpha, "list_subscriptions")["all_projects"]!!.jsonPrimitive.content.toBoolean(), "still hears every other channel")
+        say(app, "and a channel made later", "later")
+        assertEquals(emptyList(), heard(app, alpha), "a removal never means every other channel")
 
-        val list = app.feed.agentMembers.ofChannel(projectOf(app, "api").id).single()
-        assertEquals("all", list.via)
+        app.feed.agentMembers.setChannel(projectOf(app, "api"), alpha.id, hears = true, by = owner(app))
+        heard(app, alpha)
+        say(app, "api now", "api")
+        say(app, "later still quiet", "later")
+        assertEquals(listOf("api now"), heard(app, alpha))
+        assertEquals("chosen", app.feed.agentMembers.ofChannel(projectOf(app, "api").id).single().via)
+        assertEquals(false, app.feed.agentMembers.ofChannel(projectOf(app, "later").id).single().hears)
     }
 
     @Test
@@ -287,10 +293,12 @@ class AgentMembersTest {
 
     @Test
     fun `the owner lists removes and adds agents and a member only reads and an agent cannot`() = withTeam { t ->
+        assertEquals(false, get(t.member, "/api/projects/web/agents").json()["agents"]!!.jsonArray.single().jsonObject.str("hears").toBoolean(), "following nothing hears nothing")
+        tool(t.app, t.agent, "subscribe", "channel" to "web")
         val list = get(t.member, "/api/projects/web/agents")
         assertEquals(200, list.status.value)
         val row = list.json()["agents"]!!.jsonArray.single().jsonObject
-        assertEquals("""{"agentId":"${t.agent.id}","name":"alpha","hears":true,"via":"all","removed":null}""", Wire.encode(row))
+        assertEquals("""{"agentId":"${t.agent.id}","name":"alpha","hears":true,"via":"chosen","removed":null}""", Wire.encode(row))
 
         assertEquals(403, put(t.member, "/api/projects/web/agents/${t.agent.id}", """{"hears":false}""").status.value)
         assertEquals(403, put(t.member, "/api/groups/launch/agents/${t.agent.id}", """{"hears":false}""").status.value)

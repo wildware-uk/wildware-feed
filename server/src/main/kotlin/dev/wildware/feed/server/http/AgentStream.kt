@@ -34,16 +34,20 @@ import kotlinx.serialization.json.jsonPrimitive
  *
  * It hears what the agent follows on the server ([Subscriptions]), read afresh for each batch, so
  * a subscription, an unsubscribe, or the owner adding or removing the agent takes effect without
- * reconnecting. The server alone decides: a `?project=` or `?channel=` list (older bridges send one
- * from their settings) is ignored, not refused, so it can no longer pin a bridge to a fixed set.
+ * reconnecting. A `?project=` or `?channel=` list (bridges send one from their settings) only ever
+ * narrows that: the stream hears just those channels of what the agent follows, so a bridge set up
+ * for one channel never hears another's messages (a message that @mentions the agent still reaches
+ * it, as everywhere), while an unsubscribe or the owner's removal still applies at once.
+ * `*`, or no list, is no narrowing. A name that matches no channel narrows to nothing, never to all.
  */
 internal suspend fun ApplicationCall.agentStream(app: App, agent: Agents.Agent, token: String) {
     val clientId = request.queryParameters["client"]?.trim()?.take(CLIENT_ID_MAX)?.ifEmpty { null }
+    val within = bridgeChannels(app)
     val work = app.work
     val sent = HashSet<String>()
 
     fun messageFrame(): String {
-        val unread = work.unread(agent.id, MESSAGE_LIMIT)
+        val unread = work.unread(agent.id, MESSAGE_LIMIT, within)
         if (unread.isEmpty()) return ""
         val delivered = work.alreadyDelivered(agent.id, clientId, unread.map { it.id })
         val fresh = unread.filter { it.id !in delivered && it.id !in sent }
@@ -79,18 +83,18 @@ internal suspend fun ApplicationCall.agentStream(app: App, agent: Agents.Agent, 
         for (event in batch) {
             runCatching {
                 when (event.type) {
-                    "request.answered" -> send(sink, answerFrame(app, agent.id, event.payload))
-                    "reaction.updated" -> send(sink, reactionFrame(app, agent.id, event.payload))
-                    "block.updated" -> send(sink, blockFrame(app, agent.id, event.payload))
+                    "request.answered" -> send(sink, answerFrame(app, agent.id, within, event.payload))
+                    "reaction.updated" -> send(sink, reactionFrame(app, agent.id, within, event.payload))
+                    "block.updated" -> send(sink, blockFrame(app, agent.id, within, event.payload))
                 }
             }.onFailure { System.err.println("agent stream: ${event.type} frame failed: $it") }
         }
         val opening = last == null
         // Events were dropped while the queue was full: anything may have changed, so look at it all.
         val overflowed = dropped.getAndSet(false)
-        val reached = overflowed || batch.any { it.type == "message.created" && newMessageReaches(work, agent.id, it.payload) }
+        val reached = overflowed || batch.any { it.type == "message.created" && newMessageReaches(work, agent.id, within, it.payload) }
         if (!opening && !reached && batch.none { changesCounts(agent.id, it) }) return
-        val next = runCatching { work.countWork(agent.id) }.getOrNull() ?: return
+        val next = runCatching { work.countWork(agent.id, within) }.getOrNull() ?: return
         val rose = next.unreadMessages > (last?.unreadMessages ?: 0)
         // A new message can leave the count where it was (the owner removed the agent from a
         // channel and told it so in one go), so one that reaches the agent is looked for either way.
@@ -170,10 +174,10 @@ private fun changesCounts(agentId: String, event: AppEvent): Boolean {
 }
 
 /** Whether a new message is one the agent hasn't read and hears: its own never are. */
-private fun newMessageReaches(work: AgentWork, agentId: String, payload: JsonObject): Boolean {
+private fun newMessageReaches(work: AgentWork, agentId: String, within: List<String>?, payload: JsonObject): Boolean {
     if ((payload["author"] as? JsonPrimitive)?.content == "agent:$agentId") return false
     val id = (payload["messageId"] as? JsonPrimitive)?.takeIf { it.isString }?.content ?: return true
-    return runCatching { work.reaches(agentId, id) }.getOrDefault(true)
+    return runCatching { work.reaches(agentId, id, within) }.getOrDefault(true)
 }
 
 /**
@@ -197,6 +201,21 @@ private val WATCHED = setOf(
     "message.created", "message.deleted", "messages.read", "update.updated", "message.updated",
     "reaction.updated", "request.created", "request.answered", "subscriptions.updated", "block.updated",
 )
+
+/**
+ * The channels the bridge named with `?project=` or `?channel=` (the newer name, migration 053), by
+ * id, or null when it named none or `*`. Names that match no channel are dropped, so they narrow to
+ * nothing rather than fail an older bridge.
+ */
+private fun ApplicationCall.bridgeChannels(app: App): List<String>? {
+    val wanted = (request.queryParameters.getAll("project").orEmpty() + request.queryParameters.getAll("channel").orEmpty())
+        .flatMap { it.split(',') }.map { it.trim() }.filter { it.isNotEmpty() }
+    if (wanted.isEmpty() || "*" in wanted) return null
+    return wanted.mapNotNull { ref -> app.reads.findProject(ref)?.id }.distinct()
+}
+
+/** True when a frame about [projectId] may go to a bridge narrowed to [within]: no narrowing, or no channel, or one it named. */
+private fun inScope(projectId: String?, within: List<String>?) = within == null || projectId == null || projectId in within
 
 private fun projectNames(app: App, projectId: String?): Pair<JsonElement, JsonElement> {
     val p = projectId?.let { id -> app.db.one("SELECT slug, name FROM projects WHERE team_id = :team AND id = ?", id) { it.getString(1) to it.getString(2) } }
@@ -241,14 +260,14 @@ private fun messageItem(app: App, m: AgentWork.Line): JsonObject {
     }
 }
 
-private fun answerFrame(app: App, agentId: String, payload: JsonObject): String? {
+private fun answerFrame(app: App, agentId: String, within: List<String>?, payload: JsonObject): String? {
     val requestId = payload["requestId"]?.jsonPrimitive?.content ?: return null
     data class Req(val agentId: String, val projectId: String?, val updateId: String?, val state: String, val kind: String, val question: String, val answer: String?, val decidedAt: Long?)
     val r = app.db.one("SELECT agent_id, project_id, update_id, state, kind, question, answer, decided_at FROM approvals WHERE team_id = :team AND id = ?", requestId) {
         Req(it.getString(1), it.getString(2), it.getString(3), it.getString(4), it.getString(5), it.getString(6), it.getString(7),
             it.getLong(8).let { v -> if (it.wasNull()) null else v })
     } ?: return null
-    if (r.agentId != agentId) return null
+    if (r.agentId != agentId || !inScope(r.projectId, within)) return null
     val state = when (r.state) { "approved", "rejected" -> "answered"; else -> r.state }
     if (state == "withdrawn") return null
     val value: JsonElement = r.answer?.let { (Wire.json.parseToJsonElement(it) as? JsonObject)?.get("value") }
@@ -272,7 +291,7 @@ private fun answerFrame(app: App, agentId: String, payload: JsonObject): String?
     })
 }
 
-private fun reactionFrame(app: App, agentId: String, payload: JsonObject): String? {
+private fun reactionFrame(app: App, agentId: String, within: List<String>?, payload: JsonObject): String? {
     if (payload["actor"]?.jsonPrimitive?.content != "human") return null
     val messageId = (payload["messageId"] as? JsonPrimitive)?.takeIf { it.isString }?.content ?: return null
     val m = app.work.find(messageId) ?: return null
@@ -281,7 +300,7 @@ private fun reactionFrame(app: App, agentId: String, payload: JsonObject): Strin
     val concerns = m.author == mine ||
         (m.updateId != null && app.db.one("SELECT agent_id FROM updates WHERE team_id = :team AND id = ?", m.updateId) { it.getString(1) } == agentId) ||
         app.work.threadOf(m).any { it.author == mine }
-    if (!concerns) return null
+    if (!concerns || !inScope(m.projectId, within)) return null
     val (slug, name) = projectNames(app, m.projectId)
     return Frames.named("reaction", buildJsonObject {
         put("type", JsonPrimitive("reaction"))
@@ -305,7 +324,7 @@ private fun reactionFrame(app: App, agentId: String, payload: JsonObject): Strin
  * A person ticked a line or voted on one of this agent's blocks (migration 057): it hears what, on
  * which block and card, and who. Its own changes, and anything on another agent's card, it does not.
  */
-private fun blockFrame(app: App, agentId: String, payload: JsonObject): String? {
+private fun blockFrame(app: App, agentId: String, within: List<String>?, payload: JsonObject): String? {
     if (payload["actor"]?.jsonPrimitive?.content != "human") return null
     val action = payload["action"]?.jsonPrimitive?.content ?: return null
     if (action != "check" && action != "vote") return null
@@ -319,6 +338,7 @@ private fun blockFrame(app: App, agentId: String, payload: JsonObject): String? 
     }
     if (author != "agent:$agentId") return null
     val projectId = (payload["projectId"] as? JsonPrimitive)?.takeIf { it.isString }?.content
+    if (!inScope(projectId, within)) return null
     val (slug, name) = projectNames(app, projectId)
     val by = (payload["userId"] as? JsonPrimitive)?.content ?: dev.wildware.feed.server.domain.People.FOUNDER
     return Frames.named("block", buildJsonObject {

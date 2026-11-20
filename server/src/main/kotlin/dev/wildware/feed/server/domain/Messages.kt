@@ -278,20 +278,14 @@ class Messages(private val feed: Feed) {
 
     // ---- reading (get_messages) ------------------------------------------------------------------
 
-    /** The projects an agent follows (migration 052). Null means it has never followed one, so all. */
-    fun projectsForAgent(agentId: String): List<String>? = subscriptions.workChannels(agentId)
+    /** The projects an agent follows (migration 052); none when it follows none. */
+    fun projectsForAgent(agentId: String): List<String> = subscriptions.workChannels(agentId)
 
-    /** Who reads ([reader], or nobody in particular) and what reaches them. */
-    private class Scope(val reach: Subscriptions.Reach, val reader: String?)
+    /** Who reads ([reader]) and what reaches them. */
+    private class Scope(val reach: Subscriptions.Reach, val reader: String)
 
     /** `readerScope`: the reach and the @mention audience, as SQL and its parameters. */
     private fun readerScope(scope: Scope, params: MutableList<Any?>): String {
-        if (scope.reader == null) {
-            val reach = scope.reach
-            if (reach !is Subscriptions.Reach.Projects) return ""
-            params.addAll(reach.ids)
-            return if (reach.ids.isEmpty()) " AND 0 = 1" else " AND m.project_id IN (${reach.ids.joinToString(", ") { "?" }})"
-        }
         params.add(scope.reader)
         return " AND ${Subscriptions.audienceSql()}" + subscriptions.reachSql(scope.reader, scope.reach, params)
     }
@@ -345,7 +339,8 @@ class Messages(private val feed: Feed) {
         val limit = PAGE
         val projectId = if (!project.isNullOrEmpty()) feed.projects.resolve(project).id else null
         val sinceSeq = decodeCursor(since)
-        val reach = if (projectId == null) subscriptions.resolve(agentId, Subscriptions.Reach.Followed) else Subscriptions.Reach.Projects(listOf(projectId))
+        // One channel named: what reaches the agent there, never a channel it does not hear.
+        val reach = if (projectId == null) Subscriptions.Reach.Followed else Subscriptions.Reach(within = listOf(projectId), channelless = false)
         val scope = Scope(reach, agentId)
 
         val messages = if (sinceSeq != null && sinceSeq != 0L) {
@@ -364,11 +359,7 @@ class Messages(private val feed: Feed) {
 
     private fun markPageRead(agentId: String, mine: String, limit: Int, scope: Scope, since: Long?, messages: List<MessageRow>): Long {
         val last = messages.lastOrNull()?.seq ?: return 0
-        val covered = when (val reach = scope.reach) {
-            is Subscriptions.Reach.Projects -> reach.ids
-            Subscriptions.Reach.Followed -> projectsForAgent(agentId) ?: emptyList()
-            Subscriptions.Reach.All -> emptyList()
-        }
+        val covered = scope.reach.within ?: projectsForAgent(agentId)
         val projects = LinkedHashSet(covered + messages.map { it.projectId ?: NO_PROJECT })
         val handed = messages.map { it.id }.toSet()
         var moved = 0L

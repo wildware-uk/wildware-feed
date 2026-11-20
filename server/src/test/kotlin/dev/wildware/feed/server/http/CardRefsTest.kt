@@ -244,6 +244,7 @@ class CardRefsTest {
     @Test
     fun `get_messages shows another agent the cards a message points at`() = withApp { c ->
         val update = c.ok("post_update", buildJsonObject { put("channel", "web"); put("title", "Login"); put("body", "work") }).o("update").s("id")!!
+        c.ok("subscribe", buildJsonObject { put("channel", "web") }, by = c.beta)
         c.ok("post_message", buildJsonObject { put("update_id", update); put("body", "look"); put("refs", refs("update" to update)) })
         val read = c.ok("get_messages", JsonObject(emptyMap()), by = c.beta)
         val ref = read.a("messages").single().jsonObject.a("refs").single().jsonObject

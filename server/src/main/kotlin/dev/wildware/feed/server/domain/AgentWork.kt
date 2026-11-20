@@ -12,9 +12,8 @@ import kotlinx.serialization.json.buildJsonObject
  * messages over on the agent stream (TS `src/domain/messages.ts`, `cards.ts`, `requests.ts`,
  * spec/04-stream-and-events.md §4.4-4.6).
  *
- * What reaches the agent is only what it follows on the server ([Subscriptions]; everything when
- * it has never followed a channel, but those the owner removed it from). No client names its
- * channels any more (migration 060).
+ * What reaches the agent is only what it follows on the server ([Subscriptions]): nothing from a
+ * channel it does not follow. A bridge that names channels narrows that further ([within]), never widens it.
  */
 class AgentWork(private val db: Database, private val bus: Bus, private val clock: () -> Long = System::currentTimeMillis) {
     data class Counts(val unreadMessages: Int, val openTasks: Int, val pendingApprovals: Int)
@@ -30,14 +29,17 @@ class AgentWork(private val db: Database, private val bus: Bus, private val cloc
 
     private val subscriptions = Subscriptions(db, clock)
 
-    /** The projects the agent follows, or null (everything) when it has never followed one. */
-    fun projectsForAgent(agentId: String): List<String>? = subscriptions.workChannels(agentId)
+    /** The projects the agent follows; none when it follows none. */
+    fun projectsForAgent(agentId: String): List<String> = subscriptions.workChannels(agentId)
 
-    /** The heartbeat's and the agent stream's counts: unread and open work in what the agent follows, pending requests everywhere. */
-    fun countWork(agentId: String) = Counts(
-        unreadMessages = countUnread(agentId, Subscriptions.Reach.Followed),
-        openTasks = countOpenWork(projectsForAgent(agentId)),
-        pendingApprovals = countPending(agentId, null),
+    /**
+     * The heartbeat's and the agent stream's counts: unread and open work in what the agent follows,
+     * pending requests everywhere. [within]: the channels a bridge named, which narrow all three.
+     */
+    fun countWork(agentId: String, within: List<String>? = null) = Counts(
+        unreadMessages = countUnread(agentId, Subscriptions.Reach(within)),
+        openTasks = countOpenWork(projectsForAgent(agentId).let { mine -> within?.let { w -> mine.filter { it in w } } ?: mine }),
+        pendingApprovals = countPending(agentId, within),
     )
 
     private fun unreadWhere(agentId: String, reach: Subscriptions.Reach, args: MutableList<Any?>, oneMessage: Boolean = false): String {
@@ -55,10 +57,13 @@ class AgentWork(private val db: Database, private val bus: Bus, private val cloc
         return base + subscriptions.reachSql(agentId, reach, args, oneMessage)
     }
 
-    /** Whether message [messageId] is unread for the agent and reaches it: one cheap lookup, for the agent stream. */
-    fun reaches(agentId: String, messageId: String): Boolean {
+    /**
+     * Whether message [messageId] is unread for the agent and reaches it (narrowed to [within] when a
+     * bridge named channels): one cheap lookup, for the agent stream.
+     */
+    fun reaches(agentId: String, messageId: String, within: List<String>? = null): Boolean {
         val args = mutableListOf<Any?>()
-        val where = unreadWhere(agentId, Subscriptions.Reach.Followed, args, oneMessage = true)
+        val where = unreadWhere(agentId, Subscriptions.Reach(within), args, oneMessage = true)
         args += messageId
         return db.one("SELECT 1 $where AND m.id = ?", *args.toTypedArray()) { 1 } != null
     }
@@ -69,10 +74,10 @@ class AgentWork(private val db: Database, private val bus: Bus, private val cloc
         return db.one("SELECT count(*) $where", *args.toTypedArray()) { it.getInt(1) } ?: 0
     }
 
-    /** The newest [limit] unread lines in scope, oldest first. */
-    fun unread(agentId: String, limit: Int): List<Line> {
+    /** The newest [limit] unread lines in scope (narrowed to [within] when a bridge named channels), oldest first. */
+    fun unread(agentId: String, limit: Int, within: List<String>? = null): List<Line> {
         val args = mutableListOf<Any?>()
-        val where = unreadWhere(agentId, Subscriptions.Reach.Followed, args)
+        val where = unreadWhere(agentId, Subscriptions.Reach(within), args)
         args += limit
         return db.query("SELECT ${LINE.joinToString(", ") { "m.$it" }} $where ORDER BY m.seq DESC LIMIT ?", *args.toTypedArray()) { line(it) }.reversed()
     }
