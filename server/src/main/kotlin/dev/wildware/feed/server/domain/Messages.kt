@@ -113,24 +113,28 @@ class Messages(private val feed: Feed) {
         }
         val projectId = anchored ?: namedProject
 
-        val mediaIds = if (input.mediaIds.isNullOrEmpty()) emptyList() else FeedAttachments.assertAttachableToMessage(db, input.mediaIds, author)
-        val embeds = if (input.embeds.isNullOrEmpty()) emptyList() else FeedAttachments.checkedEmbeds(db, input.embeds)
-        val apps = if (input.apps.isNullOrEmpty()) emptyList() else FeedAttachments.checkedApps(db, input.apps)
-        val refs = cardRefs.check(author, input.refs)
-        val blocks = feed.blocks.check(input.blocks, if (author.startsWith(AGENT_PREFIX)) author.removePrefix(AGENT_PREFIX) else null)
-
         if (answered != null && !sameThread(answered, updateId, anchor, requestId)) {
             throw invalid("that message is in a different thread")
         }
         val answersId = answered?.id ?: if (inThread) target?.id else null
 
-        if (input.guardRepeats && person != null) {
-            repeatOf(person, body, projectId, updateId, if (request) null else anchor, requestId)?.let { first ->
+        // A send tried again with no key: the owner's app from before send keys, or an agent's MCP client resending
+        // when the server was slow to answer. Checked before the attachments, which the first copy already holds.
+        val agentPost = author.startsWith(AGENT_PREFIX) && input.embeds.isNullOrEmpty() && input.apps.isNullOrEmpty() &&
+            input.refs.isNullOrEmpty() && input.blocks.isNullOrEmpty()
+        if ((input.guardRepeats && person != null) || agentPost) {
+            repeatOf(author, person, body, projectId, updateId, if (request) null else anchor, requestId, input.mediaIds.orEmpty())?.let { first ->
                 // Give the old copy this send's key, so the next try of it is caught by the key alone.
                 if (sendKey != null) db.update("UPDATE messages SET send_key = ? WHERE team_id = :team AND id = ? AND send_key IS NULL", sendKey, first.id)
                 return@op first
             }
         }
+
+        val mediaIds = if (input.mediaIds.isNullOrEmpty()) emptyList() else FeedAttachments.assertAttachableToMessage(db, input.mediaIds, author)
+        val embeds = if (input.embeds.isNullOrEmpty()) emptyList() else FeedAttachments.checkedEmbeds(db, input.embeds)
+        val apps = if (input.apps.isNullOrEmpty()) emptyList() else FeedAttachments.checkedApps(db, input.apps)
+        val refs = cardRefs.check(author, input.refs)
+        val blocks = feed.blocks.check(input.blocks, if (author.startsWith(AGENT_PREFIX)) author.removePrefix(AGENT_PREFIX) else null)
 
         val id = Ulid.next()
         val inserted = db.update(
@@ -172,17 +176,24 @@ class Messages(private val feed: Feed) {
     }
 
     /**
-     * The same words [person] sent into this thread a moment ago with no send key: an app from before
-     * send keys trying again after its answer was lost. Unsent copies count, so a send the owner already
-     * took back doesn't come back.
+     * The same words, with the same media, that [author] (and [person], for the owner's side) sent into
+     * this thread a moment ago with no send key: a send tried again after its answer was lost. The
+     * owner's unsent copies count, so a send already taken back doesn't come back.
      */
-    private fun repeatOf(person: String, body: String, projectId: String?, updateId: String?, replyTo: String?, requestId: String?): MessageRow? =
-        db.one(
-            "SELECT ${Rows.MESSAGE} FROM messages WHERE team_id = :team AND user_id = ? AND author = ? AND send_key IS NULL AND body = ? " +
+    private fun repeatOf(
+        author: String, person: String?, body: String, projectId: String?, updateId: String?, replyTo: String?, requestId: String?, mediaIds: List<String>,
+    ): MessageRow? {
+        val first = db.one(
+            "SELECT ${Rows.MESSAGE} FROM messages WHERE team_id = :team AND coalesce(user_id, '') = ? AND author = ? AND send_key IS NULL AND body = ? " +
                 "AND created_at >= ? AND coalesce(project_id, '') = ? AND coalesce(update_id, '') = ? AND coalesce(reply_to, '') = ? " +
-                "AND coalesce(request_id, '') = ? ORDER BY seq DESC LIMIT 1",
-            person, HUMAN, body, feed.now() - REPEAT_WINDOW_MS, projectId.orEmpty(), updateId.orEmpty(), replyTo.orEmpty(), requestId.orEmpty(),
-        ) { MessageRow(Rows.message(it)) }
+                "AND coalesce(request_id, '') = ?" +
+                // An agent that unsent its own post and says it again means it; the owner's unsent copy stays unsent.
+                (if (person == null) " AND deleted_at IS NULL" else "") + " ORDER BY seq DESC LIMIT 1",
+            person.orEmpty(), author, body, feed.now() - REPEAT_WINDOW_MS, projectId.orEmpty(), updateId.orEmpty(), replyTo.orEmpty(), requestId.orEmpty(),
+        ) { MessageRow(Rows.message(it)) } ?: return null
+        val held = db.query("SELECT id FROM media WHERE team_id = :team AND message_id = ?", first.id) { it.getString(1) }
+        return first.takeIf { held.sorted() == mediaIds.distinct().sorted() }
+    }
 
     /** `subscriptions.updated` for each person who now follows a thread, so their apps catch up. */
     private fun followed(people: List<String>) {

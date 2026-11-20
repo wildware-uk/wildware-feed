@@ -48,10 +48,15 @@ class Updates(private val feed: Feed) {
                 ?: throw notFound("no such session: $sessionId")
             if (owner != agentId) throw invalid("session belongs to another agent")
         }
+        val priority = input.priority ?: "medium"
+        // The same card posted again a moment ago: the agent's MCP client resending when the server was slow
+        // to answer. The first one comes back, and nothing new happens. Checked before the media, which it holds.
+        if (input.embeds.isNullOrEmpty() && input.apps.isNullOrEmpty() && input.refs.isNullOrEmpty() && input.blocks.isNullOrEmpty()) {
+            repeatOf(agentId, project.id, title, body, input.level ?: "info", priority, input.mediaIds.orEmpty())?.let { return@op it }
+        }
         val mediaIds = if (input.mediaIds.isNullOrEmpty()) emptyList() else FeedAttachments.assertAttachableToUpdate(db, input.mediaIds, agentId)
         val embeds = if (input.embeds.isNullOrEmpty()) emptyList() else FeedAttachments.checkedEmbeds(db, input.embeds)
         val apps = if (input.apps.isNullOrEmpty()) emptyList() else FeedAttachments.checkedApps(db, input.apps)
-        val priority = input.priority ?: "medium"
         if (priority !in PRIORITIES) throw invalid("priority must be one of: ${PRIORITIES.joinToString(", ")}")
         val refs = CardRefs(db, feed.clock).check("agent:$agentId", input.refs)
         val blocks = feed.blocks.check(input.blocks, agentId)
@@ -77,6 +82,17 @@ class Updates(private val feed: Feed) {
             put("updateId", update.id); put("projectId", update.projectId); put("agentId", update.agentId)
         })
         update
+    }
+
+    /** This agent's card in [projectId] from the last [Messages.REPEAT_WINDOW_MS] with the same words and media, or null. */
+    private fun repeatOf(agentId: String, projectId: String, title: String?, body: String, level: String, priority: String, mediaIds: List<String>): UpdateRow? {
+        val first = db.one(
+            "SELECT ${Rows.UPDATE} FROM updates WHERE team_id = :team AND agent_id = ? AND project_id = ? AND body = ? AND coalesce(title, '') = ? " +
+                "AND level = ? AND priority = ? AND created_at >= ? AND deleted_at IS NULL ORDER BY seq DESC LIMIT 1",
+            agentId, projectId, body, title.orEmpty(), level, priority, feed.now() - Messages.REPEAT_WINDOW_MS,
+        ) { UpdateRow(Rows.update(it)) } ?: return null
+        val held = db.query("SELECT id FROM media WHERE team_id = :team AND update_id = ?", first.id) { it.getString(1) }
+        return first.takeIf { held.sorted() == mediaIds.distinct().sorted() }
     }
 
     /** Only the author may edit; `edited_at` is stamped whatever changed. */
