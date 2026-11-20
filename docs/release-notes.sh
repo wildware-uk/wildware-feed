@@ -2,7 +2,7 @@
 # Writes a release's notes: what to download and how to install it, per computer.
 #   release-notes.sh <version> <mac signed> <mac notarized> <windows signed> [android signed]
 # <mac notarized> is true, false, or pending: Apple is still checking the Mac file, so the release
-# goes out without it and notary-status.yml adds it, then deletes the "Mac version follows" line
+# goes out without it and notary-finish.sh adds it, then deletes the "Mac version follows" line
 # below (it finds the line by its start, so keep the two in step).
 set -euo pipefail
 version="$1"; mac_signed="${2:-false}"; mac_notarized="${3:-false}"; windows_signed="${4:-false}"; android_signed="${5:-false}"

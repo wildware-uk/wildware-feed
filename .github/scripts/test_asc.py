@@ -114,7 +114,7 @@ class Clock:
         return self.now
 
 
-class NotaryWaitTest(unittest.TestCase):
+class NotaryTest(unittest.TestCase):
     def setUp(self):
         self.out = tempfile.NamedTemporaryFile("r", delete=False)
         self.out.close()
@@ -131,103 +131,117 @@ class NotaryWaitTest(unittest.TestCase):
         os.unlink(self.out.name)
         self.dir.cleanup()
 
-    def wait(self, apple, budget=345, file=True):
-        clock = Clock()
+    def good_log(self):
+        return {"status": "Accepted", "archiveFilename": DMG, "sha256": self.sha, "issues": None}
+
+    def run_quietly(self, action):
         printed = io.StringIO()
         with contextlib.redirect_stdout(printed):
             try:
-                asc.notary_wait(ID, self.dmg if file else None, budget, get=apple, sleep=clock.sleep, clock=clock)
+                action()
                 code = 0
             except SystemExit as e:
                 code = e.code
         with open(self.out.name) as f:
-            return code, printed.getvalue(), clock, f.read()
+            return code, printed.getvalue(), f.read()
 
-    def good_log(self):
-        return {"status": "Accepted", "archiveFilename": DMG, "sha256": self.sha, "issues": None}
+    def wait(self, apple, budget=0, name=DMG):
+        clock = Clock()
+        code, printed, output = self.run_quietly(lambda: asc.notary_wait(ID, name, budget, get=apple, sleep=clock.sleep, clock=clock))
+        return code, printed, clock, output
 
-    def test_accepted_after_a_few_checks(self):
-        code, printed, clock, output = self.wait(FakeApple("In Progress", "In Progress", "Accepted", log=self.good_log()))
-        self.assertEqual(0, code)
-        self.assertEqual("status=accepted\n", output)
-        self.assertEqual([30, 30], clock.pauses, "every half minute at first")
-        self.assertIn("Apple notarised", printed)
-        self.assertIn("exact SHA-256", printed)
-        self.assertNotIn("secret-link", printed)
+    def verify(self, apple):
+        code, printed, _ = self.run_quietly(lambda: asc.notary_verify(ID, self.dmg, get=apple))
+        return code, printed
 
-    def test_accepted_for_a_different_file_is_refused(self):
-        log = dict(self.good_log(), sha256="0" * 64)
-        code, printed, _, output = self.wait(FakeApple("Accepted", log=log))
-        self.assertEqual(1, code)
-        self.assertEqual("", output, "never reported as accepted")
-        self.assertIn("a different file", printed)
+    # Asking
 
-    def test_accepted_with_no_report_still_counts_but_warns(self):
-        code, printed, _, output = self.wait(FakeApple("Accepted", logs_fail=True))
-        self.assertEqual(0, code)
-        self.assertEqual("status=accepted\n", output)
-        self.assertIn("only the name says", printed)
-
-    def test_asking_once_without_a_file_just_reports(self):
-        code, printed, clock, output = self.wait(FakeApple("In Progress"), budget=0, file=False)
+    def test_asking_once_while_apple_checks_is_pending_and_waits_for_nothing(self):
+        apple = FakeApple("In Progress")
+        code, printed, clock, output = self.wait(apple)
         self.assertEqual(0, code)
         self.assertEqual("status=pending\n", output)
-        self.assertEqual([], clock.pauses, "budget 0 asks once and doesn't wait")
-        code, printed, _, _ = self.wait(FakeApple("Accepted", name="Whatever.dmg", log={"status": "Accepted"}), budget=0, file=False)
+        self.assertEqual([], clock.pauses)
+        self.assertEqual(1, len(apple.asked), "one question, no report fetched")
+        self.assertIn("sent 2026-11-20T10:00:00.000Z", printed)
+
+    def test_accepted_prints_apples_report(self):
+        code, printed, _, output = self.wait(FakeApple("Accepted", log=self.good_log()))
+        self.assertEqual(0, code)
+        self.assertEqual("status=accepted\n", output)
+        self.assertIn(self.sha, printed)
+        self.assertNotIn("secret-link", printed, "the report's link works without the key: never printed")
+
+    def test_rejected_prints_apples_report_and_fails(self):
+        log = {"status": "Invalid", "issues": [{"path": "Wildware Feed.app/Contents/MacOS/x", "message": "The binary is not signed."}]}
+        apple = FakeApple("Invalid", log=log)
+        code, printed, _, output = self.wait(apple)
+        self.assertEqual(1, code)
+        self.assertEqual("status=rejected\n", output)
+        self.assertIn("The binary is not signed.", printed)
+        self.assertNotIn("secret-link", printed)
+        self.assertEqual([True, True, False], apple.authed, "the report's link itself is fetched without the key")
+
+    def test_a_submission_for_another_file_is_refused(self):
+        code, printed, _, output = self.wait(FakeApple("Accepted", name="Something-else.dmg"))
+        self.assertEqual(1, code)
+        self.assertEqual("", output)
+        self.assertIn("Wrong submission id?", printed)
+
+    def test_without_a_name_any_file_is_reported(self):
+        code, printed, _, _ = self.wait(FakeApple("Accepted", name="Whatever.dmg", log={"status": "Accepted"}), name=None)
         self.assertEqual(0, code)
         self.assertIn("Apple notarised Whatever.dmg", printed)
 
-    def test_asking_once_when_apple_doesnt_answer_fails(self):
-        code, _, _, output = self.wait(FakeApple(503), budget=0, file=False)
-        self.assertEqual(1, code)
-        self.assertEqual("", output)
+    def test_no_proper_answer_fails_so_it_is_asked_again_later(self):
+        for status in (0, 404, 429, 503):
+            code, _, _, output = self.wait(FakeApple(status))
+            self.assertEqual(1, code, status)
+            self.assertEqual("", output, "neither pending nor decided")
 
-    def test_slows_down_after_twenty_minutes(self):
-        apple = FakeApple(*["In Progress"] * 45, "Accepted", log=self.good_log())
-        code, _, clock, output = self.wait(apple)
+    def test_a_refused_key_fails_at_once(self):
+        apple = FakeApple(401)
+        code, printed, _, _ = self.wait(apple, budget=60)
+        self.assertEqual(1, code)
+        self.assertEqual(1, len(apple.asked))
+        self.assertIn("refused the key", printed)
+
+    def test_a_longer_budget_keeps_asking_then_slows_down(self):
+        apple = FakeApple(*["In Progress"] * 45, 503, "Accepted", log=self.good_log())
+        code, _, clock, output = self.wait(apple, budget=345)
         self.assertEqual(0, code)
         self.assertEqual("status=accepted\n", output)
         self.assertEqual(30, clock.pauses[0])
         self.assertEqual(180, clock.pauses[-1])
 
-    def test_still_waiting_when_the_budget_runs_out_is_pending_not_a_failure(self):
-        code, printed, clock, output = self.wait(FakeApple("In Progress"), budget=60)
+    def test_a_longer_budget_ends_pending(self):
+        code, _, clock, output = self.wait(FakeApple("In Progress"), budget=60)
         self.assertEqual(0, code)
         self.assertEqual("status=pending\n", output)
         self.assertLessEqual(clock.now, 60 * 60)
-        self.assertIn("still checking", printed)
 
-    def test_rejected_prints_apples_report_and_fails(self):
-        log = {"status": "Invalid", "issues": [{"path": "Wildware Feed.app/Contents/MacOS/x", "message": "The binary is not signed."}]}
-        apple = FakeApple("In Progress", "Invalid", log=log)
-        code, printed, _, output = self.wait(apple)
-        self.assertEqual(1, code)
-        self.assertEqual("", output)
-        self.assertIn("The binary is not signed.", printed)
-        self.assertNotIn("secret-link", printed, "the log's link is a credential of sorts: never printed")
-        self.assertEqual([True, True, True, False], apple.authed, "the log link itself is fetched without the key")
+    # Matching the file
 
-    def test_a_submission_for_another_file_is_refused(self):
-        code, printed, _, _ = self.wait(FakeApple("Accepted", name="Something-else.dmg"))
-        self.assertEqual(1, code)
-        self.assertIn("Wrong submission id?", printed)
-
-    def test_passing_trouble_is_retried(self):
-        code, _, _, output = self.wait(FakeApple(0, 503, 429, 404, "Accepted", log=self.good_log()))
+    def test_the_file_apple_checked_is_verified(self):
+        code, printed = self.verify(FakeApple("Accepted", log=self.good_log()))
         self.assertEqual(0, code)
-        self.assertEqual("status=accepted\n", output)
+        self.assertIn("exact SHA-256", printed)
 
-    def test_lasting_trouble_fails(self):
-        code, printed, _, _ = self.wait(FakeApple(503))
+    def test_a_different_file_is_refused(self):
+        code, printed = self.verify(FakeApple("Accepted", log=dict(self.good_log(), sha256="0" * 64)))
         self.assertEqual(1, code)
-        self.assertIn("ten times running", printed)
+        self.assertIn("a different file", printed)
 
-    def test_a_refused_key_fails_at_once(self):
-        apple = FakeApple(401)
-        code, printed, _, _ = self.wait(apple)
+    def test_no_report_means_no_publishing(self):
+        code, printed = self.verify(FakeApple("Accepted", logs_fail=True))
         self.assertEqual(1, code)
-        self.assertEqual(1, len(apple.asked))
-        self.assertIn("refused the key", printed)
+        self.assertIn("has no SHA-256", printed)
+
+    def test_only_an_accepted_submission_is_verified(self):
+        code, _ = self.verify(FakeApple("In Progress", log=self.good_log()))
+        self.assertEqual(1, code)
+        code, _ = self.verify(FakeApple("Accepted", name="Other.dmg", log=self.good_log()))
+        self.assertEqual(1, code)
 
 
 if __name__ == "__main__":

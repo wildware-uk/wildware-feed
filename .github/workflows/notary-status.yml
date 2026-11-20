@@ -1,19 +1,18 @@
 name: notary-status
 
-# Apple's verdict on a Mac notarisation, and the step that puts the notarised .dmg on its release.
-# Linux only: no Mac runner ever waits for Apple.
+# Apple's verdict on one Mac notarisation, in seconds: it asks once and never waits. Linux only.
 #
 #   By hand (Actions tab, or `gh workflow run notary-status.yml -f submission_id=...`):
 #     submission_id only            prints Apple's status and, once decided, its report.
-#     + run_id and artifact         also checks Apple's report is for that run's exact .dmg.
-#     + tag                         and once accepted, puts that .dmg on the release.
-#     + wait_minutes                keeps asking for up to that long first (0: ask once).
-#   From desktop-release: right after a release goes out without its Mac file, with
-#   wait_minutes 345. Still undecided by then, it starts a fresh run of itself (four at most: a day).
+#     + run_id and artifact         once accepted, also checks Apple's report is for that exact .dmg.
+#     + tag                         once accepted, puts that .dmg on the release. Not decided yet:
+#                                   leaves it to notary-sweep, which asks every 15 minutes.
+#   From desktop-release: straight after a release goes out without its Mac file.
 #
-# The .dmg goes up unstapled: stapling needs a Mac runner. That's fine: a Mac opening it asks
-# Apple online and gets the same yes. Stapling only matters for a first open with no internet.
-# On a pull request that touches it, it runs its offline tests (and so GitHub knows the workflow).
+# All of it is .github/scripts/notary-finish.sh. The .dmg goes up unstapled: stapling needs a Mac
+# runner, and a Mac opening the file asks Apple online and gets the same yes (docs/INSTALL.md).
+# On a pull request that touches it, it runs its offline tests (which also lets GitHub run it by
+# hand from a branch before it is merged).
 on:
   workflow_call:
     inputs:
@@ -21,8 +20,6 @@ on:
       run_id: { type: string, required: false, default: '' }
       artifact: { type: string, required: false, default: '' }
       tag: { type: string, required: false, default: '' }
-      wait_minutes: { type: string, required: false, default: '0' }
-      attempt: { type: string, required: false, default: '1' }
   workflow_dispatch:
     inputs:
       submission_id:
@@ -40,30 +37,16 @@ on:
         description: 'Once accepted, put the .dmg on this release, e.g. v1.2.3 (optional).'
         required: false
         default: ''
-      wait_minutes:
-        description: 'How long to keep asking Apple, up to 345. 0 asks once.'
-        required: false
-        default: '0'
-      attempt:
-        description: 'Which run of a long wait this is (1 to 4). Leave it at 1.'
-        required: false
-        default: '1'
   pull_request:
     paths:
       - .github/workflows/notary-status.yml
+      - .github/workflows/notary-sweep.yml
       - .github/scripts/asc.py
+      - .github/scripts/notary-finish.sh
       - .github/scripts/test_asc.py
 
 permissions:
   contents: read
-
-env:
-  SUBMISSION_ID: ${{ inputs.submission_id }}
-  RUN_ID: ${{ inputs.run_id }}
-  ARTIFACT: ${{ inputs.artifact }}
-  TAG: ${{ inputs.tag }}
-  WAIT_MINUTES: ${{ inputs.wait_minutes }}
-  ATTEMPT: ${{ inputs.attempt }}
 
 jobs:
   self-test:
@@ -82,13 +65,17 @@ jobs:
   notary:
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
-    # The wait stops itself at 345 minutes; a job may run 360.
-    timeout-minutes: 358
+    timeout-minutes: 10
     permissions:
       # To put the .dmg on the release.
       contents: write
-      # To read another run's artifact, and start the next run of a long wait.
+      # To read the run's artifact, and turn notary-sweep on.
       actions: write
+    env:
+      SUBMISSION_ID: ${{ inputs.submission_id }}
+      RUN_ID: ${{ inputs.run_id }}
+      ARTIFACT: ${{ inputs.artifact }}
+      TAG: ${{ inputs.tag }}
     steps:
       - name: Check the inputs
         timeout-minutes: 1
@@ -99,8 +86,6 @@ jobs:
           [ -z "$RUN_ID" ] || echo "$RUN_ID" | grep -Eq '^[0-9]+$' || bad "run_id must be a number."
           [ -z "$ARTIFACT" ] || echo "$ARTIFACT" | grep -Eq '^[A-Za-z0-9._-]+$' || bad "artifact must be an artifact's name."
           [ -z "$TAG" ] || echo "$TAG" | grep -Eq '^v[1-9][0-9]*\.[0-9]+\.[0-9]+$' || bad "tag must look like v1.2.3."
-          if ! echo "$WAIT_MINUTES" | grep -Eq '^[0-9]+$' || [ "$WAIT_MINUTES" -gt 345 ]; then bad "wait_minutes must be 0 to 345."; fi
-          echo "$ATTEMPT" | grep -Eq '^[1-4]$' || bad "attempt must be 1 to 4."
           if { [ -n "$RUN_ID" ] || [ -n "$TAG" ]; } && { [ -z "$RUN_ID" ] || [ -z "$ARTIFACT" ]; }; then
             bad "run_id and artifact go together, and tag needs both: they say which .dmg to check and publish."
           fi
@@ -108,38 +93,11 @@ jobs:
         timeout-minutes: 3
         with:
           sparse-checkout: .github/scripts
-      - name: Fetch the signed .dmg that was sent
-        if: inputs.run_id != ''
-        uses: actions/download-artifact@v4
-        timeout-minutes: 5
-        with:
-          name: ${{ inputs.artifact }}
-          path: dist
-          run-id: ${{ inputs.run_id }}
-          github-token: ${{ github.token }}
-      - name: Find it
-        id: dmg
-        if: inputs.run_id != ''
-        timeout-minutes: 1
-        run: |
-          set -euo pipefail
-          found="$(find dist -maxdepth 1 -name '*.dmg')"
-          if [ "$(printf '%s\n' "$found" | grep -c .)" != "1" ]; then
-            echo "::error::Artifact $ARTIFACT should hold exactly one .dmg; it has: $(find dist -type f -printf '%f ')"
-            exit 1
-          fi
-          name="$(basename "$found")"
-          if [ -n "$TAG" ] && [ "$name" != "Wildware-Feed-${TAG#v}-mac-arm64.dmg" ]; then
-            echo "::error::$name isn't the Mac file of $TAG."
-            exit 1
-          fi
-          echo "file=$found" >> "$GITHUB_OUTPUT"
-          echo "name=$name" >> "$GITHUB_OUTPUT"
-      - name: Ask Apple
-        id: apple
-        timeout-minutes: 350
+      - name: Ask Apple once, and finish it if it's accepted
+        timeout-minutes: 6
         env:
-          FILE: ${{ steps.dmg.outputs.file }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
           ASC_KEY_P8: ${{ secrets.ASC_KEY_P8_BASE64 }}
@@ -149,55 +107,4 @@ jobs:
           trap 'rm -f "$ASC_KEY_PATH"' EXIT
           printf '%s' "$ASC_KEY_P8" | base64 --decode > "$ASC_KEY_PATH"
           chmod 600 "$ASC_KEY_PATH"
-          args=(notary-wait "$SUBMISSION_ID" --budget-minutes "$WAIT_MINUTES")
-          if [ -n "$FILE" ]; then args+=(--file "$FILE"); fi
-          python3 .github/scripts/asc.py "${args[@]}"
-      - name: Still checking after a long wait, so carry on in a fresh run
-        if: steps.apple.outputs.status == 'pending' && inputs.wait_minutes != '0'
-        timeout-minutes: 2
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-        run: |
-          set -euo pipefail
-          if [ "$ATTEMPT" -ge 4 ]; then
-            echo "::error::Apple still hasn't decided after a day. Run notary-status by hand later with the same inputs to finish it."
-            exit 1
-          fi
-          gh workflow run notary-status.yml --ref "$GITHUB_REF_NAME" \
-            -f submission_id="$SUBMISSION_ID" -f run_id="$RUN_ID" -f artifact="$ARTIFACT" -f tag="$TAG" \
-            -f wait_minutes="$WAIT_MINUTES" -f attempt="$((ATTEMPT + 1))"
-          echo "::notice::Apple is still checking; run $((ATTEMPT + 1)) of notary-status carries on."
-      # The app only offers a file it has a checksum for, so SHA256SUMS.txt goes up first and the
-      # .dmg after it: never a .dmg on the release that it can't check.
-      - name: Put the notarised .dmg on the release
-        if: steps.apple.outputs.status == 'accepted' && inputs.tag != ''
-        timeout-minutes: 8
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          FILE: ${{ steps.dmg.outputs.file }}
-          NAME: ${{ steps.dmg.outputs.name }}
-        run: |
-          set -euo pipefail
-          mkdir -p old
-          gh release download "$TAG" --pattern SHA256SUMS.txt --dir old
-          # Every other file's line as it was, then this .dmg's (replacing any earlier one).
-          { awk -v f="$NAME" '$2 != f && $2 != "*" f' old/SHA256SUMS.txt; (cd "$(dirname "$FILE")" && sha256sum "$NAME"); } > SHA256SUMS.txt
-          cat SHA256SUMS.txt
-          gh release upload "$TAG" SHA256SUMS.txt --clobber
-          gh release upload "$TAG" "$FILE" --clobber
-          # The notes: no more "Mac version follows", and no "not notarised" for this file.
-          gh release view "$TAG" --json body --jq .body > notes.md
-          python3 - notes.md <<'PY'
-          import re, sys
-          path = sys.argv[1]
-          text = open(path, encoding="utf-8").read()
-          # Both lines as docs/release-notes.sh writes them.
-          text = re.sub(r"^> \*\*Mac version follows within the hour\*\*.*(\r?\n)*", "", text, flags=re.M)
-          text = re.sub(r"^This build is signed but \*\*not notarised\*\*.*$",
-                        "This build is signed and notarised by Apple, so it opens straight away.", text, flags=re.M)
-          open(path, "w", encoding="utf-8").write(text)
-          PY
-          gh release edit "$TAG" --notes-file notes.md
-          echo "::notice::$NAME is on the $TAG release, notarised by Apple."
+          bash .github/scripts/notary-finish.sh "$SUBMISSION_ID" "$RUN_ID" "$ARTIFACT" "$TAG"

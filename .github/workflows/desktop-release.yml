@@ -13,7 +13,8 @@ name: desktop-release
 #   Mac:     MACOS_CERT_P12_BASE64, MACOS_CERT_PASSWORD, APPLE_TEAM_ID, then for notarising
 #            ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8_BASE64. Nothing on a Mac waits for Apple: the
 #            Mac job hands the signed .dmg to Apple and stops, the release goes out without it,
-#            and notary-status.yml (Linux) adds it once Apple has notarised it.
+#            and notary-status.yml / notary-sweep.yml (Linux, seconds a time) add it once Apple
+#            has notarised it.
 #   Windows: SignPath (free signing for open-source projects, docs/CODE_SIGNING.md): the secret
 #            SIGNPATH_API_TOKEN and the variables SIGNPATH_ORGANIZATION_ID, SIGNPATH_PROJECT_SLUG,
 #            SIGNPATH_SIGNING_POLICY_SLUG (SIGNPATH_ARTIFACT_CONFIGURATION_SLUG is optional).
@@ -563,8 +564,9 @@ jobs:
         timeout-minutes: 10
         run: gh release create "$GITHUB_REF_NAME" dist/* --title "Wildware Feed $VERSION" --notes-file notes.md --verify-tag
 
-  # Waits for Apple on Linux (no Mac runner), then puts the .dmg on the release, which is already
-  # out by now. A run by hand has no release: notary-status just reports Apple's verdict on it.
+  # Asks Apple once, on Linux, and puts the .dmg on the release (already out by now) if Apple has
+  # accepted it; if not, notary-sweep asks every 15 minutes until it does. Nothing waits. A run by
+  # hand has no release: notary-status just reports Apple's verdict; run it again later by hand.
   # (A job that calls a workflow can't take timeout-minutes; the job inside notary-status has one.)
   notary-status:
     needs: [version, mac, release]
@@ -578,5 +580,4 @@ jobs:
       run_id: ${{ github.run_id }}
       artifact: mac-submitted-${{ needs.version.outputs.version }}
       tag: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
-      wait_minutes: '345'
     secrets: inherit

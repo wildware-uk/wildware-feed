@@ -127,24 +127,26 @@ Apple usually notarises a Mac app in a few minutes, but sometimes takes hours. S
 2. The release goes out straight away with every other file. Its notes say the Mac version
    follows within the hour. Until then the app on a Mac doesn't offer the update (copies from
    before this change may offer it, then say there's no file for this computer yet).
-3. The `notary-status` workflow asks Apple every few minutes, on a free Linux runner (no Mac
-   runner ever waits). Once Apple says yes, and its report has this exact file's checksum, the
-   `.dmg` goes on the release with its checksum, and the "follows" line comes out.
+3. Then `notary-status` asks Apple once (a few seconds, on Linux). If Apple hasn't decided yet,
+   it leaves a `notary-pending.json` on the release and turns on `notary-sweep`, which asks again
+   every 15 minutes. Each check takes seconds: no runner, Mac or Linux, sits waiting for Apple.
+4. Once Apple says yes, and its report has this exact file's checksum, the `.dmg` goes on the
+   release with its checksum, and the "follows" line comes out. With nothing left waiting,
+   `notary-sweep` turns itself off.
 
 The `.dmg` goes up unstapled, since stapling needs a Mac. That's fine: the first time a Mac opens
 it, it asks Apple online and gets the same yes. Only a first open with no internet would be
 refused.
 
-If Apple refuses the app, `notary-status` fails and prints Apple's reasons. If Apple is still
-checking after a day, it stops.
+If Apple refuses the app, the run that hears it fails and prints Apple's reasons, and the release
+stops waiting.
 
 `notary-status` also works by hand, from the Actions tab or
 `gh workflow run notary-status.yml -f submission_id=<id>`. With just the submission id (the Mac
 job's log says "Submitted … to Apple: submission …") it prints Apple's verdict and report. Add
 `run_id` and `artifact` (the run and artifact holding the signed `.dmg`, e.g.
-`mac-submitted-1.2.3`) and it checks the report is for that file; add `tag` and, once accepted,
-it puts the file on that release. `wait_minutes` makes it keep asking (up to 345) instead of
-asking once.
+`mac-submitted-1.2.3`) and, once accepted, it checks the report is for that file. Add `tag` and it
+puts the file on that release once accepted, or leaves it for `notary-sweep` if not yet.
 
 ### Making the Mac certificate
 
