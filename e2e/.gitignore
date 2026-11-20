@@ -1,0 +1,6 @@
+# Local, not committed: exploring the app.
+*.local.mjs
+node_modules/
+report*/
+results*/
+*.png

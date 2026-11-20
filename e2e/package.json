@@ -1,0 +1,12 @@
+{
+  "name": "wildware-feed-e2e",
+  "private": true,
+  "type": "module",
+  "description": "Browser tests of the web app against a real server in hosted mode (see README.md).",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.65.1"
+  }
+}
