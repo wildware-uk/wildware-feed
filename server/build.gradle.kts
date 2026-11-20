@@ -39,6 +39,7 @@ dependencies {
     testImplementation(kotlin("test"))
     testImplementation(libs.junit.jupiter)
     testImplementation(libs.ktor.server.test.host)
+    testImplementation(libs.coroutines.test)
     testRuntimeOnly(libs.junit.launcher)
 }
 

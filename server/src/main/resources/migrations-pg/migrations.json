@@ -94,5 +94,11 @@
   "name": "codes-know-their-email",
   "file": "062-codes-know-their-email.sql",
   "checksum": "45963013333c7cfba4fce089285213c22874198eb8d6b5346ac481ddbc615d40"
+ },
+ {
+  "version": 63,
+  "name": "find-a-repeat-send-fast",
+  "file": "063-find-a-repeat-send-fast.sql",
+  "checksum": "07ecc5ba2aa9e3263d9bde1497bf1ee1f577d8ad9797696dedd307eeabddd976"
  }
 ]

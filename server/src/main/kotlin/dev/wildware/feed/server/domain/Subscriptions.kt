@@ -156,9 +156,15 @@ class Subscriptions(private val db: Database, private val clock: () -> Long = Sy
 
     /**
      * SQL (for messages aliased `m`) that is true when [reach] takes the message to [agentId], or ""
-     * for every message. Appends its parameters to [args]. The @mention audience rule is the caller's.
+     * for every message. Appends its parameters to [args]. The @mention audience rule is the caller's
+     * ([audienceSql]).
+     *
+     * [oneMessage] picks the shape: for a query about a single message (`m.id = ?`) it checks each
+     * rule with a small lookup; otherwise each rule is a set worked out once and probed per message,
+     * since a lookup per message, over every message in the team, is what made counting slow.
+     * Both say the same thing.
      */
-    fun reachSql(agentId: String, reach: Reach, args: MutableList<Any?>): String = when (val r = resolve(agentId, reach)) {
+    fun reachSql(agentId: String, reach: Reach, args: MutableList<Any?>, oneMessage: Boolean = false): String = when (val r = resolve(agentId, reach)) {
         Reach.All -> {
             // Hearing every channel, but for those the owner took it out of: there only what names it
             // or a thread it follows. A new agent has none, so this is usually nothing.
@@ -167,20 +173,38 @@ class Subscriptions(private val db: Database, private val clock: () -> Long = Sy
                 ""
             } else {
                 args.addAll(left)
-                args += agent(agentId); args += agentId
-                " AND (m.project_id IS NULL OR m.project_id NOT IN (${left.joinToString(", ") { "?" }}) OR $FOLLOWS_THREAD OR $NAMES_READER)"
+                " AND (m.project_id IS NULL OR m.project_id NOT IN (${left.joinToString(", ") { "?" }}) OR " +
+                    followsThread(agentId, args, oneMessage) + " OR " + namesReader(agentId, args, oneMessage) + ")"
             }
         }
         Reach.Followed -> {
-            repeat(5) { args += agent(agentId) }
-            args += agent(agentId); args += agentId
-            " AND ($HEARS_CHANNEL OR $FOLLOWS_THREAD OR $NAMES_READER)"
+            val hears = if (oneMessage) {
+                repeat(5) { args += agent(agentId) }
+                HEARS_CHANNEL
+            } else {
+                repeat(2) { args += agent(agentId) }
+                HEARS_CHANNEL_SET
+            }
+            " AND ($hears OR " + followsThread(agentId, args, oneMessage) + " OR " + namesReader(agentId, args, oneMessage) + ")"
         }
         is Reach.Projects -> {
             val inProjects = if (r.ids.isEmpty()) "0 = 1" else "m.project_id IN (${r.ids.joinToString(", ") { "?" }})"
             args.addAll(r.ids)
             " AND $inProjects"
         }
+    }
+
+    private fun followsThread(agentId: String, args: MutableList<Any?>, oneMessage: Boolean): String = if (oneMessage) {
+        args += agent(agentId)
+        FOLLOWS_THREAD
+    } else {
+        repeat(THREAD_SET_BRANCHES) { args += agent(agentId) }
+        FOLLOWS_THREAD_SET
+    }
+
+    private fun namesReader(agentId: String, args: MutableList<Any?>, oneMessage: Boolean): String {
+        args += agentId
+        return if (oneMessage) NAMES_READER else NAMES_READER_SET
     }
 
     // ---- following and unfollowing (any subscriber) -----------------------------------------------
@@ -628,6 +652,53 @@ class Subscriptions(private val db: Database, private val clock: () -> Long = Sy
             updateId != null -> Thread("update", updateId)
             else -> Thread("message", replyTo ?: id)
         }
+
+        /**
+         * The @mention audience rule (for messages aliased `m`): a message that names agents reaches only
+         * them. One parameter, the reader's agent id. See [reachSql] for [oneMessage].
+         */
+        fun audienceSql(oneMessage: Boolean = false): String = if (oneMessage) {
+            "(NOT EXISTS (SELECT 1 FROM message_mentions AS mm WHERE mm.team_id = m.team_id AND mm.message_id = m.id) " +
+                "OR EXISTS (SELECT 1 FROM message_mentions AS mm WHERE mm.team_id = m.team_id AND mm.message_id = m.id AND mm.agent_id = ?))"
+        } else {
+            "(m.id NOT IN (SELECT mm.message_id FROM message_mentions AS mm WHERE mm.team_id = :team) " +
+                "OR m.id IN (SELECT mm.message_id FROM message_mentions AS mm WHERE mm.team_id = :team AND mm.agent_id = ?))"
+        }
+
+        /** [NAMES_READER] as a set: the messages that name the agent. */
+        private const val NAMES_READER_SET = "m.id IN (SELECT mm.message_id FROM message_mentions AS mm WHERE mm.team_id = :team AND mm.agent_id = ?)"
+
+        /**
+         * [HEARS_CHANNEL] as a set, twice the subscriber: each channel's start (its chosen row, else
+         * its group's, else the row from posting there; none when that row is unsubscribed), and the
+         * messages after it.
+         */
+        private const val HEARS_CHANNEL_SET = "m.id IN (SELECT hm.id FROM messages AS hm JOIN (" +
+            "SELECT p.id AS project_id, CASE " +
+            "WHEN ps.chosen = 1 THEN CASE WHEN ps.unsubscribed_at IS NULL THEN ps.after_seq END " +
+            "WHEN gs.id IS NOT NULL THEN CASE WHEN gs.unsubscribed_at IS NULL THEN gs.after_seq END " +
+            "WHEN ps.id IS NOT NULL AND ps.unsubscribed_at IS NULL THEN ps.after_seq END AS after_seq " +
+            "FROM projects AS p " +
+            "LEFT JOIN project_subscriptions AS ps ON ps.team_id = p.team_id AND ps.subscriber = ? AND ps.project_id = p.id " +
+            "LEFT JOIN group_subscriptions AS gs ON gs.team_id = p.team_id AND gs.subscriber = ? AND gs.group_id = p.group_id " +
+            "WHERE p.team_id = :team) AS h ON h.project_id = hm.project_id " +
+            "WHERE hm.team_id = :team AND hm.seq > h.after_seq)"
+
+        /**
+         * [FOLLOWS_THREAD] as a set, one branch per kind of thread so each reads its own index:
+         * a request's lines, an update's, a feed post's replies, and the post itself.
+         */
+        private val FOLLOWS_THREAD_SET = listOf(
+            "request" to "tm.request_id = ts.thread_id",
+            "update" to "tm.update_id = ts.thread_id AND tm.request_id IS NULL",
+            "message" to "tm.reply_to = ts.thread_id AND tm.request_id IS NULL AND tm.update_id IS NULL",
+            "message" to "tm.id = ts.thread_id AND tm.reply_to IS NULL AND tm.request_id IS NULL AND tm.update_id IS NULL",
+        ).joinToString(" UNION ALL ", prefix = "m.id IN (", postfix = ")") { (kind, on) ->
+            "SELECT tm.id FROM thread_subscriptions AS ts JOIN messages AS tm ON tm.team_id = ts.team_id AND $on " +
+                "WHERE ts.team_id = :team AND ts.subscriber = ? AND ts.unsubscribed_at IS NULL AND ts.kind = '$kind' " +
+                "AND tm.task_id IS NULL AND tm.seq > ts.after_seq"
+        }
+        private const val THREAD_SET_BRANCHES = 4
 
         private const val NAMES_READER = "EXISTS (SELECT 1 FROM message_mentions AS mm WHERE mm.team_id = m.team_id AND mm.message_id = m.id AND mm.agent_id = ?)"
 

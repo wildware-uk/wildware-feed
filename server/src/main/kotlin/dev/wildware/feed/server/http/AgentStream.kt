@@ -1,11 +1,18 @@
 package dev.wildware.feed.server.http
 
 import dev.wildware.feed.server.App
+import dev.wildware.feed.server.db.Tenant
 import dev.wildware.feed.server.domain.AgentWork
 import dev.wildware.feed.server.domain.Agents
 import dev.wildware.feed.server.domain.Subscriptions
 import dev.wildware.feed.server.events.AppEvent
 import io.ktor.server.application.ApplicationCall
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.channels.ReceiveChannel
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
@@ -21,7 +28,11 @@ import kotlinx.serialization.json.jsonPrimitive
  * `reaction` on its lines, and a person's tick or vote on its `block`s (migration 057). Frames carry no ids; there is no replay. Ends within about five seconds
  * of the token being revoked (decided fix 11).
  *
- * It hears what the agent follows on the server ([Subscriptions]), read afresh on every event, so
+ * Events are worked out off the bus, in batches at most about once a second ([inBatches]), and only
+ * when they can matter to this agent: one message used to cost every open stream two full counts,
+ * inside the request that sent it.
+ *
+ * It hears what the agent follows on the server ([Subscriptions]), read afresh for each batch, so
  * a subscription, an unsubscribe, or the owner adding or removing the agent takes effect without
  * reconnecting. The server alone decides: a `?project=` or `?channel=` list (older bridges send one
  * from their settings) is ignored, not refused, so it can no longer pin a bridge to a fixed set.
@@ -53,39 +64,116 @@ internal suspend fun ApplicationCall.agentStream(app: App, agent: Agents.Agent, 
         put("at", JsonPrimitive(Wire.isoOf(app.clock())))
     })
 
+    fun send(sink: SseContent.Sink, frame: String?) {
+        if (!frame.isNullOrEmpty()) sink.send(frame)
+    }
+
+    var last: AgentWork.Counts? = null
+
+    /**
+     * One pass over a batch of events, off the bus: the frames they carry, then the counts and new
+     * messages, worked out once for the whole batch and only when something in it can change them.
+     */
+    fun handle(sink: SseContent.Sink, batch: List<AppEvent>) {
+        for (event in batch) {
+            runCatching {
+                when (event.type) {
+                    "request.answered" -> send(sink, answerFrame(app, agent.id, event.payload))
+                    "reaction.updated" -> send(sink, reactionFrame(app, agent.id, event.payload))
+                    "block.updated" -> send(sink, blockFrame(app, agent.id, event.payload))
+                }
+            }.onFailure { System.err.println("agent stream: ${event.type} frame failed: $it") }
+        }
+        val opening = last == null
+        val reached = batch.any { it.type == "message.created" && newMessageReaches(work, agent.id, it.payload) }
+        if (!opening && !reached && batch.none { changesCounts(agent.id, it) }) return
+        val next = runCatching { work.countWork(agent.id) }.getOrNull() ?: return
+        val rose = next.unreadMessages > (last?.unreadMessages ?: 0)
+        // A new message can leave the count where it was (the owner removed the agent from a
+        // channel and told it so in one go), so one that reaches the agent is looked for either way.
+        val fresh = if (rose || reached) messageFrame() else ""
+        if (!opening && next == last && fresh.isEmpty()) return
+        last = next
+        sink.send(workFrame(next))
+        if (fresh.isNotEmpty()) sink.send(fresh)
+    }
+
+    val team = Tenant.id
     withStreamSlot(app) {
-        respondSse(
-        SseContent(stillAllowed = { app.agents.authenticate(token).first != null }, now = app.clock) { sink ->
-            var last: AgentWork.Counts? = null
-            val (_, stop) = app.bus.subscribeFrom(
-                since = null,
-                listener = listener@{ event: AppEvent ->
-                    if (event.type !in WATCHED) return@listener
-                    val next = runCatching { work.countWork(agent.id) }.getOrNull() ?: return@listener
-                    if (event.type == "request.answered") answerFrame(app, agent.id, event.payload)?.let(sink::send)
-                    if (event.type == "reaction.updated") reactionFrame(app, agent.id, event.payload)?.let(sink::send)
-                    if (event.type == "block.updated") blockFrame(app, agent.id, event.payload)?.let(sink::send)
-                    val rose = next.unreadMessages > (last?.unreadMessages ?: 0)
-                    // A new message can leave the count where it was (the owner removed the agent
-                    // from a channel and told it so in one go), so a new one is looked for either way.
-                    val fresh = if (rose || event.type == "message.created") messageFrame() else ""
-                    if (next == last && fresh.isEmpty()) return@listener
-                    last = next
-                    sink.send(workFrame(next))
-                    if (fresh.isNotEmpty()) sink.send(fresh)
+        coroutineScope {
+            respondSse(
+                SseContent(stillAllowed = { app.agents.authenticate(token).first != null }, now = app.clock) { sink ->
+                    // The bus hands events out under its lock, inside whoever published them, so the
+                    // listener only queues them: the database work happens here, a batch at a time.
+                    val events = Channel<AppEvent>(Channel.UNLIMITED)
+                    val (_, stop) = app.bus.subscribeFrom(
+                        since = null,
+                        listener = { event: AppEvent -> if (event.type in WATCHED) events.trySend(event) },
+                    ) {
+                        sink.send(Frames.retry(Frames.RETRY_MS) + Frames.comment("connected"))
+                    }
+                    val worker = launch(Dispatchers.IO + Tenant.element(team)) {
+                        runCatching { handle(sink, emptyList()) }.onFailure { System.err.println("agent stream: opening failed: $it") }
+                        inBatches(events, SETTLE_MS, GAP_MS) { batch ->
+                            runCatching { handle(sink, batch) }.onFailure { System.err.println("agent stream: batch failed: $it") }
+                        }
+                    }
+                    ({
+                        stop()
+                        events.close()
+                        worker.cancel()
+                    })
                 },
-            ) {
-                sink.send(Frames.retry(Frames.RETRY_MS) + Frames.comment("connected"))
-                val first = work.countWork(agent.id)
-                last = first
-                sink.send(workFrame(first))
-                if (first.unreadMessages > 0) messageFrame().takeIf { it.isNotEmpty() }?.let(sink::send)
-            }
-            stop
-        },
-    )
+            )
+        }
     }
 }
+
+/**
+ * Hand [events] to [handle] in batches: a burst is gathered for [settleMs] after its first event,
+ * and batches start at least [gapMs] apart, so however many events arrive, the work runs at most
+ * about once per [gapMs], and an event waits no longer than [settleMs] + [gapMs]. Returns when
+ * [events] is closed.
+ */
+internal suspend fun <T> inBatches(events: ReceiveChannel<T>, settleMs: Long, gapMs: Long, handle: suspend (List<T>) -> Unit) {
+    while (true) {
+        val first = events.receiveCatching().getOrNull() ?: return
+        delay(settleMs)
+        val batch = mutableListOf(first)
+        while (true) batch += events.tryReceive().getOrNull() ?: break
+        handle(batch)
+        // What arrives meanwhile waits for the next batch, which starts no sooner than [gapMs] after this one.
+        delay(gapMs - settleMs)
+    }
+}
+
+/**
+ * Whether [event] can change what the agent's `work` frame says. A message, an answer or a request
+ * of someone else's, another agent's reading or following, a reaction or a tick cannot.
+ * `message.created` is decided by [newMessageReaches] instead: a new line has no status yet.
+ */
+private fun changesCounts(agentId: String, event: AppEvent): Boolean {
+    fun field(name: String) = (event.payload[name] as? JsonPrimitive)?.takeIf { it.isString }?.content
+    return when (event.type) {
+        "message.created", "reaction.updated", "block.updated" -> false
+        "messages.read", "request.created", "request.answered" -> field("agentId").let { it == null || it == agentId }
+        "subscriptions.updated" -> field("subscriber").let { it == null || !it.startsWith("agent:") || it == "agent:$agentId" }
+        else -> true
+    }
+}
+
+/** Whether a new message is one the agent hasn't read and hears: its own never are. */
+private fun newMessageReaches(work: AgentWork, agentId: String, payload: JsonObject): Boolean {
+    if ((payload["author"] as? JsonPrimitive)?.content == "agent:$agentId") return false
+    val id = (payload["messageId"] as? JsonPrimitive)?.takeIf { it.isString }?.content ?: return true
+    return runCatching { work.reaches(agentId, id) }.getOrDefault(true)
+}
+
+/** A burst of events is gathered this long before the stream works them out. */
+private const val SETTLE_MS = 100L
+
+/** The stream works out counts and new messages at most this often. */
+private const val GAP_MS = 1_000L
 
 private const val MESSAGE_LIMIT = 5
 private const val CLIENT_ID_MAX = 200

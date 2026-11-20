@@ -40,21 +40,27 @@ class AgentWork(private val db: Database, private val bus: Bus, private val cloc
         pendingApprovals = countPending(agentId, null),
     )
 
-    private fun unreadWhere(agentId: String, reach: Subscriptions.Reach, args: MutableList<Any?>): String {
+    private fun unreadWhere(agentId: String, reach: Subscriptions.Reach, args: MutableList<Any?>, oneMessage: Boolean = false): String {
         args += agentId
         args += "agent:$agentId"
-        val namesAnyone = "EXISTS (SELECT 1 FROM message_mentions AS mm WHERE mm.message_id = m.id)"
-        val namesReader = "EXISTS (SELECT 1 FROM message_mentions AS mm WHERE mm.message_id = m.id AND mm.agent_id = ?)"
         val base = """
             FROM messages AS m
-            LEFT JOIN read_cursors AS rc ON rc.agent_id = ? AND rc.project_id = coalesce(m.project_id, '')
+            LEFT JOIN read_cursors AS rc ON rc.team_id = m.team_id AND rc.agent_id = ? AND rc.project_id = coalesce(m.project_id, '')
             WHERE m.team_id = :team
               AND m.seq > coalesce(rc.last_seen_message_seq, 0)
               AND m.deleted_at IS NULL
               AND m.author <> ?
-              AND (NOT $namesAnyone OR $namesReader)"""
+              AND ${Subscriptions.audienceSql(oneMessage)}"""
         args += agentId
-        return base + subscriptions.reachSql(agentId, reach, args)
+        return base + subscriptions.reachSql(agentId, reach, args, oneMessage)
+    }
+
+    /** Whether message [messageId] is unread for the agent and reaches it: one cheap lookup, for the agent stream. */
+    fun reaches(agentId: String, messageId: String): Boolean {
+        val args = mutableListOf<Any?>()
+        val where = unreadWhere(agentId, Subscriptions.Reach.Followed, args, oneMessage = true)
+        args += messageId
+        return db.one("SELECT 1 $where AND m.id = ?", *args.toTypedArray()) { 1 } != null
     }
 
     fun countUnread(agentId: String, reach: Subscriptions.Reach): Int {

@@ -432,5 +432,12 @@
   "file": "062-codes-know-their-email.sql",
   "rebuildsTables": false,
   "checksum": "0e6860a85ab0287a010b8c47664d8cf0bdbf9342f4de174ed5a4487a0a41841a"
+ },
+ {
+  "version": 63,
+  "name": "find-a-repeat-send-fast",
+  "file": "063-find-a-repeat-send-fast.sql",
+  "rebuildsTables": false,
+  "checksum": "a0d45d96dc0a6a637dd96ad10ff5f5fff1b0624be7e67f318d6227b94ec7f88b"
  }
 ]

@@ -281,10 +281,8 @@ class Messages(private val feed: Feed) {
             params.addAll(reach.ids)
             return if (reach.ids.isEmpty()) " AND 0 = 1" else " AND m.project_id IN (${reach.ids.joinToString(", ") { "?" }})"
         }
-        val namesAnyone = "EXISTS (SELECT 1 FROM message_mentions AS mm WHERE mm.message_id = m.id)"
-        val namesReader = "EXISTS (SELECT 1 FROM message_mentions AS mm WHERE mm.message_id = m.id AND mm.agent_id = ?)"
         params.add(scope.reader)
-        return " AND (NOT $namesAnyone OR $namesReader)" + subscriptions.reachSql(scope.reader, scope.reach, params)
+        return " AND ${Subscriptions.audienceSql()}" + subscriptions.reachSql(scope.reader, scope.reach, params)
     }
 
     private fun listAfter(afterSeq: Long, excludeAuthor: String, limit: Int, scope: Scope): List<MessageRow> {
@@ -300,7 +298,7 @@ class Messages(private val feed: Feed) {
     private fun unreadWhere(agentId: String, excludeAuthor: String, scope: Scope, within: String?, params: MutableList<Any?>): String {
         params.add(agentId)
         params.add(excludeAuthor)
-        var where = " FROM messages AS m LEFT JOIN read_cursors AS rc ON rc.agent_id = ? AND rc.project_id = coalesce(m.project_id, '') " +
+        var where = " FROM messages AS m LEFT JOIN read_cursors AS rc ON rc.team_id = m.team_id AND rc.agent_id = ? AND rc.project_id = coalesce(m.project_id, '') " +
             "WHERE m.team_id = :team AND m.seq > coalesce(rc.last_seen_message_seq, 0) AND m.deleted_at IS NULL AND m.author <> ?"
         where += readerScope(Scope(scope.reach, agentId), params)
         if (within != null) {
