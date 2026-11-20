@@ -266,6 +266,48 @@ jobs:
           path: web-screenshots/*.png
           if-no-files-found: warn
 
+  # The customer journey, on the server as it runs hosted (many teams, Postgres with row security
+  # forced): the control plane's signed admin calls make a team, then a headless Chrome sets the
+  # owner's password, signs out and in with it, posts, and a teammate joins; then the apps' sign-ins
+  # over HTTP, and no team's password opens another (server/deploy/journey.sh).
+  journey:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: journeytest
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Build the web app and the server
+        timeout-minutes: 20
+        run: ./gradlew --no-daemon :server:installDist
+      - name: Walk the customer journey
+        timeout-minutes: 15
+        run: >-
+          CHROME="$(command -v google-chrome || true)" SKIP_DIST=1 SHOTS=journey-screenshots
+          PG_ADMIN_URL=postgres://postgres:journeytest@127.0.0.1:5432/postgres
+          server/deploy/journey.sh
+      - if: always()
+        uses: actions/upload-artifact@v4
+        timeout-minutes: 5
+        with:
+          name: journey-screenshots
+          path: journey-screenshots/*.png
+          if-no-files-found: warn
+
   ios:
     runs-on: macos-26
     needs: shared-tests
