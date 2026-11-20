@@ -162,7 +162,7 @@ fun Route.peopleRoutes(app: App) {
                 call.respondRaw(404, "Not Found", "text/plain;charset=utf-8")
             } else {
                 call.respondRaw(
-                    200, JoinPage.html(app.config.publicBaseUrl, token), "text/html;charset=utf-8",
+                    200, JoinPage.html(app.config.publicBaseUrl, token, webApp = app.web != null), "text/html;charset=utf-8",
                     "Cache-Control" to "no-store",
                     "Referrer-Policy" to "no-referrer",
                     "X-Content-Type-Options" to "nosniff",
@@ -208,8 +208,14 @@ fun inviteView(i: People.Invite): JsonElement = buildJsonObject {
 object JoinPage {
     private fun escape(s: String) = s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;").replace("'", "&#39;")
 
-    fun html(base: String, token: String): String {
+    /**
+     * [webApp]: this server also serves the web app, so the page offers it too. The code rides in
+     * the address's fragment, which a browser never sends to any server; the app reads it and
+     * opens its join screen with it filled in.
+     */
+    fun html(base: String, token: String, webApp: Boolean = false): String {
         val open = "agents://invite?server=${java.net.URLEncoder.encode(base, Charsets.UTF_8)}&token=$token"
+        val inBrowser = if (webApp) "\n<p><a href=\"${escape("${base.trimEnd('/')}/#invite=$token")}\">Or join in this browser</a></p>" else ""
         return """<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex"><title>Join the team on Wildware Feed</title>
@@ -219,7 +225,7 @@ a.b{display:inline-block;padding:.7rem 1.2rem;border-radius:.6rem;background:#2f
 code{display:block;word-break:break-all;padding:.8rem;border-radius:.5rem;background:#f2f2f5;font-size:.95rem;user-select:all}</style></head>
 <body><h1>You're invited</h1>
 <p>Someone has invited you to their team on Wildware Feed.</p>
-<p><a class="b" href="${escape(open)}">Open in Wildware Feed</a></p>
+<p><a class="b" href="${escape(open)}">Open in Wildware Feed</a></p>$inBrowser
 <p>Or open the app, choose <b>I have an invite</b>, and paste this server address and code:</p>
 <code>${escape(base)}</code><p></p><code>${escape(token)}</code>
 <p>The code works once and expires in 7 days.</p></body></html>

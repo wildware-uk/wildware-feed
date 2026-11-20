@@ -80,6 +80,57 @@ class AppNavigator {
     internal fun handled(draft: SharedDraft) {
         pendingShare.compareAndSet(draft, null)
     }
+
+    private val pendingInvite = MutableStateFlow<InviteLink?>(null)
+
+    /** An invite link the app was opened with, waiting for the join screen. */
+    val invites: StateFlow<InviteLink?> = pendingInvite.asStateFlow()
+
+    /**
+     * Opens the join screen with [link] filled in: an `agents://invite?server=…&token=…` link, a
+     * `…/join/<code>` one, or the code itself. Anything else is ignored. Returns whether it was one.
+     */
+    fun openInvite(link: String): Boolean {
+        val invite = InviteLink.of(link) ?: return false
+        pendingInvite.value = invite.copy(serial = ++serial)
+        return true
+    }
+
+    internal fun handled(invite: InviteLink) {
+        pendingInvite.compareAndSet(invite, null)
+    }
+}
+
+/**
+ * An invite to join a team, as a link opened the app. [link] is what the join screen's box gets;
+ * [server] is the address it names, when it names one. [serial] tells two opens of one link apart.
+ */
+data class InviteLink(val link: String, val server: String?, val serial: Long = 0) {
+    companion object {
+        private val Code = Regex("^[A-Za-z0-9_-]{43}$")
+        private val JoinPath = Regex("/join/([A-Za-z0-9_-]{43})(?:[/?#]|$)")
+
+        /** The invite code in a web address's fragment, `#invite=<code>`, as an invite's page links to the web app. */
+        fun inFragment(hash: String): String? =
+            hash.removePrefix("#").split('&').map { it.split('=', limit = 2) }
+                .firstOrNull { it.size == 2 && it[0] == "invite" }?.get(1)?.takeIf { Code.matches(it) }
+
+        /** [text] as an invite: the app's `agents://invite` link, a `/join/<code>` link, or a bare code. */
+        fun of(text: String): InviteLink? {
+            val trimmed = text.trim()
+            val server = dev.wildware.agents.SignIn.serverOfInvite(trimmed)?.let(dev.wildware.agents.SignIn::normalise)
+            return when {
+                // Shown as the page's own link, `<server>/join/<code>`: the same invite, in words people read.
+                trimmed.startsWith("agents://invite", ignoreCase = true) -> {
+                    val token = Regex("[?&]token=([A-Za-z0-9_-]{43})(?:&|$)").find(trimmed)?.groupValues?.get(1) ?: return null
+                    InviteLink(if (server != null) "$server/join/$token" else token, server)
+                }
+                trimmed.startsWith("agents:", ignoreCase = true) -> null
+                Code.matches(trimmed) || JoinPath.containsMatchIn(trimmed) -> InviteLink(trimmed, server)
+                else -> null
+            }
+        }
+    }
 }
 
 /** Words and files shared in from another app. [serial] tells two shares of the same thing apart. */

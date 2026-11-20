@@ -213,6 +213,20 @@ compose.desktop {
                 dockName = "Wildware Feed"
                 appCategory = "public.app-category.productivity"
                 iconFile.set(project.file("packaging/icons/agents.icns"))
+                // agents:// links, as the phones take them: an invite's page opens the join screen.
+                infoPlist {
+                    extraKeysRawXml = """
+                        <key>CFBundleURLTypes</key>
+                        <array>
+                            <dict>
+                                <key>CFBundleURLName</key>
+                                <string>dev.wildware.agents.desktop</string>
+                                <key>CFBundleURLSchemes</key>
+                                <array><string>agents</string></array>
+                            </dict>
+                        </array>
+                    """.trimIndent()
+                }
             }
             windows {
                 iconFile.set(project.file("packaging/icons/agents.ico"))

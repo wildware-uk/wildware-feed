@@ -443,9 +443,22 @@ class Reads(private val db: Database, private val clock: () -> Long = System::cu
         PENDING_REQUEST_LIMIT,
     ) { Rows.request(it) }.filter { (it["expiresAt"] as JsonPrimitive).content.toLong() > now }
 
+    /**
+     * Questions answered in the last [ANSWERED_WINDOW_MS], newest answer first, at most
+     * [ANSWERED_LIMIT]: on a team the apps keep them in the feed, saying who answered (`answeredBy`).
+     */
+    fun answeredRequests(now: Long = clock()): List<JsonObject> = withCards(
+        db.query(
+            "SELECT ${Rows.APPROVAL} FROM approvals WHERE state IN ('approved', 'rejected') AND decided_at >= ? ORDER BY decided_at DESC, seq DESC LIMIT ?",
+            now - ANSWERED_WINDOW_MS, ANSWERED_LIMIT,
+        ) { Rows.request(it) },
+    )
+
     /** The banner's list: each request with its media, embeds and reactions. */
-    fun requestsSnapshot(): List<JsonObject> {
-        val requests = pendingRequests()
+    fun requestsSnapshot(): List<JsonObject> = withCards(pendingRequests())
+
+    /** Each request with its media, embeds and reactions. */
+    private fun withCards(requests: List<JsonObject>): List<JsonObject> {
         val ids = requests.map { it.str("id")!! }
         val media = mediaForMany("request_id", ids)
         val embeds = embedsForMany("request_id", ids)
@@ -669,6 +682,8 @@ class Reads(private val db: Database, private val clock: () -> Long = System::cu
         const val UPDATES_MAX = 200
         const val MESSAGES_MAX = 200
         const val PENDING_REQUEST_LIMIT = 200
+        const val ANSWERED_LIMIT = 50
+        const val ANSWERED_WINDOW_MS = 7L * 24 * 60 * 60 * 1000
         const val PRESENCE_WINDOW_MS = Sessions.PRESENCE_WINDOW_MS
         val RENDERABLE_MIMES = setOf(
             "image/png", "image/jpeg", "image/webp", "image/gif",

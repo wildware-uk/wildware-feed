@@ -6,7 +6,7 @@ import java.net.URLEncoder
 
 /**
  * The links the app opens, `agents://open?path=/projects/x?focus=y` (the same form the iPhone app
- * uses), read into a dashboard page path for the feed's navigator. The app is for anyone's own
+ * uses), read into a dashboard page path for the feed's navigator, and `agents://invite` links. The app is for anyone's own
  * dashboard, so it claims no website's links. Plain Java parsing, so the tests run on the computer.
  */
 object Links {
@@ -22,6 +22,12 @@ object Links {
             ?.get(1)
             ?.let { URLDecoder.decode(it, "UTF-8") }
         return path?.takeIf { it.startsWith("/") }
+    }
+
+    /** `agents://invite?server=…&token=…`, the link an invite's page opens the app with. */
+    fun isInvite(link: String): Boolean {
+        val uri = runCatching { URI(link) }.getOrNull() ?: return false
+        return uri.scheme.equals(Scheme, ignoreCase = true) && uri.host == "invite"
     }
 
     /** The `agents://` link that opens [path]. */

@@ -12,6 +12,11 @@ enum DeepLink {
         return components.url!
     }
 
+    /// `agents://invite?server=…&token=…`, the link an invite's page opens the app with.
+    static func isInvite(_ url: URL) -> Bool {
+        url.scheme == scheme && url.host == "invite"
+    }
+
     static func path(from url: URL) -> String? {
         guard url.scheme == scheme else { return nil }
         return URLComponents(url: url, resolvingAgainstBaseURL: false)?

@@ -96,10 +96,11 @@ class DesktopShell(
         // Notices the owner dealt with, here or on another device, come down (where the system allows).
         launch { NoticeCleanup(dashboard, NotifierNotices(notifier)).run() }
         val rules = NotificationRules()
-        combine(dashboard.ready, dashboard.waiting, dashboard.everything.state, dashboard.status, dashboard.pairings) { ready, waiting, feed, status, joining ->
+        combine(dashboard.ready, dashboard.waiting, dashboard.everything.state, combine(dashboard.status, session.team, ::Pair), dashboard.pairings) { ready, waiting, feed, (status, team), joining ->
             tray.show(TrayLook.of(waiting.size, offline = status == StreamStatus.Offline))
             val slugs = dashboard.projects.value.associate { it.project.id to it.project.slug }
-            rules.next(ready, waiting, feed, session.alerts.value.prefs, { id -> id?.let(slugs::get) }, joining, dashboard.followed.value)
+            // Which person this is: a teammate's line notifies as an agent's would, and your own never does.
+            rules.next(ready, waiting, feed, session.alerts.value.prefs, { id -> id?.let(slugs::get) }, joining, dashboard.followed.value, team)
         }.collectLatest { notices ->
             if (mutableSettings.value.doNotDisturb || windowFocused()) return@collectLatest
             notices.forEach { notice -> notifier.show(notice) { open(notice.focusId) } }

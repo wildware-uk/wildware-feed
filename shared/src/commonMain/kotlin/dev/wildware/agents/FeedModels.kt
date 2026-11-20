@@ -440,6 +440,8 @@ data class RequestsSnapshot(
     val seq: Long,
     val at: String = "",
     val requests: List<RequestView> = emptyList(),
+    /** On a team (migration 055): questions answered lately, newest answer first, each saying who answered. */
+    val answered: List<RequestView> = emptyList(),
 )
 
 /** The agent that asked for a pairing over MCP, with a token it already holds. */

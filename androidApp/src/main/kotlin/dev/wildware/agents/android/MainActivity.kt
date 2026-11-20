@@ -195,7 +195,10 @@ class MainActivity : ComponentActivity() {
         intent ?: return
         when (intent.action) {
             ActionOpenCard -> intent.getStringExtra(ExtraCardId)?.let(app::openCard)
-            Intent.ACTION_VIEW -> intent.dataString?.let(Links::pathOf)?.let(app.navigator::openPath)
+            Intent.ACTION_VIEW -> intent.dataString?.let { link ->
+                // An invite's page: the join screen, filled in. Anything else is a page of the feed.
+                if (Links.isInvite(link)) app.navigator.openInvite(link) else Links.pathOf(link)?.let(app.navigator::openPath)
+            }
             Intent.ACTION_SEND, Intent.ACTION_SEND_MULTIPLE -> receiveShare(intent)
         }
     }

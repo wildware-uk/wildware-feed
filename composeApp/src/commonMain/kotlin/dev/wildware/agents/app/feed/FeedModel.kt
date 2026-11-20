@@ -489,11 +489,22 @@ sealed interface FeedItem {
         val secretName: String? = null,
         /** Other cards the question points at, drawn small inside it: the reply with the video it asks about. */
         val refs: List<LinkedCard> = emptyList(),
+        /**
+         * On a team (migration 055): it was answered, by whom and with what. It stays in the feed,
+         * settled, among the cards by when it was answered. Null while it waits.
+         */
+        val answered: Answered? = null,
     ) : Threaded {
+        /** Still waiting on someone: it has controls, and sits under "Waiting on you". */
+        val waiting: Boolean get() = answered == null
         val hasPictures: Boolean get() = choices.any { it.image != null }
         override val title: String get() = prompt
         override val starter: Author get() = Author.AgentAuthor(agent)
     }
+
+    /** Who answered a question ("you", or a person's name) and what they said, when it can be said. */
+    @Immutable
+    data class Answered(val by: String, val said: String? = null, val time: String = "")
 
     /** Something written straight into the feed, by the owner or by an agent. */
     @Immutable

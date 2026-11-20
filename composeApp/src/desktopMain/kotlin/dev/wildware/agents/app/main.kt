@@ -172,12 +172,18 @@ fun main(args: Array<String>) {
     runCatching {
         val desktop = Desktop.getDesktop()
         if (desktop.isSupported(Desktop.Action.APP_EVENT_REOPENED)) desktop.addAppEventListener(AppReopenedListener { openWindow(null) })
+        // Mac: an agents://invite link (from an invite's page) opens the join screen, filled in.
+        if (desktop.isSupported(Desktop.Action.APP_OPEN_URI)) {
+            desktop.setOpenURIHandler { event -> if (navigator.openInvite(event.uri.toString())) openWindow(null) }
+        }
         if (desktop.isSupported(Desktop.Action.APP_QUIT_HANDLER)) {
             desktop.setQuitHandler { _, response ->
                 EventQueue.invokeLater { quitting?.invoke() ?: response.performQuit() }
             }
         }
     }
+    // An invite link handed over on the command line (a scheme handler set up by hand on Windows or Linux).
+    args.firstOrNull { it.startsWith("agents://invite", ignoreCase = true) }?.let(navigator::openInvite)
     // Started at login: stay in the tray, unless there is no tray to stay in.
     visible = StartAtLogin.BackgroundFlag !in args || !shell.tray.supported
 

@@ -465,6 +465,9 @@ fun QuestionCard(
     /** The talk about it, under its controls. Off where the card is the head of its own thread. */
     showDiscussion: Boolean = true,
 ) {
+    // Answered by someone on the team: settled, nothing left to do on it.
+    val answered = item.answered
+    if (answered != null) return AnsweredQuestionCard(item, answered, modifier, density, inThread, showDiscussion)
     val colors = AgentTheme.colors
     val type = AgentTheme.type
     val shape = AgentTheme.shapes.large
@@ -727,6 +730,81 @@ fun QuestionCard(
     }
 }
 }
+}
+
+/**
+ * A question someone on the team answered (migration 055): who asked what, and "Answered by Sam ·
+ * No". Quiet, with no controls, among the cards by when it was answered; it opens its thread like
+ * any card, for the talk that led to the answer.
+ */
+@Composable
+private fun AnsweredQuestionCard(
+    item: FeedItem.Question,
+    answered: FeedItem.Answered,
+    modifier: Modifier,
+    density: Density,
+    inThread: Boolean,
+    showDiscussion: Boolean,
+) {
+    val colors = AgentTheme.colors
+    val type = AgentTheme.type
+    val shape = AgentTheme.shapes.large
+    val pad = if (density == Density.Comfortable) 22.dp else 18.dp
+    val lit = LocalLit.current
+    val ui = LocalFeedUi.current
+    val pinned = ui?.isPinned(item.id, item.pinned) ?: item.pinned
+    val target = menuTargetFor(item, pinned, ui?.following(item))
+    val reactions = ui?.reactionsFor(item.id, item.reactions) ?: item.reactions
+    val line = "Answered by ${answered.by}" + answered.said?.let { " · $it" }.orEmpty()
+    WithMenu(target, modifier) { gestures ->
+        Column(
+            gestures
+                .fillMaxWidth()
+                .semantics { if (lit) this[Highlighted] = true }
+                .clip(shape)
+                .background(colors.surface)
+                .border(if (lit) 2.dp else 1.dp, if (lit) colors.accent else colors.border, shape)
+                .semantics(mergeDescendants = false) { contentDescription = "Question from ${item.agent.name}, answered by ${answered.by}" }
+                .padding(pad),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Avatar(Author.AgentAuthor(item.agent), 22.dp)
+                Text(
+                    item.agent.name,
+                    Modifier.padding(start = 8.dp),
+                    color = colors.text,
+                    style = type.label.copy(fontWeight = FontWeight.SemiBold),
+                    maxLines = 1,
+                )
+                Text("ASKED", Modifier.padding(start = 10.dp), color = colors.textFaint, style = type.overline, maxLines = 1)
+                Box(Modifier.weight(1f).padding(start = 8.dp, end = 8.dp)) {
+                    if (showsProject() && !inThread) ProjectLabel(item.project)
+                }
+                if (pinned) Icon(Icons.Pin, "Pinned", tint = colors.accent, modifier = Modifier.padding(end = 8.dp).size(13.dp))
+                if (answered.time.isNotEmpty()) MetaText(answered.time)
+            }
+            val context = item.inReplyTo
+            if (context != null && !inThread) {
+                Spacer(Modifier.height(10.dp))
+                InReplyTo(context, item.threadId)
+            }
+            Spacer(Modifier.height(10.dp))
+            Text(item.prompt, Modifier.semantics { heading() }, color = colors.text, style = type.title)
+            Row(Modifier.padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Check, null, tint = colors.success, modifier = Modifier.size(15.dp))
+                Text(
+                    line,
+                    Modifier.padding(start = 6.dp),
+                    color = colors.textMuted,
+                    style = type.label,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            if (reactions.isNotEmpty()) ReactionRow(reactions, item.id, Modifier.padding(top = 10.dp))
+            if (showDiscussion && !inThread && item.replies.isNotEmpty()) DiscussButton(item)
+        }
+    }
 }
 
 /**

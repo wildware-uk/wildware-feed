@@ -18,7 +18,12 @@ struct AgentsApp: App {
             RootView()
                 .environmentObject(model)
                 .onOpenURL { url in
-                    if let path = DeepLink.path(from: url) { model.open(path: path) }
+                    // agents://invite?server=…&token=…, from an invite's page: the join screen, filled in.
+                    if DeepLink.isInvite(url) {
+                        _ = model.navigator.openInvite(link: url.absoluteString)
+                    } else if let path = DeepLink.path(from: url) {
+                        model.open(path: path)
+                    }
                 }
                 // Launch, as well as each return to the app below, so search knows the latest.
                 .task { if model.isLinked { await SpotlightIndexer.refresh() } }

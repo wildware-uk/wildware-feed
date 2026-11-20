@@ -201,7 +201,7 @@ enum class FeedFilter(val label: String) {
 
     fun matches(item: FeedItem): Boolean = when (this) {
         All -> true
-        Waiting -> item is FeedItem.Question
+        Waiting -> item is FeedItem.Question && item.waiting
         Updates -> item is FeedItem.Update
         Errors -> item is FeedItem.Update && item.level == Level.Error
         FromYou -> item is FeedItem.Post && item.author is Author.Owner

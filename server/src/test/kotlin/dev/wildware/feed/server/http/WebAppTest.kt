@@ -58,6 +58,16 @@ class WebAppTest {
     private fun HttpResponse<*>.header(name: String): String? = headers().firstValue(name).orElse(null)
 
     @Test
+    fun `an invite's page offers to join in this browser, with the code kept out of the request`() {
+        val token = "A".repeat(43)
+        val page = send("/join/$token")
+        assertEquals(200, page.statusCode())
+        // In the fragment: the browser keeps it, and the app reads it from the address.
+        assertTrue(page.body().contains("href=\"http://127.0.0.1/#invite=$token\""), page.body())
+        assertTrue(page.body().contains("agents://invite?"))
+    }
+
+    @Test
     fun `the page and its files are public, with the right types and caching`() {
         val page = send("/")
         assertEquals(200, page.statusCode())

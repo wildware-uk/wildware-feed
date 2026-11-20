@@ -648,6 +648,9 @@ internal class RequestsReader(
 ) : FeedReader(scope, onChange) {
     var items: List<RequestView> = emptyList(); private set
 
+    /** On a team: what was answered lately, with who answered. Empty on a team of one. */
+    var answered: List<RequestView> = emptyList(); private set
+
     override val watched = setOf("request.created", "request.updated", "request.answered", StreamEvent.Resync)
 
     override fun alsoWatches(event: StreamEvent) =
@@ -691,7 +694,7 @@ internal class RequestsReader(
     override val cacheKey = "requests"
 
     override fun saveTo(cache: FeedCache, key: String) =
-        cache.save(key, RequestsSnapshot(seq = seq, requests = items), RequestsSnapshot.serializer(), cacheScope)
+        cache.save(key, RequestsSnapshot(seq = seq, requests = items, answered = answered), RequestsSnapshot.serializer(), cacheScope)
 
     override fun restoreFrom(cache: FeedCache, key: String): Boolean {
         val kept = cache.read(key, RequestsSnapshot.serializer()) ?: return false
@@ -701,6 +704,7 @@ internal class RequestsReader(
 
     internal fun apply(next: RequestsSnapshot) {
         items = next.requests
+        answered = next.answered
         seq = next.seq
         loaded = true
     }

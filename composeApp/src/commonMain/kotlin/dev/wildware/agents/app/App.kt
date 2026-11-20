@@ -15,6 +15,10 @@ import dev.wildware.agents.app.feed.LocalOpenSettings
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -44,8 +48,13 @@ import dev.wildware.agents.app.feed.ScreenPreview
 import dev.wildware.agents.app.feed.agentsImageLoader
 import dev.wildware.agents.app.feed.AppNavigator
 import dev.wildware.agents.app.session.AppPlatform
+import dev.wildware.agents.app.feed.InviteLink
 import dev.wildware.agents.app.signin.ConnectState
+import dev.wildware.agents.app.signin.JoinFromLinkDialog
+import dev.wildware.agents.app.signin.SignInChoice
 import dev.wildware.agents.app.signin.SignInScreen
+import dev.wildware.agents.app.signin.defaultSignInChoice
+import kotlinx.coroutines.flow.filterNotNull
 import dev.wildware.agents.HostCheck
 import dev.wildware.agents.SignInMethod
 import kotlinx.coroutines.CoroutineScope
@@ -103,10 +112,24 @@ fun AgentsApp(
     val system = systemDarkPreference()
     val isDark = dark ?: resolveDark(choice, system)
 
+    // An invite link the app was opened with: the join screen, filled in. Signed in, it asks first,
+    // since joining makes a new person and this device signs out to be them.
+    var joinWith by remember { mutableStateOf<InviteLink?>(null) }
+    var confirmJoin by remember { mutableStateOf<InviteLink?>(null) }
+    LaunchedEffect(navigator) {
+        navigator?.invites?.filterNotNull()?.collect { invite ->
+            navigator.handled(invite)
+            if (model.screen.value is AppScreen.SigningIn) joinWith = invite else confirmJoin = invite
+        }
+    }
+
     AgentTheme(isDark, accessibility) {
         Box(Modifier.fillMaxSize()) {
-            when (val screen = model.screen.collectAsState().value) {
-                is AppScreen.SigningIn -> {
+            val current = model.screen.collectAsState().value
+            // Joined or signed in: the link has done its job.
+            LaunchedEffect(current is AppScreen.Signed) { if (current is AppScreen.Signed) joinWith = null }
+            when (val screen = current) {
+                is AppScreen.SigningIn -> key(joinWith?.serial) {
                     val hostProblem = platform.localServer?.state?.collectAsState()?.value?.problem
                     // Served by the dashboard itself (the web app): that is the host, so step 1 is done.
                     val home = platform.homeServer
@@ -126,6 +149,8 @@ fun AgentsApp(
                         tryDemo = model::enterDemo,
                         connect = connect,
                         hostFixed = home != null,
+                        startInvite = joinWith?.link,
+                        startWith = if (joinWith != null) SignInChoice.Host else defaultSignInChoice(model.canHostLocally),
                     )
                 }
                 is AppScreen.Signed -> {
@@ -154,6 +179,19 @@ fun AgentsApp(
                         }
                     }
                 }
+            }
+            confirmJoin?.let { invite ->
+                val signed = current as? AppScreen.Signed
+                JoinFromLinkDialog(
+                    invite,
+                    signedInTo = signed?.takeIf { !it.demo }?.session?.saved?.server,
+                    onCancel = { confirmJoin = null },
+                    onJoin = {
+                        confirmJoin = null
+                        model.signOut()
+                        joinWith = invite
+                    },
+                )
             }
             overlay()
         }

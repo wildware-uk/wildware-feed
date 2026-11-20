@@ -175,10 +175,12 @@ class Alerts(
         // connection says so, and each time it comes back for whatever happened while it was away.
         launch { NoticeCleanup(dashboard, notifier).run() }
         val rules = NotificationRules()
-        combine(dashboard.ready, dashboard.waiting, dashboard.everything.state, dashboard.pairings) { ready, waiting, feed, joining ->
+        combine(dashboard.ready, dashboard.waiting, dashboard.everything.state, dashboard.pairings, session.team) { ready, waiting, feed, joining, team ->
             onWaiting(waiting.size)
             val slugs = dashboard.projects.value.associate { it.project.id to it.project.slug }
-            rules.next(ready, waiting, feed, session.alerts.value.prefs, { id -> id?.let(slugs::get) }, joining)
+            // What the person follows, and which person this is, as on the desktop: a teammate's
+            // line notifies as an agent's would, and their own never does.
+            rules.next(ready, waiting, feed, session.alerts.value.prefs, { id -> id?.let(slugs::get) }, joining, dashboard.followed.value, team)
         }.collectLatest { notices ->
             // A page goes out even with the app open: it is meant to be impossible to miss.
             notices.filter { it.critical || !onScreen() }.forEach(notifier::show)

@@ -125,9 +125,15 @@ internal class FeedMapper(
             if (waiting.isNotEmpty()) add(FeedSection("Waiting on you", waiting))
             val pinned = feed.pinned.mapNotNull { it.toItem(agents, ::project, index) }
             if (pinned.isNotEmpty()) add(FeedSection("Pinned", pinned))
-            feed.cards
-                .groupBy { dayOf(it.activityAt) }
-                .forEach { (day, cards) -> add(FeedSection(dayLabel(day), cards.mapNotNull { it.toItem(agents, ::project, index) })) }
+            // On a team, a question someone answered stays, settled, by when it was answered (migration 055).
+            val answered = if (team.team) feed.answered.map { (it.request.answeredAt ?: 0L) to it.toAnswered(agents, ::project, index) } else emptyList()
+            val timeline = feed.cards.map { it.activityAt to it }
+            (timeline + answered)
+                .sortedByDescending { it.first }
+                .groupBy { dayOf(it.first) }
+                .forEach { (day, entries) ->
+                    add(FeedSection(dayLabel(day), entries.mapNotNull { (_, entry) -> if (entry is FeedCard) entry.toItem(agents, ::project, index) else entry as FeedItem.Question }))
+                }
         }
         val waiting = Outbox.waiting(outbox)
         val failed = Outbox.failed(outbox)
@@ -389,6 +395,20 @@ internal class FeedMapper(
             reactions = reactions(request.reactions),
             pinned = request.pinned,
             refs = request.refs.linked(agents, project, request.projectId),
+        )
+    }
+
+    /** A question someone answered, settled: who answered ("you" for this person) and what they said. */
+    private fun RequestCard.toAnswered(agents: AgentDirectory, project: (String?) -> Project, index: CardIndex): FeedItem.Question {
+        val by = when (val who = person(request.answeredByPerson)) {
+            is Author.Person -> who.name
+            else -> "you"
+        }
+        val at = request.answeredAt ?: 0L
+        return toQuestion(agents, project, index).copy(
+            answered = FeedItem.Answered(by, answerSaid(request.answer), if (at > 0) relativeLabel(at) else ""),
+            sending = false,
+            unsent = null,
         )
     }
 
@@ -787,6 +807,22 @@ internal fun pickBounds(config: RequestConfig?, options: Int): PickBounds {
     val min = (config?.min ?: 1).coerceIn(0, options)
     val max = (config?.max ?: options).coerceIn(min, options)
     return PickBounds(min, max, bounded = min != 1 || max < options)
+}
+
+/**
+ * What an answered question's answer said, in words: yes or no, the option or options picked, the
+ * words typed, a form's action. Null for a secret (only its name is kept) or an answer it can't read.
+ */
+internal fun answerSaid(answer: kotlinx.serialization.json.JsonElement?): String? {
+    val body = answer as? JsonObject ?: return null
+    if ((body["kind"] as? JsonPrimitive)?.contentOrNull == "secret") return null
+    val said = when (val value = body["value"]) {
+        is JsonPrimitive -> if (value.isString) value.contentOrNull else value.booleanOrNull?.let { if (it) FeedMapper.Yes else FeedMapper.No }
+        is JsonArray -> value.mapNotNull { (it as? JsonPrimitive)?.contentOrNull }.joinToString(", ")
+        is JsonObject -> listOfNotNull((value["action"] as? JsonPrimitive)?.contentOrNull, (value["text"] as? JsonPrimitive)?.contentOrNull?.ifBlank { null }).joinToString(": ")
+        else -> null
+    }
+    return said?.let { PlainText.clip(it.replace(Regex("\\s+"), " ").trim(), 120) }?.ifBlank { null }
 }
 
 /**

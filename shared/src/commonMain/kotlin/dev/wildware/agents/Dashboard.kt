@@ -160,6 +160,11 @@ data class FeedState(
      * read while the first read is on its way.
      */
     val cached: Boolean = false,
+    /**
+     * On a team (migration 055): this feed's questions answered lately, newest answer first, each
+     * saying who answered. Only those answered since the oldest card read, so they sit among them.
+     */
+    val answered: List<RequestCard> = emptyList(),
 ) {
     /** Every card, pinned first, in order. */
     val allCards: List<FeedCard> get() = pinned + cards
@@ -524,7 +529,7 @@ class Dashboard internal constructor(
         val projectsById = everything.projects().associateBy { it.id }
         val sending = sendingRequestIds()
         val onlineIds = onlineAgents.mapTo(HashSet()) { it.agentId }
-        val context = FeedContext(names, projectsById, sending, onlineIds, readMarks, requests.items)
+        val context = FeedContext(names, projectsById, sending, onlineIds, readMarks, requests.items, requests.answered)
         mutableWaiting.value = requests.items.map { context.requestCard(it, everything) }
         open.forEach { it.publish(context, stream.status.value, requests.loading) }
         mutableProjects.value = summaries(everything.state.value)
@@ -586,6 +591,8 @@ internal class FeedContext(
     private val onlineIds: Set<String>,
     val readMarks: ReadMarks,
     val requests: List<RequestView>,
+    /** Answered lately, on a team. */
+    val answered: List<RequestView> = emptyList(),
 ) {
     fun agentName(agentId: String): String = names[agentId] ?: "An agent"
 
@@ -832,6 +839,12 @@ class Feed internal constructor(
             else -> emptyList()
         }
         val waiting = inScope.filter { it.messageId == null }.map { context.requestCard(it, this) }
+        // Answered ones sit among the cards by when they were answered: none from before the oldest card read.
+        val oldest = if (timeline.hasMore) cards.minOfOrNull { it.activityAt } else null
+        val answered = context.answered
+            .filter { !scoped || (project != null && it.projectId == project.id) }
+            .filter { oldest == null || (it.answeredAt ?: 0) >= oldest }
+            .map { context.requestCard(it, this) }
 
         mutableState.value = FeedState(
             projectSlug = projectSlug,
@@ -847,6 +860,7 @@ class Feed internal constructor(
             newCount = timeline.pending.size,
             hasMore = timeline.hasMore,
             tags = timeline.tags,
+            answered = answered,
         )
     }
 }

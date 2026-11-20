@@ -18,6 +18,9 @@ the home team. Today's owner is its founding member, `founder`.
   (requests) only for a person who is not the founder. The snapshot carries `people` only once more
   than one person has been in the team. Agents see new keys only then too (`author_name`,
   `author_user_id`, `answered_by`, `by`); `author` stays `"human"` for everyone.
+- **Who answered.** On a team, `GET /api/snapshot/requests` adds `answered`: questions answered in
+  the last 7 days, newest answer first, at most 50, each with `answeredBy` (left out for the
+  founder). The apps keep them in the feed as "Answered by Sam · No". A team of one has no `answered`.
 
 ## Routes
 
@@ -33,7 +36,7 @@ the home team. Today's owner is its founding member, `founder`.
 | `DELETE /api/invites/{id}` | admin | revoke |
 | `POST /api/invite/peek` | public | `{token}` (the code or the link) → `{invite: {role, email, invitedBy, expiresAt}}` |
 | `POST /api/invite/accept` | public | `{token, name, email, password, deviceName, cookie?}` → as sign-in, plus `person` |
-| `GET /join/{token}` | public | a page with "Open in Wildware Feed" and the code to paste |
+| `GET /join/{token}` | public | a page with "Open in Wildware Feed" (`agents://invite?server=…&token=…`), the code to paste, and, where this server serves the web app, "Or join in this browser" (`/#invite=<code>`; the code stays in the fragment) |
 | `POST /api/devices/sign-in` | public | as before; with `email`, that person's sign-in |
 
 Invite tokens are 43 random characters, stored as an HMAC (`invite:` prefix), single use, 7 days.

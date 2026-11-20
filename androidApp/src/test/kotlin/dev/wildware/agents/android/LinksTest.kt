@@ -2,7 +2,9 @@ package dev.wildware.agents.android
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class LinksTest {
     @Test
@@ -18,6 +20,14 @@ class LinksTest {
         assertNull(Links.pathOf("agents://elsewhere?path=/"))
         assertNull(Links.pathOf("agents://open?path=projects"))
         assertNull(Links.pathOf("not a link at all"))
+    }
+
+    @Test
+    fun anInviteLinkIsToldApart() {
+        assertTrue(Links.isInvite("agents://invite?server=https%3A%2F%2Ffeed.example.com&token=abc"))
+        assertFalse(Links.isInvite("agents://open?path=/"))
+        assertFalse(Links.isInvite("https://feed.example.com/join/abc"))
+        assertNull(Links.pathOf("agents://invite?server=x&token=abc"))
     }
 
     @Test

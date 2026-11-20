@@ -111,6 +111,8 @@ class TeamTest {
         assertEquals("no-referrer", page.headers["Referrer-Policy"])
         assertTrue(page.headers["Content-Security-Policy"]!!.startsWith("default-src 'none'"))
         assertEquals(404, send(null, "GET", "/join/<script>").status.value)
+        // No web app here, so no offer to join in the browser.
+        assertTrue("#invite=" !in page.bodyAsText())
     }
 
     @Test
@@ -164,6 +166,33 @@ class TeamTest {
         assertEquals(samId, by.s("user_id"))
         assertEquals("Sam", by.s("name"))
         assertEquals(samId, app.requests.find(id)!!.json["answeredBy"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun `on a team the owner's questions read also lists what was answered lately, and by whom`() = withApp { app, owner ->
+        val (agent, _) = app.agents.mint("scout")
+        suspend fun ask(question: String) =
+            tool(app, agent, "request_input", buildJsonObject { put("kind", "confirm"); put("question", question); put("project", "web") })["structuredContent"]!!.jsonObject.s("request_id")
+        val solo = ask("Before the team?")
+        assertEquals(200, send(owner, "POST", "/api/requests/$solo/answer", "{\"value\":true}").status.value)
+        // A team of one reads exactly as before: no new key.
+        assertEquals(listOf("seq", "at", "requests"), send(owner, "GET", "/api/snapshot/requests").obj().keys.toList())
+
+        val (samId, samKey) = samJoins(owner)
+        val bySam = ask("Ship it?")
+        val waiting = ask("Still open?")
+        assertEquals(200, send(samKey, "POST", "/api/requests/$bySam/answer", "{\"value\":false}").status.value)
+        val read = send(owner, "GET", "/api/snapshot/requests").obj()
+        assertEquals(listOf(waiting), read["requests"]!!.jsonArray.map { it.jsonObject.s("id") })
+        val answered = read["answered"]!!.jsonArray.map { it.jsonObject }
+        // Newest answer first; the founder's carries no answeredBy, as everywhere.
+        assertEquals(listOf(bySam, solo), answered.map { it.s("id") })
+        assertEquals(samId, answered[0].s("answeredBy"))
+        assertEquals("answered", answered[0].s("state"))
+        assertEquals("false", answered[0]["answer"]!!.jsonObject.s("value"))
+        assertNull(answered[1]["answeredBy"])
+        // Sam reads the same list.
+        assertEquals(listOf(bySam, solo), send(samKey, "GET", "/api/snapshot/requests").obj()["answered"]!!.jsonArray.map { it.jsonObject.s("id") })
     }
 
     @Test

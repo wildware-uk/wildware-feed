@@ -142,7 +142,18 @@ enum AlertLoader {
             details.agentId = message.agentId
             details.media = (snapshot.media[id] ?? []).filter { $0.isReady && $0.kind == "image" }
             if let answered = message.answers, let quoted = snapshot.messages.first(where: { $0.id == answered }), quoted.isOwner {
-                details.quote = .init(text: quoted.body, date: Date(timeIntervalSince1970: Double(quoted.createdAt) / 1000))
+                // The card says "You" over the quote. On a team a teammate's line is theirs, so it is
+                // quoted only when it is this person's ("founder" on a server from before teams).
+                var mine = false
+                do {
+                    let me = try await client.me()
+                    mine = quoted.personId == (me?.person.id ?? "founder")
+                } catch {
+                    mine = false
+                }
+                if mine {
+                    details.quote = .init(text: quoted.body, date: Date(timeIntervalSince1970: Double(quoted.createdAt) / 1000))
+                }
             }
 
         case .update:

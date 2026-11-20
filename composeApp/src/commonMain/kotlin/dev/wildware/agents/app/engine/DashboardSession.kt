@@ -51,6 +51,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
@@ -110,6 +111,9 @@ class DashboardSession(
 
     /** The people of the team, read when the session starts and when the People sheet opens. */
     private val mutableTeam = MutableStateFlow(dev.wildware.agents.app.feed.TeamState())
+
+    /** Who this device's person is, and the team's people: local notices tell their words from a teammate's. */
+    val team: StateFlow<dev.wildware.agents.app.feed.TeamState> = mutableTeam.asStateFlow()
 
     /** The open agent's OAuth connections. */
     private val mutableConnections = MutableStateFlow(dev.wildware.agents.app.feed.ConnectionList())

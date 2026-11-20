@@ -2,6 +2,7 @@ package dev.wildware.agents.app.desktop
 
 import dev.wildware.agents.AlertPrefs
 import dev.wildware.agents.FeedCard
+import dev.wildware.agents.FounderId
 import dev.wildware.agents.FeedState
 import dev.wildware.agents.Follows
 import dev.wildware.agents.NotifyLevel
@@ -12,6 +13,7 @@ import dev.wildware.agents.PostCard
 import dev.wildware.agents.RequestCard
 import dev.wildware.agents.ThreadLine
 import dev.wildware.agents.UpdateCard
+import dev.wildware.agents.app.feed.TeamState
 
 /**
  * One notification (desktop, or Android while the app runs). [focusId] is the card to open the
@@ -34,6 +36,9 @@ data class DesktopNotice(
  *   the owner's post, or lands in an update, task or question thread the owner has written in
  *   (the server's own "replied to you" rule);
  * - an agent's message that mentions the owner: `@you` or `@owner`;
+ * - on a team (migration 055), another person's message by the same rules as an agent's, with
+ *   `@their-handle` counting as a mention; what this person wrote themselves never notifies them.
+ *   "The owner" above is this device's person: a line a teammate wrote is theirs, not this person's.
  * - an update an agent marked critical (other updates stay in the feed and under the bell);
  * - an agent asking to join, whatever the device's choice of alerts: it waits on the owner.
  *
@@ -65,9 +70,12 @@ class NotificationRules(private val maxBody: Int = 140) {
         joining: List<PairingView> = emptyList(),
         /** What the owner follows. */
         follows: Follows = Follows(),
+        /** Who this device's person is, and the team's names. A team of one: every person's line is theirs. */
+        team: TeamState = TeamState(),
     ): List<DesktopNotice> {
         if (!ready) return emptyList()
-        val threads = threadsOf(feed, waiting)
+        val me = Me(team)
+        val threads = threadsOf(feed, waiting, me)
         if (!baselined) {
             baselined = true
             waiting.forEach { seen += requestKey(it.id) }
@@ -109,13 +117,16 @@ class NotificationRules(private val maxBody: Int = 140) {
                 val message = line.message
                 if (!seen.add(messageKey(message.id))) continue
                 if (message.createdAt < watermark) continue
-                if (message.agentId == null) continue
+                // Your own words never tell you about themselves; a teammate's do, as an agent's would.
+                if (me.wrote(message)) continue
+                if (message.agentId == null && !message.isOwner) continue
                 val chosen = follows.chosen(thread.kind, thread.cardId)
                 if (chosen == false) continue
                 if (chosen == null && follows.level(thread.projectId) == NotifyLevel.Muted) continue
-                if (chosen == null && !answersOwner(message, thread) && !mentionsOwner(message.body)) continue
+                if (chosen == null && !answersMe(message, thread, me) && !mentionsOwner(message.body) && !me.named(message.body)) continue
                 if (!AlertPrefs.allows(prefs, AlertPrefs.Message)) continue
-                notices += DesktopNotice(messageKey(message.id), title(line.authorName, thread.projectName), plain(message.body), thread.cardId)
+                val author = if (message.agentId != null) line.authorName else me.nameOf(message.personId)
+                notices += DesktopNotice(messageKey(message.id), title(author, thread.projectName), plain(message.body), thread.cardId)
             }
         }
         watermark = maxOf(watermark, threads.flatMap { it.lines }.maxOfOrNull { it.message.createdAt } ?: Long.MIN_VALUE)
@@ -128,39 +139,56 @@ class NotificationRules(private val maxBody: Int = 140) {
         val projectName: String?,
         val head: MessageView?,
         val lines: List<ThreadLine>,
-        val ownerWroteHere: Boolean,
+        /** This device's person wrote in it. */
+        val meWroteHere: Boolean,
         /** The thread's kind and project, as the owner's [Follows] know it. */
         val kind: String,
         val projectId: String?,
     )
 
-    private fun threadsOf(feed: FeedState, waiting: List<RequestCard>): List<Thread> {
-        val fromCards = feed.allCards.map { card -> cardThread(card) }
+    private fun threadsOf(feed: FeedState, waiting: List<RequestCard>, me: Me): List<Thread> {
+        val fromCards = feed.allCards.map { card -> cardThread(card, me) }
         val fromQuestions = (waiting + feed.waiting).distinctBy { it.id }.map { question ->
-            Thread(question.id, question.projectName, null, question.discussion, question.discussion.any { it.message.isOwner }, "request", question.request.projectId)
+            Thread(question.id, question.projectName, null, question.discussion, question.discussion.any { me.wrote(it.message) }, "request", question.request.projectId)
         }
         return fromCards + fromQuestions
     }
 
-    private fun cardThread(card: FeedCard): Thread = when (card) {
+    private fun cardThread(card: FeedCard, me: Me): Thread = when (card) {
         is PostCard -> Thread(
             card.id,
             card.projectName,
             card.post.message,
             listOf(card.post) + card.replies,
-            card.post.message.isOwner,
+            me.wrote(card.post.message),
             "message",
             card.projectId,
         )
-        is UpdateCard -> Thread(card.id, card.projectName, null, card.replies, card.replies.any { it.message.isOwner }, "update", card.projectId)
+        is UpdateCard -> Thread(card.id, card.projectName, null, card.replies, card.replies.any { me.wrote(it.message) }, "update", card.projectId)
     }
 
-    private fun answersOwner(message: MessageView, thread: Thread): Boolean {
+    /** The server's "replied to you", for this device's person: it answers their line, or sits in a thread they wrote in. */
+    private fun answersMe(message: MessageView, thread: Thread, me: Me): Boolean {
         val answered = message.answers?.let { id -> thread.lines.firstOrNull { it.message.id == id }?.message ?: thread.head?.takeIf { it.id == id } }
-        if (answered != null) return answered.isOwner
-        // The post itself is never an answer; a reply under the owner's post is.
+        if (answered != null) return me.wrote(answered)
+        // The post itself is never an answer; a reply under their post is.
         if (thread.head?.id == message.id) return false
-        return thread.ownerWroteHere
+        return thread.meWroteHere
+    }
+
+    /** This device's person, as far as the lines they read can tell (migration 055). */
+    private class Me(private val team: TeamState) {
+        private val id = team.me?.id ?: FounderId
+        private val handle = team.me?.handle?.takeIf { team.team && it.isNotBlank() }
+        private val mention = handle?.let { Regex("(?<![\\w@])@${Regex.escape(it)}(?![\\w-])", RegexOption.IGNORE_CASE) }
+
+        /** A person's line that is theirs: every person's line, on a team of one. */
+        fun wrote(message: MessageView): Boolean = message.isOwner && (!team.team || message.personId == id)
+
+        /** The line names them by their handle. */
+        fun named(body: String): Boolean = mention?.containsMatchIn(body) == true
+
+        fun nameOf(personId: String?): String = team.people.firstOrNull { it.id == personId }?.name ?: "Someone"
     }
 
     private fun title(agent: String, project: String?) = if (project.isNullOrBlank()) agent else "$agent · $project"

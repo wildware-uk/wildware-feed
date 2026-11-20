@@ -680,7 +680,7 @@ private fun LazyListScope.feedItems(ui: FeedUi, density: Density, list: LazyList
         val key = "section-$s"
         // Every heading holds the top while its cards scroll under it, as the website's do, so the
         // owner always knows which day they are reading; the next one pushes it away.
-        stickyHeader(key = key, contentType = if (section.items.any { it is FeedItem.Question }) "waiting" else "section") {
+        stickyHeader(key = key, contentType = if (section.items.any { it is FeedItem.Question && it.waiting }) "waiting" else "section") {
             StickyHeading(section, first = s == 0, list, key)
         }
         section.items.forEachIndexed { i, item ->
@@ -750,7 +750,7 @@ private fun Modifier.feedItemMotion(scope: LazyItemScope): Modifier {
 @Composable
 private fun SectionHeading(section: FeedSection, first: Boolean, modifier: Modifier) {
     val colors = AgentTheme.colors
-    val waiting = section.items.any { it is FeedItem.Question }
+    val waiting = section.items.any { it is FeedItem.Question && it.waiting }
     Row(
         modifier.padding(top = if (first) 0.dp else 26.dp, bottom = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -769,8 +769,9 @@ private fun SectionHeading(section: FeedSection, first: Boolean, modifier: Modif
 
 @Composable
 private fun FeedRow(item: FeedItem, selected: Boolean, density: Density, first: Boolean, last: Boolean) {
-    // Questions sit apart from the timeline: they are about now, not the history.
-    val row = if (item is FeedItem.Question) Modifier else Modifier.rail(item, first, last)
+    // Waiting questions sit apart from the timeline: they are about now, not the history. An
+    // answered one (on a team) is history, so it sits on the line.
+    val row = if (item is FeedItem.Question && item.waiting) Modifier else Modifier.rail(item, first, last)
     Box(row.padding(bottom = 10.dp)) { FeedItemView(item, selected, density) }
 }
 
@@ -781,7 +782,7 @@ private fun Modifier.rail(item: FeedItem, first: Boolean, last: Boolean): Modifi
     val dot = when (item) {
         is FeedItem.Update -> colors.level(item.level)
         is FeedItem.Post -> colors.text
-        is FeedItem.Question -> colors.waiting
+        is FeedItem.Question -> if (item.waiting) colors.waiting else colors.success
     }
     val line = colors.border
     val ring = colors.background
