@@ -47,6 +47,8 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         let client = Dashboard.client()
         defer { client?.close() }
         try? await IosSystemNotices.shared.clearDelivered(tags: tags, client: client)
+        // An answered question may have been the last: end the Live Activity rather than leave it up.
+        await LiveActivityController.shared.refresh(startIfNeeded: false)
         return .newData
     }
 

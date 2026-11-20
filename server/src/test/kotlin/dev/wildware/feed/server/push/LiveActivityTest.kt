@@ -54,17 +54,17 @@ class LiveActivityTest {
         )
     }
 
-    private fun ask() {
+    private fun ask(id: String = "R1") {
         app.db.update(
             "INSERT INTO approvals (id, agent_id, project_id, question, options, state, expires_at, kind, config) VALUES " +
-                "('R1', 'A1', 'P1', 'Ship it?', NULL, 'pending', ?, 'confirm', '{}')",
-            now + 3_600_000,
+                "(?, 'A1', 'P1', 'Ship it?', NULL, 'pending', ?, 'confirm', '{}')",
+            id, now + 3_600_000,
         )
-        // How the bus tells the pusher a request is new.
-        activity.start().also { stop ->
-            app.bus.publish("request.created", buildJsonObject { put("requestId", JsonPrimitive("R1")) })
-            stop()
-        }
+        activity.requested(id)
+    }
+
+    private fun answer(id: String = "R1") {
+        app.db.update("UPDATE approvals SET state = 'approved' WHERE id = ?", id)
     }
 
     private fun aps(request: ApnsRequest): JsonObject = Json.parseToJsonElement(request.payload).jsonObject["aps"]!!.jsonObject
@@ -80,34 +80,17 @@ class LiveActivityTest {
     }
 
     @Test
-    fun `busy means a question waiting or agents online with work in progress`() {
-        assertTrue(LiveActivity.busy(state(waiting = 1, inProgress = 0, online = 0)))
-        assertTrue(LiveActivity.busy(state(waiting = 0, inProgress = 2, online = 1)))
-        assertFalse(LiveActivity.busy(state(waiting = 0, inProgress = 2, online = 0)), "a card left in progress with every agent gone")
-        assertFalse(LiveActivity.busy(state(waiting = 0, inProgress = 0, online = 3)), "agents online with nothing to do")
+    fun `the activity is up only while a question waits`() {
+        assertTrue(LiveActivity.needed(state(waiting = 1, inProgress = 0, online = 0)))
+        assertFalse(LiveActivity.needed(state(waiting = 0, inProgress = 2, online = 1)), "agents working, nothing asked")
+        assertFalse(LiveActivity.needed(state(waiting = 0, inProgress = 0, online = 3)), "agents online with nothing to do")
     }
 
     @Test
-    fun `agents starting work push a phone with no activity one that says who is on what`() {
+    fun `agents starting work start no activity`() {
         phone(updateToken = null, startToken = "beef")
         agentOnline()
         activity.run()
-        assertTrue(sent.isEmpty(), "nothing is busy yet")
-        startWork()
-        activity.run()
-        val start = aps(sent.single())
-        assertEquals("start", start["event"]!!.jsonPrimitive.content)
-        assertEquals("beef", sent.single().deviceToken)
-        assertEquals("Rover is working", start["alert"]!!.jsonObject["title"]!!.jsonPrimitive.content)
-        assertEquals("Fixing fee rounding", start["alert"]!!.jsonObject["body"]!!.jsonPrimitive.content)
-        activity.run()
-        assertEquals(1, sent.size, "work that carries on starts nothing more")
-    }
-
-    @Test
-    fun `work already going when the server starts starts nothing`() {
-        phone(updateToken = null, startToken = "beef")
-        agentOnline()
         startWork()
         activity.run()
         assertTrue(sent.isEmpty())
@@ -117,31 +100,32 @@ class LiveActivityTest {
     fun `a new question still pushes a phone one`() {
         phone(updateToken = null, startToken = "beef")
         agentOnline()
-        ask()
+        app.db.update(
+            "INSERT INTO approvals (id, agent_id, project_id, question, options, state, expires_at, kind, config) VALUES " +
+                "('R1', 'A1', 'P1', 'Ship it?', NULL, 'pending', ?, 'confirm', '{}')",
+            now + 3_600_000,
+        )
+        // How the bus tells the pusher a request is new.
+        activity.start().also { stop ->
+            app.bus.publish("request.created", buildJsonObject { put("requestId", JsonPrimitive("R1")) })
+            stop()
+        }
         activity.run()
         assertEquals(listOf("start"), events())
         assertEquals("Rover is waiting on you", aps(sent.single())["alert"]!!.jsonObject["title"]!!.jsonPrimitive.content)
     }
 
     @Test
-    fun `an activity ends after ten quiet minutes and its token is forgotten`() {
+    fun `the last question answered ends the activity at once and forgets its token`() {
         phone(updateToken = "cafe", startToken = "beef")
         agentOnline()
         startWork()
+        ask()
         activity.run()
         assertEquals(listOf("update"), events())
-        app.db.update("UPDATE updates SET status = 'done' WHERE id = 'U1'")
+        answer()
         activity.run()
-        assertEquals(listOf("update", "update"), events(), "idle, but not for long enough")
-        // The agent stays online throughout, so only the work stopping counts.
-        now += LiveActivity.IDLE_END_MS - 1
-        app.db.update("UPDATE sessions SET last_heartbeat_at = ?", now)
-        activity.run()
-        assertEquals(2, sent.size, "the same state is not sent again")
-        now += 1
-        app.db.update("UPDATE sessions SET last_heartbeat_at = ?", now)
-        activity.run()
-        assertEquals(listOf("update", "update", "end"), events())
+        assertEquals(listOf("update", "end"), events(), "ended straight away, even with work still in progress")
         val end = aps(sent.last())
         assertTrue(end["dismissal-date"]!!.jsonPrimitive.content.toLong() < end["timestamp"]!!.jsonPrimitive.content.toLong(), "dismissed at once")
         assertEquals("10", sent.last().headers.toMap()["apns-priority"], "the end goes out promptly")
@@ -149,11 +133,56 @@ class LiveActivityTest {
         val final = end["content-state"]!!.jsonObject
         assertEquals(activity.state().keys, final.keys)
         assertEquals(0, final["waiting"]!!.jsonPrimitive.content.toInt())
-        assertEquals(1, final["online"]!!.jsonPrimitive.content.toInt())
+        assertEquals(JsonNull, final["topQuestion"])
+        assertEquals(JsonNull, final["working"])
         assertEquals("cafe", sent.last().deviceToken)
         assertNull(updateToken())
         activity.run()
-        assertEquals(3, sent.size, "an ended activity is not pushed again")
+        assertEquals(2, sent.size, "an ended activity is not pushed again")
+    }
+
+    @Test
+    fun `work in progress alone does not keep an activity up`() {
+        phone(updateToken = "cafe", startToken = "beef")
+        agentOnline()
+        startWork()
+        activity.run()
+        assertEquals(listOf("end"), events())
+        assertNull(updateToken())
+    }
+
+    @Test
+    fun `a failed end is tried again next run`() {
+        phone(updateToken = "cafe", startToken = "beef")
+        agentOnline()
+        var status = 500
+        val flaky = LiveActivity(app, Apns(app, Config.Apns("KEY123", "TEAM456", "/unused.p8", "dev.example.feed")) { sent += it; ApnsResponse(status, null) }, "dev.example.feed")
+        flaky.run()
+        assertEquals("cafe", updateToken(), "kept while Apple has not taken the end")
+        status = 200
+        flaky.run()
+        assertEquals(listOf("end", "end"), events())
+        assertNull(updateToken())
+    }
+
+    @Test
+    fun `a question soon after an end starts a new activity at once`() {
+        phone(updateToken = null, startToken = "beef")
+        agentOnline()
+        ask("R1")
+        activity.run()
+        assertEquals(listOf("start"), events())
+        // The new activity's update token reaches the dashboard.
+        app.db.update("UPDATE owner_devices SET live_activity_token = 'cafe' WHERE id = 'D1'")
+        answer("R1")
+        now += 30_000
+        activity.run()
+        assertEquals(listOf("start", "end"), events())
+        now += 30_000
+        ask("R2")
+        activity.run()
+        assertEquals(listOf("start", "end", "start"), events(), "the start cooldown does not hold back the next question")
+        assertEquals("beef", sent.last().deviceToken)
     }
 
     @Test
@@ -171,23 +200,5 @@ class LiveActivityTest {
         for (key in listOf("topAgent", "topQuestion", "topRequestId", "topKind", "topExpiresAt", "working")) {
             assertEquals(JsonNull, clear[key], key)
         }
-    }
-
-    @Test
-    fun `work coming back before ten minutes keeps the activity`() {
-        phone(updateToken = "cafe", startToken = "beef")
-        agentOnline()
-        startWork()
-        activity.run()
-        app.db.update("UPDATE updates SET status = 'done' WHERE id = 'U1'")
-        now += 5 * 60 * 1000
-        app.db.update("UPDATE sessions SET last_heartbeat_at = ?", now)
-        activity.run()
-        app.db.update("UPDATE updates SET status = 'in_progress' WHERE id = 'U1'")
-        now += 6 * 60 * 1000
-        app.db.update("UPDATE sessions SET last_heartbeat_at = ?", now)
-        activity.run()
-        assertFalse("end" in events())
-        assertEquals("cafe", updateToken())
     }
 }

@@ -9,10 +9,9 @@ import Shared
 /// Keeps one Live Activity on the lock screen and Dynamic Island, and tells the dashboard
 /// where to push its updates so it stays current while the app is closed.
 ///
-/// It appears when something needs the owner: a question waiting on him, or agents online with
-/// work in progress. The app starts one when it comes to the front (iOS refuses a start from the
-/// background); the dashboard starts one by push when the app is closed, and ends it after a
-/// quiet spell.
+/// It is there while a question waits on the owner, and only then. The app starts one when it
+/// comes to the front (iOS refuses a start from the background); the dashboard starts one by push
+/// when the app is closed. Whichever sees nothing waiting first ends it, at once.
 actor LiveActivityController {
     static let shared = LiveActivityController()
 
@@ -117,13 +116,18 @@ actor LiveActivityController {
         }
     }
 
-    /// Brings the activity up to date. With [startIfNeeded] (the app in front), starts one when
-    /// something needs the owner.
+    /// Brings the activity up to date, or ends it when nothing waits on the owner any more. With
+    /// [startIfNeeded] (the app in front), starts one when something does.
     func refresh(startIfNeeded: Bool) async {
         guard let state = await currentState() else { return }
         let running = Activity<AgentsActivityAttributes>.activities
         if running.isEmpty {
             if startIfNeeded, state.needsOwner { await start(state) }
+            return
+        }
+        // Also covers an activity the dashboard can't end itself, because its update token never reached it.
+        guard state.needsOwner else {
+            for activity in running { await Self.end(activity) }
             return
         }
         for activity in running {
@@ -224,9 +228,9 @@ extension Data {
 }
 
 extension AgentsActivityAttributes.ContentState {
-    /// Something needs the owner: a question waiting on him, or agents online with work in progress.
-    /// The same rule the dashboard starts and ends the activity by (`LiveActivity.busy` on the server).
-    var needsOwner: Bool { waiting > 0 || (inProgress > 0 && online > 0) }
+    /// A question waits on the owner: the only time the activity is up. Work in progress alone
+    /// doesn't keep it. The same rule the dashboard starts and ends it by (`LiveActivity.needed`).
+    var needsOwner: Bool { waiting > 0 }
 
     /// The app builds its state from the summary, which doesn't yet carry everything the server pushes
     /// (the asking agent's id, what agents are working on). Keeps those from the last push rather than
