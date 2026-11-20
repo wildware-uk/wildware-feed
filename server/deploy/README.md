@@ -57,3 +57,23 @@ each write all-or-nothing either way.
 Before an upgrade, copy the data folder while the server is stopped, or use the TypeScript server's
 `backup` command while it runs. A newer server may add a migration; an older one then refuses the
 database ("refuses to start" is the safe failure), so the backup is how you go back.
+
+## Check the customer journey
+
+`journey.sh` is the end-to-end test CI runs on every change (the `journey` job): the server as it
+runs hosted (many teams, Postgres with row security forced), a team made through the signed admin
+API, and a headless Chrome that sets the owner's password, signs out and back in with it, posts, and
+signs in a teammate; then the apps' sign-ins over HTTP, and checks that no team's password opens
+another. It needs a throwaway Postgres it may make a database and a role on:
+
+    PG_ADMIN_URL=postgres://postgres:pw@127.0.0.1:5432/postgres server/deploy/journey.sh
+
+After each deploy, run the same journey against the live server, over HTTP (no browser):
+
+    ORIGIN=https://feed.example.com ADMIN_KEY_FILE=path/to/admin-key server/deploy/smoke-live.sh
+
+`ORIGIN` is where the admin API answers (`TEAM_DOMAIN`, or `ADMIN_HOST`); `ADMIN_KEY_FILE` holds one
+of the server's `ADMIN_API_KEYS`, read by the script and never printed. It makes two throwaway teams
+(`journey-<random>-a` and `-b`, with `@example.com` emails), runs every check, and deletes both teams
+whatever happened. Add `HOME_ORIGIN` and `HOME_PASSWORD_FILE` to check the home team too. Every step
+prints `ok` or `FAIL`; it exits 1 if any failed, and says so if a team could not be deleted.
