@@ -392,15 +392,17 @@ class Apns(
         const val CRITICAL_SOUND = "critical.wav"
 
         /**
-         * The sound file an alert plays: one of the app's own sounds (composeApp's `Sound`, bundled in
-         * the iPhone app as `<name>.wav`). An older app without the file plays the default sound.
+         * The sound an alert plays: one of the app's own sounds (composeApp's `Sound`, bundled in the
+         * iPhone app as `<name>.wav`), or the system's default for any other update. An older app
+         * without the file plays the default sound.
          */
         fun soundFor(alert: Alert): String = when {
             alert.about.priority == "critical" -> CRITICAL_SOUND
             alert.category == "REQUEST" || alert.category == "PAIRING" -> "question.wav"
             alert.category == "UPDATE" && alert.about.level == "error" -> "error.wav"
             alert.category == "UPDATE" && alert.about.level == "success" -> "done.wav"
-            else -> "reply.wav"
+            alert.category == "MESSAGE" -> "message.wav"
+            else -> "default"
         }
 
         /**

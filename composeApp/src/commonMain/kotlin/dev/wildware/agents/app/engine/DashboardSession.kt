@@ -103,9 +103,6 @@ class DashboardSession(
     /** Which moments make which sound. Touched only on [soundThread]. */
     private val soundRules = SoundRules()
 
-    /** The card whose thread the owner last opened, for [SoundRules]. Touched only on [soundThread]. */
-    private var viewing: String? = null
-
     /** One thread at a time for [soundRules]: the owner's taps and the dashboard's changes take turns. */
     @OptIn(ExperimentalCoroutinesApi::class)
     private val soundThread = kotlinx.coroutines.Dispatchers.Default.limitedParallelism(1)
@@ -765,7 +762,7 @@ class DashboardSession(
             alerts,
         ) { (ready, status, waiting), feed, items, (joining, team, follows), alerts ->
             val slugs = dashboard.projects.value.associate { it.project.id to it.project.slug }
-            SoundSnapshot(clock(), ready, status == StreamStatus.Live, waiting, feed, items, alerts.prefs, { id -> id?.let(slugs::get) }, joining, follows, team, viewing)
+            SoundSnapshot(clock(), ready, status == StreamStatus.Live, waiting, feed, items, alerts.prefs, { id -> id?.let(slugs::get) }, joining, follows, team)
         }.collect { snapshot -> platform.sounds.play(soundRules.next(snapshot, platform.systemSounds)) }
     }
 
@@ -814,10 +811,6 @@ class DashboardSession(
         val at = clock()
         when (event) {
             is FeedEvent.SetStatus -> sounds { soundRules.touched(event.targetId, at) }
-            is FeedEvent.CheckBlockItem -> sounds { soundRules.touched(event.cardId, at) }
-            is FeedEvent.VoteBlock -> sounds { soundRules.touched(event.cardId, at) }
-            is FeedEvent.DropUnsent -> sounds { soundRules.dropped(event.outboxId) }
-            is FeedEvent.OpenThread -> sounds { viewing = event.cardId }
             else -> Unit
         }
         // A new answer replaces one the dashboard refused: the refused one is not sent as well.

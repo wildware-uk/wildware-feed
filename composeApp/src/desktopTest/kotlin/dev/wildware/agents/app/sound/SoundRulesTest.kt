@@ -10,6 +10,7 @@ import dev.wildware.agents.MessageView
 import dev.wildware.agents.NotifyLevel
 import dev.wildware.agents.OutboxItem
 import dev.wildware.agents.OutboxKind
+import dev.wildware.agents.PollOption
 import dev.wildware.agents.PostCard
 import dev.wildware.agents.RequestCard
 import dev.wildware.agents.RequestView
@@ -56,6 +57,8 @@ class SoundRulesTest {
 
     private fun checklist(done: Int) = BlockView("b1", BlockView.Checklist, items = List(3) { ChecklistItem("i$it", "Step $it", done = it < done) })
 
+    private fun poll(votes: Int) = BlockView("b2", BlockView.Poll, options = listOf(PollOption("o1", "Yes", votes = votes)))
+
     private fun item(id: String, kind: OutboxKind = OutboxKind.Message, gaveUp: Boolean = false) = OutboxItem(id, 0, kind, "To Mega", gaveUp = gaveUp)
 
     /** A clock past the settling after the first read, so changes sound. */
@@ -66,9 +69,8 @@ class SoundRulesTest {
         waiting: List<RequestCard> = emptyList(),
         outbox: List<OutboxItem> = emptyList(),
         live: Boolean = true,
-        viewing: String? = null,
         follows: Follows = Follows(),
-    ) = SoundSnapshot(now, ready = true, live = live, waiting = waiting, feed = feed, outbox = outbox, viewing = viewing, follows = follows)
+    ) = SoundSnapshot(now, ready = true, live = live, waiting = waiting, feed = feed, outbox = outbox, follows = follows)
 
     /** Reads [first] as the dashboard at sign-in, then lets the settling pass. */
     private fun rules(first: SoundSnapshot = snapshot()): SoundRules {
@@ -117,55 +119,50 @@ class SoundRulesTest {
     }
 
     @Test
-    fun `a ticked checklist line sounds a tick unless the owner ticked it`() {
-        val rules = rules(snapshot(feed(update("u1", blocks = listOf(checklist(0))))))
-        assertEquals(listOf(Sound.Tick), rules.next(snapshot(feed(update("u1", blocks = listOf(checklist(1)))))))
-        rules.touched("u1", now)
-        assertEquals(emptyList(), rules.next(snapshot(feed(update("u1", blocks = listOf(checklist(2)))))))
+    fun `a ticked checklist line or a vote makes no sound`() {
+        val rules = rules(snapshot(feed(update("u1", blocks = listOf(checklist(0), poll(0))))))
+        assertEquals(emptyList(), rules.next(snapshot(feed(update("u1", blocks = listOf(checklist(1), poll(0)))))))
+        assertEquals(emptyList(), rules.next(snapshot(feed(update("u1", blocks = listOf(checklist(1), poll(1)))))))
     }
 
     @Test
-    fun `a reply in the open thread sounds but the owner's own line does not`() {
+    fun `a line not for the owner makes no sound`() {
         val rules = rules(snapshot(feed(update("u1"))))
         val agentReply = line(agent("m1", 2_000, updateId = "u1"))
-        assertEquals(listOf(Sound.Reply), rules.next(snapshot(feed(update("u1", replies = listOf(agentReply))), viewing = "u1")))
-        val mine = line(owner("m2", 3_000, updateId = "u1"))
-        assertEquals(emptyList(), rules.next(snapshot(feed(update("u1", replies = listOf(agentReply, mine))), viewing = "u1")))
+        assertEquals(emptyList(), rules.next(snapshot(feed(update("u1", replies = listOf(agentReply))))))
     }
 
     @Test
-    fun `a reply to the owner sounds even with its thread closed`() {
+    fun `a reply to the owner sounds the message sound`() {
         val head = owner("p1", 1_000)
         val rules = rules(snapshot(feed(PostCard(line(head), "Mega", 1_000, emptyList(), 0, emptyList(), emptyList(), emptyList()))))
         val answer = line(agent("m1", 2_000, replyTo = "p1"))
-        assertEquals(listOf(Sound.Reply), rules.next(snapshot(feed(PostCard(line(head), "Mega", 2_000, listOf(answer), 0, emptyList(), emptyList(), emptyList())))))
+        assertEquals(listOf(Sound.Message), rules.next(snapshot(feed(PostCard(line(head), "Mega", 2_000, listOf(answer), 0, emptyList(), emptyList(), emptyList())))))
     }
 
     @Test
-    fun `a sent message sounds sent and one refused for good sounds the error`() {
+    fun `a sent message makes no sound but one refused for good sounds the error`() {
         val rules = rules(snapshot(outbox = listOf(item("o1"), item("o2"))))
-        assertEquals(listOf(Sound.Sent), rules.next(snapshot(outbox = listOf(item("o2")))))
+        assertEquals(emptyList(), rules.next(snapshot(outbox = listOf(item("o2")))))
         assertEquals(listOf(Sound.Error), rules.next(snapshot(outbox = listOf(item("o2", gaveUp = true)))))
     }
 
     @Test
-    fun `a reaction going out or a message deleted unsent makes no sound`() {
-        val rules = rules(snapshot(outbox = listOf(item("o1", OutboxKind.React), item("o2"))))
-        rules.dropped("o2")
-        assertEquals(emptyList(), rules.next(snapshot(outbox = emptyList())))
-    }
-
-    @Test
-    fun `what a reconnect replays is quiet but a send and a critical alert are not`() {
+    fun `what a reconnect replays is quiet but a refused send and a critical alert are not`() {
         val rules = rules(snapshot(outbox = listOf(item("o1"))))
         rules.next(snapshot(outbox = listOf(item("o1")), live = false))
         now += 100
-        val replay = rules.next(snapshot(feed(update("u1", at = 2_000, level = "error")), waiting = listOf(question("r9", "critical")), outbox = emptyList()))
-        assertEquals(listOf(Sound.Sent, Sound.Critical), replay)
+        val replay = rules.next(snapshot(feed(update("u1", at = 2_000, level = "error")), waiting = listOf(question("r9", "critical")), outbox = listOf(item("o1", gaveUp = true))))
+        assertEquals(listOf(Sound.Error, Sound.Critical), replay)
         now += 100
         assertEquals(emptyList(), rules.next(snapshot(feed(update("u1", at = 2_000, level = "error"), update("u2", at = 3_000, level = "error")), waiting = listOf(question("r9", "critical")))))
         now += 10_000
         assertEquals(listOf(Sound.Error), rules.next(snapshot(feed(update("u1", at = 2_000, level = "error"), update("u2", at = 3_000, level = "error"), update("u3", at = 4_000, level = "error")), waiting = listOf(question("r9", "critical")))))
+    }
+
+    @Test
+    fun `only questions and messages and critical and errors and done have sounds`() {
+        assertEquals(setOf(Sound.Question, Sound.Message, Sound.Critical, Sound.Error, Sound.Done), Sound.entries.toSet())
     }
 
     @Test
@@ -203,21 +200,21 @@ class SoundBoardTest {
     @Test
     fun `a burst plays only its most important sound`() {
         val player = FakePlayer()
-        SoundBoard(player, MemoryTextStore(), clock = { now }).play(listOf(Sound.Reply, Sound.Question, Sound.Tick))
-        assertEquals(listOf(Sound.Question), player.played)
+        SoundBoard(player, MemoryTextStore(), clock = { now }).play(listOf(Sound.Done, Sound.Question, Sound.Error))
+        assertEquals(listOf(Sound.Error), player.played)
     }
 
     @Test
     fun `the same sound plays at most once in 400 ms`() {
         val player = FakePlayer()
         val board = SoundBoard(player, MemoryTextStore(), clock = { now })
-        board.play(Sound.Reply)
+        board.play(Sound.Done)
         now += 399
-        board.play(Sound.Reply)
-        board.play(Sound.Sent)
+        board.play(Sound.Done)
+        board.play(Sound.Question)
         now += 1
-        board.play(Sound.Reply)
-        assertEquals(listOf(Sound.Reply, Sound.Sent, Sound.Reply), player.played)
+        board.play(Sound.Done)
+        assertEquals(listOf(Sound.Done, Sound.Question, Sound.Done), player.played)
     }
 
     @Test
@@ -239,6 +236,43 @@ class SoundBoardTest {
         board.play(Sound.Question)
         board.play(Sound.Critical)
         assertEquals(listOf(Sound.Critical), player.played)
+    }
+
+    @Test
+    fun `while the owner is using the app only critical sounds play`() {
+        val player = FakePlayer()
+        val board = SoundBoard(player, MemoryTextStore(), clock = { now })
+        board.activity.focus(true)
+        board.play(Sound.Message)
+        board.play(Sound.Question)
+        board.play(Sound.Critical)
+        assertEquals(listOf(Sound.Critical), player.played)
+    }
+
+    @Test
+    fun `after a minute without input the app sounds again`() {
+        val player = FakePlayer()
+        val board = SoundBoard(player, MemoryTextStore(), clock = { now })
+        board.activity.focus(true)
+        now += 59_999
+        board.play(Sound.Message)
+        board.activity.input()
+        now += 59_999
+        board.play(Sound.Message)
+        now += 1
+        board.play(Sound.Message)
+        assertEquals(listOf(Sound.Message), player.played)
+    }
+
+    @Test
+    fun `with the window in the background the app sounds`() {
+        val player = FakePlayer()
+        val board = SoundBoard(player, MemoryTextStore(), clock = { now })
+        board.activity.focus(true)
+        board.activity.input()
+        board.activity.focus(false)
+        board.play(Sound.Message)
+        assertEquals(listOf(Sound.Message), player.played)
     }
 
     @Test

@@ -69,7 +69,7 @@ class PushTest {
             extra = listOf("agentName" to JsonPrimitive("Ada")),
         )
         assertEquals(
-            """{"aps":{"alert":{"title":"t","body":"b"},"sound":"reply.wav","thread-id":"web","category":"UPDATE","interruption-level":"active"},"url":"u","tag":"update-U1","markdown":"b","reply":{"update":"U1"},"agentName":"Ada"}""",
+            """{"aps":{"alert":{"title":"t","body":"b"},"sound":"default","thread-id":"web","category":"UPDATE","interruption-level":"active"},"url":"u","tag":"update-U1","markdown":"b","reply":{"update":"U1"},"agentName":"Ada"}""",
             Wire.encode(Apns.alertPayload(update)),
         )
     }
@@ -273,11 +273,11 @@ class PushTest {
         assertEquals("\"question.wav\"", sound("REQUEST", about("request", null, "medium", null, null)))
         assertEquals("\"critical.wav\"", sound("REQUEST", about("request", null, "critical", null, null)))
         assertEquals("\"question.wav\"", sound("PAIRING", about("pairing", null, null, null, null)))
-        assertEquals("\"reply.wav\"", sound("MESSAGE", about("message", null, null, null, null)))
-        assertEquals("\"reply.wav\"", sound("MESSAGE", about("comment", null, null, null, null)))
+        assertEquals("\"message.wav\"", sound("MESSAGE", about("message", null, null, null, null)))
+        assertEquals("\"message.wav\"", sound("MESSAGE", about("comment", null, null, null, null)))
         assertEquals("\"error.wav\"", sound("UPDATE", about("update", "error", "high", null, null)))
         assertEquals("\"done.wav\"", sound("UPDATE", about("update", "success", null, null, null)))
-        assertEquals("\"reply.wav\"", sound("UPDATE", about("update", "info", null, null, null)))
+        assertEquals("\"default\"", sound("UPDATE", about("update", "info", null, null, null)))
         assertEquals("\"critical.wav\"", sound("UPDATE", about("update", "success", "critical", null, null)))
     }
 

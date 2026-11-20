@@ -129,7 +129,7 @@ class NotificationRules(private val maxBody: Int = 140) {
                 if (chosen == null && !answersMe(message, thread, me) && !mentionsOwner(message.body) && !me.named(message.body)) continue
                 if (!AlertPrefs.allows(prefs, AlertPrefs.Message)) continue
                 val author = if (message.agentId != null) line.authorName else me.nameOf(message.personId)
-                notices += DesktopNotice(messageKey(message.id), title(author, thread.projectName), plain(message.body), thread.cardId, sound = Sound.Reply)
+                notices += DesktopNotice(messageKey(message.id), title(author, thread.projectName), plain(message.body), thread.cardId, sound = Sound.Message)
             }
         }
         watermark = maxOf(watermark, threads.flatMap { it.lines }.maxOfOrNull { it.message.createdAt } ?: Long.MIN_VALUE)

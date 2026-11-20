@@ -12,6 +12,7 @@ import dev.wildware.agents.app.feed.LocalAppCommands
 import dev.wildware.agents.app.feed.LocalDemo
 import dev.wildware.agents.app.feed.LocalCrashReports
 import dev.wildware.agents.app.feed.LocalSounds
+import dev.wildware.agents.app.sound.tracksUse
 import dev.wildware.agents.app.feed.LocalOpenSettings
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -124,7 +125,8 @@ fun AgentsApp(
     }
 
     AgentTheme(isDark, accessibility) {
-        Box(Modifier.fillMaxSize()) {
+        // While the owner is using the app, it makes no sound but a critical one.
+        Box(Modifier.fillMaxSize().tracksUse(platform.sounds.activity)) {
             val current = model.screen.collectAsState().value
             // Joined or signed in: the link has done its job.
             LaunchedEffect(current is AppScreen.Signed) { if (current is AppScreen.Signed) joinWith = null }

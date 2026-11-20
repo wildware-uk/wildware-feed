@@ -28,12 +28,12 @@ import kotlinx.coroutines.launch
 /**
  * The notification channels, which the owner can each turn off or quieten in Settings. Each alert
  * channel plays the app's own sound (`res/raw`, the in-app `Sound`s). Android fixes a channel's
- * sound when it is made, so channels that gained one have new ids ("…-v2"); [create] deletes the
- * old ones.
+ * sound when it is made, so a channel whose sound changed has a new id; [create] deletes the old
+ * ones.
  */
 object Channels {
     const val Questions = "questions-v2"
-    const val Replies = "replies-v2"
+    const val Replies = "replies-v3"
     const val Connection = "connection"
 
     /**
@@ -43,8 +43,8 @@ object Channels {
      */
     const val Critical = "critical-v2"
 
-    /** The channels before they had their own sounds. */
-    private val Retired = listOf("questions", "replies", "critical")
+    /** Channels whose sound has since changed. */
+    private val Retired = listOf("questions", "replies", "critical", "replies-v2")
 
     /** The system's settings for the "Critical" channel, where Do Not Disturb can be overridden. */
     fun openCriticalSettings(context: Context) {
@@ -72,7 +72,7 @@ object Channels {
                     .sound(context, "question"),
                 NotificationChannel(Replies, context.getString(R.string.channel_replies), NotificationManager.IMPORTANCE_DEFAULT)
                     .apply { description = context.getString(R.string.channel_replies_about) }
-                    .sound(context, "reply"),
+                    .sound(context, "message"),
                 NotificationChannel(Critical, context.getString(R.string.channel_critical), NotificationManager.IMPORTANCE_HIGH)
                     .sound(context, "critical", alarm = true)
                     .apply {
