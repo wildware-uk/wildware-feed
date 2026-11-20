@@ -25,6 +25,11 @@ bouncycastle = "1.81"
 commonmark = "0.24.0"
 slf4j = "2.0.17"
 composemediaplayer = "0.11.4"
+# Desktop sound attachments: pure-Java decoders, played through Java Sound.
+jlayer = "1.0.1.4"
+jorbis = "0.0.17"
+javasound-aac = "0.9.8"
+concentus = "1.0.2"
 # Crash reports. The multiplatform SDK pins the Java SDK it was built with; the server uses the same one.
 sentry-kmp = "0.30.0"
 sentry-java = "8.64.0"
@@ -33,6 +38,10 @@ sentry-java = "8.64.0"
 sentry-kmp = { module = "io.sentry:sentry-kotlin-multiplatform", version.ref = "sentry-kmp" }
 sentry-java = { module = "io.sentry:sentry", version.ref = "sentry-java" }
 composemediaplayer = { module = "io.github.kdroidfilter:composemediaplayer", version.ref = "composemediaplayer" }
+jlayer = { module = "com.googlecode.soundlibs:jlayer", version.ref = "jlayer" }
+jorbis = { module = "org.jcraft:jorbis", version.ref = "jorbis" }
+javasound-aac = { module = "com.tianscar.javasound:javasound-aac", version.ref = "javasound-aac" }
+concentus = { module = "io.github.jaredmdobson:concentus", version.ref = "concentus" }
 # Windows only: the window's title bar follows the app's light or dark (DwmSetWindowAttribute).
 jna = { module = "net.java.dev.jna:jna", version.ref = "jna" }
 ktor-client-core = { module = "io.ktor:ktor-client-core", version.ref = "ktor" }

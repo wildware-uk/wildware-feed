@@ -196,6 +196,14 @@ kotlin {
                     exclude(group = "org.jetbrains.kotlinx", module = "kotlinx-coroutines-test-jvm")
                     exclude(group = "org.jetbrains.kotlinx", module = "kotlinx-coroutines-test")
                 }
+                // Sounds on cards: the video player above can't open a file with no picture on macOS or
+                // Windows, so sounds are decoded here and played through Java Sound. MP3 (JLayer), Ogg
+                // Vorbis (JOrbis), AAC in MP4 or ADTS (JAAD) and Opus (Concentus); WAV is Java's own.
+                // JLayer lists JUnit 3 as a runtime dependency, which has no place in the app.
+                implementation(libs.jlayer.get().let { "${it.module}:${it.versionConstraint.requiredVersion}" }) { exclude(group = "junit") }
+                implementation(libs.jorbis)
+                implementation(libs.javasound.aac)
+                implementation(libs.concentus)
             }
         }
         androidMain {

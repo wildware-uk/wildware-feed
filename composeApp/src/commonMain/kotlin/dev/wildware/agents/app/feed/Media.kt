@@ -142,6 +142,8 @@ data class SoundState(
     val durationMs: Long = 0,
     val playing: Boolean = false,
     val failed: Boolean = false,
+    /** Why it failed, in a few words for its row ("Can't play FLAC"); null says only that it can't play. */
+    val problem: String? = null,
 )
 
 /** A sound playing in the app. */

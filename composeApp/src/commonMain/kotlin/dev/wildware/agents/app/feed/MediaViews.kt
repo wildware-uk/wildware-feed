@@ -260,7 +260,7 @@ fun SoundRow(sound: Sound, index: Int, total: Int, player: SoundPlayer?) {
         Spacer(Modifier.width(10.dp))
         MetaText(
             when {
-                state.failed -> "Can't play"
+                state.failed -> state.problem ?: "Can't play"
                 player == null -> lengthLabel ?: ""
                 else -> "${MediaLabels.duration(state.positionMs) ?: "0:00"} / ${lengthLabel ?: "–"}"
             },

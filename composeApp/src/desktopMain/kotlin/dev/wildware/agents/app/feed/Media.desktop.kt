@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.dp
 import dev.wildware.agents.app.design.AgentTheme
 import dev.wildware.agents.app.design.Icons
 import dev.wildware.agents.app.design.pressable
+import dev.wildware.agents.app.feed.audio.AttachedSoundPlayer
 import io.github.kdroidfilter.composemediaplayer.DefaultVideoPlayerState
 import io.github.kdroidfilter.composemediaplayer.InitialPlayerState
 import io.github.kdroidfilter.composemediaplayer.VideoPlayerError
@@ -39,15 +40,7 @@ import io.ktor.client.request.prepareGet
 import io.ktor.client.statement.bodyAsChannel
 import io.ktor.http.isSuccess
 import io.ktor.utils.io.jvm.javaio.toInputStream
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import androidx.compose.runtime.rememberCoroutineScope
@@ -221,79 +214,43 @@ private fun RoundAction(icon: androidx.compose.ui.graphics.vector.ImageVector, l
     }
 }
 
-/** Sounds play in the app through the same player as videos, streamed through the same proxy. */
+/**
+ * Sounds play in the app, but not through the video player: on macOS and Windows it won't open a file
+ * with no picture. Each is downloaded when first played and decoded by [AttachedSoundPlayer].
+ */
 @Composable
 actual fun rememberSoundPlayer(sound: Sound, auth: MediaAuth?): SoundPlayer? {
     val scope = rememberCoroutineScope()
-    val player = remember(sound.url, auth) { DesktopSoundPlayer(sound, auth, scope) }
+    val player = remember(sound.url, auth) {
+        AttachedSoundPlayer(sound.durationMs, scope, load = { SoundDownloads.fetch(sound.url, auth.headersFor(sound.url)) })
+    }
     DisposableEffect(player) { onDispose { player.release() } }
     return player
 }
 
-/** A sound made on its first play, so a feed of sounds opens nothing until one is wanted. */
-private class DesktopSoundPlayer(
-    private val sound: Sound,
-    private val auth: MediaAuth?,
-    private val scope: CoroutineScope,
-) : SoundPlayer {
-    private val mutableState = MutableStateFlow(SoundState(durationMs = sound.durationMs ?: 0))
-    override val state: StateFlow<SoundState> = mutableState.asStateFlow()
+/** Fetches a sound whole: they are short, and a decoder wants to see all of it. */
+internal object SoundDownloads {
+    private val http by lazy { okhttp3.OkHttpClient.Builder().readTimeout(60, java.util.concurrent.TimeUnit.SECONDS).build() }
 
-    private var player: VideoPlayerState? = null
-    private var ticking: Job? = null
+    /** Bigger than this is no sound to play on a card (a 2-hour MP3 at 128 kbit/s is about 115 MB). */
+    private const val MaxBytes = 128L * 1024 * 1024
 
-    private fun ensure(): VideoPlayerState? {
-        if (DesktopPlayback.problem != null) return null
-        player?.let { return it }
-        return runCatching {
-            DefaultVideoPlayerState().also { it.openUri(DesktopPlayback.localUrl(sound, auth), InitialPlayerState.PAUSE) }
-        }.getOrNull()?.also { player = it }
-    }
-
-    override fun play() {
-        val p = ensure()
-        if (p == null) {
-            mutableState.value = mutableState.value.copy(playing = false, failed = true)
-            return
-        }
-        p.play()
-        mutableState.value = mutableState.value.copy(playing = true, failed = false)
-        tick()
-    }
-
-    override fun pause() {
-        player?.pause()
-        mutableState.value = mutableState.value.copy(playing = false)
-    }
-
-    override fun seek(ms: Long) {
-        val p = player ?: return
-        val seconds = p.duration.takeIf { it > 0 } ?: return
-        p.seekTo((ms / 1000.0 / seconds * 1000).toFloat().coerceIn(0f, 1000f))
-        mutableState.value = mutableState.value.copy(positionMs = ms)
-    }
-
-    override fun release() {
-        ticking?.cancel()
-        player?.dispose()
-        player = null
-    }
-
-    /** Follows the player while it plays: where it is, how long it is, and when it ends. */
-    private fun tick() {
-        ticking?.cancel()
-        ticking = scope.launch {
-            while (isActive) {
-                val p = player ?: break
-                val duration = (p.duration * 1000).toLong().takeIf { it > 0 } ?: mutableState.value.durationMs
-                mutableState.value = SoundState(
-                    positionMs = (p.currentTime * 1000).toLong(),
-                    durationMs = duration,
-                    playing = p.isPlaying || p.isLoading,
-                    failed = p.error != null,
-                )
-                if (!p.isPlaying && !p.isLoading && mutableState.value.positionMs > 0) break
-                delay(250)
+    suspend fun fetch(url: String, headers: Map<String, String>): ByteArray = withContext(Dispatchers.IO) {
+        val request = okhttp3.Request.Builder().url(url).apply { headers.forEach { (name, value) -> header(name, value) } }.build()
+        http.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) error("the dashboard answered ${response.code}")
+            val body = response.body ?: error("nothing came back")
+            if (body.contentLength() > MaxBytes) error("too big to play")
+            body.byteStream().use { input ->
+                val out = java.io.ByteArrayOutputStream()
+                val buffer = ByteArray(64 * 1024)
+                while (true) {
+                    val n = input.read(buffer)
+                    if (n < 0) break
+                    out.write(buffer, 0, n)
+                    if (out.size() > MaxBytes) error("too big to play")
+                }
+                out.toByteArray()
             }
         }
     }
