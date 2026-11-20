@@ -7,6 +7,7 @@ fake Apple answers the notarisation questions.
 
 import base64
 import contextlib
+import hashlib
 import io
 import json
 import os
@@ -75,10 +76,11 @@ class TokenTest(unittest.TestCase):
 class FakeApple:
     """Answers each status question with the next of [answers] (repeating the last), and the log questions."""
 
-    def __init__(self, *answers, name=DMG, log=None):
+    def __init__(self, *answers, name=DMG, log=None, logs_fail=False):
         self.answers = list(answers)
         self.name = name
         self.log = log
+        self.logs_fail = logs_fail
         self.asked = []
         self.authed = []
 
@@ -91,6 +93,8 @@ class FakeApple:
                 return answer, None
             return 200, {"data": {"id": ID, "type": "submissions", "attributes": {"status": answer, "name": self.name, "createdDate": "2026-11-20T10:00:00.000Z"}}}
         if url == f"{asc.NOTARY}/{ID}/logs":
+            if self.logs_fail:
+                return 503, None
             return 200, {"data": {"id": ID, "type": "submissionsLog", "attributes": {"developerLogUrl": "https://logs.example/secret-link"}}}
         if url == "https://logs.example/secret-link":
             return 200, self.log
@@ -114,34 +118,72 @@ class NotaryWaitTest(unittest.TestCase):
     def setUp(self):
         self.out = tempfile.NamedTemporaryFile("r", delete=False)
         self.out.close()
+        self.dir = tempfile.TemporaryDirectory()
+        self.dmg = os.path.join(self.dir.name, DMG)
+        with open(self.dmg, "wb") as f:
+            f.write(b"a signed disk image")
+        self.sha = hashlib.sha256(b"a signed disk image").hexdigest()
         self.env = mock.patch.dict(os.environ, {"GITHUB_OUTPUT": self.out.name})
         self.env.start()
 
     def tearDown(self):
         self.env.stop()
         os.unlink(self.out.name)
+        self.dir.cleanup()
 
-    def wait(self, apple, budget=345):
+    def wait(self, apple, budget=345, file=True):
         clock = Clock()
         printed = io.StringIO()
         with contextlib.redirect_stdout(printed):
             try:
-                asc.notary_wait(ID, DMG, budget, get=apple, sleep=clock.sleep, clock=clock)
+                asc.notary_wait(ID, self.dmg if file else None, budget, get=apple, sleep=clock.sleep, clock=clock)
                 code = 0
             except SystemExit as e:
                 code = e.code
         with open(self.out.name) as f:
             return code, printed.getvalue(), clock, f.read()
 
+    def good_log(self):
+        return {"status": "Accepted", "archiveFilename": DMG, "sha256": self.sha, "issues": None}
+
     def test_accepted_after_a_few_checks(self):
-        code, printed, clock, output = self.wait(FakeApple("In Progress", "In Progress", "Accepted"))
+        code, printed, clock, output = self.wait(FakeApple("In Progress", "In Progress", "Accepted", log=self.good_log()))
         self.assertEqual(0, code)
         self.assertEqual("status=accepted\n", output)
         self.assertEqual([30, 30], clock.pauses, "every half minute at first")
         self.assertIn("Apple notarised", printed)
+        self.assertIn("exact SHA-256", printed)
+        self.assertNotIn("secret-link", printed)
+
+    def test_accepted_for_a_different_file_is_refused(self):
+        log = dict(self.good_log(), sha256="0" * 64)
+        code, printed, _, output = self.wait(FakeApple("Accepted", log=log))
+        self.assertEqual(1, code)
+        self.assertEqual("", output, "never reported as accepted")
+        self.assertIn("a different file", printed)
+
+    def test_accepted_with_no_report_still_counts_but_warns(self):
+        code, printed, _, output = self.wait(FakeApple("Accepted", logs_fail=True))
+        self.assertEqual(0, code)
+        self.assertEqual("status=accepted\n", output)
+        self.assertIn("only the name says", printed)
+
+    def test_asking_once_without_a_file_just_reports(self):
+        code, printed, clock, output = self.wait(FakeApple("In Progress"), budget=0, file=False)
+        self.assertEqual(0, code)
+        self.assertEqual("status=pending\n", output)
+        self.assertEqual([], clock.pauses, "budget 0 asks once and doesn't wait")
+        code, printed, _, _ = self.wait(FakeApple("Accepted", name="Whatever.dmg", log={"status": "Accepted"}), budget=0, file=False)
+        self.assertEqual(0, code)
+        self.assertIn("Apple notarised Whatever.dmg", printed)
+
+    def test_asking_once_when_apple_doesnt_answer_fails(self):
+        code, _, _, output = self.wait(FakeApple(503), budget=0, file=False)
+        self.assertEqual(1, code)
+        self.assertEqual("", output)
 
     def test_slows_down_after_twenty_minutes(self):
-        apple = FakeApple(*["In Progress"] * 45, "Accepted")
+        apple = FakeApple(*["In Progress"] * 45, "Accepted", log=self.good_log())
         code, _, clock, output = self.wait(apple)
         self.assertEqual(0, code)
         self.assertEqual("status=accepted\n", output)
@@ -171,7 +213,7 @@ class NotaryWaitTest(unittest.TestCase):
         self.assertIn("Wrong submission id?", printed)
 
     def test_passing_trouble_is_retried(self):
-        code, _, _, output = self.wait(FakeApple(0, 503, 429, 404, "Accepted"))
+        code, _, _, output = self.wait(FakeApple(0, 503, 429, 404, "Accepted", log=self.good_log()))
         self.assertEqual(0, code)
         self.assertEqual("status=accepted\n", output)
 

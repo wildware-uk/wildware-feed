@@ -127,15 +127,24 @@ Apple usually notarises a Mac app in a few minutes, but sometimes takes hours. S
 2. The release goes out straight away with every other file. Its notes say the Mac version
    follows within the hour. Until then the app on a Mac doesn't offer the update (copies from
    before this change may offer it, then say there's no file for this computer yet).
-3. The `mac-notarize` workflow asks Apple every few minutes (on a free Linux runner). Once Apple
-   says yes, a short Mac job staples Apple's approval onto the `.dmg` and checks a Mac would open
-   it. Then it is added to the release, with its checksum, and the "follows" line comes out.
+3. The `notary-status` workflow asks Apple every few minutes, on a free Linux runner (no Mac
+   runner ever waits). Once Apple says yes, and its report has this exact file's checksum, the
+   `.dmg` goes on the release with its checksum, and the "follows" line comes out.
 
-If Apple refuses the app, `mac-notarize` fails and prints Apple's reasons. If it is still waiting
-after a day, it stops. To finish or retry one by hand, run `mac-notarize` from the Actions tab
-with the `desktop-release` run's id, the submission id (its Mac job log says "Submitted … to
-Apple: submission …"), the version and the tag. A run by hand of `desktop-release` has no release:
-its notarised `.dmg` is the `mac-notarised-<version>` artifact on that same run.
+The `.dmg` goes up unstapled, since stapling needs a Mac. That's fine: the first time a Mac opens
+it, it asks Apple online and gets the same yes. Only a first open with no internet would be
+refused.
+
+If Apple refuses the app, `notary-status` fails and prints Apple's reasons. If Apple is still
+checking after a day, it stops.
+
+`notary-status` also works by hand, from the Actions tab or
+`gh workflow run notary-status.yml -f submission_id=<id>`. With just the submission id (the Mac
+job's log says "Submitted … to Apple: submission …") it prints Apple's verdict and report. Add
+`run_id` and `artifact` (the run and artifact holding the signed `.dmg`, e.g.
+`mac-submitted-1.2.3`) and it checks the report is for that file; add `tag` and, once accepted,
+it puts the file on that release. `wait_minutes` makes it keep asking (up to 345) instead of
+asking once.
 
 ### Making the Mac certificate
 
@@ -161,8 +170,8 @@ base64 -w0 devid.p12 | gh secret set MACOS_CERT_P12_BASE64   # on a Mac: base64 
 gh secret set MACOS_CERT_PASSWORD                            # paste the .p12 password
 ```
 
-A run by hand of `desktop-release` then shows whether it worked: its `mac-notarize` part fails if
-Gatekeeper would refuse the notarised `.dmg` or the app inside it.
+A run by hand of `desktop-release` then shows whether it worked: its Mac job fails if the app or
+the `.dmg` isn't properly signed, and its `notary-status` part fails if Apple refuses it.
 
 ### Android release key
 

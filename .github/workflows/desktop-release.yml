@@ -11,9 +11,9 @@ name: desktop-release
 #
 # Signing is optional and turns on by itself when its secrets exist (docs/INSTALL.md lists them):
 #   Mac:     MACOS_CERT_P12_BASE64, MACOS_CERT_PASSWORD, APPLE_TEAM_ID, then for notarising
-#            ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8_BASE64. Nothing here waits for Apple: the Mac
-#            job hands the signed .dmg to Apple and stops, the release goes out without it, and
-#            mac-notarize.yml adds it once Apple has notarised it (usually minutes later).
+#            ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8_BASE64. Nothing on a Mac waits for Apple: the
+#            Mac job hands the signed .dmg to Apple and stops, the release goes out without it,
+#            and notary-status.yml (Linux) adds it once Apple has notarised it.
 #   Windows: SignPath (free signing for open-source projects, docs/CODE_SIGNING.md): the secret
 #            SIGNPATH_API_TOKEN and the variables SIGNPATH_ORGANIZATION_ID, SIGNPATH_PROJECT_SLUG,
 #            SIGNPATH_SIGNING_POLICY_SLUG (SIGNPATH_ARTIFACT_CONFIGURATION_SLUG is optional).
@@ -188,8 +188,8 @@ jobs:
           app="$(find "$mount" -maxdepth 1 -name '*.app' | head -1)"
           codesign --verify --deep --strict --verbose=2 "$app"
 
-      # Hands the .dmg to Apple and stops: no waiting here. mac-notarize.yml waits on Linux,
-      # then staples it and checks Gatekeeper accepts it before it goes on the release.
+      # Hands the .dmg to Apple and stops: no waiting on a Mac. notary-status.yml waits on Linux,
+      # and checks Apple's report is for this exact file before it goes on the release.
       - name: Send to Apple for notarising
         id: notarize
         timeout-minutes: 15
@@ -215,7 +215,7 @@ jobs:
             exit 1
           fi
           echo "id=$id" >> "$GITHUB_OUTPUT"
-          echo "Submitted $(basename "$dmg") to Apple: submission $id. mac-notarize finishes it."
+          echo "Submitted $(basename "$dmg") to Apple: submission $id. notary-status finishes it."
 
       - name: Delete the signing keychain
         if: always()
@@ -224,7 +224,7 @@ jobs:
           rm -f "$RUNNER_TEMP/cert.p12" "$RUNNER_TEMP/asc-key.p8"
           if [ -f "$RUNNER_TEMP/agents-signing.keychain-db" ]; then security delete-keychain "$RUNNER_TEMP/agents-signing.keychain-db"; fi
 
-      # Sent to Apple: kept aside as mac-submitted-<version>, which mac-notarize staples. Not sent
+      # Sent to Apple: kept aside as mac-submitted-<version>, which notary-status publishes. Not sent
       # (unsigned, or no notary key): it goes on the release as it is, and the notes say so.
       - uses: actions/upload-artifact@v4
         timeout-minutes: 5
@@ -537,7 +537,7 @@ jobs:
     env:
       VERSION: ${{ needs.version.outputs.version }}
       MAC_SIGNED: ${{ needs.mac.outputs.signed }}
-      # Pending: Apple is checking it, and mac-notarize adds the .dmg when it's done.
+      # Pending: Apple is checking it, and notary-status adds the .dmg when it's done.
       MAC_NOTARIZED: ${{ needs.mac.outputs.notary_id != '' && 'pending' || 'false' }}
       WINDOWS_SIGNED: ${{ needs.windows-sign.outputs.signed == 'true' }}
       ANDROID_SIGNED: ${{ needs.android.outputs.signed }}
@@ -563,20 +563,20 @@ jobs:
         timeout-minutes: 10
         run: gh release create "$GITHUB_REF_NAME" dist/* --title "Wildware Feed $VERSION" --notes-file notes.md --verify-tag
 
-  # Waits for Apple on Linux, staples and Gatekeeper-checks the .dmg on a short Mac job, then adds
-  # it to the release. The release is already out by now. A run by hand gets its notarised .dmg
-  # as this run's mac-notarised-<version> artifact instead.
-  # (A job that calls a workflow can't take timeout-minutes; every job inside mac-notarize has one.)
-  mac-notarize:
+  # Waits for Apple on Linux (no Mac runner), then puts the .dmg on the release, which is already
+  # out by now. A run by hand has no release: notary-status just reports Apple's verdict on it.
+  # (A job that calls a workflow can't take timeout-minutes; the job inside notary-status has one.)
+  notary-status:
     needs: [version, mac, release]
     if: ${{ !cancelled() && needs.mac.result == 'success' && needs.mac.outputs.notary_id != '' && (needs.release.result == 'success' || (github.ref_type != 'tag' && needs.release.result == 'skipped')) }}
     permissions:
       contents: write
       actions: write
-    uses: ./.github/workflows/mac-notarize.yml
+    uses: ./.github/workflows/notary-status.yml
     with:
-      run_id: ${{ github.run_id }}
       submission_id: ${{ needs.mac.outputs.notary_id }}
-      version: ${{ needs.version.outputs.version }}
+      run_id: ${{ github.run_id }}
+      artifact: mac-submitted-${{ needs.version.outputs.version }}
       tag: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+      wait_minutes: '345'
     secrets: inherit

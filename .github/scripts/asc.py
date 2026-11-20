@@ -11,11 +11,13 @@ Reads the key from ASC_KEY_ID, ASC_ISSUER_ID and ASC_KEY_PATH (the .p8 file).
   asc.py cert-ids                               lists every certificate id (to prove none changed)
   asc.py create-cert CSR OUT                    makes one development certificate (run once, by hand)
   asc.py ensure-ids "ID=Name=CAP,CAP" ...       registers missing bundle ids and turns capabilities on
-  asc.py notary-wait ID --name FILE             waits for Apple to notarise one submission (mac-notarize.yml)
+  asc.py notary-wait ID [--file F] [--budget-minutes N]
+                                                Apple's verdict on one notarisation, waiting up to N minutes (notary-status.yml)
 """
 
 import argparse
 import base64
+import hashlib
 import json
 import os
 import re
@@ -226,20 +228,16 @@ def notary_get(url, auth=True):
         return 0, None
 
 
-def print_notary_log(submission, get):
-    """Prints Apple's own report on a submission: which file it didn't like, and why."""
+def fetch_notary_log(submission, get):
+    """Apple's own report on a decided submission (a dict), or None when it can't be fetched."""
     status, body = get(f"{NOTARY}/{submission}/logs")
     try:
         log_url = body["data"]["attributes"]["developerLogUrl"]
     except (TypeError, KeyError):
-        print(f"Couldn't fetch Apple's report on it (HTTP {status}). `xcrun notarytool log {submission}` shows it.")
-        return
+        return None
     # A short-lived link that needs no key: fetched, never printed.
     status, log = get(log_url, auth=False)
-    if status != 200 or log is None:
-        print(f"Couldn't fetch Apple's report on it (HTTP {status}). `xcrun notarytool log {submission}` shows it.")
-        return
-    print(json.dumps(log, indent=2))
+    return log if status == 200 and isinstance(log, dict) else None
 
 
 def write_output(name, value):
@@ -249,13 +247,24 @@ def write_output(name, value):
             f.write(f"{name}={value}\n")
 
 
-def notary_wait(submission, name, budget_minutes, get=notary_get, sleep=time.sleep, clock=time.monotonic):
-    """Asks Apple about one notarisation until it's decided or the budget runs out.
+def sha256_of(path):
+    digest = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
-    Accepted: prints so, sets the step output status=accepted, returns. Rejected or invalid:
-    prints Apple's report and fails. Still in progress when the budget runs out: sets
-    status=pending and returns, so the workflow can carry on in a fresh run. Every half minute
-    at first (most take a few minutes), then every three."""
+
+def notary_wait(submission, file, budget_minutes, get=notary_get, sleep=time.sleep, clock=time.monotonic):
+    """Asks Apple about one notarisation until it's decided or the budget runs out (0: ask once).
+
+    [file], when given, is the file that was submitted: Apple's answer must name it, and an
+    accepted one must carry its exact SHA-256, so nothing else can be published as notarised.
+
+    Sets the step output status: accepted (and prints Apple's report), or pending when Apple is
+    still checking at the end of the budget. Rejected or invalid: prints the report and fails.
+    Asks every half minute at first (most take a few minutes), then every three."""
+    name = os.path.basename(file) if file else None
     start = clock()
     troubles = 0
     while True:
@@ -268,16 +277,30 @@ def notary_wait(submission, name, budget_minutes, get=notary_get, sleep=time.sle
                 state = attributes["status"]
             except (TypeError, KeyError):
                 state, attributes = None, {}
-            if attributes.get("name") not in (None, name):
-                fail(f"Submission {submission} is for {attributes.get('name')}, not {name}. Wrong submission id?")
+            submitted = attributes.get("name")
+            if name and submitted not in (None, name):
+                fail(f"Submission {submission} is for {submitted}, not {name}. Wrong submission id?")
+            what = submitted or name or "the file"
             if state == "Accepted":
-                print(f"Apple notarised {name} (submission {submission}) after about {int(waited // 60)} minutes.")
+                log = fetch_notary_log(submission, get)
+                print(f"Apple notarised {what} (submission {submission}, sent {attributes.get('createdDate', '?')}). Its report:")
+                print(json.dumps(log, indent=2) if log else "(Apple's report couldn't be fetched.)")
+                if file:
+                    have = sha256_of(file)
+                    said = (log or {}).get("sha256")
+                    if said and said.lower() != have:
+                        fail(f"Apple notarised a different file (SHA-256 {said}), not this {name} ({have}).")
+                    if not said:
+                        print(f"::warning::Apple's report has no SHA-256, so only the name says it is this {name}.")
+                    else:
+                        print(f"Apple's report has this {name}'s exact SHA-256 ({have}).")
                 write_output("status", "accepted")
                 return
             if state in ("Invalid", "Rejected"):
-                print(f"Apple refused {name} (submission {submission}: {state}). Its report:")
-                print_notary_log(submission, get)
-                fail(f"Apple refused to notarise {name} ({state}). The report above says why.")
+                log = fetch_notary_log(submission, get)
+                print(f"Apple refused {what} (submission {submission}: {state}). Its report:")
+                print(json.dumps(log, indent=2) if log else f"(Couldn't fetch it: `xcrun notarytool log {submission}` shows it.)")
+                fail(f"Apple refused to notarise {what} ({state}). The report above says why.")
             print(f"{int(waited // 60)} min: Apple says {state or 'something unexpected'}.")
         elif status == 401:
             fail("Apple refused the key (401). Check that ASC_KEY_ID, ASC_ISSUER_ID and ASC_KEY_P8_BASE64 "
@@ -292,7 +315,9 @@ def notary_wait(submission, name, budget_minutes, get=notary_get, sleep=time.sle
                 fail(f"Apple answered HTTP {status} ten times running for submission {submission}.")
         pause = 30 if waited < 20 * 60 else 180
         if waited + pause > budget_minutes * 60:
-            print(f"::notice::Apple is still checking {name} after {int(waited // 60)} minutes.")
+            if troubles and budget_minutes == 0:
+                fail(f"Apple didn't answer properly (HTTP {status}) about submission {submission}.")
+            print(f"::notice::Apple is still checking {what} after {int(waited // 60)} minutes.")
             write_output("status", "pending")
             return
         sleep(pause)
@@ -301,7 +326,7 @@ def notary_wait(submission, name, budget_minutes, get=notary_get, sleep=time.sle
 def notary_wait_command(args):
     if not re.fullmatch(r"[0-9a-fA-F-]{36}", args.submission):
         fail(f"'{args.submission}' doesn't look like a notarisation submission id.")
-    notary_wait(args.submission, args.name, args.budget_minutes)
+    notary_wait(args.submission, args.file, args.budget_minutes)
 
 
 def main():
@@ -332,8 +357,8 @@ def main():
     p.set_defaults(run=ensure_ids)
     p = commands.add_parser("notary-wait")
     p.add_argument("submission")
-    p.add_argument("--name", required=True, help="the file submitted, to make sure the id is for it")
-    p.add_argument("--budget-minutes", type=int, default=345)
+    p.add_argument("--file", help="the file submitted: Apple's answer must name it and carry its SHA-256")
+    p.add_argument("--budget-minutes", type=int, default=0, help="how long to keep asking; 0 asks once")
     p.set_defaults(run=notary_wait_command)
     args = parser.parse_args()
     args.run(args)
