@@ -475,6 +475,11 @@ v1
 <hex SHA-256 of the raw body; for no body e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855>
 ```
 
+A test vector the server must accept (at that time): key `test-key-0123456789abcdef0123456789abcdef`,
+`POST /admin/teams` with body `{"slug":"acme"}` at `1763629200` hashes the body to
+`0e671cb77c0d46e2a648694df49ee50c8c3d0ef1345e9e835175c8647589eb99` and signs to
+`v1=02819ba998415d8cc7379718c4a0a382f6c92281c7d7eeed16f092ad07309ab0`.
+
 A timestamp more than 300 s off is `401 stale_request`. No key matching (compared in constant time),
 or a missing header, is `401 bad_signature`. No other credential works on `/admin/*`, and the signature
 works nowhere else. Its own rate limit: 600 a minute, then `429` with `Retry-After`. Admin calls should
