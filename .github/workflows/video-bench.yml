@@ -27,6 +27,7 @@ jobs:
           mkdir clips && cd clips
           enc="-c:v libx264 -preset veryfast -pix_fmt yuv420p -c:a aac -b:a 128k"
           ffmpeg -loglevel error -f lavfi -i testsrc2=size=1920x1080:rate=60 -f lavfi -i sine=f=440:sample_rate=48000 -t 12 $enc -crf 23 -movflags +faststart 1080p60.mp4
+          ffmpeg -loglevel error -f lavfi -i testsrc2=size=1920x1080:rate=60 -t 6 -c:v libx264 -preset veryfast -pix_fmt yuv420p -crf 23 -movflags +faststart 1080p60-silent.mp4
           ffmpeg -loglevel error -f lavfi -i testsrc2=size=3840x2160:rate=30 -f lavfi -i sine=f=440:sample_rate=48000 -t 12 $enc -crf 23 -movflags +faststart 4k30.mp4
           # A screen recording as it arrives: big, mostly still, and its index at the end of the file.
           ffmpeg -loglevel error -f lavfi -i testsrc=size=2560x1440:rate=30 -f lavfi -i sine=f=440:sample_rate=48000 -t 12 $enc -crf 23 screen1440p.mp4

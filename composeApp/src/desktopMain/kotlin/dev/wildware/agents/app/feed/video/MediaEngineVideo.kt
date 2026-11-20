@@ -66,7 +66,7 @@ internal class MediaEngineVideo(url: String) : NativeVideo {
             val factory = Com(factoryRef.value)
             try {
                 val engineRef = PointerByReference()
-                Win.check(factory.call(3, 0, attributes.p, engineRef), "CreateInstance")
+                Win.check(factory.call(3, createFlags, attributes.p, engineRef), "CreateInstance")
                 engine = Com(engineRef.value)
             } finally {
                 factory.release()
@@ -238,7 +238,11 @@ internal class MediaEngineVideo(url: String) : NativeVideo {
         override fun close() = Unit
     }
 
-    private companion object {
+    internal companion object {
+        /** MF_MEDIA_ENGINE_CREATEFLAGS for new engines; the bench tries real-time mode (4) against none. */
+        @Volatile
+        internal var createFlags = 0
+
         const val DXGI_FORMAT_B8G8R8A8_UNORM = 87
         const val CLSCTX_INPROC_SERVER = 1
         const val D3D11_USAGE_STAGING = 3
@@ -296,15 +300,23 @@ internal object Win {
         ole32.getFunction("CoInitializeEx").invokeInt(arrayOf(null, 0))
     }
 
+    /** Which Direct3D device the last engine got: "hardware" or "warp" (software). */
+    @Volatile
+    var driver: String? = null
+        private set
+
     /** A Direct3D 11 device that can decode video: the GPU's, or WARP (software) where there is none. */
     fun createDevice(): Pair<Com, Com> {
-        for (driver in listOf(D3D_DRIVER_TYPE_HARDWARE, D3D_DRIVER_TYPE_WARP)) {
+        for (driverType in listOf(D3D_DRIVER_TYPE_HARDWARE, D3D_DRIVER_TYPE_WARP)) {
             val deviceRef = PointerByReference()
             val contextRef = PointerByReference()
             val hr = d3d11.getFunction("D3D11CreateDevice").invokeInt(
-                arrayOf(null, driver, null, D3D11_CREATE_DEVICE_VIDEO_SUPPORT or D3D11_CREATE_DEVICE_BGRA_SUPPORT, null, 0, D3D11_SDK_VERSION, deviceRef, null, contextRef),
+                arrayOf(null, driverType, null, D3D11_CREATE_DEVICE_VIDEO_SUPPORT or D3D11_CREATE_DEVICE_BGRA_SUPPORT, null, 0, D3D11_SDK_VERSION, deviceRef, null, contextRef),
             )
-            if (hr == 0) return Com(deviceRef.value) to Com(contextRef.value)
+            if (hr == 0) {
+                driver = if (driverType == D3D_DRIVER_TYPE_HARDWARE) "hardware" else "warp"
+                return Com(deviceRef.value) to Com(contextRef.value)
+            }
         }
         error("no Direct3D 11 device")
     }

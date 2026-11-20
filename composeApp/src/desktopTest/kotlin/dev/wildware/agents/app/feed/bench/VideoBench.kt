@@ -7,7 +7,9 @@ import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import dev.wildware.agents.app.feed.video.MediaEngineVideo
 import dev.wildware.agents.app.feed.video.NativeVideo
+import dev.wildware.agents.app.feed.video.Win
 import dev.wildware.agents.app.feed.video.NativeVideoSurface
 import dev.wildware.agents.app.feed.video.VideoFrames
 import dev.wildware.agents.app.feed.video.VideoTracker
@@ -38,6 +40,7 @@ import kotlin.test.Test
 class VideoBench {
     private val clips = System.getenv("VIDEO_BENCH_CLIPS")?.let(::File)
     private val out = File("build/video-bench.txt")
+    private val windows = System.getProperty("os.name").orEmpty().lowercase().contains("windows")
 
     /** One way of playing a video, so the same measurements can compare players. */
     interface Candidate {
@@ -110,8 +113,9 @@ class VideoBench {
         }
     }
 
-    private val candidates: List<() -> Candidate> =
-        listOf<() -> Candidate>({ MediaPlayerCandidate() }) + if (NativeVideo.available) listOf({ EngineCandidate() }) else emptyList()
+    private val candidates: List<Pair<String, () -> Candidate>> =
+        listOf<Pair<String, () -> Candidate>>("composemediaplayer" to { MediaPlayerCandidate() }) +
+            if (NativeVideo.available) listOf("engine" to { EngineCandidate() }) else emptyList()
 
     @Test
     fun bench() {
@@ -123,15 +127,25 @@ class VideoBench {
         val proxy = LoopbackMediaProxy()
         val runs = listOf(
             "1080p60.mp4" to 10_000L,
+            // No sound: shows whether a slow start is the engine waiting on a sound device.
+            "1080p60-silent.mp4" to 5_000L,
             "4k30.mp4" to 10_000L,
             "screen1440p.mp4" to 10_000L,
         )
         try {
-            for (make in candidates) {
+            for ((name, make) in candidates) {
                 for ((clip, ms) in runs) {
                     if (!File(dir, clip).exists()) continue
                     measurePlayback(make, clip, File(dir, clip).absolutePath, "file", ms)
                     measurePlayback(make, clip, proxy.urlFor(server.url(clip), mapOf("Authorization" to "Bearer bench"), clip), "proxy+80ms", ms)
+                }
+                if (name == "engine" && windows) {
+                    // The same engine created in real-time mode, to compare how fast it starts.
+                    MediaEngineVideo.createFlags = 4
+                    for (clip in listOf("1080p60.mp4", "1080p60-silent.mp4")) {
+                        measurePlayback(make, clip, File(dir, clip).absolutePath, "file,realtime", 5_000)
+                    }
+                    MediaEngineVideo.createFlags = 0
                 }
                 if (File(dir, "long1080p30.mp4").exists()) {
                     measureSeeks(make, proxy.urlFor(server.url("long1080p30.mp4"), emptyMap(), "long1080p30.mp4"), "proxy+80ms")
@@ -243,7 +257,7 @@ class VideoBench {
     }
 
     private fun report(kind: String, player: String, clip: String, route: String, vararg values: Pair<String, Any>) {
-        val os = System.getProperty("os.name") + " " + System.getProperty("os.arch")
+        val os = System.getProperty("os.name") + " " + System.getProperty("os.arch") + (Win.driver?.let { " d3d=$it" } ?: "")
         val line = "BENCH " + (listOf("kind" to kind, "player" to player, "clip" to clip, "route" to route, "os" to os) + values)
             .joinToString(" ") { (k, v) -> "$k=$v" }
         println(line)

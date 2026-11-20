@@ -51,7 +51,12 @@ internal class AvFoundationVideo(url: String) : NativeVideo {
         // Loading AVFoundation registers its classes with the runtime.
         Frameworks.load
         val made = ObjC.pool {
-            val nsUrl = ObjC.send(ObjC.cls("NSURL"), "URLWithString:", ObjC.string(url)) ?: error("not a URL: $url")
+            // A file on disk needs a file URL; everything else (the media proxy) is a web address.
+            val nsUrl = if ("://" in url) {
+                ObjC.send(ObjC.cls("NSURL"), "URLWithString:", ObjC.string(url))
+            } else {
+                ObjC.send(ObjC.cls("NSURL"), "fileURLWithPath:", ObjC.string(url))
+            } ?: error("not a URL: $url")
             val item = ObjC.retain(ObjC.send(ObjC.cls("AVPlayerItem"), "playerItemWithURL:", nsUrl))!!
             val player = ObjC.retain(ObjC.send(ObjC.cls("AVPlayer"), "playerWithPlayerItem:", item))!!
             item to player
