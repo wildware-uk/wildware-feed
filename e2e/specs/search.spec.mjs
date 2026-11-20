@@ -81,10 +81,9 @@ test('a word nothing has finds nothing', async ({ browser }) => {
     await expectGone(page, 'Quarterly kumquat report. Card');
 });
 
-// App bug: Ctrl+K does nothing until the page has been clicked once. After a load the focus is on
-// the page body, not the app, though FeedScreen.kt says the window "listens for shortcuts from the
-// start, before anything is clicked". Expected to fail until fixed.
-test.fail('Ctrl+K opens search straight after the page loads', async ({ browser }) => {
+// Ctrl+K works straight after a load, before any click: the web app gives its canvas the focus once
+// it is drawn. (A loaded page used to have the focus on its body, which the app never hears.)
+test('Ctrl+K opens search straight after the page loads', async ({ browser }) => {
     const page = await signedIn(browser, team.owner);
     opened.push(page);
     await page.keyboard.press('Control+k');

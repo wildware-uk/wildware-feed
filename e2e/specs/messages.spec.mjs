@@ -68,10 +68,10 @@ test("the owner opens a card's thread and replies; the agent gets the reply and 
     expect(thread.map((m) => m.body)).toEqual(expect.arrayContaining(['Go ahead on Saturday', 'Booked for Saturday 06:00']));
 });
 
-// App bug: a click inside the thread's reply box, while it has the focus, takes the focus away, so
-// every other click loses what is typed next. The channel's message box keeps it. Expected to fail
-// until fixed; it passes then and Playwright says so.
-test.fail('a click inside the focused thread reply box keeps the focus', async ({ browser }) => {
+// A click inside the thread's reply box, while it has the focus, keeps it. (It used to take it away:
+// the feed around the box took the click as a tap on the feed, so every other click lost what was
+// typed next.)
+test('a click inside the focused thread reply box keeps the focus', async ({ browser }) => {
     await builder.call('post_update', { project: 'alpha', title: 'Focus check', body: 'Click in the reply box.' });
     const page = await inAlpha(browser);
     await tapOnCard(page, /^Collapse update: Focus check/, 'Reply');
@@ -92,8 +92,6 @@ test('"Mention an agent" names one agent: only that agent gets the message', asy
     const page = await inAlpha(browser);
     await inbox(builder); await inbox(reviewer); // start both with nothing unread
     await tap(page, 'button', 'Mention an agent');
-    // The button leaves the focus on itself (see the test below), so back into the box, after the "@".
-    await tap(page, 'textbox', 'Message');
     await page.keyboard.type('rev', { delay: 15 });
     await find(page, 'button', /^Mention reviewer/);
     await page.keyboard.press('Enter'); // picks the highlighted name
@@ -109,9 +107,9 @@ test('"Mention an agent" names one agent: only that agent gets the message', asy
     expect((await inbox(builder)).map((m) => m.body)).not.toContain('@reviewer please look at the logo sizes');
 });
 
-// App bug: "Mention an agent" puts "@" in the box but keeps the focus on the button, so no list of
-// agents opens and what is typed next goes nowhere. Expected to fail until fixed.
-test.fail('"Mention an agent" opens the list of agents and keeps typing in the box', async ({ browser }) => {
+// "Mention an agent" puts "@" in the box and the cursor after it, so the list of agents opens and
+// typing narrows it. (It used to keep the focus on the button.)
+test('"Mention an agent" opens the list of agents and keeps typing in the box', async ({ browser }) => {
     const page = await inAlpha(browser);
     await tap(page, 'textbox', 'Message');
     await tap(page, 'button', 'Mention an agent');
@@ -136,11 +134,10 @@ test('typing @name and picking from the list mentions that agent', async ({ brow
     expect((await inbox(reviewer)).map((m) => m.body)).not.toContain('@builder the nightly build is red');
 });
 
-// App bug: the server records a delivery only when an agent's live stream hands a message over
-// (AgentStream.kt markDelivered), not when the agent reads it with get_messages. So a line an
-// agent has read shows, 15 s on, in red: "Not delivered to any agent". The app's own rule
-// (Mapping.kt undelivered) says a read counts. Expected to fail until fixed.
-test.fail('a message an agent read with get_messages is not marked "Not delivered to any agent"', async ({ browser }) => {
+// A line an agent read with get_messages counts as delivered: the server records a delivery for
+// each message get_messages hands over, as the live stream does. (It used to record only the
+// stream's, so a read line showed, 15 s on, in red: "Not delivered to any agent".)
+test('a message an agent read with get_messages is not marked "Not delivered to any agent"', async ({ browser }) => {
     const page = await inAlpha(browser);
     await post(page, 'Is the staging database back up');
     await expectAgentGets(builder, 'Is the staging database back up');
