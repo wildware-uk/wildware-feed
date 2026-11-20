@@ -95,4 +95,15 @@ class AddressedQuotesTest {
         assertNull(listed["title"]?.takeIf { it !is JsonNull }, listed.toString())
         assertNotNull(tool(app, alpha, "subscribe", "message_id" to addressed.id)["subscribed"]!!.jsonObject["title"]?.takeIf { it !is JsonNull })
     }
+
+    @Test
+    fun `a live comment on a deleted update gives no title from the update`() = App(config, Database.memory()).use { app ->
+        val (alpha, _) = app.agents.mint("alpha")
+        app.feed.projects.create("Web", null, null)
+        val update = app.feed.updates.post(Updates.Post(project = "web", agentId = alpha.id, title = "the private plan", body = "details"))
+        val comment = app.feed.messages.post(Messages.Post(author = Messages.HUMAN, body = "a comment", updateId = update.id))
+        app.feed.updates.delete(update.id)
+        val followed = tool(app, alpha, "subscribe", "message_id" to comment.id)["subscribed"]!!.jsonObject
+        assertNull(followed["title"]?.takeIf { it !is JsonNull }, followed.toString())
+    }
 }
