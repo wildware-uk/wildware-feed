@@ -301,7 +301,8 @@ def notary_wait(submission, file, budget_minutes, get=notary_get, sleep=time.sle
                 print(f"Apple refused {what} (submission {submission}: {state}). Its report:")
                 print(json.dumps(log, indent=2) if log else f"(Couldn't fetch it: `xcrun notarytool log {submission}` shows it.)")
                 fail(f"Apple refused to notarise {what} ({state}). The report above says why.")
-            print(f"{int(waited // 60)} min: Apple says {state or 'something unexpected'}.")
+            print(f"{int(waited // 60)} min: Apple says {state or 'something unexpected'} "
+                  f"(sent {attributes.get('createdDate', 'at an unknown time')}).")
         elif status == 401:
             fail("Apple refused the key (401). Check that ASC_KEY_ID, ASC_ISSUER_ID and ASC_KEY_P8_BASE64 "
                  "all come from the same key, and that the key hasn't been revoked.")
