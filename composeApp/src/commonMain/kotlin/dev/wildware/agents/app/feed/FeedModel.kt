@@ -210,6 +210,21 @@ const val SendingAlpha = 0.6f
 data class CardTag(val id: String, val name: String, val colour: String? = null, val projectId: String? = null)
 
 /**
+ * A block on a card (docs/BLOCKS.md), as the server last had it, with what the screen needs to send
+ * a tick or a vote back: the card it is on, and which person you are.
+ */
+@Immutable
+data class CardBlock(
+    val cardKind: String,
+    val cardId: String,
+    val block: dev.wildware.agents.BlockView,
+    /** Your person id on the team: which tick and which vote is yours. */
+    val me: String = dev.wildware.agents.FounderId,
+    /** Whether the team has more than one person, so names are worth showing. */
+    val team: Boolean = false,
+)
+
+/**
  * Another card this one points at, drawn small inside it: an agent asks about the reply it just
  * posted with a video, and the video sits in the question. A tap opens that card's thread, at it.
  * [removed] when that card has gone since; it then says so and opens nothing.
@@ -280,6 +295,8 @@ data class Reply(
     val answering: String? = null,
     /** Other cards it points at, drawn small under what it says. */
     val refs: List<LinkedCard> = emptyList(),
+    /** Blocks drawn on it: a checklist, steps, a diff, a chart, a table, a log or a poll. */
+    val blocks: List<CardBlock> = emptyList(),
 )
 
 /**
@@ -433,6 +450,8 @@ sealed interface FeedItem {
         val activityAt: Long = 0,
         /** Other cards it points at, drawn small inside it. */
         val refs: List<LinkedCard> = emptyList(),
+        /** Blocks drawn on it: a checklist, steps, a diff, a chart, a table, a log or a poll. */
+        val blocks: List<CardBlock> = emptyList(),
     ) : Threaded {
         override val starter: Author get() = Author.AgentAuthor(agent)
     }
@@ -494,6 +513,8 @@ sealed interface FeedItem {
          * settled, among the cards by when it was answered. Null while it waits.
          */
         val answered: Answered? = null,
+        /** Blocks drawn on the question: a checklist to tick, a diff to decide on, a poll. */
+        val blocks: List<CardBlock> = emptyList(),
     ) : Threaded {
         /** Still waiting on someone: it has controls, and sits under "Waiting on you". */
         val waiting: Boolean get() = answered == null
@@ -548,6 +569,8 @@ sealed interface FeedItem {
         val undelivered: Boolean = false,
         /** Other cards it points at, drawn small inside it. */
         val refs: List<LinkedCard> = emptyList(),
+        /** Blocks drawn on it: a checklist, steps, a diff, a chart, a table, a log or a poll. */
+        val blocks: List<CardBlock> = emptyList(),
     ) : Threaded {
         override val title: String get() = body.lineSequence().first().take(120)
         override val starter: Author get() = author

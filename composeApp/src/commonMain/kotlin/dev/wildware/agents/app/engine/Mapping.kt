@@ -278,6 +278,7 @@ internal class FeedMapper(
                 edited = editedLabel(update.editedAt),
                 activityAt = activityAt,
                 refs = update.refs.linked(agents, project, update.projectId),
+                blocks = update.blocks.cardBlocks(CardKinds.Update, update.id),
             )
         }
         is PostCard -> cardTime(createdAt, activityAt, post.message.editedAt).let { time -> FeedItem.Post(
@@ -308,6 +309,7 @@ internal class FeedMapper(
             // Work says where it has got to, which answers "has anybody got this" better.
             undelivered = post.message.status == null && undelivered(post),
             refs = post.refs.linked(agents, project, projectId),
+            blocks = post.blocks.cardBlocks(CardKinds.Message, id),
         ) }
     }
 
@@ -395,6 +397,7 @@ internal class FeedMapper(
             reactions = reactions(request.reactions),
             pinned = request.pinned,
             refs = request.refs.linked(agents, project, request.projectId),
+            blocks = request.blocks.cardBlocks(CardKinds.Request, request.id),
         )
     }
 
@@ -444,6 +447,7 @@ internal class FeedMapper(
                 // Only a line in this same thread: the card's own head needs no saying.
                 answering = line.message.answers?.let(byId::get)?.let { author(it, agents).let { a -> if (a is Author.Owner) "you" else a.name } },
                 refs = line.refs.linked(agents, project, line.message.projectId),
+                blocks = line.blocks.cardBlocks(CardKinds.Message, line.message.id),
             )
         }
     }
@@ -496,6 +500,13 @@ internal class FeedMapper(
 
     private fun reactions(views: List<ReactionView>): List<Reaction> =
         views.groupBy { it.emoji }.map { (emoji, all) -> Reaction(emoji, all.size, mine = all.any(::mine), spoken = emoji) }
+
+    /** The blocks on a card, with who you are, so the screen knows your tick and your vote. */
+    private fun List<dev.wildware.agents.BlockView>.cardBlocks(kind: String, id: String): List<dev.wildware.agents.app.feed.CardBlock> {
+        if (isEmpty()) return emptyList()
+        val me = team.me?.id ?: dev.wildware.agents.FounderId
+        return map { dev.wildware.agents.app.feed.CardBlock(kind, id, it, me, team.team) }
+    }
 
     /** The cards a card points at, drawn small: [here] is the pointing card's project, which they don't repeat. */
     private fun List<CardRefView>.linked(agents: AgentDirectory, project: (String?) -> Project, here: String?): List<LinkedCard> = map { ref ->

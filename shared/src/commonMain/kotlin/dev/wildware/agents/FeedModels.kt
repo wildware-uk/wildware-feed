@@ -271,6 +271,8 @@ data class UpdateView(
     val embeds: List<EmbedView> = emptyList(),
     /** Other cards it points at, shown inside it. */
     val refs: List<CardRefView> = emptyList(),
+    /** Blocks drawn on it (docs/BLOCKS.md). */
+    val blocks: List<BlockView> = emptyList(),
 ) {
     @Serializable
     data class Share(val views: Int = 0, val sharedAt: Long = 0)
@@ -360,6 +362,8 @@ data class RequestView(
     val answeredBy: String? = null,
     /** Other cards the question points at, shown inside it: the reply with the video it asks about. */
     val refs: List<CardRefView> = emptyList(),
+    /** Blocks drawn on the question (docs/BLOCKS.md). */
+    val blocks: List<BlockView> = emptyList(),
 ) {
     /** The person who answered it, or null while it isn't answered. */
     val answeredByPerson: String? get() = if (state == "answered") answeredBy ?: FounderId else null
@@ -432,6 +436,8 @@ data class MessagesSnapshot(
     val reactions: List<ReactionView> = emptyList(),
     /** The cards each message points at, by message id; only messages that point at some. */
     val refs: Map<String, List<CardRefView>> = emptyMap(),
+    /** The blocks on each message, by message id; only messages that have some. */
+    val blocks: Map<String, List<BlockView>> = emptyMap(),
 )
 
 /** `GET /api/snapshot/requests`: every question waiting on the owner, never paged or scoped. */

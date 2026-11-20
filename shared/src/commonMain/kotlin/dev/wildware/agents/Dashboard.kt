@@ -55,6 +55,8 @@ data class ThreadLine(
     val uploaded: Float? = null,
     /** Other cards the line points at. */
     val refs: List<CardRefView> = emptyList(),
+    /** Blocks drawn on the line, newest first-hand (docs/BLOCKS.md). */
+    val blocks: List<BlockView> = emptyList(),
 )
 
 /** One card in the feed. */
@@ -227,6 +229,7 @@ class Dashboard internal constructor(
     private val bell = NotificationsReader(client, confined, ::changed)
     private val joining = PairingsReader(client, confined, ::changed)
     private val follows = FollowsReader(client, confined, ::changed)
+    private val blocks = BlocksOverlay(client, confined, ::changed, ::heldBlocks)
     /**
      * Every open feed, by project slug. The app opens and closes feeds from its own thread while the
      * engine's thread reads them, so the map is never changed in place: each change swaps in a new one.
@@ -272,6 +275,12 @@ class Dashboard internal constructor(
 
     /** What the owner follows: which projects and threads raise their alerts. */
     val followed: StateFlow<Follows> = mutableFollows.asStateFlow()
+
+    /** The blocks on [card] as the open feeds and questions last read them, or null when none holds it. */
+    private fun heldBlocks(card: CardRef): List<BlockView>? = when (card.kind) {
+        CardKinds.Request -> (requests.items + requests.answered).firstOrNull { it.id == card.id }?.blocks
+        else -> feeds.values.firstNotNullOfOrNull { it.blocksRead(card) }
+    }
 
     /** Follows or unfollows the thread [card] is in (`update`, `message` or `request`). Shown at once. */
     fun followThread(card: CardRef, following: Boolean) {
@@ -495,6 +504,7 @@ class Dashboard internal constructor(
         bell.receive(event)
         joining.receive(event)
         follows.receive(event)
+        blocks.receive(event)
         feeds.values.toList().forEach { it.receive(event) }
     }
 
@@ -529,8 +539,11 @@ class Dashboard internal constructor(
         val projectsById = everything.projects().associateBy { it.id }
         val sending = sendingRequestIds()
         val onlineIds = onlineAgents.mapTo(HashSet()) { it.agentId }
-        val context = FeedContext(names, projectsById, sending, onlineIds, readMarks, requests.items, requests.answered)
-        mutableWaiting.value = requests.items.map { context.requestCard(it, everything) }
+        fun withBlocks(request: RequestView) = request.copy(blocks = blocks.on(CardRef(CardKinds.Request, request.id), request.blocks))
+        val context = FeedContext(
+            names, projectsById, sending, onlineIds, readMarks, requests.items.map(::withBlocks), requests.answered.map(::withBlocks), blocks::on,
+        )
+        mutableWaiting.value = context.requests.map { context.requestCard(it, everything) }
         open.forEach { it.publish(context, stream.status.value, requests.loading) }
         mutableProjects.value = summaries(everything.state.value)
         mutableNotifications.value = bell.list
@@ -593,6 +606,8 @@ internal class FeedContext(
     val requests: List<RequestView>,
     /** Answered lately, on a team. */
     val answered: List<RequestView> = emptyList(),
+    /** A card's blocks as read, with anything newer over them ([BlocksOverlay]). */
+    val blocks: (CardRef, List<BlockView>) -> List<BlockView> = { _, read -> read },
 ) {
     fun agentName(agentId: String): String = names[agentId] ?: "An agent"
 
@@ -766,6 +781,14 @@ class Feed internal constructor(
     }
 
     internal fun fieldsOn(card: CardRef): List<CardFieldView> = timeline.cardFields.filter { it.card == card }
+
+    /** The blocks on [card] as this feed last read them, or null when it doesn't hold the card. */
+    internal fun blocksRead(card: CardRef): List<BlockView>? = when (card.kind) {
+        CardKinds.Update -> timeline.items.firstOrNull { it.id == card.id }?.blocks
+        CardKinds.Message -> indexed().snapshot.blocks[card.id] ?: indexed().byId[card.id]?.let { emptyList() }
+        else -> null
+    }
+
     private fun appsOn(card: CardRef): List<AppView> = timeline.cardApps.filter { it.card == card }
 
     private fun line(message: MessageView, context: FeedContext): ThreadLine {
@@ -777,6 +800,7 @@ class Feed internal constructor(
             media = index.snapshot.media[message.id].orEmpty(),
             embeds = index.snapshot.embeds[message.id].orEmpty(),
             refs = index.snapshot.refs[message.id].orEmpty(),
+            blocks = context.blocks(CardRef(CardKinds.Message, message.id), index.snapshot.blocks[message.id].orEmpty()),
             reactions = index.reactions[message.id].orEmpty(),
             acks = context.acks(index.acks[message.id].orEmpty()),
             deliveries = index.deliveries[message.id].orEmpty(),
@@ -798,8 +822,9 @@ class Feed internal constructor(
             val comments = index.byUpdate[update.id].orEmpty()
             marks.seed(update.id, comments)
             val ref = CardRef(CardKinds.Update, update.id)
+            val blocks = context.blocks(ref, update.blocks)
             UpdateCard(
-                update = update,
+                update = if (blocks === update.blocks) update else update.copy(blocks = blocks),
                 agentName = context.agentName(update.agentId),
                 projectName = projectName(update.projectId),
                 isNew = update.id in arrived,

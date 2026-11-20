@@ -444,6 +444,11 @@ class DashboardClient(
             })
         }.decoded<ReactionsBody>().reactions
 
+    /** A card's blocks as they are now (docs/BLOCKS.md). */
+    @Throws(Exception::class)
+    suspend fun blocks(card: CardRef): List<BlockView> =
+        http.get("api/cards/${card.kind.encodeURLPathPart()}/${card.id.encodeURLPathPart()}/blocks") { authorise() }.decoded<BlocksBody>().blocks
+
     /** Uploads one file and returns it unattached: send its id with [postMessage] to attach it. */
     @Throws(Exception::class)
     suspend fun uploadMedia(attachment: Attachment): MediaView = uploadMedia(attachment, null)

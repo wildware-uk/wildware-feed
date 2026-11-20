@@ -44,6 +44,9 @@ class FakeDashboard(scheduler: TestCoroutineScheduler) {
     var notificationsMissing = false
     var agentNames = mapOf("a1" to "Builder", "a2" to "Scout")
 
+    /** Each card's blocks, by "kind/id", as `GET /api/cards/{kind}/{id}/blocks` answers. */
+    var blocks = mapOf<String, List<BlockView>>()
+
     /** The newest event seq: every read is stamped with it. */
     var seq = 10L
 
@@ -125,6 +128,10 @@ class FakeDashboard(scheduler: TestCoroutineScheduler) {
         if (readDelayMillis > 0 && path != "/api/stream") kotlinx.coroutines.delay(readDelayMillis)
         val project = request.url.parameters["project"]
         val projectId = projects.firstOrNull { it.slug == project }?.id
+        if (path.startsWith("/api/cards/") && path.endsWith("/blocks")) {
+            val key = path.removePrefix("/api/cards/").removeSuffix("/blocks")
+            return ok(json.encodeToString(BlocksBody.serializer(), BlocksBody(blocks[key].orEmpty())))
+        }
         return when (path) {
             "/api/stream" -> {
                 if (streamStatus != HttpStatusCode.OK) return ok("""{"error":"unauthenticated"}""", streamStatus)
