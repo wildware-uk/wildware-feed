@@ -113,13 +113,14 @@ class FakeServer {
     /** Sign-in tickets this server will take, each once (the hosted "Log in"). */
     val tickets: MutableSet<String> = Collections.synchronizedSet(mutableSetOf())
 
-    fun count(prefix: String) = calls.count { it.startsWith(prefix) }
+    // A synchronized list is only safe to walk while holding its lock: the app keeps calling meanwhile.
+    fun count(prefix: String) = synchronized(calls) { calls.count { it.startsWith(prefix) } }
 
     /** Holds back the comments, so cards show before their replies, as on a slow line. */
     @Volatile
     var messagesDelayMs = 0L
 
-    fun wrote(method: String, path: String): String? = writes.lastOrNull { it.first == "$method $path" }?.second
+    fun wrote(method: String, path: String): String? = synchronized(writes) { writes.lastOrNull { it.first == "$method $path" }?.second }
 
     private suspend fun MockRequestHandleScope.route(request: HttpRequestData): HttpResponseData {
         val path = request.url.encodedPath
