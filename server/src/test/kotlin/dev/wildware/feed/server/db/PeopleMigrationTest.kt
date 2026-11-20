@@ -83,7 +83,7 @@ class PeopleMigrationTest {
             val device = assertNotNull(app.devices.authenticate(deviceKey), "an old device key still opens the dashboard")
             assertEquals("founder", device.userId)
             assertNotNull(app.agents.authenticate(agentToken), "an old agent token still works")
-            val signedIn = assertIs<PasswordCheck.Ok>(app.checkPassword(password, "10.0.0.1"))
+            val signedIn = assertIs<PasswordCheck.Ok>(kotlinx.coroutines.runBlocking { app.checkPassword(password, "10.0.0.1") })
             assertEquals("founder", signedIn.person.id)
             val subs = dev.wildware.feed.server.domain.Subscriptions(db)
             assertEquals("replies", subs.level("member:founder", "P1"))

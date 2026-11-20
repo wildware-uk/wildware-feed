@@ -36,7 +36,7 @@ class AppTest {
         fun attempts(trust: Boolean, address: String): List<Int> =
             App(config.copy(adminPasswordHash = hash, trustLoopback = trust), Database.memory()).use { app ->
                 (1..7).map { i ->
-                    when (val r = app.checkPassword(if (i == 7) "right" else "wrong", address)) {
+                    when (val r = kotlinx.coroutines.runBlocking { app.checkPassword(if (i == 7) "right" else "wrong", address) }) {
                         is dev.wildware.feed.server.http.PasswordCheck.Refused -> r.status
                         else -> 200
                     }
@@ -52,7 +52,7 @@ class AppTest {
     fun `a desktop host limits wrong guesses from loopback on a budget of their own`() {
         val hash = dev.wildware.feed.server.auth.Passwords.hash("right")
         App(config.copy(adminPasswordHash = hash, trustLoopback = true), Database.memory()).use { app ->
-            fun status(password: String, address: String) = when (val r = app.checkPassword(password, address)) {
+            fun status(password: String, address: String) = when (val r = kotlinx.coroutines.runBlocking { app.checkPassword(password, address) }) {
                 is dev.wildware.feed.server.http.PasswordCheck.Refused -> r.status
                 else -> 200
             }
