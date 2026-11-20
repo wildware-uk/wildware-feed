@@ -137,6 +137,7 @@ fun AlertSettingsSheet(ui: FeedUi, safeArea: SafeArea) {
             SecretsEntry(ui)
             DevicesEntry(ui)
             PeopleEntry(ui)
+            ConnectAgentEntry(ui)
         }
     }
 }

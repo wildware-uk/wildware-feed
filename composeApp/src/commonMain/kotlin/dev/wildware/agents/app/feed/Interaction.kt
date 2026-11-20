@@ -325,6 +325,8 @@ data class ScreenPreview(
     val devicesOpen: Boolean = false,
     /** The People sheet, open. */
     val peopleOpen: Boolean = false,
+    /** The "Connect an agent" sheet, open. */
+    val connectOpen: Boolean = false,
     /** An agent's dialog, open, by agent id. */
     val agentOpen: String? = null,
     /** The Secrets sheet, open, on this secret (null: the list) or adding one. */
@@ -439,6 +441,9 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
 
     /** The People sheet: who is in the team, inviting, roles and removing. */
     var peopleOpen by mutableStateOf(preview.peopleOpen)
+
+    /** The "Connect an agent" sheet: a prompt to paste into an agent so it joins this dashboard. */
+    var connectOpen by mutableStateOf(preview.connectOpen)
     val composerFocus = FocusRequester()
 
     /** A message box has the cursor (on a phone, the keyboard is up). Back closes it first. */

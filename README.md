@@ -170,7 +170,12 @@ For Claude Code:
 ## Connect an agent
 
 An agent sets itself up: it asks to join, you allow it in the app, and it collects its own token.
-Tell it "connect yourself to the dashboard at https://feed.example.com as laptop-personal", or do
+The quickest way: in the app, choose **Connect an agent** (members list, settings or the command
+bar), press Copy, and paste the prompt into your agent. It installs the plugin, points it at the
+dashboard you are signed in to, and asks to join; you check the code and tap Allow. The prompt
+holds only the dashboard's address, never a token, so it is safe if it leaks.
+
+Or tell it "connect yourself to the dashboard at https://feed.example.com as laptop-personal", or do
 it by hand:
 
 ```sh

@@ -252,6 +252,7 @@ private fun FeedScreenBody(
             if (ui.devicesOpen) DevicesSheet(ui, if (phone) safeArea else SafeArea())
             if (ui.secretsOpen) SecretsSheet(ui, if (phone) safeArea else SafeArea())
             if (ui.peopleOpen) PeopleSheet(ui, if (phone) safeArea else SafeArea())
+            if (ui.connectOpen) ConnectAgentSheet(ui, if (phone) safeArea else SafeArea())
             // Over everything else: an agent asking to join waits on the owner, and only for ten minutes.
             JoinPrompt(ui, if (phone) safeArea else SafeArea())
         }
@@ -544,7 +545,7 @@ private fun PhoneWaitingButton() {
 
 /** What an empty feed says: still loading, or really nothing here. */
 @Composable
-private fun EmptyFeed(state: FeedState, filter: FeedFilter, modifier: Modifier) {
+private fun EmptyFeed(state: FeedState, filter: FeedFilter, modifier: Modifier, onConnect: () -> Unit) {
     val colors = AgentTheme.colors
     // The first load shows the shape of the feed at once; the cards then fade in over it.
     if (!state.loaded) return SkeletonFeed(modifier.padding(top = 8.dp, start = 4.dp))
@@ -564,6 +565,11 @@ private fun EmptyFeed(state: FeedState, filter: FeedFilter, modifier: Modifier) 
             "Updates and questions from your agents will show up here.",
             color = colors.textMuted,
         )
+        // A dashboard with no agent yet: the way to get the first one.
+        if (filter == FeedFilter.All && state.agents.isEmpty()) {
+            Spacer(Modifier.height(16.dp))
+            AppButton("Connect an agent", ButtonTone.Primary, icon = Icons.Plus, onClick = onConnect)
+        }
     }
 }
 
@@ -674,7 +680,7 @@ private fun LazyListScope.feedItems(ui: FeedUi, density: Density, list: LazyList
     val state = ui.state
     val sections = ui.sections
     if (sections.isEmpty()) {
-        item(key = "empty") { EmptyFeed(state, ui.filter, Modifier.widthIn(max = FeedMaxWidth).fillMaxWidth()) }
+        item(key = "empty") { EmptyFeed(state, ui.filter, Modifier.widthIn(max = FeedMaxWidth).fillMaxWidth()) { ui.connectOpen = true } }
     }
     sections.forEachIndexed { s, section ->
         val key = "section-$s"

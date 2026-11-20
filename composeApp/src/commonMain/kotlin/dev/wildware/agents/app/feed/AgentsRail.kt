@@ -79,6 +79,7 @@ internal fun MembersList(ui: FeedUi, inset: Dp = 0.dp, onOpenAgent: () -> Unit =
         Spacer(Modifier.height(4.dp))
         if (agents.isEmpty()) MetaText("No agents yet.", Modifier.padding(horizontal = inset), color = colors.textMuted)
         agents.forEach { agent -> AgentRow(agent, inset) { open(agent) } }
+        ConnectAgentButton(ui, inset)
         target?.let { state.members[it]?.problem }?.let { MetaText(it, Modifier.padding(horizontal = inset), color = colors.error) }
         return
     }
@@ -104,6 +105,7 @@ internal fun MembersList(ui: FeedUi, inset: Dp = 0.dp, onOpenAgent: () -> Unit =
             }) { open(agent) }
         }
     }
+    ConnectAgentButton(ui, inset)
     list.problem?.let { MetaText(it, Modifier.padding(horizontal = inset), color = colors.error) }
 }
 

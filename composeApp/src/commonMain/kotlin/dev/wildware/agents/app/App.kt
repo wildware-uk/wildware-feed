@@ -1,6 +1,7 @@
 package dev.wildware.agents.app
 
 import dev.wildware.agents.app.feed.LocalCardFolds
+import dev.wildware.agents.app.feed.LocalDashboardAddress
 import dev.wildware.agents.app.feed.CardFolds
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
@@ -169,6 +170,7 @@ fun AgentsApp(
                     CompositionLocalProvider(
                         LocalCardFolds provides folds,
                         LocalMediaAuth provides MediaAuth(session.client.serverUrl, session.client.authorizationHeader),
+                        LocalDashboardAddress provides session.client.serverUrl,
                         LocalFilePicker provides platform.filePicker,
                         LocalMediaHandler provides (platform.media ?: rememberPlatformMediaHandler(platform.httpEngine)),
                         LocalPushAlerts provides platform.pushAlerts,

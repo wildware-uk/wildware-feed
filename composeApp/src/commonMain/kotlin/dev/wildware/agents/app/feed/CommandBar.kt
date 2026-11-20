@@ -220,6 +220,9 @@ private fun commandsFor(
             add(Command("Actions", "Devices", "Every device signed in to this dashboard; revoke a lost one", Icons.Phone, done { ui.devicesOpen = true }))
             add(Command("Actions", "People", "Who is in the team; invite someone, change roles", Icons.People, done { ui.peopleOpen = true }))
         }
+        if (wanted("Connect an agent", "add agent", "new agent", "pair", "install plugin", "prompt", "claude")) {
+            add(Command("Actions", "Connect an agent", "Copy a prompt that sets up an agent and asks to join here", Icons.Plus, done { ui.connectOpen = true }))
+        }
         if (state.retention.allowed && wanted("Keep media", "retention", "delete", "media", "settings")) {
             add(Command("Actions", "Keep media", "How long the dashboard keeps pictures and files", Icons.Clock, done { ui.retentionOpen = true }))
         }
