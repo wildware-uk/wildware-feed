@@ -229,7 +229,9 @@ fun ToolRegistry.registerFeedTools(app: App) {
 
     register("get_card_fields") { call ->
         val card = call.anyCard()
-        val fields = app.feed.fields.on(card)
+        // A deleted card's fields went with it: none, as for a card that never was.
+        val live = app.feed.cards.find(card)?.deletedAt == null
+        val fields = if (live) app.feed.fields.on(card) else emptyList()
         val summary = if (fields.isEmpty()) {
             "Nothing noted on that card yet."
         } else {

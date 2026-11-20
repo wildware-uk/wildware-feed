@@ -122,6 +122,8 @@ private suspend fun ApplicationCall.mediaMiss() =
 
 private suspend fun ApplicationCall.serveMedia(app: App, id: String, variant: String, attachedOnly: Boolean = false) {
     if (attachedOnly && !app.db.mediaAttached(id)) return mediaMiss()
+    // Deleting a card takes back what was on it: its files answer as any other miss.
+    if (app.db.mediaOnDeletedCard(id)) return mediaMiss()
     val file = runCatching { app.serve.open(id, variant) }.getOrNull() ?: return mediaMiss()
     val base = listOf(
         "Content-Type" to file.mime,
@@ -154,6 +156,14 @@ private suspend fun ApplicationCall.serveMedia(app: App, id: String, variant: St
         }
     }
 }
+
+/** On an update or a message that was deleted (a request has no deleted mark). */
+private fun dev.wildware.feed.server.db.Database.mediaOnDeletedCard(id: String) = one(
+    "SELECT 1 FROM media AS m WHERE m.team_id = :team AND m.id = ? AND (" +
+        "EXISTS (SELECT 1 FROM updates AS u WHERE u.team_id = :team AND u.id = m.update_id AND u.deleted_at IS NOT NULL) OR " +
+        "EXISTS (SELECT 1 FROM messages AS x WHERE x.team_id = :team AND x.id = m.message_id AND x.deleted_at IS NOT NULL))",
+    id,
+) { 1 } != null
 
 private fun dev.wildware.feed.server.db.Database.mediaAttached(id: String) = one(
     "SELECT 1 FROM media WHERE team_id = :team AND id = ? AND (update_id IS NOT NULL OR message_id IS NOT NULL OR request_id IS NOT NULL)", id,

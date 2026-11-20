@@ -171,32 +171,48 @@ class Teams(
      * The deletion job: every row of each team being deleted, child tables first, then its files
      * (`t/<team id>/` in the store), then accounts left in no team. The team's row stays, marked
      * deleted, so its address is held for [SLUG_HOLD_DAYS] days; then it goes too.
+     *
+     * A request or job already under way when the team was deleted can still write once the first
+     * pass is done, so a deleted team is swept again on every run for [RESWEEP_MS], and once more
+     * just before its row goes.
      */
     fun purgeDue() {
-        val due = db.query("SELECT id FROM teams WHERE state = 'deleting' ORDER BY seq") { it.getString(1) }
-        for (id in due) {
-            if (id == Tenant.HOME) continue
-            Tenant.allTeams {
-                db.transaction { c ->
-                    // Links are checked once, at the end, when every row of the team has gone.
-                    c.createStatement().use { it.execute(if (db.dialect == Dialect.POSTGRES) "SET CONSTRAINTS ALL DEFERRED" else "PRAGMA defer_foreign_keys = ON") }
-                    for (table in deleteOrder()) db.update("DELETE FROM \"$table\" WHERE team_id = ?", id)
-                    db.update(
-                        "DELETE FROM users WHERE id <> ? AND NOT EXISTS (SELECT 1 FROM memberships AS m WHERE m.user_id = users.id)",
-                        People.FOUNDER,
-                    )
-                }
+        val now = clock()
+        val dropBefore = now - SLUG_HOLD_DAYS * DAY_MS
+        class Due(val id: String, val deleting: Boolean, val deletedAt: Long?)
+        val due = db.query(
+            "SELECT id, state, deleted_at FROM teams WHERE state = 'deleting' OR (state = 'deleted' AND (deleted_at > ? OR deleted_at < ?)) ORDER BY seq",
+            now - RESWEEP_MS, dropBefore,
+        ) { Due(it.getString(1), it.getString(2) == "deleting", it.longOrNull("deleted_at")) }
+        for (team in due) {
+            if (team.id == Tenant.HOME) continue
+            // Files that could not be removed yet keep the team's row, so it is tried again.
+            if (!removeEverything(team.id)) continue
+            if (team.deleting) {
+                db.update("UPDATE teams SET state = 'deleted', deleted_at = ?, updated_at = ? WHERE id = ? AND state = 'deleting'", clock(), clock(), team.id)
+                println("team purge: removed a team's rows and files")
+            } else if (team.deletedAt != null && team.deletedAt < dropBefore) {
+                db.update("DELETE FROM teams WHERE id = ? AND state = 'deleted'", team.id)
             }
-            val p = paths
-            if (p != null) {
-                val gone = runCatching { p.store.deletePrefix(p.teamPrefix(id)) }
-                    .onFailure { System.err.println("team purge: files not removed yet, trying again later: $it") }.isSuccess
-                if (!gone) continue
-            }
-            db.update("UPDATE teams SET state = 'deleted', deleted_at = ?, updated_at = ? WHERE id = ? AND state = 'deleting'", clock(), clock(), id)
-            println("team purge: removed a team's rows and files")
         }
-        db.update("DELETE FROM teams WHERE state = 'deleted' AND deleted_at < ?", clock() - SLUG_HOLD_DAYS * DAY_MS)
+    }
+
+    /** One pass over a team's rows and files; false when its files could not all be removed yet. */
+    private fun removeEverything(id: String): Boolean {
+        Tenant.allTeams {
+            db.transaction { c ->
+                // Links are checked once, at the end, when every row of the team has gone.
+                c.createStatement().use { it.execute(if (db.dialect == Dialect.POSTGRES) "SET CONSTRAINTS ALL DEFERRED" else "PRAGMA defer_foreign_keys = ON") }
+                for (table in deleteOrder()) db.update("DELETE FROM \"$table\" WHERE team_id = ?", id)
+                db.update(
+                    "DELETE FROM users WHERE id <> ? AND NOT EXISTS (SELECT 1 FROM memberships AS m WHERE m.user_id = users.id)",
+                    People.FOUNDER,
+                )
+            }
+        }
+        val p = paths ?: return true
+        return runCatching { p.store.deletePrefix(p.teamPrefix(id)) }
+            .onFailure { System.err.println("team purge: files not removed yet, trying again later: $it") }.isSuccess
     }
 
     /** The team tables, each after every table that points at it, so deletes never break a link. */
@@ -316,6 +332,9 @@ class Teams(
             "id, slug, name, external_ref, seat_limit, storage_limit, suspended_at, suspended_reason, suspended_message, state, created_at, deleted_at, updated_at"
         private val SLUG = Regex("^[a-z][a-z0-9-]{1,28}[a-z0-9]$")
         const val SLUG_HOLD_DAYS = 30L
+
+        /** How long after its first pass a deleted team is swept again: longer than any request or job runs. */
+        const val RESWEEP_MS = 60 * 60_000L
         const val DAY_MS = 24L * 60 * 60 * 1000
         const val SETUP_TTL_MS = 24L * 60 * 60 * 1000
         const val TICKET_TTL_MS = 60_000L

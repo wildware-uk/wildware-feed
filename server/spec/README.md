@@ -87,6 +87,8 @@ written as `pendingFix(n) { … }` first: skipped on a server that lacks it, req
 | 10 | A brand-new agent (no projects yet) is counted against the whole deployment (04, 05) | **Keep**: intended, so a new agent is not deaf to its first instruction | pinned |
 | 11 | Revoking a token or device key left its open streams running (04) | **Fix**: revocation closes them | fixed (closes within about 5 s), required |
 | 12 | (a) Page routes ignore device keys; (b) unknown `/api/*` paths redirected to `/login` (01, 09) | (a) **Keep**. (b) **Fix**: 401 `{"error":"unauthenticated"}` signed out, 404 `{"error":"not_found","message":"no such API route: <path>"}` signed in | (b) fixed, required |
+| 13 | `delete_message` on an already-deleted message succeeded for anyone and handed back its text (05 surprise 15) | **Fix**: who may unsend is checked first; only they get the quiet success | fixed in the Kotlin server; parity `pendingFix(13)` |
+| 14 | `get_card_fields` read a deleted card's fields (05 surprise 17) | **Fix**: a deleted card has no fields, as an unknown one has none | fixed in the Kotlin server; parity `pendingFix(14)` |
 
 Note for the app: since fix 3 the stream `id:` is `<boot>-<seq>`. `LiveStream.kt` falls back to the
 envelope's `seq` when the id is not a number, so it keeps working, but it sends a bare seq on

@@ -228,16 +228,17 @@ class Messages(private val feed: Feed) {
     /**
      * Soft delete. An agent may unsend only its own; a person their own, and an owner or admin
      * anything ([person] null: the founder, as the one owner always could). A feed post takes its
-     * live replies with it. Already deleted is a quiet success for anyone.
+     * live replies with it. Already deleted is a quiet success, but only for someone who could have
+     * deleted it: nobody else learns what an unsent message said.
      */
     fun delete(messageId: String, by: String, person: People.Person? = null): MessageRow = feed.op {
         val message = find(messageId) ?: throw notFound("no such message: $messageId")
-        if (message.deletedAt != null) return@op message
         checkAuthor(by)
         if (by != HUMAN && by != message.author) throw invalid("that message was posted by somebody else")
         if (by == HUMAN && person != null && person.role.rank < People.Role.ADMIN.rank && message.userId != person.id) {
             throw forbidden("only an owner or an admin can unsend someone else's message")
         }
+        if (message.deletedAt != null) return@op message
         val at = feed.now()
         val replies = if (message.replyTo == null) {
             db.query("SELECT id FROM messages WHERE team_id = :team AND reply_to = ? AND deleted_at IS NULL ORDER BY seq ASC", message.id) { it.getString(1) }

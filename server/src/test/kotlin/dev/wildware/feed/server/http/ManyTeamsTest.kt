@@ -328,8 +328,20 @@ class ManyTeamsTest {
             assertEquals(0L, app.db.one("SELECT count(*) FROM users WHERE email = 'ann@acme.test'") { it.getLong(1) }, "her account went with her only team")
         }
         assertEquals("slug_reserved", admin("POST", "/admin/teams", acme, "Idempotency-Key" to "again").obj().s("error"))
+
+        // A request still open when the team went may write after the first pass: the next passes take it.
+        fun lateWrite(id: String) = Tenant.allTeams {
+            app.db.update("INSERT INTO agents (team_id, id, name, token_hash, created_at) VALUES (?, ?, 'late', ?, 1)", teamId, id, "h-$id")
+        }
+        fun agentsLeft() = Tenant.allTeams { app.db.one("SELECT count(*) FROM agents WHERE team_id = ?", teamId) { it.getLong(1) } }
+        lateWrite("late-1")
+        now += 60_000
+        app.teams.purgeDue()
+        assertEquals(0L, agentsLeft(), "swept again soon after")
+        lateWrite("late-2")
         now += 31L * 24 * 60 * 60 * 1000
         app.teams.purgeDue()
+        assertEquals(0L, agentsLeft(), "and once more before the team's row goes")
         assertEquals(201, admin("POST", "/admin/teams", acme, "Idempotency-Key" to "again-later").status.value)
         assertEquals(400, admin("DELETE", "/admin/teams/home").status.value, "the home team stays")
     }

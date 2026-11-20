@@ -254,7 +254,8 @@ class FeedTest {
         now += 1
         assertEquals(now, feed.messages.edit(own.id, "agent:A1", " edited ").editedAt)
         feed.messages.delete(own.id, "agent:A1")
-        assertTrue(feed.messages.delete(own.id, "agent:A2").deletedAt != null, "already deleted is fine for anyone")
+        assertTrue(feed.messages.delete(own.id, "agent:A1").deletedAt != null, "already deleted is fine for its author")
+        fails("that message was posted by somebody else") { feed.messages.delete(own.id, "agent:A2") }
         fails("no such message: ${own.id}") { feed.messages.edit(own.id, "agent:A1", "x") }
     }
 

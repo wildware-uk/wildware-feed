@@ -284,11 +284,22 @@ class Uploads(
 
     /**
      * The media sweeper (spec/07 §10): up to 200 unattached media over an hour old, that no project
-     * logo and no embed names, lose their directory and row; then unused expired tokens go.
+     * logo and no embed names, lose their directory and row; so do up to 200 on an update or message
+     * deleted over an hour ago. Then unused expired tokens go.
      */
     fun sweep() {
         val now = clock()
-        val ids = db.query(
+        val onDeleted = db.query(
+            """SELECT m.id FROM media AS m
+                WHERE m.team_id = :team AND m.status IN ('ready', 'pending', 'failed')
+                  AND (EXISTS (SELECT 1 FROM updates AS u WHERE u.team_id = :team AND u.id = m.update_id AND u.deleted_at IS NOT NULL AND u.deleted_at < ?)
+                    OR EXISTS (SELECT 1 FROM messages AS x WHERE x.team_id = :team AND x.id = m.message_id AND x.deleted_at IS NOT NULL AND x.deleted_at < ?))
+                  AND m.id NOT IN (${logoIds()})
+                  AND m.id NOT IN (${embedStrings()})
+                ORDER BY m.seq LIMIT 200""",
+            now - 3_600_000, now - 3_600_000,
+        ) { it.getString(1) }
+        val ids = onDeleted + db.query(
             """SELECT id FROM media
                 WHERE team_id = :team AND update_id IS NULL AND message_id IS NULL AND request_id IS NULL AND task_id IS NULL
                   AND status IN ('ready', 'pending', 'failed')

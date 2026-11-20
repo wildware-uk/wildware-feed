@@ -651,12 +651,14 @@ class McpEdgeTest : ParityTest() {
             a.whole("get_card_fields", obj("${kind}_id" to nobody), "Nothing noted on that card yet.", obj("card" to card(kind, nobody), "fields" to arr(), "count" to 0))
         }
 
-        // Twenty at most; the card's fields outlive its deletion for reading, not for writing.
+        // Twenty at most; once the card is deleted its fields go with it, for reading and writing.
         for (i in 0 until 19) a.ok("set_card_field", obj("update_id" to u, "name" to "f$i", "value" to "v"))
         a.refused("set_card_field", obj("update_id" to u, "name" to "f19", "value" to "v"), "invalid_argument", "a card may carry at most 20 fields")
         owner.delete("/api/updates/$u")
-        assertEquals(20, a.ok("get_card_fields", obj("update_id" to u))["count"].int)
         a.refused("set_card_field", obj("update_id" to u, "name" to "f1", "value" to "w"), "not_found", "no such update: $u")
+        pendingFix(14, "a deleted card has no fields") {
+            assertEquals(0, a.ok("get_card_fields", obj("update_id" to u))["count"].int)
+        }
     }
 
     // ── messages ─────────────────────────────────────────────────────────────────────────────────
@@ -852,8 +854,8 @@ class McpEdgeTest : ParityTest() {
         a.refused("delete_message", obj("message_id" to nobody), "not_found", "no such message: $nobody")
         beta.refused("delete_message", obj("message_id" to id), "invalid_argument", "that message was posted by somebody else")
         a.whole("delete_message", obj("message_id" to id), unsent, view("edited", edited = true, deleted = true))
-        // Once deleted: anyone may delete it again, nobody may edit it.
-        beta.whole("delete_message", obj("message_id" to id), unsent, view("edited", edited = true, deleted = true))
+        // Once deleted: its author may delete it again, nobody may edit it.
+        a.whole("delete_message", obj("message_id" to id), unsent, view("edited", edited = true, deleted = true))
         a.refused("edit_message", obj("message_id" to id, "body" to "x"), "not_found", "no such message: $id")
 
         // Deleting a top-level post takes everyone's replies with it.
@@ -862,6 +864,10 @@ class McpEdgeTest : ParityTest() {
         a.whole("delete_message", obj("message_id" to top["id"].s), unsent, view("top post", deleted = true, of = top))
         beta.refused("edit_message", obj("message_id" to reply["id"].s, "body" to "still?"), "not_found", "no such message: ${reply["id"].s}")
         beta.whole("delete_message", obj("message_id" to reply["id"].s), unsent, view("reply one", deleted = true, of = reply))
+        // Somebody else gets no quiet success, and so no text, for a message already unsent.
+        pendingFix(13, "only who could unsend a message is told it is unsent") {
+            beta.refused("delete_message", obj("message_id" to id), "invalid_argument", "that message was posted by somebody else")
+        }
     }
 
     @Test
