@@ -103,9 +103,13 @@ class People(
         return db.one("$SELECT AND m.user_id = ? AND m.removed_at IS NULL", account.first, row = ::person)
     }
 
-    /** Today's sign-in, with no email: the founder, by ADMIN_PASSWORD_HASH or a password they set. */
+    /**
+     * Sign-in with no email: the team's founding owner. On the home team that is [FOUNDER], by
+     * ADMIN_PASSWORD_HASH or a password they set. A team the admin API made has no [FOUNDER]
+     * membership: its founder is its first owner, by the password they set from their setup link.
+     */
     fun signInFounder(password: String): Person? {
-        val founder = find(FOUNDER)?.takeIf { it.active } ?: return null
+        val founder = (if (Tenant.id == HOME) find(FOUNDER) else firstOwner())?.takeIf { it.active } ?: return null
         return founder.takeIf { verify(it, password) }
     }
 

@@ -178,6 +178,24 @@ class ManyTeamsTest {
     }
 
     @Test
+    fun `a team's founder signs in with their password alone, as the app's one-box form sends it`() = withApp { _ ->
+        annSignedIn()
+        val alone = send("acme.feed.test", "POST", "/api/devices/sign-in", """{"password":"a long password","name":"Ann's laptop"}""")
+        assertEquals(201, alone.status.value, alone.bodyAsText())
+        assertEquals("wrong_password", send("acme.feed.test", "POST", "/api/devices/sign-in", """{"password":"not her password","name":"x"}""").obj().s("error"))
+        // The home team's ADMIN_PASSWORD_HASH opens no other team, and the home founder still signs in with it.
+        assertEquals(400, send("acme.feed.test", "POST", "/api/devices/sign-in", """{"password":"server password","name":"x"}""").status.value)
+        assertEquals(201, send("agents.example.com", "POST", "/api/devices/sign-in", """{"password":"server password","name":"x"}""").status.value)
+    }
+
+    @Test
+    fun `before the founder sets a password, nothing signs in to their team without an email`() = withApp { _ ->
+        assertEquals(201, admin("POST", "/admin/teams", acme, "Idempotency-Key" to "create-tm_1").status.value)
+        assertEquals(400, send("acme.feed.test", "POST", "/api/devices/sign-in", """{"password":"server password","name":"x"}""").status.value)
+        assertEquals(400, send("acme.feed.test", "POST", "/api/devices/sign-in", """{"password":"a long password","name":"x"}""").status.value)
+    }
+
+    @Test
     fun `a team's keys open only that team, and its cookie is a host-only one`() = withApp { app ->
         val (teamId, annKey) = annSignedIn()
         val auth = "Authorization" to "Bearer $annKey"
