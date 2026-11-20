@@ -218,4 +218,16 @@ class RetentionTest {
         assertNull(twin, "the dedupe lookup must not offer removed media")
         assertTrue(removed(old))
     }
+
+    @Test
+    fun `a big clean-up is done a batch a run, so the job thread is given back between them`() {
+        set(7, "image")
+        val all = List(201) { mediaOn(age = 30 * day) }
+        assertEquals(200, retention.run(), "one batch")
+        assertEquals(1, all.count { !removed(it) }, "the rest waits")
+        assertTrue(retention.due(), "the next tick carries on")
+        assertEquals(1, retention.run())
+        assertTrue(all.all(::removed))
+        assertFalse(retention.due(), "done until the next night")
+    }
 }

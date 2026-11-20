@@ -132,6 +132,7 @@ class App(val config: Config, val db: Database, val clock: () -> Long = System::
     /** Thumbnails, posters and transcodes for uploaded media. */
     val derive = dev.wildware.feed.server.media.Derive(
         db, bus, mediaPaths, dev.wildware.feed.server.media.FfmpegTools(threads = config.ffmpegThreads), clock, config.deriveWorkers,
+        perTeam = if (config.multiTeam) 1 else dev.wildware.feed.server.media.Derive.BATCH,
     )
 
     /** How long media is kept (migration 048), and the nightly removal. */

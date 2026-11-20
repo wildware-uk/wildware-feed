@@ -126,6 +126,11 @@ class Derive(
     private val clock: () -> Long = System::currentTimeMillis,
     /** DERIVE_WORKERS: how many media are derived at once (each may run an ffmpeg). */
     workers: Int = 2,
+    /**
+     * How many of one team's media may wait or be derived at once. With many teams it is one, so one
+     * team's backlog never holds up another team's pictures (docs/HOSTING.md §7).
+     */
+    private val perTeam: Int = BATCH,
 ) {
     private class Produced(val kind: String, val width: Int?, val height: Int?, val name: String, val bytes: Long)
     private class Measured(val files: List<Produced>, val width: Int?, val height: Int?, val durationMs: Long?)
@@ -134,12 +139,28 @@ class Derive(
     private val pool = Executors.newFixedThreadPool(workers) { r -> Thread(r, "media-derive").apply { isDaemon = true } }
     private val queued = ConcurrentHashMap.newKeySet<String>()
 
-    /** One worker tick for this team: queue every pending media with bytes, oldest first, 50 at a time. */
+    /** How many of each team's media are queued or being derived now. */
+    private val inFlight = ConcurrentHashMap<String, java.util.concurrent.atomic.AtomicInteger>()
+
+    /** For tests: told the team and how many of its media are in flight, each time one is queued. */
+    internal var onQueued: ((team: String, inFlight: Int) -> Unit)? = null
+
+    /** One worker tick for this team: queue its pending media with bytes, oldest first, up to [perTeam] at once. */
     fun tick() {
         val team = Tenant.id
-        val ids = db.query("SELECT id FROM media WHERE team_id = :team AND status IN ('pending') AND sha256 <> '' ORDER BY seq LIMIT 50") { it.getString(1) }
+        val count = inFlight.computeIfAbsent(team) { java.util.concurrent.atomic.AtomicInteger() }
+        val room = perTeam - count.get()
+        if (room <= 0) return
+        // The ones already queued come first in the list, so ask for enough to get past them.
+        val ids = db.query(
+            "SELECT id FROM media WHERE team_id = :team AND status IN ('pending') AND sha256 <> '' ORDER BY seq LIMIT ?", minOf(BATCH, perTeam),
+        ) { it.getString(1) }
+        var added = 0
         for (id in ids) {
+            if (added >= room) break
             if (!queued.add(id)) continue
+            added++
+            onQueued?.invoke(team, count.incrementAndGet())
             pool.execute {
                 try {
                     // The worker thread works for the team that queued it.
@@ -148,6 +169,7 @@ class Derive(
                     System.err.println("derive $id failed: $e")
                 } finally {
                     queued.remove(id)
+                    count.decrementAndGet()
                 }
             }
         }
@@ -309,5 +331,8 @@ class Derive(
         val THUMB_WIDTHS = listOf(640, 1600)
         private val CONTENT_TYPES = mapOf("webp" to "image/webp", "jpg" to "image/jpeg", "mp4" to "video/mp4")
         const val WORKER_INTERVAL_MS = 1000L
+
+        /** Most of one team's media queued in one tick. */
+        const val BATCH = 50
     }
 }

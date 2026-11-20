@@ -101,6 +101,33 @@ class DeriveTest {
         assertTrue(Files.readString(paths.dir(id).resolve("error.txt")).endsWith("\n"))
         assertEquals(0, db.one("SELECT count(*) FROM derivatives WHERE media_id = ?", id) { it.getInt(1) })
     }
+    @Test
+    fun `with many teams one team has one media in flight at a time`() {
+        val db = dev.wildware.feed.server.db.Database.memory()
+        val paths = MediaPaths(dir.toString())
+        val ids = List(5) { "01J0" + it.toString().padStart(22, 'B') }
+        for (id in ids) {
+            Files.createDirectories(paths.dir(id))
+            Files.write(paths.original(id, "application/pdf"), byteArrayOf(1))
+            db.update("INSERT INTO media (id, author, kind, mime, bytes, sha256, status, created_at) VALUES (?, 'human', 'file', 'application/pdf', 1, 'abc', 'pending', 1)", id)
+        }
+        fun peak(perTeam: Int): Int {
+            db.update("UPDATE media SET status = 'pending' WHERE team_id = :team")
+            val derive = Derive(db, Bus(boot = "t"), paths, tools, workers = 1, perTeam = perTeam)
+            val most = java.util.concurrent.atomic.AtomicInteger()
+            derive.onQueued = { _, n -> most.accumulateAndGet(n) { a, b -> maxOf(a, b) } }
+            val deadline = System.currentTimeMillis() + 20_000
+            while (db.one("SELECT count(*) FROM media WHERE team_id = :team AND status = 'pending'") { it.getInt(1) } != 0) {
+                assertTrue(System.currentTimeMillis() < deadline, "every media is derived in the end")
+                derive.tick()
+                Thread.sleep(5)
+            }
+            derive.close()
+            return most.get()
+        }
+        assertEquals(1, peak(perTeam = 1), "one at a time, so other teams get their turn")
+        assertEquals(5, peak(perTeam = Derive.BATCH), "a server of one team still queues them all")
+    }
 }
 
 class FfmpegThreadsTest {
@@ -113,4 +140,5 @@ class FfmpegThreadsTest {
             FfmpegTools(threads = 1).withThreads(args),
         )
     }
+
 }

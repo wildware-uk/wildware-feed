@@ -73,6 +73,8 @@ class Retention(
     /** Whether tonight's run is due: inside the night window and not run in the last 12 hours, or not run for 36. */
     fun due(now: Long = clock()): Boolean {
         if (settings().days == null) return false
+        // A run that stopped after a batch with more to do carries on at once.
+        if (setting(MORE) != null) return true
         val last = setting(LAST_RUN)?.toLongOrNull()
         val hour = ((now / 3_600_000L) % 24).toInt()
         val night = hour in NIGHT_HOURS
@@ -88,21 +90,25 @@ class Retention(
         if (due()) run()
     }
 
-    /** Removes everything expired now; how many media it removed. Safe to call any time, and again. */
+    /**
+     * Removes up to one batch of what has expired now; how many media it removed. Safe to call any
+     * time, and again. When more are left, the run is not over: the next [tick] carries on, so one
+     * team's clean-up never holds the job thread every team shares (docs/HOSTING.md §7).
+     */
     fun run(): Int {
         val settings = settings()
         val now = clock()
-        put(LAST_RUN, now.toString())
-        val days = settings.days ?: return 0
-        val cutoff = now - days * DAY_MS
+        val days = settings.days ?: return 0.also { finished(now) }
+        val batch = candidates(settings.kinds, now - days * DAY_MS)
         var removed = 0
-        while (true) {
-            val batch = candidates(settings.kinds, cutoff)
-            if (batch.isEmpty()) break
-            for (id in batch) if (remove(id, days, now)) removed++
-            if (batch.size < BATCH) break
-        }
+        for (id in batch) if (remove(id, days, now)) removed++
+        if (batch.size < BATCH) finished(now) else put(MORE, now.toString())
         return removed
+    }
+
+    private fun finished(now: Long) {
+        put(LAST_RUN, now.toString())
+        db.update("DELETE FROM server_settings WHERE team_id = :team AND key = ?", MORE)
     }
 
     private fun candidates(kinds: List<String>, cutoff: Long): List<String> = db.query(
@@ -161,6 +167,9 @@ class Retention(
         val KINDS = listOf("image", "video", "audio", "file")
         const val SETTING = "media_retention"
         const val LAST_RUN = "media_retention.last_run"
+
+        /** Set while a run has stopped after a full batch, with more to remove. */
+        private const val MORE = "media_retention.more"
         private const val DAY_MS = 86_400_000L
         private const val BATCH = 200
         /** 02:00 to 05:00 UTC. */
