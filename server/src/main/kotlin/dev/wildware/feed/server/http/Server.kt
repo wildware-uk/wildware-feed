@@ -63,11 +63,11 @@ class FeedServer(val app: App) {
 }
 
 /**
- * The whole HTTP surface, as a Ktor module the desktop app can mount too. [teamOf] says which team
- * a request is for, or null for none (`404 no_such_team`); every request runs inside its team
- * ([Tenant]), so every statement it makes is that team's.
+ * The whole HTTP surface, as a Ktor module the desktop app can mount too. [placeOf] says where a
+ * request was sent ([Hosts]); every request to a team runs inside that team ([Tenant]), so every
+ * statement it makes is that team's.
  */
-fun Application.feed(app: App, teamOf: (ApplicationCall) -> String? = { Tenant.HOME }) {
+fun Application.feed(app: App, placeOf: (ApplicationCall) -> Place = { Hosts.placeOf(app, it) }) {
     // A request that throws is answered with a 500; it is reported first, when reports are on.
     intercept(ApplicationCallPipeline.Monitoring) {
         try {
@@ -80,12 +80,40 @@ fun Application.feed(app: App, teamOf: (ApplicationCall) -> String? = { Tenant.H
         }
     }
     intercept(ApplicationCallPipeline.Monitoring) {
-        val team = teamOf(call)
-        if (team == null) {
+        val path = Guard.normalise(call.request.path())
+        val admin = path == "/admin" || path.startsWith("/admin/")
+        suspend fun noTeam() {
             call.respondRaw(404, """{"error":"no_such_team","message":"there is no team at this address"}""", Wire.JSON)
-            return@intercept finish()
+            finish()
         }
-        withContext(Tenant.element(team)) { proceed() }
+        when (val place = placeOf(call)) {
+            Place.Nowhere -> return@intercept noTeam()
+            // The directory answers the admin API and says what it is; it holds no team.
+            Place.Directory -> {
+                if (!admin && path != "/api/server") return@intercept noTeam()
+                call.attributes.put(DirectoryKey, Unit)
+                proceed()
+            }
+            is Place.Team -> {
+                // With many teams, the admin API is only at the directory, never at a team's address.
+                if (admin && app.config.multiTeam) {
+                    call.respondRaw(404, """{"error":"not_found","message":"no such route"}""", Wire.JSON)
+                    return@intercept finish()
+                }
+                val team = app.teams.find(place.id)?.takeIf { it.open } ?: return@intercept noTeam()
+                call.attributes.put(TeamKey, team)
+                withContext(Tenant.element(team.id)) {
+                    if (team.suspended && !admin && Suspension.refuses(call)) {
+                        // The control plane's own words are for the team's people; a stranger learns only that it's read-only.
+                        val error = if (app.callerOf(call) != null) Suspension.error(team) else Wire.error("suspended", Suspension.GENERIC)
+                        call.respondRaw(403, Wire.encode(error), Wire.JSON)
+                        finish()
+                    } else {
+                        proceed()
+                    }
+                }
+            }
+        }
     }
     intercept(ApplicationCallPipeline.Plugins) {
         if (guardRefused(call, app)) return@intercept finish()
@@ -105,6 +133,8 @@ fun Application.feed(app: App, teamOf: (ApplicationCall) -> String? = { Tenant.H
         pairingRoutes(app)
         secretRoutes(app)
         oauthRoutes(app)
+        ticketRoutes(app)
+        adminRoutes(app)
 
         // Anything else. Under /api the guard has already turned strangers away: the owner gets a
         // JSON 404 (decided fix 12b). Elsewhere it is the web app, when this server has it, or a 404.

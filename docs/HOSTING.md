@@ -1,6 +1,19 @@
 # Hosting many teams on one server: design
 
-Status: proposal. Nothing here is built yet.
+Status: slices 1, 3 and 4 are built, on **one** server process (the owner chose one small dyno
+for now, so slice 2's pool, `LISTEN/NOTIFY` and job claims wait). What differs from the text below:
+
+- One process with one database connection already runs writes one at a time, so there is no
+  `team.write` lock. A request, a job or a bus listener says its team once (`db/Tenant.kt`); SQL
+  names it as `team_id = :team`.
+- Row security tells the connection its team with a session setting, changed only when the team
+  changes. With one connection behind one lock that is as safe as `SET LOCAL`, and saves a round
+  trip per statement.
+- The bus keeps a seq and a replay ring per team, in memory, as before.
+- Migrations 058 (every row gets a `team_id`; row-security policies, off until switched on) and
+  059 (team limits, suspension, deletion; `auth_codes`; `admin_requests`).
+- Settings: `TEAM_DOMAIN` (many teams; needs Postgres; turns row security on), `ADMIN_API_KEYS`,
+  `CONTROL_PLANE_ORIGIN`, and `ROW_SECURITY` for a single team. Unset, a server is as before.
 
 [TEAMS.md](TEAMS.md) adds people to a server: several logins sharing one feed. This document goes one
 step further: **many teams on one shared, stateless server**, so the hosted service at
@@ -485,6 +498,13 @@ or a missing header, is `401 bad_signature`. No other credential works on `/admi
 works nowhere else. Its own rate limit: 600 a minute, then `429` with `Retry-After`. Admin calls should
 be audit-logged (call, team, time; never bodies).
 
+**Each signed write is taken once.** The server remembers the signatures of calls other than `GET`
+and `HEAD` while their time is good; the same signed call again is `401 stale_request` (a plain
+refusal, nothing is locked). So the control plane signs every attempt afresh, retries included,
+and moves the timestamp on by a second if it would send the very same call twice in one second.
+Otherwise someone who saw one call in transit could send it again: a replayed sign-up would revoke
+the owner's setup link and hand the replayer a new one.
+
 **Idempotency.** `POST /admin/teams` and `POST /admin/teams/{id}/invites` require an
 `Idempotency-Key` header (1 to 255 printable ASCII). The server keeps it 24 hours with a fingerprint
 (method, path, SHA-256 of the body). Same key and request: the first status and body again, with
@@ -519,8 +539,17 @@ interpreted.
 | `DELETE /admin/teams/{id}` | – | `202 {team}` with `state: "deleting"`; the address answers `404 no_such_team` at once; a job removes rows and the bucket prefix; repeats answer `202` until done, then `404`. Slug blocked 30 days. | – |
 | `POST /admin/teams/{id}/invites` | `{email, role}` (`owner`, `admin`, `member`) | `201 {inviteId, url, expiresAt}`: the TEAMS.md §5 invite | `409 seat_limit`, `409 already_member`, `404` |
 | `POST /admin/teams/{id}/setup-links` | `{email}` | `201 {url, expiresAt}` for a member with no password yet; earlier setup links revoked | `404 no_such_member`, `409 already_set_up` |
-| `POST /admin/memberships/lookup` | `{email}` (a `POST`, so the email stays out of URLs and logs) | `200 {memberships: [{membershipId, role, team: {id, slug, name, address, suspended}}]}`: active memberships in teams not being deleted | – |
+| `POST /admin/memberships/lookup` | `{email}` (a `POST`, so the email stays out of URLs and logs) | `200 {memberships: [{membershipId, role, team: {id, slug, name, address, suspended}}]}`: active memberships in teams not being deleted, of an account whose email was proved (below) | – |
 | `POST /admin/teams/{id}/sign-in-tickets` | `{email}` | `201 {ticket, expiresAt, address, membershipId}` | `404 no_such_member`, `404 no_such_team` |
+
+**Only proved emails count across teams.** An email someone typed into the server (a profile
+change, accepting an invite) proves nothing: anyone can type anyone's address. An account's email
+is proved when the control plane made it (`POST /admin/teams`) or its setup link was used, and
+`memberships/lookup` and `sign-in-tickets` see only those. When `POST /admin/teams` finds an
+account with the owner's email that was never proved, the email comes off that account (it keeps
+its teams and devices) and the owner gets a new account (`newAccount: true`). Accepting an invite
+will count as proof once the control plane emails invite links itself; it doesn't yet, so invited
+people sign in with their password at their team's address until slice 5.
 
 **Sign-in tickets** let the control plane sign a person in to their team after it has checked their
 email itself (by an emailed code), without ever seeing a password. A ticket is 32 random bytes
@@ -533,7 +562,9 @@ ticket. Redeemed, with no admin key, on the team's address:
   sign-in does. A used, expired, unknown or other team's ticket: `401 invalid_ticket`, all alike.
   Rate limited like sign-in.
 - **Browser:** `POST /auth/ticket` with form body `ticket=…` sets the web app's cookie and answers
-  `303` to `/`; a bad ticket goes to the sign-in page with an error. The form is posted from the
+  `200` with a tiny page that moves itself to `/` (a meta refresh). Not a `303`: the cookie is
+  `SameSite=Strict`, and a browser won't send it on a redirect that began on another site, so the
+  person would land signed out. A bad ticket's page moves to the sign-in page with an error. The form is posted from the
   control plane's page, so `Origin` must equal the control plane's origin exactly (setting
   `CONTROL_PLANE_ORIGIN`; unset means this route answers `404`); any other or missing `Origin` is
   `403`. Otherwise any website could post the attacker's own ticket and sign a visitor in to the

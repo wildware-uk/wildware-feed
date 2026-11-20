@@ -82,7 +82,7 @@ fun Route.peopleRoutes(app: App) {
                 put("invite", inviteView(invite))
                 // Shown once: only its hash is kept.
                 put("token", token)
-                put("link", "${app.config.publicBaseUrl}/join/$token")
+                put("link", "${app.teams.address()}/join/$token")
             })
         },
     )
@@ -162,7 +162,7 @@ fun Route.peopleRoutes(app: App) {
                 call.respondRaw(404, "Not Found", "text/plain;charset=utf-8")
             } else {
                 call.respondRaw(
-                    200, JoinPage.html(app.config.publicBaseUrl, token, webApp = app.web != null), "text/html;charset=utf-8",
+                    200, JoinPage.html(app.teams.address(), token, webApp = app.web != null), "text/html;charset=utf-8",
                     "Cache-Control" to "no-store",
                     "Referrer-Policy" to "no-referrer",
                     "X-Content-Type-Options" to "nosniff",

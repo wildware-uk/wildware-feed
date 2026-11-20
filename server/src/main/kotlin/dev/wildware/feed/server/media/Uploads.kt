@@ -63,12 +63,16 @@ class Uploads(
     private val db: Database,
     val paths: MediaPaths,
     private val tokenSecret: String,
-    private val baseUrl: String,
+    /** This work's team's address, where its upload links point. */
+    private val baseUrl: () -> String,
     private val maxImageBytes: Long,
     private val maxVideoBytes: Long,
     private val maxFileBytes: Long,
     private val clock: () -> Long = System::currentTimeMillis,
 ) {
+    /** Refuses bytes that would take the team past its storage (docs/HOSTING.md §7). Set by the app. */
+    @Volatile var checkStorage: (Long) -> Unit = {}
+
     data class Grant(val mediaId: String, val uploadUrl: String, val expiresAt: Long, val maxBytes: Long)
     data class Stored(val media: JsonObject, val id: String, val kind: String, val mime: String, val bytes: Long, val sha256: String, val status: String, val deduped: Boolean)
 
@@ -115,13 +119,15 @@ class Uploads(
         val mediaId = Ulid.next(now)
         val tokenId = Ulid.next(now)
         db.transaction { _ ->
+            // Checked and taken in one transaction, so two uploads can't both take the last bytes.
+            checkStorage(bytes)
             insertMedia(mediaId, agentId, "agent:$agentId", kind, mime, bytes, keptName(kind, name), now)
             db.update(
                 "INSERT INTO upload_tokens (team_id, id, agent_id, media_id, max_bytes, mime_allow, expires_at) VALUES (:team, ?, ?, ?, ?, ?, ?)",
                 tokenId, agentId, mediaId, maxBytes, Wire.encode(kotlinx.serialization.json.JsonArray(listOf(JsonPrimitive(mime)))), expiresAt,
             )
         }
-        return Grant(mediaId, "$baseUrl/api/upload/${Tokens.signUpload(tokenId, tokenSecret)}", expiresAt, maxBytes)
+        return Grant(mediaId, "${baseUrl()}/api/upload/${Tokens.signUpload(tokenId, tokenSecret)}", expiresAt, maxBytes)
     }
 
     private fun insertMedia(id: String, agentId: String?, author: String, kind: String, mime: String, bytes: Long, filename: String?, at: Long) {
@@ -165,6 +171,7 @@ class Uploads(
         val kind = kindOrRefuse(mime)
         val limit = limitFor(kind)
         if (contentLength != null && contentLength > limit) throw tooLarge(kind, limit, contentLength)
+        checkStorage(contentLength ?: 0)
         val id = Ulid.next(now)
         db.update(
             "INSERT INTO media (team_id, id, agent_id, author, kind, mime, bytes, sha256, filename, status, created_at) VALUES (:team, ?, NULL, 'human', ?, ?, 0, '', ?, 'pending', ?)",
@@ -184,6 +191,18 @@ class Uploads(
         if (declared == null && allowed.isEmpty()) throw MediaError("unsupported_type", "this upload authorises no servable type")
         if (contentLength != null && contentLength > maxBytes) throw overCap(maxBytes)
         val written = streamToTemp(body, maxBytes, allowed, declared)
+        // What landed counts, less what the row already counted (an agent's upload reserved its size).
+        try {
+            db.transaction { _ ->
+                val counted = db.one("SELECT bytes FROM media WHERE team_id = :team AND id = ?", media.id) { it.getLong(1) } ?: 0
+                checkStorage(maxOf(0, written.bytes - counted))
+                // Counted at once, in the same transaction, so a second upload sees these bytes.
+                db.update("UPDATE media SET bytes = ? WHERE team_id = :team AND id = ?", written.bytes, media.id)
+            }
+        } catch (e: Throwable) {
+            runCatching { java.nio.file.Files.deleteIfExists(written.temp) }
+            throw e
+        }
         val deduped = place(media.id, written.temp, written.mime, written.sha256)
         db.update("UPDATE media SET bytes = ?, sha256 = ? WHERE team_id = :team AND id = ?", written.bytes, written.sha256, media.id)
         val view = mediaView(media.id)!!

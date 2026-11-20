@@ -13,7 +13,7 @@ data class PushMessage(val title: String, val body: String, val url: String, val
 
 class PushMessages(private val app: App) {
     private val db get() = app.db
-    private val base get() = app.config.publicBaseUrl
+    private val base get() = app.teams.address()
 
     private fun agentName(id: String?) = id?.let { db.one("SELECT name FROM agents WHERE team_id = :team AND id = ?", it) { rs -> rs.getString(1) } }
     private fun slug(projectId: String?) = projectId?.let { db.one("SELECT slug FROM projects WHERE team_id = :team AND id = ?", it) { rs -> rs.getString(1) } }

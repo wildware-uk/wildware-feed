@@ -21,7 +21,7 @@ class SecretsTest {
     private val tokenSecret = "t".repeat(32)
     private val keyA = "k".repeat(40)
     private val keyB = "n".repeat(40)
-    private fun secrets(box: SecretBox? = SecretBox(keyA)) = Secrets(db, bus, box, tokenSecret, "https://feed.example.com") { now }
+    private fun secrets(box: SecretBox? = SecretBox(keyA)) = Secrets(db, bus, box, tokenSecret, { "https://feed.example.com" }) { now }
     private val secrets = secrets()
     private val agents = Agents(db, tokenSecret) { now }
     private val requests = Requests(db, bus, Reads(db) { now }, { now }) { 0L }

@@ -36,21 +36,22 @@ import java.security.MessageDigest
  * Nothing here logs a code or a token.
  */
 fun Route.oauthRoutes(app: App) {
-    val urls = OAuthUrls(app.config.publicBaseUrl)
+    // Each team's own address is its issuer and its resource (docs/HOSTING.md §4).
+    fun urls() = OAuthUrls(app.teams.address())
 
     endpoint(
         "/.well-known/oauth-protected-resource",
-        HttpMethod.Get to { call.respondMetadata(urls.protectedResource(urls.base)) },
+        HttpMethod.Get to { call.respondMetadata(urls().protectedResource(urls().base)) },
         HttpMethod.Options to { call.preflight() },
     )
     endpoint(
         "/.well-known/oauth-protected-resource/mcp",
-        HttpMethod.Get to { call.respondMetadata(urls.protectedResource(urls.mcp)) },
+        HttpMethod.Get to { call.respondMetadata(urls().protectedResource(urls().mcp)) },
         HttpMethod.Options to { call.preflight() },
     )
     endpoint(
         "/.well-known/oauth-authorization-server",
-        HttpMethod.Get to { call.respondMetadata(urls.authorizationServer()) },
+        HttpMethod.Get to { call.respondMetadata(urls().authorizationServer()) },
         HttpMethod.Options to { call.preflight() },
     )
 
@@ -75,7 +76,7 @@ fun Route.oauthRoutes(app: App) {
         "/oauth/authorize",
         HttpMethod.Get to {
             if (!call.allowedOAuth(app.oauthAuthorizeLimiter, app, page = true)) return@to
-            when (val parsed = AuthRequest.parse(app, urls, call.request.queryParameters)) {
+            when (val parsed = AuthRequest.parse(app, urls(), call.request.queryParameters)) {
                 is AuthRequest.Parsed.Fatal -> call.page(400, OAuthPage.problem(parsed.message))
                 is AuthRequest.Parsed.Ok -> {
                     val nonce = OwnerSession.read(app, call)
@@ -89,12 +90,12 @@ fun Route.oauthRoutes(app: App) {
             if (!call.allowedOAuth(app.oauthAuthorizeLimiter, app, page = true)) return@to
             val body = call.smallBody(FORM_BODY_MAX) ?: return@to
             val form = parseQueryString(body)
-            val request = when (val parsed = AuthRequest.parse(app, urls, form)) {
+            val request = when (val parsed = AuthRequest.parse(app, urls(), form)) {
                 is AuthRequest.Parsed.Fatal -> return@to call.page(400, OAuthPage.problem(parsed.message))
                 is AuthRequest.Parsed.Ok -> parsed.request
             }
             when (form["action"]) {
-                "sign_in" -> signIn(app, call, request, form["password"])
+                "sign_in" -> signIn(app, call, request, form["password"], form["email"]?.takeIf { it.isNotBlank() })
                 "allow", "deny" -> decide(app, call, request, form)
                 "sign_out" -> call.respondRedirect303("/oauth/authorize?${request.query()}", "Set-Cookie" to OwnerSession.clear(app), *NO_STORE)
                 else -> call.page(400, OAuthPage.problem("That was not a choice this page offers. Start again from the app you are connecting."))
@@ -135,7 +136,7 @@ fun Route.oauthRoutes(app: App) {
             val form = call.formBody() ?: return@to
             try {
                 val client = call.clientOf(app, form)
-                val resource = form["resource"]?.let { urls.resource(it) ?: throw OAuth.Refused("invalid_target", "this server is the resource ${urls.mcp}") }
+                val resource = form["resource"]?.let { urls().resource(it) ?: throw OAuth.Refused("invalid_target", "this server is the resource ${urls().mcp}") }
                 val live = { id: String -> app.agents.find(id)?.revokedAt == null }
                 val issued = when (form["grant_type"]) {
                     "authorization_code" -> app.oauth.redeem(
@@ -297,30 +298,33 @@ class AuthRequest(
 }
 
 /**
- * The owner's sign-in on the authorize page: a cookie signed with SESSION_SECRET holding an expiry
- * and a random nonce. It is bound to the current password hash, so changing the password ends it.
- * The nonce is what the page's CSRF tokens are made from.
+ * The owner's sign-in on the authorize page: a cookie signed with SESSION_SECRET holding an expiry,
+ * a random nonce and who signed in (their membership). It is bound to this team and to that
+ * person's current password hash, so it opens no other team's page, and changing the password ends
+ * it. The nonce is what the page's CSRF tokens are made from.
  */
 object OwnerSession {
     const val TTL_MS = 12 * 60 * 60_000L
 
     fun cookieName(app: App) = if (secure(app)) "__Host-feed_owner" else "feed_owner"
 
-    private fun secure(app: App) = app.config.publicBaseUrl.startsWith("https://")
+    private fun secure(app: App) = app.teams.address().startsWith("https://")
 
-    // Bound to the password in use: the founder's own once they set one (migration 055), else the server's.
-    private fun signature(app: App, expires: Long, nonce: String) = Tokens.base64url(
+    // Bound to the team and to the password in use: the person's own, or for the home team's founder
+    // before they set one (migration 055), the server's.
+    private fun signature(app: App, expires: Long, nonce: String, person: People.Person) = Tokens.base64url(
         Tokens.hmac(
             app.config.sessionSecret,
-            "oauth-owner:v1:$expires:$nonce:${Tokens.hex(MessageDigest.getInstance("SHA-256").digest((app.people.founderHash() ?: app.config.adminPasswordHash).toByteArray()))}",
+            "oauth-owner:v2:${dev.wildware.feed.server.db.Tenant.id}:${person.id}:$expires:$nonce:" +
+                Tokens.hex(MessageDigest.getInstance("SHA-256").digest((app.people.passwordHashOf(person) ?: "").toByteArray())),
         ),
     )
 
-    /** A Set-Cookie header for a new session. */
-    fun mint(app: App): String {
+    /** A Set-Cookie header for a new session of [person]. */
+    fun mint(app: App, person: People.Person): String {
         val expires = app.clock() + TTL_MS
         val nonce = Tokens.random()
-        val value = "v1.$expires.$nonce.${signature(app, expires, nonce)}"
+        val value = "v2.$expires.$nonce.${person.id}.${signature(app, expires, nonce, person)}"
         return "${cookieName(app)}=$value; Path=/; Max-Age=${TTL_MS / 1000}; HttpOnly; SameSite=Lax" + if (secure(app)) "; Secure" else ""
     }
 
@@ -329,19 +333,19 @@ object OwnerSession {
         "${cookieName(app)}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax" + if (secure(app)) "; Secure" else ""
 
     /**
-     * The session's nonce, or null when there is no valid session. Only the founding owner signs in
-     * here (the password has no email), so the session also ends the moment they are removed or are
-     * no longer an owner or admin (migration 055).
+     * The session's nonce, or null when there is no valid session. It ends the moment its person is
+     * removed or is no longer an owner or admin (migration 055), and means nothing on another
+     * team's address, where that person isn't found.
      */
     fun read(app: App, call: ApplicationCall): String? {
-        val founder = app.people.find(People.FOUNDER)
-        if (founder == null || !founder.active || founder.role.rank < People.Role.ADMIN.rank) return null
         val raw = call.request.cookies.rawCookies[cookieName(app)] ?: return null
         val parts = raw.split('.')
-        if (parts.size != 4 || parts[0] != "v1") return null
+        if (parts.size != 5 || parts[0] != "v2") return null
         val expires = parts[1].toLongOrNull() ?: return null
         if (expires <= app.clock() || !Tokens.wellFormed(parts[2])) return null
-        return parts[2].takeIf { Tokens.same(signature(app, expires, it), parts[3]) }
+        val person = app.people.find(parts[3]) ?: return null
+        if (!person.active || person.role.rank < People.Role.ADMIN.rank) return null
+        return parts[2].takeIf { Tokens.same(signature(app, expires, it, person), parts[4]) }
     }
 
     fun csrf(app: App, nonce: String, request: AuthRequest): String =
@@ -361,11 +365,11 @@ private fun consent(app: App, request: AuthRequest, nonce: String, error: String
     return OAuthPage.consent(request, agents, OwnerSession.csrf(app, nonce, request), suggested, existing, error)
 }
 
-private suspend fun signIn(app: App, call: ApplicationCall, request: AuthRequest, password: String?) {
+private suspend fun signIn(app: App, call: ApplicationCall, request: AuthRequest, password: String?, email: String? = null) {
     val address = call.addressOrNull(app)
         ?: return call.page(400, OAuthPage.problem("This server cannot tell where your request came from, so it will not check a password. Ask whoever runs it to fix ADDRESS_HEADER."))
     // Loopback stays as it is, so a desktop host's own exemption from the lockout still applies.
-    when (val result = app.checkPassword(password, if (isLoopback(address)) address else rateKey(address))) {
+    when (val result = app.checkPassword(password, if (isLoopback(address)) address else rateKey(address), email)) {
         is PasswordCheck.Refused -> {
             val headers = result.retryAfterS?.let { arrayOf("Retry-After" to it.toString()) } ?: emptyArray()
             call.page(result.status, OAuthPage.signIn(request, result.message), extra = headers)
@@ -374,7 +378,7 @@ private suspend fun signIn(app: App, call: ApplicationCall, request: AuthRequest
         is PasswordCheck.Ok -> if (result.person.role.rank < People.Role.ADMIN.rank) {
             call.page(403, OAuthPage.signIn(request, "Only an owner or an admin can connect an agent."))
         } else {
-            call.respondRedirect303("/oauth/authorize?${request.query()}", "Set-Cookie" to OwnerSession.mint(app), *NO_STORE)
+            call.respondRedirect303("/oauth/authorize?${request.query()}", "Set-Cookie" to OwnerSession.mint(app, result.person), *NO_STORE)
         }
     }
 }
@@ -385,7 +389,7 @@ private suspend fun decide(app: App, call: ApplicationCall, request: AuthRequest
     if (!Tokens.same(csrf, OwnerSession.csrf(app, nonce, request))) {
         return call.page(403, OAuthPage.problem("This page expired or did not come from this dashboard, so nothing was allowed. Start again from the app you are connecting."))
     }
-    val issuer = OAuthUrls(app.config.publicBaseUrl).issuer
+    val issuer = OAuthUrls(app.teams.address()).issuer
     if (form["action"] == "deny") {
         val location = AuthRequest.answerUrl(
             request.redirectUri,

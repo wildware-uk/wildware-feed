@@ -40,7 +40,7 @@ object Attachments {
     )
 
     fun downloadUrl(app: App, mediaId: String): String? {
-        val base = app.config.publicBaseUrl.trimEnd('/')
+        val base = app.teams.address().trimEnd('/')
         return if (base.isEmpty()) null else "$base/api/agent/media/$mediaId"
     }
 

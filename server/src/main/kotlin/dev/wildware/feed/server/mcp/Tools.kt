@@ -134,6 +134,11 @@ class ToolRegistry {
         if (issues.isNotEmpty()) {
             return ToolResult.sdkError("Input validation error: Invalid arguments for tool $name: ${issues.joinToString("\n")}")
         }
+        // A suspended team is read-only: its agents can read, not write (docs/HOSTING.md §7).
+        val team = app.teams.current()
+        if (team != null && team.suspended && !dev.wildware.feed.server.http.Suspension.readOnlyTool(name)) {
+            return ToolResult.failed("suspended", dev.wildware.feed.server.http.Suspension.message(team))
+        }
         return try {
             handler(ToolCall(app, agent, args!!))
         } catch (e: DomainError) {

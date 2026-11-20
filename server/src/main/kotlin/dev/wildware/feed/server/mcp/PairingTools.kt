@@ -19,13 +19,13 @@ fun ToolRegistry.registerPairingTools(app: App) {
             address = null,
             askedBy = call.agent.id,
         )
-        val data = PairingWords.started(app.config.publicBaseUrl, started, mcp = true)
+        val data = PairingWords.started(app.teams.address(), started, mcp = true)
         ToolResult.ok((data["instructions"] as JsonPrimitive).content, data)
     }
 
     register("await_pairing") { call ->
         val poll = app.pairings.await(call.args.string("pairing_id"), call.args.string("poll_secret"), Pairings.HOLD_MS)
-        val data = PairingWords.poll(app.config.publicBaseUrl, poll, mcp = true)
+        val data = PairingWords.poll(app.teams.address(), poll, mcp = true)
         ToolResult.ok((data["instructions"] as JsonPrimitive).content, data)
     }
 }

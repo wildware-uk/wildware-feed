@@ -26,6 +26,14 @@ object ServerInfo {
      * What the sign-in step can offer: the founding owner's password always, and email and password
      * once anyone has an email (migration 055). [team]: more than one person is in it.
      */
+    /** The directory address of a server with many teams: it lists teams and is not itself a feed (docs/HOSTING.md §4). */
+    fun directory(): JsonObject = buildJsonObject {
+        put("product", PRODUCT)
+        put("version", version)
+        put("signIn", JsonArray(listOf(JsonPrimitive("account"))))
+        put("directory", true)
+    }
+
     fun json(emailSignIn: Boolean = false, team: Boolean = false): JsonObject = buildJsonObject {
         put("product", PRODUCT)
         put("version", version)
@@ -36,6 +44,7 @@ object ServerInfo {
 
 fun Route.serverInfoRoute(app: App) {
     endpoint("/api/server", HttpMethod.Get to {
+        if (call.attributes.contains(DirectoryKey)) return@to call.respondJson(200, ServerInfo.directory(), Wire.JSON, "Cache-Control" to "no-store")
         call.respondJson(200, ServerInfo.json(app.people.anyEmail(), app.people.activeCount() > 1), Wire.JSON, "Cache-Control" to "no-store")
     })
 }

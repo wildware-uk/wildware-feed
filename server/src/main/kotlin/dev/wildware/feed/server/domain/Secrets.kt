@@ -30,7 +30,8 @@ class Secrets(
     private val bus: Bus,
     private val box: SecretBox?,
     private val tokenSecret: String,
-    private val baseUrl: String,
+    /** This work's team's address, where its secret links point. */
+    private val baseUrl: () -> String,
     private val clock: () -> Long = System::currentTimeMillis,
 ) {
     data class Secret(
@@ -420,7 +421,7 @@ class Secrets(
             "INSERT INTO secret_grants (team_id, id, token_hash, kind, secret_id, name, note, agent_id, created_at, expires_at) VALUES (:team, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             Ulid.next(now), hashOf(token), kind, secretId, name, note, agent.id, now, expiresAt,
         )
-        return Grant(name, "$baseUrl/api/agent/secret/$token", expiresAt)
+        return Grant(name, "${baseUrl()}/api/agent/secret/$token", expiresAt)
     }
 
     /** Whether [token] is a write URL that is still unused and unexpired: checked before a body is read. */

@@ -58,7 +58,7 @@ private suspend fun ApplicationCall.agentFor(app: App, limiter: dev.wildware.fee
         val headers = buildList {
             if (status == 401) {
                 // resource_metadata is how an MCP client finds where to sign in (RFC 9728 §5.1).
-                val discovery = "resource_metadata=\"${OAuthUrls(app.config.publicBaseUrl).resourceMetadata}\", scope=\"${dev.wildware.feed.server.domain.OAuth.SCOPE}\""
+                val discovery = "resource_metadata=\"${OAuthUrls(app.teams.address()).resourceMetadata}\", scope=\"${dev.wildware.feed.server.domain.OAuth.SCOPE}\""
                 add(
                     "WWW-Authenticate" to if (code == "missing_token") "Bearer $discovery"
                     else "Bearer error=\"invalid_token\", error_description=\"${quotable(message)}\", $discovery",
@@ -79,6 +79,15 @@ private suspend fun ApplicationCall.agentFor(app: App, limiter: dev.wildware.fee
         val s = verdict.retryAfterSeconds
         refuse(429, "rate_limited", "rate limit exceeded for this token: retry after ${s}s", s)
         return null
+    }
+    // With many teams, a team's agents together get [App.teamMcpLimiter]'s share too (docs/HOSTING.md §7).
+    if (app.config.multiTeam && mcpStyle) {
+        val team = app.teamMcpLimiter.take(dev.wildware.feed.server.db.Tenant.id)
+        if (!team.allowed) {
+            val s = team.retryAfterSeconds
+            refuse(429, "rate_limited", "rate limit exceeded for this team: retry after ${s}s", s)
+            return null
+        }
     }
     return agent
 }

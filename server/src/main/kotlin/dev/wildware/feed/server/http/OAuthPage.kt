@@ -26,6 +26,8 @@ object OAuthPage {
         ${whereTo(request)}
         <form method="post" action="/oauth/authorize">
           ${hidden(request)}
+          <label for="email">Your email <span class="faint">(leave it empty for the dashboard's own password)</span></label>
+          <input id="email" name="email" type="email" autocomplete="username">
           <label for="password">Your dashboard password</label>
           <input id="password" name="password" type="password" autocomplete="current-password" required autofocus${if (error != null) " aria-invalid=\"true\" aria-describedby=\"error\"" else ""}>
           ${error?.let { "<p class=\"error\" id=\"error\" role=\"alert\">${esc(it)}</p>" }.orEmpty()}

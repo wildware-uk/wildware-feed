@@ -70,5 +70,11 @@
   "name": "teams-apart",
   "file": "058-teams-apart.sql",
   "checksum": "0ef711da432bfd98e09bfbcb13dacc83aacd4feb95cd5ef906c968409ede7e94"
+ },
+ {
+  "version": 59,
+  "name": "many-teams",
+  "file": "059-many-teams.sql",
+  "checksum": "2208f514fae018d9eae575bec3c16f02167c629eaa36995251f6d25940fcbb5b"
  }
 ]

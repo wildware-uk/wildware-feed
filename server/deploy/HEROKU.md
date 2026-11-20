@@ -74,6 +74,14 @@ were re-sealed.
 each team's rows to itself even if a query forgot to say its team (docs/HOSTING.md §2). A server
 with one team doesn't need it; a server with many always has it on.
 
+Many teams on one server (docs/HOSTING.md) need three more settings. `TEAM_DOMAIN` is the domain
+teams live under (`acme.<TEAM_DOMAIN>`); the domain itself serves the admin API. Any other address,
+such as `PUBLIC_BASE_URL`'s, stays the home team's, so today's apps and agents keep working.
+`ADMIN_API_KEYS` holds the control plane's signing key (`openssl rand -base64 32`; two,
+comma-separated, while one is changed). `CONTROL_PLANE_ORIGIN` is the control plane's own origin,
+the only page allowed to sign a browser in with a ticket. With `TEAM_DOMAIN` set the server needs
+Postgres and turns row security on by itself.
+
 `TOKEN_SECRET` must be the old server's, or every agent token stops working. `PORT` is set by
 Heroku. The server prints `Database: Postgres` and `Media: bucket <name>` when it starts; check
 the log for both.

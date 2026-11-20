@@ -32,7 +32,8 @@ fun Route.streamRoutes(app: App) {
             val me = call.person.id
             fun mine(event: dev.wildware.feed.server.events.AppEvent) =
                 (event.payload["memberId"] as? kotlinx.serialization.json.JsonPrimitive)?.content.let { it == null || it == me }
-            call.respondSse(
+            call.withStreamSlot(app) {
+                call.respondSse(
                 SseContent(
                     stillAllowed = key?.let { k -> { app.devices.authenticate(k) != null } },
                     now = app.clock,
@@ -59,6 +60,7 @@ fun Route.streamRoutes(app: App) {
                     stop
                 },
             )
+            }
         },
     )
 }

@@ -125,7 +125,9 @@ private suspend fun ApplicationCall.serveMedia(app: App, id: String, variant: St
     val file = runCatching { app.serve.open(id, variant) }.getOrNull() ?: return mediaMiss()
     val base = listOf(
         "Content-Type" to file.mime,
-        "Cache-Control" to "public, max-age=31536000, immutable",
+        // private: browsers and the apps keep it, but no shared cache (Cloudflare in front) may hand
+        // a file it checked access for to anyone else with the URL (docs/HOSTING.md §4).
+        "Cache-Control" to "private, max-age=31536000, immutable",
         "X-Content-Type-Options" to "nosniff",
         "Content-Disposition" to file.disposition,
         "Content-Security-Policy" to "default-src 'none'; sandbox",

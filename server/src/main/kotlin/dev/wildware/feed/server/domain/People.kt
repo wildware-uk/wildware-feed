@@ -127,6 +127,11 @@ class People(
         return accountId == FOUNDER && Tenant.id == HOME && Passwords.verify(adminPasswordHash, password)
     }
 
+    /** The hash [person] signs in with: their own, or ADMIN_PASSWORD_HASH for the home founder without one; null for none. */
+    fun passwordHashOf(person: Person): String? =
+        db.one("SELECT password_hash FROM users WHERE id = ?", person.accountId) { it.getString(1) }
+            ?: adminPasswordHash.takeIf { person.accountId == FOUNDER && Tenant.id == HOME }
+
     /** The founder's own password hash, or null while they still use ADMIN_PASSWORD_HASH. */
     fun founderHash(): String? = db.one("SELECT password_hash FROM users WHERE id = ?", FOUNDER) { it.getString(1) }
 
@@ -137,6 +142,9 @@ class People(
     private fun lockTeam() {
         if (db.dialect == dev.wildware.feed.server.db.Dialect.POSTGRES) db.one("SELECT id FROM teams WHERE id = ? FOR UPDATE", Tenant.id) { it.getString(1) }
     }
+
+    /** Refuses one more login when the team has none free (the team's limit, docs/HOSTING.md §7). Set by the app. */
+    @Volatile var checkSeat: () -> Unit = {}
 
     private val dummyHash by lazy { Passwords.hash(Tokens.random()) }
 
@@ -156,6 +164,8 @@ class People(
         val now = clock()
         val recent = db.one("SELECT count(*) FROM invites WHERE team_id = :team AND created_by = ? AND created_at > ?", by.id, now - DAY_MS) { it.getInt(1) } ?: 0
         if (recent >= INVITES_PER_DAY) throw DomainError("rate_limited", "That is $INVITES_PER_DAY invites today. Try again tomorrow.", 429)
+        // A waiting invite takes a login, so the team's last free one can't go to two invites.
+        checkSeat()
         val token = Tokens.random()
         val id = Ulid.next(now)
         db.update(
@@ -298,7 +308,8 @@ class People(
             val clean = checkedEmail(email)
             val taken = db.one("SELECT id FROM users WHERE email = ?", clean) { it.getString(1) }
             if (taken != null && taken != me.accountId) throw conflict("$clean belongs to another account")
-            db.update("UPDATE users SET email = ? WHERE id = ?", clean, me.accountId)
+            // A new email is only typed in, not proved (docs/HOSTING.md §5).
+            db.update("UPDATE users SET email = ?, email_verified_at = NULL WHERE id = ?", clean, me.accountId)
         }
         if (hashed != null) db.update("UPDATE users SET password_hash = ? WHERE id = ?", hashed, me.accountId)
         return find(me.id)!!
@@ -332,6 +343,67 @@ class People(
         checkNewPassword(password)
         val hashed = Passwords.hash(password)
         return db.transaction { _ -> makeOwner(cleanEmail, cleanName, hashed) }
+    }
+
+    /**
+     * The admin API's new team (docs/HOSTING.md §7): [email]'s account as this team's owner. The
+     * control plane has just proved the email is this person's. An existing account whose email was
+     * proved before is linked, its password untouched. One whose email was only ever typed in (an
+     * invite, a profile change) may be someone else's claim on it: the proof wins. That account
+     * keeps its teams and devices but loses the email, and the owner gets a new account, with no
+     * password until they set one from the one-time link. The second value says whether the account is new.
+     */
+    fun addOwner(email: String, name: String): Pair<Person, Boolean> {
+        val cleanEmail = checkedEmail(email)
+        val cleanName = requiredText(name, "name", NAME_MAX)
+        return db.transaction { _ ->
+            val claimed = db.one("SELECT id, email_verified_at FROM users WHERE email = ?", cleanEmail) { it.getString(1) to it.longOrNull("email_verified_at") }
+            if (claimed != null && claimed.second == null) db.update("UPDATE users SET email = NULL WHERE id = ?", claimed.first)
+            val existing = claimed?.takeIf { it.second != null }
+            val accountId = existing?.first ?: Ulid.next(clock()).also {
+                db.update("INSERT INTO users (id, email, name, password_hash, created_at, email_verified_at) VALUES (?, ?, ?, NULL, ?, ?)", it, cleanEmail, cleanName, clock(), clock())
+            }
+            val membership = db.one("SELECT id FROM memberships WHERE team_id = :team AND user_id = ? AND removed_at IS NULL", accountId) { it.getString(1) }
+            val person = if (membership != null) {
+                db.update("UPDATE memberships SET role = 'owner' WHERE team_id = :team AND id = ?", membership)
+                find(membership)!!
+            } else {
+                val id = Ulid.next(clock())
+                db.update(
+                    "INSERT INTO memberships (id, team_id, user_id, role, handle, founder, created_at) VALUES (?, :team, ?, 'owner', ?, 0, ?)",
+                    id, accountId, freeHandle(cleanName, null), clock(),
+                )
+                find(id)!!
+            }
+            person to (existing == null)
+        }
+    }
+
+    /** The person still in this team with [email], or null; with [proved], only if that email was proved theirs. */
+    fun findByEmail(email: String, proved: Boolean = false): Person? {
+        val clean = runCatching { checkedEmail(email) }.getOrNull() ?: return null
+        val sql = "$SELECT AND u.email = ? AND m.removed_at IS NULL" + if (proved) " AND u.email_verified_at IS NOT NULL" else ""
+        return db.one(sql, clean, row = ::person)
+    }
+
+    /** Set [person]'s own password from a one-time setup link, which the control plane sent to their email: that proves it too. */
+    fun setOwnPassword(person: Person, password: String): Person {
+        checkNewPassword(password)
+        db.update("UPDATE users SET password_hash = ?, email_verified_at = coalesce(email_verified_at, ?) WHERE id = ?", Passwords.hash(password), clock(), person.accountId)
+        return find(person.id)!!
+    }
+
+    /** The team's first owner still in it: who the admin API's invites are from. */
+    fun firstOwner(): Person? = db.one("$SELECT AND m.role = 'owner' AND m.removed_at IS NULL ORDER BY m.seq LIMIT 1", row = ::person)
+
+    /** A waiting invite's link made again: a new token, so the one shown before stops working. Null when it isn't waiting. */
+    fun reissueInvite(id: String): Pair<Invite, String>? {
+        val token = Tokens.random()
+        val changed = db.update(
+            "UPDATE invites SET token_hash = ? WHERE team_id = :team AND id = ? AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at > ?",
+            inviteHash(token), id, clock(),
+        )
+        return if (changed == 1) findInvite(id)!! to token else null
     }
 
     private fun makeOwner(cleanEmail: String, cleanName: String, hashed: String): Person {

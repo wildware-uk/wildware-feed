@@ -143,7 +143,14 @@ class Apns(
         val actor: String? = null,
         /** Only owners and admins are told (an agent asking to join is theirs to allow). */
         val admins: Boolean = false,
-    )
+    ) {
+        /**
+         * The team's slug, for any team but the home team (docs/HOSTING.md §4): the alert says whose
+         * it is (`team`), and its thread id starts with it, as two teams can both have a `web`.
+         * Null for the home team, so a self-hosted server's alerts are as before.
+         */
+        var team: String? = null
+    }
 
     fun devices(): List<PushDevice> = app.db.query(
         "SELECT id, apns_token, apns_environment, live_activity_token, push_to_start_token, alert_project_ids, alert_prefs, user_id FROM owner_devices " +
@@ -160,6 +167,9 @@ class Apns(
     private fun slug(projectId: String?) = projectId?.let { app.db.one("SELECT slug FROM projects WHERE team_id = :team AND id = ?", it) { rs -> rs.getString(1) } }
 
     private fun thread(projectId: String?) = slug(projectId) ?: "dashboard"
+
+    /** [team]'s slug, or null for the home team. */
+    private fun teamSlug(team: String): String? = if (team == Tenant.HOME) null else app.teams.find(team)?.slug
 
     /** The alert [member]'s phones would get for [event] (migration 055: each person their own), or null. */
     fun alertFor(event: AppEvent, member: String = dev.wildware.feed.server.domain.People.FOUNDER): Alert? {
@@ -222,7 +232,8 @@ class Apns(
             // at all, then each phone's own projects, kinds, levels and priorities (migration 047).
             val phones = devices().filter { it.apnsToken != null }.groupBy { it.userId }
             for ((member, theirs) in phones) {
-                val alert = runCatching { alertFor(event, member) }.onFailure { System.err.println("apple push failed: $it") }.getOrNull() ?: continue
+                val alert = runCatching { alertFor(event, member)?.also { it.team = teamSlug(event.team) } }
+                    .onFailure { System.err.println("apple push failed: $it") }.getOrNull() ?: continue
                 if (!alert.followed || alert.actor == member) continue
                 if (alert.admins && (app.people.find(member)?.role?.rank ?: 0) < dev.wildware.feed.server.domain.People.Role.ADMIN.rank) continue
                 val wanted = theirs.filter {
@@ -390,7 +401,7 @@ class Apns(
                 } else {
                     put("sound", JsonPrimitive("default"))
                 }
-                put("thread-id", JsonPrimitive(alert.threadId))
+                put("thread-id", JsonPrimitive(alert.team?.let { "$it:${alert.threadId}" } ?: alert.threadId))
                 put("category", JsonPrimitive(alert.category))
                 if (alert.category == "REQUEST") put("mutable-content", JsonPrimitive(1))
                 // A question, or an agent asking to join: both wait on the owner, so both get through Focus.
@@ -408,6 +419,7 @@ class Apns(
             }
             alert.reply?.let { (k, v) -> put("reply", buildJsonObject { put(k, JsonPrimitive(v)) }) }
             alert.extra.forEach { (k, v) -> put(k, v) }
+            alert.team?.let { put("team", JsonPrimitive(it)) }
         }
     }
 }

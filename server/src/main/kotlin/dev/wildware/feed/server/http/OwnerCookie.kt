@@ -1,6 +1,7 @@
 package dev.wildware.feed.server.http
 
 import dev.wildware.feed.server.Config
+import dev.wildware.feed.server.db.Tenant
 import io.ktor.http.HttpMethod
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.plugins.origin
@@ -17,14 +18,24 @@ import io.ktor.server.request.httpMethod
 object OwnerCookie {
     const val NAME = "feed_device"
 
+    /**
+     * With many teams, every team's site is a subdomain of one domain, and any of them could set a
+     * cookie for all the others. A `__Host-` cookie can only be set by its own site (and must be
+     * Secure, with no Domain), so with many teams the cookie is `__Host-feed_device` (docs/HOSTING.md §4).
+     */
+    @Volatile var hostOnly: Boolean = false
+
+    /** The cookie's name on this server. */
+    val name: String get() = if (hostOnly) "__Host-$NAME" else NAME
+
     /** About 400 days, the longest a browser keeps a cookie. The key itself lasts until revoked. */
     const val MAX_AGE_S = 400L * 24 * 60 * 60
 
     fun set(key: String, config: Config, call: ApplicationCall): String =
-        "$NAME=$key; Max-Age=$MAX_AGE_S; Path=/; HttpOnly; SameSite=Strict" + secure(config, call)
+        "$name=$key; Max-Age=$MAX_AGE_S; Path=/; HttpOnly; SameSite=Strict" + secure(config, call)
 
     fun clear(config: Config, call: ApplicationCall): String =
-        "$NAME=; Max-Age=0; Path=/; HttpOnly; SameSite=Strict" + secure(config, call)
+        "$name=; Max-Age=0; Path=/; HttpOnly; SameSite=Strict" + secure(config, call)
 
     /**
      * Secure wherever the site is https, by its configured address or by how this request came in
@@ -32,7 +43,7 @@ object OwnerCookie {
      * goes without, as the browser could not send it back otherwise.
      */
     private fun secure(config: Config, call: ApplicationCall): String {
-        val https = config.publicBaseUrl.startsWith("https://") ||
+        val https = hostOnly || config.publicBaseUrl.startsWith("https://") ||
             call.request.headers["X-Forwarded-Proto"]?.substringBefore(',')?.trim().equals("https", ignoreCase = true) ||
             call.request.origin.scheme == "https"
         return if (https) "; Secure" else ""
@@ -46,12 +57,12 @@ object OwnerCookie {
 fun ApplicationCall.ownerKey(): String? {
     val header = request.headers["Authorization"]
     if (header != null) return Guard.bearer(header)
-    return request.cookies[OwnerCookie.NAME]?.takeIf { it.isNotEmpty() }
+    return request.cookies[OwnerCookie.name]?.takeIf { it.isNotEmpty() }
 }
 
 /** Whether [ownerKey] came from the cookie. */
 fun ApplicationCall.keyIsCookie(): Boolean =
-    request.headers["Authorization"] == null && !request.cookies[OwnerCookie.NAME].isNullOrEmpty()
+    request.headers["Authorization"] == null && !request.cookies[OwnerCookie.name].isNullOrEmpty()
 
 /**
  * A cookie request is the web app's own when it reads, or when the browser says it came from this
@@ -75,7 +86,9 @@ fun ApplicationCall.pageOrigin(config: Config): Boolean? {
     val raw = request.headers["Origin"] ?: return null
     // "null" (a sandboxed frame, a file) or anything else that is not a site is not this one.
     val origin = OAuthUrls.canonical(raw) ?: return false
-    if (origin == OAuthUrls.canonical(config.origin) || origin == OAuthUrls.canonical(config.publicBaseUrl)) return true
+    // The configured address is the home team's; another team's page is only ever its own host.
+    val home = Tenant.currentOrNull.let { it == null || it == Tenant.HOME }
+    if (home && (origin == OAuthUrls.canonical(config.origin) || origin == OAuthUrls.canonical(config.publicBaseUrl))) return true
     val host = request.headers["Host"] ?: return false
     return origin == OAuthUrls.canonical("https://$host") || origin == OAuthUrls.canonical("http://$host")
 }

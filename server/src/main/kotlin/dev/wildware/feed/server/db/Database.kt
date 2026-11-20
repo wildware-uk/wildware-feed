@@ -73,11 +73,31 @@ class Database private constructor(
     /** Run [block] with the connection, alone. */
     fun <T> withConnection(block: (Connection) -> T): T = lock.withLock { live().let { c -> setTeam(c); block(c) } }
 
-    /** Run [block] in one transaction: all of it or none. */
+    /** How deep this thread is in [transaction]: an inner one joins the outer. */
+    private var depth = 0
+
+    /** Run [block] in one transaction: all of it or none. Inside another, it is part of that one. */
     fun <T> transaction(block: (Connection) -> T): T = lock.withLock {
+        if (depth > 0) {
+            depth++
+            try {
+                return@withLock block(connection)
+            } finally {
+                depth--
+            }
+        }
+        depth = 1
+        try {
+            outerTransaction(block)
+        } finally {
+            depth = 0
+        }
+    }
+
+    private fun <T> outerTransaction(block: (Connection) -> T): T {
         val c = live()
         c.autoCommit = false
-        try {
+        return try {
             setTeam(c)
             val result = block(c)
             c.commit()

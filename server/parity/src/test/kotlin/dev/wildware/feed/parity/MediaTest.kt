@@ -170,7 +170,8 @@ class MediaTest : ParityTest() {
         val h = got.headers
         assertEquals("image/png", h[HttpHeaders.ContentType])
         assertEquals(bytes.size.toString(), h[HttpHeaders.ContentLength])
-        assertEquals("public, max-age=31536000, immutable", h[HttpHeaders.CacheControl])
+        // The TS server says public; the Kotlin server says private, so no shared cache in front keeps it.
+        assertTrue(h[HttpHeaders.CacheControl] in setOf("public, max-age=31536000, immutable", "private, max-age=31536000, immutable"), h[HttpHeaders.CacheControl])
         assertEquals("nosniff", h["x-content-type-options"])
         assertEquals("inline", h[HttpHeaders.ContentDisposition])
         assertEquals("default-src 'none'; sandbox", h["content-security-policy"])

@@ -13,7 +13,6 @@ import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpMethod
-import io.ktor.server.application.ApplicationCall
 import io.ktor.server.testing.ApplicationTestBuilder
 import io.ktor.server.testing.testApplication
 import kotlinx.serialization.json.JsonArray
@@ -45,8 +44,8 @@ import kotlin.test.fail
  * - no row of either team points at the other's;
  * - B's keys, tokens and links open nothing at A's address.
  *
- * Teams are found from a test header here; slice 4 routes them by address. Strict: work with no
- * team set fails instead of falling back to the home team.
+ * Each team is at its own address (`alpha.feed.test`), and the server is strict, as one with many
+ * teams is: work with no team set fails instead of falling back to the home team.
  */
 class TeamLeakTest {
     private val config = Config(
@@ -54,9 +53,9 @@ class TeamLeakTest {
         publicBaseUrl = "http://localhost:5173", maxImageBytes = 1_000_000, maxVideoBytes = 1_000_000, maxFileBytes = 1_000_000, holdSeconds = 1,
         apns = null, port = 0, host = "127.0.0.1", origin = "http://localhost:5173",
         secretsKeys = Config.SecretsKeys("k".repeat(32)),
+        teamDomain = "feed.test",
     )
 
-    private val teamOf: (ApplicationCall) -> String? = { call -> call.request.headers["X-Test-Team"] }
 
     private var strictBefore = false
 
@@ -82,7 +81,8 @@ class TeamLeakTest {
     private suspend fun ApplicationTestBuilder.send(team: Team, key: String?, method: String, path: String, body: String? = null, contentType: String = "application/json"): HttpResponse =
         (http ?: createClient { followRedirects = false }.also { http = it }).request(path) {
             this.method = HttpMethod.parse(method)
-            header("X-Test-Team", team.id)
+            // Each team at its own address, as a server with many teams routes them.
+            header("Host", "${team.id}.feed.test")
             header("Accept", "application/json, text/event-stream")
             if (key != null) header("Authorization", "Bearer $key")
             if (body != null) {
@@ -144,7 +144,6 @@ class TeamLeakTest {
         tool(team, t, "react", args("update_id" to update, "emoji" to "👍"))
         tool(team, t, "acknowledge", args("state" to "thinking", "message_id" to message))
         tool(team, t, "subscribe", args("project" to slug))
-        // App addresses stay unique across the server until migration 058 (the code before 057 names that rule).
         val appUri = if (lookAlike && SAME_APP_URIS) "ui://board" else "ui://board-$m"
         tool(team, t, "register_app", args("uri" to appUri, "name" to "Board $m", "html" to "<p>$m</p>")).let { assertTrue("\"isError\":true" !in it, it) }
         val board = tool(team, t, "post_update", args(
@@ -273,7 +272,7 @@ class TeamLeakTest {
         }
         try {
             testApplication {
-                application { feed(app, teamOf) }
+                application { feed(app) }
                 seed(app, alpha, "web", lookAlike)
                 seed(app, bravo, if (lookAlike) "web" else "web-b", lookAlike)
 
@@ -366,7 +365,7 @@ class TeamLeakTest {
     }
 
     companion object {
-        /** Whether two teams may register the same app address yet. */
-        const val SAME_APP_URIS = false
+        /** Whether two teams may register the same app address (migration 059 dropped the server-wide rule). */
+        const val SAME_APP_URIS = true
     }
 }

@@ -34,7 +34,12 @@ fun Route.readRoutes(app: App, lastSeq: () -> Long) {
         })
     }
 
-    endpoint("/api/summary", HttpMethod.Get to { call.respondOwner(200, reads.summary(Wire::isoOf)) })
+    // A suspended team's summary says so (docs/TEAMS.md §4: the one key it gains, add-only); others are as before.
+    endpoint("/api/summary", HttpMethod.Get to {
+        val summary = reads.summary(Wire::isoOf)
+        val suspended = call.attributes.getOrNull(TeamKey)?.suspended == true
+        call.respondOwner(200, if (suspended) kotlinx.serialization.json.JsonObject(summary + ("suspended" to kotlinx.serialization.json.JsonPrimitive(true))) else summary)
+    })
 
     endpoint(
         "/api/snapshot",

@@ -61,7 +61,8 @@ internal suspend fun ApplicationCall.agentStream(app: App, agent: Agents.Agent, 
         put("at", JsonPrimitive(Wire.isoOf(app.clock())))
     })
 
-    respondSse(
+    withStreamSlot(app) {
+        respondSse(
         SseContent(stillAllowed = { app.agents.authenticate(token).first != null }, now = app.clock) { sink ->
             var last: AgentWork.Counts? = null
             val (_, stop) = app.bus.subscribeFrom(
@@ -88,6 +89,7 @@ internal suspend fun ApplicationCall.agentStream(app: App, agent: Agents.Agent, 
             stop
         },
     )
+    }
 }
 
 private const val MESSAGE_LIMIT = 5

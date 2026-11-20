@@ -24,8 +24,15 @@ import dev.wildware.feed.server.push.startApplePush
  * restart forgets (limiters). The desktop app builds one of these to host the server itself.
  */
 class App(val config: Config, val db: Database, val clock: () -> Long = System::currentTimeMillis) : AutoCloseable {
+    /** What [close] puts back: a server with many teams makes its process strict about teams. */
+    private val strictBefore = dev.wildware.feed.server.db.Tenant.strict
+
     init {
         config.rowSecurity?.let { on -> if (on != db.rowSecurity) dev.wildware.feed.server.db.TeamTables.setRowSecurity(db, on) }
+        dev.wildware.feed.server.http.OwnerCookie.hostOnly = config.multiTeam
+        // With many teams, work that forgot to say its team fails, rather than landing in the home
+        // team. (Config.load refuses many teams without Postgres.)
+        if (config.multiTeam) dev.wildware.feed.server.db.Tenant.strict = true
     }
 
     val agents = Agents(db, config.tokenSecret, clock)
@@ -60,6 +67,10 @@ class App(val config: Config, val db: Database, val clock: () -> Long = System::
 
     /** 120 requests a minute per agent token, one limiter per route as in the TS server. */
     val mcpLimiter = SlidingLimiter(limit = 120, windowMs = 60_000, clock = clock)
+
+    /** With many teams: 1,200 MCP calls a minute across all of one team's agents, and 50 open streams a team. */
+    val teamMcpLimiter = SlidingLimiter(limit = 1200, windowMs = 60_000, clock = clock)
+    val teamStreams = dev.wildware.feed.server.http.TeamStreams()
     val agentStreamLimiter = SlidingLimiter(limit = 120, windowMs = 60_000, clock = clock)
 
     /** Six attempts a minute per upload token, successful ones included (spec/07 §4). */
@@ -96,10 +107,16 @@ class App(val config: Config, val db: Database, val clock: () -> Long = System::
         },
     )
 
+    /** The teams, their addresses and limits (docs/HOSTING.md §4, §7). */
+    val teams = dev.wildware.feed.server.domain.Teams(db, config, mediaPaths, clock).also { teams -> people.checkSeat = { teams.checkSeat() } }
+
+    /** The admin API's own state: idempotency and its rate limit (docs/HOSTING.md §7). */
+    val admin = dev.wildware.feed.server.http.AdminApi(this)
+
     /** Reserving uploads and taking their bytes. */
     val uploads = dev.wildware.feed.server.media.Uploads(
-        db, mediaPaths, config.tokenSecret, config.publicBaseUrl, config.maxImageBytes, config.maxVideoBytes, config.maxFileBytes, clock,
-    )
+        db, mediaPaths, config.tokenSecret, { teams.address() }, config.maxImageBytes, config.maxVideoBytes, config.maxFileBytes, clock,
+    ).also { it.checkStorage = { bytes -> teams.checkStorage(bytes) } }
 
     /** Thumbnails, posters and transcodes for uploaded media. */
     val derive = dev.wildware.feed.server.media.Derive(
@@ -123,7 +140,7 @@ class App(val config: Config, val db: Database, val clock: () -> Long = System::
     /** Secrets the owner and agents share, sealed under SECRETS_KEY (migration 054, docs/SECRETS.md). */
     val secrets = dev.wildware.feed.server.domain.Secrets(
         db, bus, config.secretsKeys?.let { dev.wildware.feed.server.auth.SecretBox(it.current, it.old) },
-        config.tokenSecret, config.publicBaseUrl, clock,
+        config.tokenSecret, { teams.address() }, clock,
     )
 
     /** MCP clients connecting over OAuth, allowed by the owner in the browser (migration 051). */
@@ -170,8 +187,8 @@ class App(val config: Config, val db: Database, val clock: () -> Long = System::
         }
     }
 
-    /** Every team's id, oldest first. */
-    fun teamIds(): List<String> = db.query("SELECT id FROM teams ORDER BY seq") { it.getString(1) }
+    /** Every open team's id, oldest first: not one being deleted. */
+    fun teamIds(): List<String> = db.query("SELECT id FROM teams WHERE state = 'active' ORDER BY seq") { it.getString(1) }
 
     private var stopApplePush: () -> Unit = {}
 
@@ -195,6 +212,9 @@ class App(val config: Config, val db: Database, val clock: () -> Long = System::
         everyTeam(dev.wildware.feed.server.media.Derive.WORKER_INTERVAL_MS, "media derive") { derive.tick() }
         everyTeam(15 * 60_000L, "media sweep") { uploads.sweep() }
         everyTeam(dev.wildware.feed.server.media.Retention.CHECK_INTERVAL_MS, "media retention") { retention.tick() }
+        everyTeam(10 * 60_000L, "sign-in code sweep") { teams.sweepCodes() }
+        every(60_000L, "team deletion") { teams.purgeDue() }
+        every(60 * 60_000L, "admin request sweep") { admin.sweep() }
         stopApplePush = startApplePush()
     }
 
@@ -211,6 +231,10 @@ class App(val config: Config, val db: Database, val clock: () -> Long = System::
     }
 
     override fun close() {
+        if (config.multiTeam) {
+            dev.wildware.feed.server.db.Tenant.strict = strictBefore
+            dev.wildware.feed.server.http.OwnerCookie.hostOnly = false
+        }
         stopNotificationRecorder()
         stopApplePush()
         derive.close()

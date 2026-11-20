@@ -404,5 +404,12 @@
   "file": "058-teams-apart.sql",
   "rebuildsTables": false,
   "checksum": "3e8cb8fd8b9d04d121b03885bcfc72ff684ae2197d64604c19b65a0fefa52cc3"
+ },
+ {
+  "version": 59,
+  "name": "many-teams",
+  "file": "059-many-teams.sql",
+  "rebuildsTables": false,
+  "checksum": "b050c969fc731bf94b88a56d1017db9c790b9795e0b69ffeb432254512a983f5"
  }
 ]

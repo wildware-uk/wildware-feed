@@ -27,7 +27,7 @@ import kotlinx.serialization.json.put
 fun Route.pairingRoutes(app: App) {
     endpoint(
         "/api/pair",
-        HttpMethod.Get to { call.respondJson(200, buildJsonObject { put("instructions", PairingWords.howTo(app.config.publicBaseUrl)) }, Wire.JSON_UTF8) },
+        HttpMethod.Get to { call.respondJson(200, buildJsonObject { put("instructions", PairingWords.howTo(app.teams.address())) }, Wire.JSON_UTF8) },
         HttpMethod.Post to {
             val address = call.clientAddressOrNull(app)
             if (!call.allowed(app.pairStartLimiter, address ?: "unknown")) return@to
@@ -39,7 +39,7 @@ fun Route.pairingRoutes(app: App) {
             }
             val name = field("name") ?: throw invalid("name is required: the name you want to join under, e.g. \"laptop-personal\"")
             val started = app.pairings.start(name, field("host"), field("cwd"), address, askedBy = null)
-            call.respondJson(201, PairingWords.started(app.config.publicBaseUrl, started, mcp = false), Wire.JSON_UTF8, "Cache-Control" to "no-store")
+            call.respondJson(201, PairingWords.started(app.teams.address(), started, mcp = false), Wire.JSON_UTF8, "Cache-Control" to "no-store")
         },
     )
     endpoint(
@@ -54,7 +54,7 @@ fun Route.pairingRoutes(app: App) {
                     Wire.JSON_UTF8,
                 )
             val poll = app.pairings.await(call.parameters["id"].orEmpty(), secret, Pairings.HOLD_MS)
-            call.respondJson(200, PairingWords.poll(app.config.publicBaseUrl, poll, mcp = false), Wire.JSON_UTF8, "Cache-Control" to "no-store")
+            call.respondJson(200, PairingWords.poll(app.teams.address(), poll, mcp = false), Wire.JSON_UTF8, "Cache-Control" to "no-store")
         },
     )
 

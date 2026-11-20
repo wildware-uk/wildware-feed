@@ -48,7 +48,31 @@ data class Config(
      * nothing on SQLite. Null (tests, the desktop app): leave the database as it is.
      */
     val rowSecurity: Boolean? = null,
+    /**
+     * TEAM_DOMAIN: many teams on one server (docs/HOSTING.md §4). A request to
+     * `<slug>.<teamDomain>` is that team's; the bare domain is the directory (the admin API and
+     * `/api/server` only); any other address is the home team's, as on a self-hosted server.
+     * Unset: one team, the home team, at every address. Needs Postgres, and turns row security on.
+     */
+    val teamDomain: String? = null,
+    /**
+     * ADMIN_API_KEYS: the keys the control plane signs admin calls with (comma-separated, two
+     * while one is rotated). Unset: every `/admin/` route answers 404. [toString] leaves them out.
+     */
+    val adminApiKeys: List<String> = emptyList(),
+    /**
+     * CONTROL_PLANE_ORIGIN: the control plane's own origin (`https://feed.example.com`), the only
+     * page allowed to post a browser sign-in ticket to `/auth/ticket`. Unset: that route answers 404.
+     */
+    val controlPlaneOrigin: String? = null,
 ) {
+    /** Many teams ([teamDomain] set). */
+    val multiTeam: Boolean get() = teamDomain != null
+
+    override fun toString(): String =
+        "Config(dataDir=$dataDir, publicBaseUrl=$publicBaseUrl, port=$port, host=$host, databaseUrl=${databaseUrl?.let { "set" }}, " +
+            "s3=$s3, teamDomain=$teamDomain, adminApiKeys=${adminApiKeys.size})"
+
     /** The key secrets are sealed under now, and older ones still accepted while they are re-sealed. [toString] leaves them out. */
     class SecretsKeys(val current: String, val old: List<String> = emptyList()) {
         override fun toString() = "SecretsKeys(${old.size} old)"
@@ -157,6 +181,27 @@ data class Config(
                 else -> { issues += "ROW_SECURITY: ROW_SECURITY must be on or off, not $raw"; false }
             }
 
+            val teamDomain = get("TEAM_DOMAIN")?.trim()?.lowercase()?.trimEnd('.')
+            if (teamDomain != null) {
+                if (!Regex("^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$").matches(teamDomain)) {
+                    issues += "TEAM_DOMAIN: TEAM_DOMAIN must be a domain name, such as feed.example.com"
+                }
+                if (get("DATABASE_URL") == null) issues += "TEAM_DOMAIN: many teams need Postgres (DATABASE_URL)"
+                // The home team's own address can't be a team's: a customer could take its name.
+                val homeHost = Regex("^https?://([^/:]+)").find(base)?.groupValues?.get(1)?.lowercase()?.trimEnd('.')
+                if (homeHost != null && (homeHost == teamDomain || homeHost.endsWith(".$teamDomain"))) {
+                    issues += "TEAM_DOMAIN: PUBLIC_BASE_URL (the home team's address) must not be $teamDomain or under it"
+                }
+                if (rowSecurity == false && get("ROW_SECURITY") != null) issues += "ROW_SECURITY: many teams (TEAM_DOMAIN) always run with row security on"
+            }
+            val adminKeys = get("ADMIN_API_KEYS")?.split(',')?.map { it.trim() }?.filter { it.isNotEmpty() }.orEmpty()
+            if (adminKeys.any { it.length < MIN_SECRET_LENGTH }) issues += "ADMIN_API_KEYS: each key must be at least $MIN_SECRET_LENGTH characters"
+            if (adminKeys.size > 2) issues += "ADMIN_API_KEYS: at most two keys (the current one and the one being retired)"
+            val controlPlane = get("CONTROL_PLANE_ORIGIN")?.trim()?.trimEnd('/')
+            if (controlPlane != null && !Regex("^https?://[^/?#\\s]+$").matches(controlPlane)) {
+                issues += "CONTROL_PLANE_ORIGIN: CONTROL_PLANE_ORIGIN must be an origin, such as https://feed.example.com"
+            }
+
             if (issues.isNotEmpty()) throw Invalid(issues)
 
             val port = env["PORT"]?.takeIf { it.isNotBlank() }?.toIntOrNull() ?: 3000
@@ -185,7 +230,10 @@ data class Config(
                 deriveWorkers = env["DERIVE_WORKERS"]?.toIntOrNull()?.takeIf { it > 0 } ?: 2,
                 webDir = env["WEB_DIR"]?.takeIf { it.isNotBlank() } ?: dev.wildware.feed.server.http.WebApp.besideInstall(),
                 secretsKeys = secretsKey?.let { SecretsKeys(it, oldSecretsKeys.filter { old -> old != it }) },
-                rowSecurity = rowSecurity,
+                rowSecurity = rowSecurity || teamDomain != null,
+                teamDomain = teamDomain,
+                adminApiKeys = adminKeys,
+                controlPlaneOrigin = controlPlane,
             )
         }
 
