@@ -2,15 +2,15 @@
 // through the signed admin API, set the owner's password on the setup page, sign in with it the way
 // the phone and desktop apps do, invite someone, and check no password opens another team.
 //
-// Used by journey-web.mjs (CI, with a browser on top) and by smoke-live.mjs (after each deploy, no
-// browser). No packages: Node's own http, https and crypto.
+// Used by the e2e suite (e2e/specs/apps.spec.mjs, and its helpers) and by smoke-live.mjs (after
+// each deploy, no browser). No packages: Node's own http, https and crypto.
 import { createHash, createHmac, randomBytes } from 'node:crypto';
 import http from 'node:http';
 import https from 'node:https';
 
 export const say = (what) => console.log(`journey: ${what}`);
 
-/** A made-up client address, so the test router (journey-router.mjs) counts each caller apart. */
+/** A made-up client address, so the test router (test-router.mjs) counts each caller apart. */
 export const someAddress = () => `10.${[...randomBytes(3)].join('.')}`;
 
 /**

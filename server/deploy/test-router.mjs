@@ -1,4 +1,4 @@
-// Driven by journey.sh: stands in for Heroku's router in front of the test server. It takes https
+// Driven by test-stack.sh: stands in for Heroku's router in front of the test server. It takes https
 // (a throwaway self-signed certificate), forwards plain http to the server, and adds
 // X-Forwarded-For and X-Forwarded-Proto as the router does, so the server sees what it sees in
 // production: https addresses, Secure __Host- cookies, Sec-Fetch-Site on every form post.

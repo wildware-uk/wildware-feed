@@ -266,18 +266,18 @@ jobs:
           path: web-screenshots/*.png
           if-no-files-found: warn
 
-  # The customer journey, on the server as it runs hosted (many teams, Postgres with row security
-  # forced): the control plane's signed admin calls make a team, then a headless Chrome sets the
-  # owner's password, signs out and in with it, posts, and a teammate joins; then the apps' sign-ins
-  # over HTTP, and no team's password opens another (server/deploy/journey.sh).
-  journey:
+  # The web app end to end (e2e/), against the real server as it runs hosted: many teams,
+  # Postgres with row security forced, an https router in front (server/deploy/test-stack.sh).
+  # Sign-up and sign-in, people, channels, messages, media, cards, requests, agents, settings,
+  # and teams kept apart. The same suite gates production against staging (staging-e2e.yml).
+  e2e:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 45
     services:
       postgres:
         image: postgres:16-alpine
         env:
-          POSTGRES_PASSWORD: journeytest
+          POSTGRES_PASSWORD: e2etest
         ports: ['5432:5432']
         options: >-
           --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
@@ -294,18 +294,28 @@ jobs:
       - name: Build the web app and the server
         timeout-minutes: 20
         run: ./gradlew --no-daemon :server:installDist
-      - name: Walk the customer journey
+      # The server derives posters and waveforms with ffmpeg, and the media tests make clips with it.
+      - name: Set up ffmpeg
+        timeout-minutes: 8
+        uses: ./.github/actions/setup-ffmpeg
+      - name: Install the suite
+        timeout-minutes: 5
+        working-directory: e2e
+        run: npm ci --no-audit --no-fund
+      - name: Run the suite
         timeout-minutes: 15
         run: >-
-          CHROME="$(command -v google-chrome || true)" SKIP_DIST=1 SHOTS=journey-screenshots
-          PG_ADMIN_URL=postgres://postgres:journeytest@127.0.0.1:5432/postgres
-          server/deploy/journey.sh
+          CHROME="$(command -v google-chrome || true)" SKIP_DIST=1
+          PG_ADMIN_URL=postgres://postgres:e2etest@127.0.0.1:5432/postgres
+          server/deploy/test-stack.sh bash -c 'cd e2e && npx playwright test'
       - if: always()
         uses: actions/upload-artifact@v4
         timeout-minutes: 5
         with:
-          name: journey-screenshots
-          path: journey-screenshots/*.png
+          name: e2e-report
+          path: |
+            e2e/report-*
+            e2e/results-*
           if-no-files-found: warn
 
   ios:

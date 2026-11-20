@@ -1,0 +1,79 @@
+# The browser suite (e2e/) against a deployed staging server: the gate a release passes before it
+# goes to production. Run it by hand (Actions → staging-e2e → Run workflow), or call it from a
+# deploy workflow after staging is released and before production is:
+#
+#   jobs:
+#     staging-e2e:
+#       needs: deploy-staging
+#       uses: ./.github/workflows/staging-e2e.yml
+#       secrets: inherit
+#     deploy-production:
+#       needs: staging-e2e
+#
+# Secrets: STAGING_ORIGIN (where staging's admin API answers: its TEAM_DOMAIN or ADMIN_HOST, e.g.
+# https://feed-staging.example.com) and STAGING_ADMIN_KEY (one of staging's ADMIN_API_KEYS).
+# Optional: STAGING_CONTROL_PLANE_ORIGIN (staging's CONTROL_PLANE_ORIGIN, if not the same origin),
+# STAGING_HOME_ORIGIN and STAGING_HOME_PASSWORD (to check the home team too). The suite makes its
+# own throwaway teams and deletes them again.
+name: staging-e2e
+
+on:
+  workflow_dispatch:
+    inputs:
+      origin:
+        description: "The staging admin origin (blank: the STAGING_ORIGIN secret)"
+        required: false
+        default: ""
+  workflow_call:
+    inputs:
+      origin:
+        description: "The staging admin origin (blank: the STAGING_ORIGIN secret)"
+        type: string
+        required: false
+        default: ""
+
+concurrency:
+  group: staging-e2e
+  cancel-in-progress: false
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      # The media tests make their test clips with ffmpeg.
+      - name: Set up ffmpeg
+        timeout-minutes: 8
+        uses: ./.github/actions/setup-ffmpeg
+      - name: Install the suite
+        timeout-minutes: 5
+        working-directory: e2e
+        run: npm ci --no-audit --no-fund
+      - name: Run the suite against staging
+        timeout-minutes: 20
+        working-directory: e2e
+        env:
+          E2E_ORIGIN: ${{ inputs.origin || secrets.STAGING_ORIGIN }}
+          E2E_ADMIN_KEY: ${{ secrets.STAGING_ADMIN_KEY }}
+          E2E_CONTROL_PLANE_ORIGIN: ${{ secrets.STAGING_CONTROL_PLANE_ORIGIN }}
+          E2E_HOME_ORIGIN: ${{ secrets.STAGING_HOME_ORIGIN }}
+          E2E_HOME_PASSWORD: ${{ secrets.STAGING_HOME_PASSWORD }}
+        run: |
+          [ -n "$E2E_ORIGIN" ] && [ -n "$E2E_ADMIN_KEY" ] || { echo "Set STAGING_ORIGIN and STAGING_ADMIN_KEY (or the origin input)"; exit 1; }
+          # The runner's own Chrome; Playwright's only when there is none.
+          CHROME="$(command -v google-chrome || true)"
+          [ -n "$CHROME" ] || timeout 600 npx playwright install chromium
+          CHROME="$CHROME" npx playwright test
+      - if: always()
+        uses: actions/upload-artifact@v4
+        timeout-minutes: 5
+        with:
+          name: staging-e2e-report
+          path: |
+            e2e/report
+            e2e/results
+          if-no-files-found: warn
