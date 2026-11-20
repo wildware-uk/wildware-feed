@@ -28,6 +28,15 @@ import dev.wildware.agents.app.design.AgentTheme
 import dev.wildware.agents.app.design.Icons
 import dev.wildware.agents.app.design.pressable
 import dev.wildware.agents.app.feed.audio.AttachedSoundPlayer
+import dev.wildware.agents.app.crash.CrashReporting
+import dev.wildware.agents.app.feed.video.NativeVideo
+import dev.wildware.agents.app.feed.video.NativeVideoSurface
+import dev.wildware.agents.app.feed.video.VideoFrames
+import dev.wildware.agents.app.feed.video.VideoTracker
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import io.github.kdroidfilter.composemediaplayer.DefaultVideoPlayerState
 import io.github.kdroidfilter.composemediaplayer.InitialPlayerState
 import io.github.kdroidfilter.composemediaplayer.VideoPlayerError
@@ -120,16 +129,98 @@ internal object DesktopPlayback {
 
 /**
  * A video playing in the app: inline in its card or filling the window. It streams through
- * [DesktopPlayback.proxy] and draws its own controls: play and pause, a scrubber with the time,
- * and mute.
+ * [DesktopPlayback.proxy] with the app's own controls: play and pause, a scrubber with the time, and
+ * mute. On macOS and Windows the computer's own engine plays it ([NativeVideo]); on Linux, GStreamer
+ * through ComposeMediaPlayer.
  */
 @Composable
 actual fun InAppVideo(video: VideoSource, auth: MediaAuth?, modifier: Modifier) {
+    if (NativeVideo.available) EngineVideo(video, auth, modifier) else LibraryVideo(video, auth, modifier)
+}
+
+/** A video on the computer's own engine, its frames drawn as the screen refreshes. */
+@Composable
+private fun EngineVideo(video: VideoSource, auth: MediaAuth?, modifier: Modifier) {
+    val url = remember(video.url, auth) { DesktopPlayback.localUrl(video, auth) }
+    val opened = remember(url) { runCatching { NativeVideo.open(url)!! } }
+    val engine = opened.getOrNull()
+    if (engine == null) {
+        // The computer's engine wouldn't start: play it the older way rather than not at all.
+        opened.exceptionOrNull()?.let { CrashReporting.note("video", "the video engine wouldn't open: ${it.message}") }
+        LibraryVideo(video, auth, modifier)
+        return
+    }
+    val frames = remember(engine) { VideoFrames() }
+    val tracker = remember(engine) { VideoTracker() }
+    DisposableEffect(engine) {
+        // Carrying on where it was: the card's video going full screen, or back.
+        VideoResume.take(video.url)?.let(engine::seek)
+        engine.play()
+        onDispose {
+            val last = tracker.status
+            if (!last.ended && last.positionSec > 1) VideoResume.keep(video.url, last.positionSec)
+            engine.close()
+            frames.close()
+        }
+    }
+    val showing by remember(frames) { derivedStateOf { frames.image != null } }
+    var muted by remember(engine) { mutableStateOf(false) }
+    Box(modifier.background(Color.Black).semantics { contentDescription = "Video" }) {
+        NativeVideoSurface(engine, frames, tracker, Modifier.fillMaxSize())
+        val status = tracker.status
+        when {
+            status.error != null -> Text(status.error, Modifier.align(Alignment.Center).padding(16.dp), color = Color.White, style = AgentTheme.type.body)
+            status.loading && !showing -> Text("Loading…", Modifier.align(Alignment.Center), color = Color.White.copy(alpha = 0.8f), style = AgentTheme.type.meta)
+        }
+        VideoControls(
+            PlaybackControls(
+                playing = status.playing || (status.loading && !status.ended && status.error == null),
+                positionMs = (status.positionSec * 1000).toLong(),
+                durationMs = (status.durationSec * 1000).toLong(),
+                muted = muted,
+                toggle = { if (status.playing) engine.pause() else engine.play() },
+                seek = { ms -> engine.seek(ms / 1000.0) },
+                toggleMute = {
+                    muted = !muted
+                    engine.volume = if (muted) 0f else 1f
+                },
+            ),
+            Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
+        )
+    }
+}
+
+@Composable
+private fun VideoMessage(words: String, modifier: Modifier) {
+    Box(modifier.background(Color.Black).semantics { contentDescription = "Video" }.padding(16.dp), contentAlignment = Alignment.Center) {
+        Text(words, color = Color.White, style = AgentTheme.type.body)
+    }
+}
+
+/**
+ * Where a video stopped when its player closed, so the next player of the same video (the card's
+ * going full screen, or back) carries on from there instead of the top. Only for a few seconds.
+ */
+internal object VideoResume {
+    private var kept: Triple<String, Double, Long>? = null
+
+    fun keep(url: String, seconds: Double) {
+        kept = Triple(url, seconds, System.nanoTime())
+    }
+
+    fun take(url: String): Double? {
+        val (keptUrl, seconds, at) = kept ?: return null
+        kept = null
+        return seconds.takeIf { keptUrl == url && System.nanoTime() - at < 10_000_000_000 }
+    }
+}
+
+/** A video through ComposeMediaPlayer: how Linux plays, through GStreamer. */
+@Composable
+private fun LibraryVideo(video: VideoSource, auth: MediaAuth?, modifier: Modifier) {
     val problem = remember(video.url, video.mime) { DesktopPlayback.problemFor(video) }
     if (problem != null) {
-        Box(modifier.background(Color.Black).semantics { contentDescription = "Video" }.padding(16.dp), contentAlignment = Alignment.Center) {
-            Text(problem, color = Color.White, style = AgentTheme.type.body)
-        }
+        VideoMessage(problem, modifier)
         return
     }
     val state = remember(video.url) { DefaultVideoPlayerState() }
@@ -152,7 +243,19 @@ actual fun InAppVideo(video: VideoSource, auth: MediaAuth?, modifier: Modifier) 
                 style = AgentTheme.type.meta,
             )
         }
-        VideoControls(state, Modifier.align(Alignment.BottomCenter).fillMaxWidth())
+        val duration = state.duration
+        VideoControls(
+            PlaybackControls(
+                playing = state.isPlaying,
+                positionMs = (state.currentTime * 1000).toLong(),
+                durationMs = (duration * 1000).toLong(),
+                muted = state.volume == 0f,
+                toggle = { if (state.isPlaying) state.pause() else state.play() },
+                seek = { ms -> if (duration > 0) state.seekTo((ms / 1000.0 / duration * 1000).toFloat().coerceIn(0f, 1000f)) },
+                toggleMute = { state.volume = if (state.volume == 0f) 1f else 0f },
+            ),
+            Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
+        )
     }
 }
 
@@ -166,41 +269,52 @@ private fun playFailure(error: VideoPlayerError?): String {
     }
 }
 
+/** What the controls show and do, whichever player is behind them. */
+private class PlaybackControls(
+    val playing: Boolean,
+    val positionMs: Long,
+    val durationMs: Long,
+    val muted: Boolean,
+    val toggle: () -> Unit,
+    val seek: (Long) -> Unit,
+    val toggleMute: () -> Unit,
+)
+
 /** Play and pause, where it has got to and how long it is, a scrubber, and mute: over the bottom of the picture. */
 @Composable
-private fun VideoControls(state: VideoPlayerState, modifier: Modifier) {
+private fun VideoControls(controls: PlaybackControls, modifier: Modifier) {
     val colors = AgentTheme.colors
+    // While the thumb is held, it shows where it is going; the video seeks when it is let go.
+    var dragging by remember { mutableStateOf<Float?>(null) }
+    val length = controls.durationMs
+    val fraction = dragging ?: if (length > 0) (controls.positionMs.toFloat() / length).coerceIn(0f, 1f) else 0f
+    val shownMs = dragging?.let { (it * length).toLong() } ?: controls.positionMs
+    val position = MediaLabels.duration(shownMs) ?: "0:00"
+    val total = MediaLabels.duration(length) ?: "0:00"
     Row(
         modifier
             .background(Color.Black.copy(alpha = 0.55f))
             .padding(horizontal = 8.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        RoundAction(if (state.isPlaying) Icons.Pause else Icons.Play, if (state.isPlaying) "Pause" else "Play") {
-            if (state.isPlaying) state.pause() else state.play()
-        }
-        Text(state.positionText, Modifier.padding(horizontal = 6.dp), color = Color.White, style = AgentTheme.type.meta)
+        RoundAction(if (controls.playing) Icons.Pause else Icons.Play, if (controls.playing) "Pause" else "Play", controls.toggle)
+        Text(position, Modifier.padding(horizontal = 6.dp), color = Color.White, style = AgentTheme.type.meta)
         Slider(
-            value = state.sliderPos,
-            onValueChange = {
-                state.userDragging = true
-                state.sliderPos = it
-            },
+            value = fraction,
+            onValueChange = { dragging = it },
             onValueChangeFinished = {
-                state.userDragging = false
-                state.seekTo(state.sliderPos)
+                dragging?.let { controls.seek((it * length).toLong()) }
+                dragging = null
             },
-            valueRange = 0f..1000f,
+            valueRange = 0f..1f,
+            enabled = length > 0,
             modifier = Modifier
                 .weight(1f)
-                .semantics { contentDescription = "Position"; stateDescription = "${state.positionText} of ${state.durationText}" },
+                .semantics { contentDescription = "Position"; stateDescription = "$position of $total" },
             colors = SliderDefaults.colors(thumbColor = Color.White, activeTrackColor = colors.accent, inactiveTrackColor = Color.White.copy(alpha = 0.3f)),
         )
-        Text(state.durationText, Modifier.padding(horizontal = 6.dp), color = Color.White, style = AgentTheme.type.meta)
-        val muted = state.volume == 0f
-        RoundAction(if (muted) Icons.Muted else Icons.Volume, if (muted) "Unmute" else "Mute") {
-            state.volume = if (muted) 1f else 0f
-        }
+        Text(total, Modifier.padding(horizontal = 6.dp), color = Color.White, style = AgentTheme.type.meta)
+        RoundAction(if (controls.muted) Icons.Muted else Icons.Volume, if (controls.muted) "Unmute" else "Mute", controls.toggleMute)
     }
 }
 

@@ -4,6 +4,13 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import dev.wildware.agents.app.feed.video.NativeVideo
+import dev.wildware.agents.app.feed.video.NativeVideoSurface
+import dev.wildware.agents.app.feed.video.VideoFrames
+import dev.wildware.agents.app.feed.video.VideoTracker
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.awt.ComposeWindow
 import androidx.compose.ui.layout.ContentScale
@@ -73,7 +80,38 @@ class VideoBench {
         override fun dispose() = state.dispose()
     }
 
-    private val candidates: List<() -> Candidate> = listOf({ MediaPlayerCandidate() })
+    /** The computer's own engine, its frames pulled at each screen refresh ([NativeVideo]). */
+    class EngineCandidate : Candidate {
+        override val name = "engine"
+        private var video by mutableStateOf<NativeVideo?>(null)
+        private val frames = VideoFrames()
+        private val tracker = VideoTracker()
+
+        @Composable
+        override fun Surface(modifier: Modifier) {
+            video?.let { NativeVideoSurface(it, frames, tracker, modifier) }
+        }
+
+        override fun open(url: String) = onEdt {
+            video = NativeVideo.open(url)!!.also { it.play() }
+        }
+
+        override fun seekTo(fraction: Float) = onEdt {
+            val v = video ?: return@onEdt
+            v.seek(fraction * v.status().durationSec)
+        }
+
+        override val currentTime: Double get() = onEdt { video?.status()?.positionSec ?: 0.0 }
+        override fun frame(): Any? = frames.image
+        override fun dispose() = onEdt {
+            video?.close()
+            video = null
+            frames.close()
+        }
+    }
+
+    private val candidates: List<() -> Candidate> =
+        listOf<() -> Candidate>({ MediaPlayerCandidate() }) + if (NativeVideo.available) listOf({ EngineCandidate() }) else emptyList()
 
     @Test
     fun bench() {
@@ -276,7 +314,7 @@ class VideoBench {
     }
 }
 
-private fun <T> onEdt(block: () -> T): T {
+internal fun <T> onEdt(block: () -> T): T {
     var result: Result<T>? = null
     SwingUtilities.invokeAndWait { result = runCatching(block) }
     return result!!.getOrThrow()
