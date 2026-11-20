@@ -69,6 +69,9 @@ targets:
       - path: Common
       - path: Fonts
         buildPhase: resources
+      # The alert sounds the dashboard names in its pushes (`aps.sound`), at the bundle's top level.
+      - path: Sounds
+        buildPhase: resources
       - path: Privacy/PrivacyInfo.xcprivacy
         buildPhase: resources
     preBuildScripts:

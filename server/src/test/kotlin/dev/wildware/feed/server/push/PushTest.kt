@@ -61,7 +61,7 @@ class PushTest {
             request = Triple("R1", "confirm", null),
         )
         assertEquals(
-            """{"aps":{"alert":{"title":"Ada is waiting on you","body":"Ship it?"},"sound":"default","thread-id":"dashboard","category":"REQUEST","mutable-content":1,"interruption-level":"time-sensitive"},"url":"https://dashboard.example.com/","tag":"request-R1","markdown":"Ship it?","requestId":"R1","requestKind":"confirm","options":null}""",
+            """{"aps":{"alert":{"title":"Ada is waiting on you","body":"Ship it?"},"sound":"question.wav","thread-id":"dashboard","category":"REQUEST","mutable-content":1,"interruption-level":"time-sensitive"},"url":"https://dashboard.example.com/","tag":"request-R1","markdown":"Ship it?","requestId":"R1","requestKind":"confirm","options":null}""",
             Wire.encode(Apns.alertPayload(request)),
         )
         val update = Apns.Alert(
@@ -69,7 +69,7 @@ class PushTest {
             extra = listOf("agentName" to JsonPrimitive("Ada")),
         )
         assertEquals(
-            """{"aps":{"alert":{"title":"t","body":"b"},"sound":"default","thread-id":"web","category":"UPDATE","interruption-level":"active"},"url":"u","tag":"update-U1","markdown":"b","reply":{"update":"U1"},"agentName":"Ada"}""",
+            """{"aps":{"alert":{"title":"t","body":"b"},"sound":"reply.wav","thread-id":"web","category":"UPDATE","interruption-level":"active"},"url":"u","tag":"update-U1","markdown":"b","reply":{"update":"U1"},"agentName":"Ada"}""",
             Wire.encode(Apns.alertPayload(update)),
         )
     }
@@ -250,17 +250,35 @@ class PushTest {
         )
         assertEquals("time-sensitive", Apns.CRITICAL_STYLE)
         assertEquals(
-            """{"aps":{"alert":{"title":"Production is down","body":"Every request fails"},"sound":"default","thread-id":"web","category":"UPDATE","interruption-level":"active"},"url":"u","tag":"update-U1","markdown":"b","priority":"critical"}""",
+            """{"aps":{"alert":{"title":"Production is down","body":"Every request fails"},"sound":"critical.wav","thread-id":"web","category":"UPDATE","interruption-level":"active"},"url":"u","tag":"update-U1","markdown":"b","priority":"critical"}""",
             Wire.encode(Apns.alertPayload(alert)),
         )
         assertEquals(
-            """{"aps":{"alert":{"title":"Production is down","body":"Every request fails"},"sound":"default","thread-id":"web","category":"UPDATE","interruption-level":"time-sensitive"},"url":"u","tag":"update-U1","markdown":"b","priority":"critical"}""",
+            """{"aps":{"alert":{"title":"Production is down","body":"Every request fails"},"sound":"critical.wav","thread-id":"web","category":"UPDATE","interruption-level":"time-sensitive"},"url":"u","tag":"update-U1","markdown":"b","priority":"critical"}""",
             Wire.encode(Apns.alertPayload(alert, page = Apns.CRITICAL_STYLE)),
         )
         assertEquals(
-            """{"critical":1,"name":"default","volume":1}""",
+            """{"critical":1,"name":"critical.wav","volume":1}""",
             Wire.encode((Apns.alertPayload(alert, page = "critical")["aps"] as kotlinx.serialization.json.JsonObject)["sound"]!!),
         )
+    }
+
+    @Test
+    fun `each alert names the app's own sound for its kind`() {
+        fun sound(category: String, about: dev.wildware.feed.server.domain.AlertPrefs.About): String {
+            val alert = Apns.Alert(PushMessage("t", "b", "u", "tag"), category, "web", "P1", "b", about = about)
+            return Wire.encode((Apns.alertPayload(alert)["aps"] as kotlinx.serialization.json.JsonObject)["sound"]!!)
+        }
+        val about = dev.wildware.feed.server.domain.AlertPrefs::About
+        assertEquals("\"question.wav\"", sound("REQUEST", about("request", null, "medium", null, null)))
+        assertEquals("\"critical.wav\"", sound("REQUEST", about("request", null, "critical", null, null)))
+        assertEquals("\"question.wav\"", sound("PAIRING", about("pairing", null, null, null, null)))
+        assertEquals("\"reply.wav\"", sound("MESSAGE", about("message", null, null, null, null)))
+        assertEquals("\"reply.wav\"", sound("MESSAGE", about("comment", null, null, null, null)))
+        assertEquals("\"error.wav\"", sound("UPDATE", about("update", "error", "high", null, null)))
+        assertEquals("\"done.wav\"", sound("UPDATE", about("update", "success", null, null, null)))
+        assertEquals("\"reply.wav\"", sound("UPDATE", about("update", "info", null, null, null)))
+        assertEquals("\"critical.wav\"", sound("UPDATE", about("update", "success", "critical", null, null)))
     }
 
     @Test

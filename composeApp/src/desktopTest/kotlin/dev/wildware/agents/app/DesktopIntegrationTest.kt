@@ -1,5 +1,6 @@
 package dev.wildware.agents.app
 
+import dev.wildware.agents.app.sound.Sound
 import dev.wildware.agents.AlertPrefs
 import dev.wildware.agents.FeedCard
 import dev.wildware.agents.FeedState
@@ -68,7 +69,7 @@ class DesktopIntegrationTest {
         val paged = NotificationRules()
         paged.next(true, emptyList(), feed(), AlertPrefs(critical = true), slugs)
         assertEquals(
-            listOf(DesktopNotice("update-u9", "Builder · Mega", "Production is down", "u9", critical = true)),
+            listOf(DesktopNotice("update-u9", "Builder · Mega", "Production is down", "u9", critical = true, sound = Sound.Critical)),
             paged.next(true, emptyList(), feed(criticalUpdate("u9")), AlertPrefs(critical = true), slugs),
         )
 
@@ -90,7 +91,7 @@ class DesktopIntegrationTest {
         val asking = dev.wildware.agents.PairingView(id = "pr1", name = "laptop-personal", host = "laptop", code = "K7Q-3MD")
         val onlyQuestions = AlertPrefs(types = listOf(AlertPrefs.Request))
         assertEquals(
-            listOf(DesktopNotice("pairing-pr1", "laptop-personal wants to join", "From laptop. Code K7Q-3MD. Allow or deny it in the app.", null)),
+            listOf(DesktopNotice("pairing-pr1", "laptop-personal wants to join", "From laptop. Code K7Q-3MD. Allow or deny it in the app.", null, sound = Sound.Question)),
             rules.next(true, emptyList(), feed(), onlyQuestions, slugs, listOf(first, asking)),
         )
         assertTrue(rules.next(true, emptyList(), feed(), onlyQuestions, slugs, listOf(first, asking)).isEmpty())
@@ -147,7 +148,7 @@ class DesktopIntegrationTest {
         rules.next(true, emptyList(), feed())
 
         val notices = rules.next(true, listOf(question("r1", "Ship **v2** to [prod](https://x)?")), feed())
-        assertEquals(listOf(DesktopNotice("request-r1", "Builder · Mega", "Ship v2 to prod?", "r1")), notices)
+        assertEquals(listOf(DesktopNotice("request-r1", "Builder · Mega", "Ship v2 to prod?", "r1", sound = Sound.Question)), notices)
         assertTrue(rules.next(true, listOf(question("r1")), feed()).isEmpty())
     }
 

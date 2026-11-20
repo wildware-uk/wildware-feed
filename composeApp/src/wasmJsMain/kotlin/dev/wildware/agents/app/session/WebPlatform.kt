@@ -45,6 +45,7 @@ fun webPlatform(): AppPlatform {
         cardFolds = LocalStorageText("feed.cardFolds"),
         postTarget = LocalStorageText("feed.postTarget"),
         homeServer = origin,
+        sounds = dev.wildware.agents.app.sound.SoundBoard(dev.wildware.agents.app.sound.WebSoundPlayer(), LocalStorageText("feed.sounds")),
     )
 }
 

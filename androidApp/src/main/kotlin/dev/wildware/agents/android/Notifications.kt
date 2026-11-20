@@ -25,10 +25,15 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 
-/** The notification channels, which the owner can each turn off or quieten in Settings. */
+/**
+ * The notification channels, which the owner can each turn off or quieten in Settings. Each alert
+ * channel plays the app's own sound (`res/raw`, the in-app `Sound`s). Android fixes a channel's
+ * sound when it is made, so channels that gained one have new ids ("…-v2"); [create] deletes the
+ * old ones.
+ */
 object Channels {
-    const val Questions = "questions"
-    const val Replies = "replies"
+    const val Questions = "questions-v2"
+    const val Replies = "replies-v2"
     const val Connection = "connection"
 
     /**
@@ -36,7 +41,10 @@ object Channels {
      * break through Do Not Disturb; Android leaves the final say to the owner, in the channel's own
      * settings, which the alert settings open ([openCriticalSettings]).
      */
-    const val Critical = "critical"
+    const val Critical = "critical-v2"
+
+    /** The channels before they had their own sounds. */
+    private val Retired = listOf("questions", "replies", "critical")
 
     /** The system's settings for the "Critical" channel, where Do Not Disturb can be overridden. */
     fun openCriticalSettings(context: Context) {
@@ -47,15 +55,26 @@ object Channels {
         runCatching { context.startActivity(intent) }
     }
 
+    /** `res/raw/[name]`, as a channel's sound: a notification's, or an alarm's for [alarm]. */
+    private fun NotificationChannel.sound(context: Context, name: String, alarm: Boolean = false) = apply {
+        val uri = android.net.Uri.parse("${android.content.ContentResolver.SCHEME_ANDROID_RESOURCE}://${context.packageName}/raw/$name")
+        val usage = if (alarm) android.media.AudioAttributes.USAGE_ALARM else android.media.AudioAttributes.USAGE_NOTIFICATION
+        setSound(uri, android.media.AudioAttributes.Builder().setUsage(usage).setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION).build())
+    }
+
     fun create(context: Context) {
         val manager = context.getSystemService(NotificationManager::class.java)
+        Retired.forEach { runCatching { manager.deleteNotificationChannel(it) } }
         manager.createNotificationChannels(
             listOf(
                 NotificationChannel(Questions, context.getString(R.string.channel_questions), NotificationManager.IMPORTANCE_HIGH)
-                    .apply { description = context.getString(R.string.channel_questions_about) },
+                    .apply { description = context.getString(R.string.channel_questions_about) }
+                    .sound(context, "question"),
                 NotificationChannel(Replies, context.getString(R.string.channel_replies), NotificationManager.IMPORTANCE_DEFAULT)
-                    .apply { description = context.getString(R.string.channel_replies_about) },
+                    .apply { description = context.getString(R.string.channel_replies_about) }
+                    .sound(context, "reply"),
                 NotificationChannel(Critical, context.getString(R.string.channel_critical), NotificationManager.IMPORTANCE_HIGH)
+                    .sound(context, "critical", alarm = true)
                     .apply {
                         description = context.getString(R.string.channel_critical_about)
                         setBypassDnd(true)

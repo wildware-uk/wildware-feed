@@ -67,6 +67,9 @@ val LocalCriticalAlertSettings = staticCompositionLocalOf<(() -> Unit)?> { null 
 /** "Send crash reports", in a build that sends them; null in any other, which shows no switch. */
 val LocalCrashReports = staticCompositionLocalOf<CrashReportSetting?> { null }
 
+/** The app's sounds and their switch; null where the device can't play them, which shows no switch. */
+val LocalSounds = staticCompositionLocalOf<dev.wildware.agents.app.sound.SoundBoard?> { null }
+
 /** The iPhone's Live Activities; null on a device without them, which shows nothing about them. */
 val LocalLiveActivities = staticCompositionLocalOf<LiveActivityStatus?> { null }
 
@@ -126,6 +129,7 @@ fun AlertSettingsSheet(ui: FeedUi, safeArea: SafeArea) {
                 color = if (alerts.problem != null) colors.error else colors.textMuted,
                 style = AgentTheme.type.body,
             )
+            LocalSounds.current?.let { SoundsGroup(it) }
             LocalLiveActivities.current?.let { LiveActivitiesGroup(it) }
             LocalCrashReports.current?.let { CrashReportsGroup(it) }
             // The dashboard's own settings, for whoever may change them.
@@ -208,6 +212,19 @@ internal fun SettingsLinkRow(icon: ImageVector, label: String, value: String, on
  * "Send crash reports": on unless turned off, and off the moment it is. What a report holds is
  * PRIVACY.md's "Crash reports"; this says the short of it.
  */
+@Composable
+private fun SoundsGroup(sounds: dev.wildware.agents.app.sound.SoundBoard) {
+    val on by sounds.enabled.collectAsState()
+    SettingsHeading("Sounds")
+    CheckRow("Play sounds", on, enabled = true) { sounds.set(!on) }
+    Text(
+        "A short sound in the app for questions, replies, finished work, errors and what you send. Follows your device's silent and Do Not Disturb settings; critical alerts still sound.",
+        Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+        color = AgentTheme.colors.textMuted,
+        style = AgentTheme.type.body,
+    )
+}
+
 @Composable
 private fun CrashReportsGroup(setting: CrashReportSetting) {
     val on by setting.enabled.collectAsState()

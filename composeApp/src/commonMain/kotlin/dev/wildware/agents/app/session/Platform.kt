@@ -69,6 +69,13 @@ class AppPlatform(
      * platforms clear them alongside the code that raises them.
      */
     val notices: dev.wildware.agents.app.engine.SystemNotices? = null,
+    /** The app's sounds, with the owner's switch for them. Silent where there is no player (tests, previews). */
+    val sounds: dev.wildware.agents.app.sound.SoundBoard = dev.wildware.agents.app.sound.SoundBoard(null, MemoryTextStore()),
+    /**
+     * Whether the system notification the app raises for a notice makes the notice's sound itself
+     * (Android's channels do), so the app doesn't play it as well.
+     */
+    val systemSounds: (dev.wildware.agents.app.desktop.DesktopNotice) -> Boolean = { false },
 ) {
     companion object {
         /** Everything in memory: for tests and previews. */

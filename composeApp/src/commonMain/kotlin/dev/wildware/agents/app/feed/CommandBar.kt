@@ -89,8 +89,9 @@ fun CommandBar(ui: FeedUi, safeArea: SafeArea, panelModifier: Modifier = Modifie
 
     val extra = LocalAppCommands.current
     val crashReports = LocalCrashReports.current
-    val commands by remember(extra, crashReports) {
-        derivedStateOf { commandsFor(ui, query.text.toString().trim(), extra, crashReports, close) }
+    val sounds = LocalSounds.current
+    val commands by remember(extra, crashReports, sounds) {
+        derivedStateOf { commandsFor(ui, query.text.toString().trim(), extra, crashReports, close, sounds) }
     }
     LaunchedEffect(query.text) { highlighted = 0 }
     val list = rememberLazyListState()
@@ -179,7 +180,14 @@ private fun CommandRow(command: Command, highlighted: Boolean) {
 }
 
 /** What the bar offers for [query]: actions and projects whose names match, then search results. */
-private fun commandsFor(ui: FeedUi, query: String, extra: List<AppCommand>, crashReports: CrashReportSetting?, close: () -> Unit): List<Command> {
+private fun commandsFor(
+    ui: FeedUi,
+    query: String,
+    extra: List<AppCommand>,
+    crashReports: CrashReportSetting?,
+    close: () -> Unit,
+    sounds: dev.wildware.agents.app.sound.SoundBoard? = null,
+): List<Command> {
     fun done(action: () -> Unit): () -> Unit = {
         close()
         action()
@@ -219,6 +227,10 @@ private fun commandsFor(ui: FeedUi, query: String, extra: List<AppCommand>, cras
             add(Command("Actions", "Secrets", "Keys and passwords shared with agents", Icons.Lock, done { ui.secretsOpen = true }))
         }
         if (wanted("Switch theme", "dark", "light")) add(Command("Actions", "Switch light or dark", "", Icons.Moon, done { ui.emit(FeedEvent.ToggleTheme) }))
+        if (sounds != null && wanted("Sounds", "mute", "quiet", "settings")) {
+            val on = sounds.enabled.value
+            add(Command("Actions", if (on) "Turn sounds off" else "Turn sounds on", if (on) "The app plays a short sound for questions, replies and sends" else "Play a short sound for questions, replies and sends", if (on) Icons.Muted else Icons.Volume, done { sounds.set(!on) }))
+        }
         if (crashReports != null && wanted("Crash reports", "privacy", "settings")) {
             val on = crashReports.enabled.value
             add(

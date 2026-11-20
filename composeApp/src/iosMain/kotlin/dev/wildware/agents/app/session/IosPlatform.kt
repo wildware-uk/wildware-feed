@@ -76,6 +76,7 @@ fun iosPlatform(
         crashReports = dev.wildware.agents.app.crash.CrashReporting.setting,
         liveActivities = LiveActivities.status,
         notices = IosSystemNotices,
+        sounds = dev.wildware.agents.app.sound.IosSounds.board("$dataDir/sounds.txt"),
         clearLocalData = {
             outbox.clear()
             remove(readMarks)

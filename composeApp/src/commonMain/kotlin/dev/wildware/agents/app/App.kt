@@ -11,6 +11,7 @@ import dev.wildware.agents.app.feed.AppCommand
 import dev.wildware.agents.app.feed.LocalAppCommands
 import dev.wildware.agents.app.feed.LocalDemo
 import dev.wildware.agents.app.feed.LocalCrashReports
+import dev.wildware.agents.app.feed.LocalSounds
 import dev.wildware.agents.app.feed.LocalOpenSettings
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -170,6 +171,7 @@ fun AgentsApp(
                         LocalOpenSettings provides openSettings,
                         LocalCrashReports provides platform.crashReports,
                         LocalLiveActivities provides platform.liveActivities,
+                        LocalSounds provides platform.sounds.takeIf { it.available },
                     ) {
                         FeedScreen(state, safeArea, navigator = navigator, onAwayFromTop = session::holdArrivals) { event ->
                             when (event) {

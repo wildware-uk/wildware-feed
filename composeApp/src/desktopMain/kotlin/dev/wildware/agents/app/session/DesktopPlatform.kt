@@ -110,7 +110,7 @@ fun desktopDeviceName(): String {
 }
 
 /** Everything the desktop app keeps, in [desktopConfigDir]. */
-fun desktopPlatform(dir: File = desktopConfigDir()): AppPlatform {
+fun desktopPlatform(dir: File = desktopConfigDir(), quiet: () -> Boolean = { false }): AppPlatform {
     val outbox = FileOutboxStorage(File(dir, "outbox").apply { mkdirs() })
     val readMarks = File(dir, "read-marks.json")
     val feedCache = File(dir, "feed-cache.json")
@@ -137,6 +137,8 @@ fun desktopPlatform(dir: File = desktopConfigDir()): AppPlatform {
         filePicker = AwtFilePicker { java.awt.Frame.getFrames().firstOrNull { it.isActive } },
         localServer = localServer(dir),
         crashReports = dev.wildware.agents.app.crash.CrashReporting.setting,
+        // Java can't add a sound to the system's notifications, so the app plays its own beside them.
+        sounds = dev.wildware.agents.app.sound.SoundBoard(dev.wildware.agents.app.sound.DesktopSoundPlayer(), FileTextStore(File(dir, "sounds.txt")), quiet),
     )
 }
 

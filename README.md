@@ -245,3 +245,4 @@ what is signed, how, and by whom. Until the application is accepted, Windows rel
 
 - Apps and shared code: MIT, see [LICENSE](LICENSE).
 - Server (`server/`): GNU Affero General Public License v3.0, see [server/LICENSE](server/LICENSE). If you run a modified server for other people over a network, you must offer them its source.
+- Sound effects (`composeApp/src/commonMain/composeResources/files/sounds`, `iosApp/Sounds`, `androidApp/src/main/res/raw`): generated with [ElevenLabs](https://elevenlabs.io) for Wildware Feed.

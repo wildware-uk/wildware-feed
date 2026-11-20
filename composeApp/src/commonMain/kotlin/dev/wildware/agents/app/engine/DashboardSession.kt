@@ -31,6 +31,8 @@ import dev.wildware.agents.app.feed.PendingFile
 import dev.wildware.agents.app.feed.searchEntriesOf
 import dev.wildware.agents.app.session.AppPlatform
 import dev.wildware.agents.app.session.SavedSession
+import dev.wildware.agents.app.sound.SoundRules
+import dev.wildware.agents.app.sound.SoundSnapshot
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import dev.wildware.agents.AlertPrefs
@@ -80,7 +82,7 @@ class DashboardSession(
     val saved: SavedSession,
     private val platform: AppPlatform,
     parent: CoroutineScope,
-    clock: () -> Long = { Clock.System.now().toEpochMilliseconds() },
+    private val clock: () -> Long = { Clock.System.now().toEpochMilliseconds() },
 ) {
     private val scope = CoroutineScope(parent.coroutineContext + SupervisorJob(parent.coroutineContext[Job]))
     val client = DashboardClient(saved.server, saved.token, platform.httpEngine())
@@ -97,6 +99,21 @@ class DashboardSession(
     private val mapper = FeedMapper(client.serverUrl, clock)
 
     private val mutableAlerts = MutableStateFlow(AlertSettings())
+
+    /** Which moments make which sound. Touched only on [soundThread]. */
+    private val soundRules = SoundRules()
+
+    /** The card whose thread the owner last opened, for [SoundRules]. Touched only on [soundThread]. */
+    private var viewing: String? = null
+
+    /** One thread at a time for [soundRules]: the owner's taps and the dashboard's changes take turns. */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val soundThread = kotlinx.coroutines.Dispatchers.Default.limitedParallelism(1)
+
+    /** Tells [soundRules] something, in turn with the changes it is reading. */
+    private fun sounds(change: () -> Unit) {
+        if (platform.sounds.available) scope.launch(soundThread) { change() }
+    }
 
     /** Which alerts this device gets, read from the dashboard when the session starts. */
     val alerts: StateFlow<AlertSettings> = mutableAlerts
@@ -735,6 +752,21 @@ class DashboardSession(
         scope.launch { foreground.collect { resume() } }
         // Pushed notifications the owner dealt with, here or elsewhere, come off the lock screen.
         platform.notices?.let { notices -> scope.launch { NoticeCleanup(dashboard, notices, foreground).run() } }
+        if (platform.sounds.available) scope.launch(soundThread) { playSounds() }
+    }
+
+    /** Plays a sound for each moment that makes one ([SoundRules]), as the dashboard changes. */
+    private suspend fun playSounds() {
+        combine(
+            combine(dashboard.ready, dashboard.status, dashboard.waiting, ::Triple),
+            dashboard.everything.state,
+            outbox.items,
+            combine(dashboard.pairings, team, dashboard.followed, ::Triple),
+            alerts,
+        ) { (ready, status, waiting), feed, items, (joining, team, follows), alerts ->
+            val slugs = dashboard.projects.value.associate { it.project.id to it.project.slug }
+            SoundSnapshot(clock(), ready, status == StreamStatus.Live, waiting, feed, items, alerts.prefs, { id -> id?.let(slugs::get) }, joining, follows, team, viewing)
+        }.collect { snapshot -> platform.sounds.play(soundRules.next(snapshot, platform.systemSounds)) }
     }
 
     private fun markdownIn(state: FeedState): Sequence<String> = state.sections.asSequence().flatMap { it.items.asSequence() }.flatMap { item ->
@@ -751,6 +783,9 @@ class DashboardSession(
      * one (the server replays what was missed) and send anything waiting.
      */
     fun resume() {
+        // What comes in now is what was missed while away: taken in quietly.
+        val now = clock()
+        sounds { soundRules.hush(now) }
         dashboard.revive(reconnect = true, reread = false)
         outbox.kick(ignoreBackoff = true)
     }
@@ -775,6 +810,16 @@ class DashboardSession(
 
     /** Does what the owner asked. Sign-out and screen-only events are handled elsewhere. */
     fun handle(event: FeedEvent) {
+        // The owner's own doings make no sound when they come back from the dashboard.
+        val at = clock()
+        when (event) {
+            is FeedEvent.SetStatus -> sounds { soundRules.touched(event.targetId, at) }
+            is FeedEvent.CheckBlockItem -> sounds { soundRules.touched(event.cardId, at) }
+            is FeedEvent.VoteBlock -> sounds { soundRules.touched(event.cardId, at) }
+            is FeedEvent.DropUnsent -> sounds { soundRules.dropped(event.outboxId) }
+            is FeedEvent.OpenThread -> sounds { viewing = event.cardId }
+            else -> Unit
+        }
         // A new answer replaces one the dashboard refused: the refused one is not sent as well.
         when (event) {
             is FeedEvent.Answer -> dropRefused(event.questionId)

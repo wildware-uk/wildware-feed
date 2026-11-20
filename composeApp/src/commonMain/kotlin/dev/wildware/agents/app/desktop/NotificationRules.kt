@@ -14,6 +14,7 @@ import dev.wildware.agents.RequestCard
 import dev.wildware.agents.ThreadLine
 import dev.wildware.agents.UpdateCard
 import dev.wildware.agents.app.feed.TeamState
+import dev.wildware.agents.app.sound.Sound
 
 /**
  * One notification (desktop, or Android while the app runs). [focusId] is the card to open the
@@ -26,6 +27,8 @@ data class DesktopNotice(
     val focusId: String?,
     /** Marked critical and allowed to page this device: Android's "Critical" channel, through Do Not Disturb. */
     val critical: Boolean = false,
+    /** The sound it goes with ([Sound]): its kind's, or [Sound.Critical] for anything marked critical. Null for the app's own notices. */
+    val sound: Sound? = null,
 )
 
 /**
@@ -90,7 +93,7 @@ class NotificationRules(private val maxBody: Int = 140) {
         for (pairing in joining) {
             if (!seen.add(pairingKey(pairing.id))) continue
             val from = pairing.host?.let { "From $it. " }.orEmpty()
-            notices += DesktopNotice(pairingKey(pairing.id), "${pairing.name} wants to join", "${from}Code ${pairing.code}. Allow or deny it in the app.", null)
+            notices += DesktopNotice(pairingKey(pairing.id), "${pairing.name} wants to join", "${from}Code ${pairing.code}. Allow or deny it in the app.", null, sound = Sound.Question)
         }
         for (card in waiting) {
             if (!seen.add(requestKey(card.id))) continue
@@ -101,7 +104,7 @@ class NotificationRules(private val maxBody: Int = 140) {
             if (request.priority != AlertPrefs.Critical && (chosen == false || (chosen == null && muted))) continue
             if (!AlertPrefs.allows(prefs, AlertPrefs.Request, priority = request.priority, agentId = request.agentId, projectSlug = slug)) continue
             val page = AlertPrefs.pages(prefs, request.priority, request.agentId, slug)
-            notices += DesktopNotice(requestKey(card.id), title(card.agentName, card.projectName), plain(request.question), card.id, critical = page)
+            notices += DesktopNotice(requestKey(card.id), title(card.agentName, card.projectName), plain(request.question), card.id, critical = page, sound = if (request.priority == AlertPrefs.Critical) Sound.Critical else Sound.Question)
         }
         for (card in feed.allCards.filterIsInstance<UpdateCard>()) {
             if (!seen.add(updateKey(card.id))) continue
@@ -110,7 +113,7 @@ class NotificationRules(private val maxBody: Int = 140) {
             val slug = slugOf(update.projectId)
             if (!AlertPrefs.allows(prefs, AlertPrefs.Update, update.level, update.priority, update.agentId, slug)) continue
             val text = update.title?.takeIf { it.isNotBlank() } ?: update.body
-            notices += DesktopNotice(updateKey(card.id), title(card.agentName, card.projectName), plain(text), card.id, critical = AlertPrefs.pages(prefs, update.priority, update.agentId, slug))
+            notices += DesktopNotice(updateKey(card.id), title(card.agentName, card.projectName), plain(text), card.id, critical = AlertPrefs.pages(prefs, update.priority, update.agentId, slug), sound = Sound.Critical)
         }
         for (thread in threads) {
             for (line in thread.lines) {
@@ -126,7 +129,7 @@ class NotificationRules(private val maxBody: Int = 140) {
                 if (chosen == null && !answersMe(message, thread, me) && !mentionsOwner(message.body) && !me.named(message.body)) continue
                 if (!AlertPrefs.allows(prefs, AlertPrefs.Message)) continue
                 val author = if (message.agentId != null) line.authorName else me.nameOf(message.personId)
-                notices += DesktopNotice(messageKey(message.id), title(author, thread.projectName), plain(message.body), thread.cardId)
+                notices += DesktopNotice(messageKey(message.id), title(author, thread.projectName), plain(message.body), thread.cardId, sound = Sound.Reply)
             }
         }
         watermark = maxOf(watermark, threads.flatMap { it.lines }.maxOfOrNull { it.message.createdAt } ?: Long.MIN_VALUE)

@@ -167,6 +167,8 @@ class AppModel(
             filePicker = platform.filePicker,
             voiceInput = platform.voiceInput,
             foreground = platform.foreground,
+            sounds = platform.sounds,
+            systemSounds = platform.systemSounds,
         )
         val session = DashboardSession(SavedSession(DemoAddress, "demo", platform.deviceName), demo, scope)
         session.start()

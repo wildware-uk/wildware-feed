@@ -107,7 +107,9 @@ fun main(args: Array<String>) {
     CrashReporting.start(FileTextStore(File(dir, "crash-reports.txt")))
     val prefsFile = File(dir, "window.json")
     val prefs = loadPrefs(prefsFile)
-    val platform = desktopPlatform(dir)
+    // The tray's "Do not disturb" quietens the app's sounds too, all but critical ones.
+    val quiet = java.util.concurrent.atomic.AtomicBoolean(false)
+    val platform = desktopPlatform(dir) { quiet.get() }
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val model = AppModel(platform, scope)
     // A clicked notification asks the feed to open its card, the same way a tapped iPhone push does.
@@ -168,6 +170,7 @@ fun main(args: Array<String>) {
         thisComputer = { thisComputer?.open() },
     )
     shell.start()
+    scope.launch { shell.settings.collect { quiet.set(it.doNotDisturb) } }
     // Mac: a click on the Dock icon brings the hidden window back, and Cmd-Q quits properly.
     runCatching {
         val desktop = Desktop.getDesktop()

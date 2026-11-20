@@ -58,6 +58,8 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
     ) async -> UNNotificationPresentationOptions {
         // The feed hears about it over its own live connection; the widgets need telling.
         WidgetCenter.shared.reloadAllTimelines()
+        // With the app's sounds on, the feed plays this alert's sound itself: not twice.
+        if IosSounds.shared.playsInApp { return [.banner, .list] }
         return [.banner, .list, .sound]
     }
 

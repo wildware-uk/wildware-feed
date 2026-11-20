@@ -388,6 +388,21 @@ class Apns(
          */
         const val CRITICAL_STYLE = "time-sensitive"
 
+        /** The app's critical sound, bundled in the iPhone app beside the others ([soundFor]). */
+        const val CRITICAL_SOUND = "critical.wav"
+
+        /**
+         * The sound file an alert plays: one of the app's own sounds (composeApp's `Sound`, bundled in
+         * the iPhone app as `<name>.wav`). An older app without the file plays the default sound.
+         */
+        fun soundFor(alert: Alert): String = when {
+            alert.about.priority == "critical" -> CRITICAL_SOUND
+            alert.category == "REQUEST" || alert.category == "PAIRING" -> "question.wav"
+            alert.category == "UPDATE" && alert.about.level == "error" -> "error.wav"
+            alert.category == "UPDATE" && alert.about.level == "success" -> "done.wav"
+            else -> "reply.wav"
+        }
+
         /**
          * spec/08 §6.7, key order as the TS server builds it; [Alert.extra] keys come last. [page] is
          * how this phone is paged ("time-sensitive" or "critical"), or null when it isn't.
@@ -397,9 +412,9 @@ class Apns(
                 put("alert", buildJsonObject { put("title", JsonPrimitive(alert.message.title)); put("body", JsonPrimitive(alert.message.body)) })
                 if (page == "critical") {
                     // A critical alert's sound plays through the silent switch, loud.
-                    put("sound", buildJsonObject { put("critical", JsonPrimitive(1)); put("name", JsonPrimitive("default")); put("volume", JsonPrimitive(1)) })
+                    put("sound", buildJsonObject { put("critical", JsonPrimitive(1)); put("name", JsonPrimitive(CRITICAL_SOUND)); put("volume", JsonPrimitive(1)) })
                 } else {
-                    put("sound", JsonPrimitive("default"))
+                    put("sound", JsonPrimitive(soundFor(alert)))
                 }
                 put("thread-id", JsonPrimitive(alert.team?.let { "$it:${alert.threadId}" } ?: alert.threadId))
                 put("category", JsonPrimitive(alert.category))

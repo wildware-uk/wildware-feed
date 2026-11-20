@@ -14,6 +14,8 @@ import dev.wildware.agents.app.engine.AppScreen
 import dev.wildware.agents.app.engine.DashboardSession
 import dev.wildware.agents.app.feed.AppNavigator
 import dev.wildware.agents.app.session.AppPlatform
+import dev.wildware.agents.app.sound.AndroidSoundPlayer
+import dev.wildware.agents.app.sound.SoundBoard
 import io.ktor.client.engine.okhttp.OkHttp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -65,7 +67,7 @@ class AgentsApplication : Application() {
         CrashReporting.start(FileTextStore(File(filesDir, "crash-reports.txt")))
         Channels.create(this)
         AndroidAppIcon.bitmap = drawAppIcon(this)
-        platform = androidPlatform(this, hooks, scope)
+        platform = androidPlatform(this, hooks, scope, onScreen = ::onScreen)
         stayConnectedStore = FileTextStore(File(filesDir, "stay-connected.txt"))
         askedNotifications = FileTextStore(File(filesDir, "asked-notifications.txt"))
         mutableStayConnected.value = stayConnectedStore.read()?.trim() == "on"
@@ -75,7 +77,7 @@ class AgentsApplication : Application() {
             model = model,
             scope = scope,
             notifier = notifier,
-            onScreen = { ProcessLifecycleOwner.get().lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) },
+            onScreen = ::onScreen,
             onWaiting = { count ->
                 if (mutableWaiting.value != count) {
                     mutableWaiting.value = count
@@ -85,6 +87,8 @@ class AgentsApplication : Application() {
             onSession = ::followSession,
         ).start()
     }
+
+    private fun onScreen(): Boolean = ProcessLifecycleOwner.get().lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
 
     private fun followSession(session: DashboardSession?) {
         watchingProjects?.cancel()
@@ -128,7 +132,7 @@ class AgentsApplication : Application() {
 }
 
 /** Everything the Android app keeps, in its private storage. */
-fun androidPlatform(context: Context, hooks: ActivityHooks, scope: CoroutineScope): AppPlatform {
+fun androidPlatform(context: Context, hooks: ActivityHooks, scope: CoroutineScope, onScreen: () -> Boolean): AppPlatform {
     val dir = context.filesDir
     val outbox = FileOutboxStorage(File(dir, "outbox"))
     val readMarks = File(dir, "read-marks.json")
@@ -158,6 +162,9 @@ fun androidPlatform(context: Context, hooks: ActivityHooks, scope: CoroutineScop
         // No recogniser on the phone (some builds without Google's apps): no mic, rather than one that can't work.
         voiceInput = if (SpeechRecognizer.isRecognitionAvailable(context)) SpeechVoiceInput(context, hooks) else null,
         crashReports = CrashReporting.setting,
+        sounds = AndroidSoundPlayer(context, onScreen).let { player -> SoundBoard(player, FileTextStore(File(dir, "sounds.txt")), quiet = player::quiet) },
+        // A notice shown in the shade makes its channel's sound: over the app only a critical one is shown.
+        systemSounds = { notice -> notice.critical || !onScreen() },
     )
 }
 
