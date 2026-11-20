@@ -77,7 +77,7 @@ class Apps(private val feed: Feed) {
         val url = if (wantsUrl) parsePage(input.url!!, "url") else null
         val csp = parseCsp(input.csp, "csp")
 
-        val existing = db.one("SELECT agent_id FROM apps WHERE uri = ?", uri) { Given(it.getString(1)) }
+        val existing = db.one("SELECT agent_id FROM apps WHERE team_id = :team AND uri = ?", uri) { Given(it.getString(1)) }
         if (existing != null && existing.value != input.agentId) {
             throw conflict(
                 if (existing.value == null) {
@@ -90,9 +90,9 @@ class Apps(private val feed: Feed) {
 
         val at = feed.now()
         val saved = db.one(
-            "INSERT INTO apps (id, uri, name, description, agent_id, html, url, csp, created_at, updated_at) " +
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) " +
-                "ON CONFLICT (uri) DO UPDATE SET name = excluded.name, description = excluded.description, " +
+            "INSERT INTO apps (team_id, id, uri, name, description, agent_id, html, url, csp, created_at, updated_at) " +
+                "VALUES (:team, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) " +
+                "ON CONFLICT (team_id, uri) DO UPDATE SET name = excluded.name, description = excluded.description, " +
                 "html = excluded.html, url = excluded.url, csp = excluded.csp, updated_at = excluded.updated_at " +
                 "RETURNING $columns",
             Ulid.next(), uri, name, description.ifEmpty { null }, input.agentId, html, url, Wire.encode(csp), at, at,
@@ -103,7 +103,7 @@ class Apps(private val feed: Feed) {
 
     /** `listAppSummaries`: every app, by name. */
     fun list(agentId: String?): List<Summary> =
-        db.query("SELECT $columns FROM apps ORDER BY ${db.asciiFold("name")}, uri", row = ::row).map { summary(it, agentId) }
+        db.query("SELECT $columns FROM apps WHERE team_id = :team ORDER BY ${db.asciiFold("name")}, uri", row = ::row).map { summary(it, agentId) }
 
     private fun summary(row: Row, agentId: String?) = Summary(
         uri = row.uri,
@@ -122,7 +122,7 @@ class Apps(private val feed: Feed) {
      */
     fun setData(viewId: String, data: JsonElement?, title: Given<JsonElement?>?): View = feed.op {
         val notFoundView = { notFound("no app view ${JsText.quote(viewId)}") }
-        val card = db.one("SELECT update_id, message_id, request_id FROM app_views WHERE id = ?", viewId) { rs ->
+        val card = db.one("SELECT update_id, message_id, request_id FROM app_views WHERE team_id = :team AND id = ?", viewId) { rs ->
             rs.getString(1)?.takeIf { it.isNotEmpty() }?.let { CardRef("update", it) }
                 ?: rs.getString(2)?.takeIf { it.isNotEmpty() }?.let { CardRef("message", it) }
                 ?: CardRef("request", rs.getString(3))
@@ -134,15 +134,15 @@ class Apps(private val feed: Feed) {
 
         val now = feed.now()
         val updated = if (title == null) {
-            db.one("UPDATE app_views SET data = ?, updated_at = ? WHERE id = ? RETURNING app_id, title, updated_at", text, now, viewId, row = ::viewRow)
+            db.one("UPDATE app_views SET data = ?, updated_at = ? WHERE team_id = :team AND id = ? RETURNING app_id, title, updated_at", text, now, viewId, row = ::viewRow)
         } else {
-            db.one("UPDATE app_views SET data = ?, title = ?, updated_at = ? WHERE id = ? RETURNING app_id, title, updated_at", text, newTitle, now, viewId, row = ::viewRow)
+            db.one("UPDATE app_views SET data = ?, title = ?, updated_at = ? WHERE team_id = :team AND id = ? RETURNING app_id, title, updated_at", text, newTitle, now, viewId, row = ::viewRow)
         } ?: throw notFoundView()
 
         feed.cards.announce(card, cardRow)
         feed.publish("apps.changed", buildJsonObject { put("projectId", cardRow.projectId) })
 
-        val uri = db.one("SELECT uri FROM apps WHERE id = ?", updated.first) { it.getString(1) }
+        val uri = db.one("SELECT uri FROM apps WHERE team_id = :team AND id = ?", updated.first) { it.getString(1) }
         checkNotNull(uri) { "app view $viewId names a missing app" }
         View(viewId, uri, updated.second, updated.third)
     }
@@ -154,8 +154,8 @@ class Apps(private val feed: Feed) {
      * view, a missing app, or an app that frames a page elsewhere. A deleted card is not checked.
      */
     fun document(viewId: String): Pair<String, JsonObject>? {
-        val appId = db.one("SELECT app_id FROM app_views WHERE id = ?", viewId) { it.getString(1) } ?: return null
-        val app = db.query("SELECT $columns FROM apps WHERE id = ?", appId, row = ::row).firstOrNull() ?: return null
+        val appId = db.one("SELECT app_id FROM app_views WHERE team_id = :team AND id = ?", viewId) { it.getString(1) } ?: return null
+        val app = db.query("SELECT $columns FROM apps WHERE team_id = :team AND id = ?", appId, row = ::row).firstOrNull() ?: return null
         if (app.url != null) return null
         return app.html to cspOf(app.csp)
     }

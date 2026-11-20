@@ -53,7 +53,7 @@ fun ToolRegistry.registerSubscriptionTools(app: App) {
     }
 
     fun slug(projectId: String?): JsonPrimitive? = projectId?.let { id ->
-        app.db.one("SELECT slug FROM projects WHERE id = ?", id) { JsonPrimitive(it.getString(1)) }
+        app.db.one("SELECT slug FROM projects WHERE team_id = :team AND id = ?", id) { JsonPrimitive(it.getString(1)) }
     }
 
     fun view(t: Target): JsonObject = buildJsonObject {
@@ -103,7 +103,7 @@ fun ToolRegistry.registerSubscriptionTools(app: App) {
             if (everything && t.thread == null) append(" Until now you heard every channel; now you hear what you follow.")
             if (t.kind == "group") {
                 val left = subs.leftProjects(me).toSet()
-                val skipped = app.db.query("SELECT id, slug FROM projects WHERE group_id = ? ORDER BY seq", t.id) { it.getString(1) to it.getString(2) }
+                val skipped = app.db.query("SELECT id, slug FROM projects WHERE team_id = :team AND group_id = ? ORDER BY seq", t.id) { it.getString(1) to it.getString(2) }
                     .filter { it.first in left }.map { it.second }
                 if (skipped.isNotEmpty()) append(" Except ${skipped.joinToString(", ")}, which you unsubscribed from; subscribe to them to hear them again.")
             }
@@ -145,7 +145,7 @@ fun ToolRegistry.registerSubscriptionTools(app: App) {
         val threadCount = subs.countThreads(me)
         val followedGroups = groups.map { it.groupId }.toSet()
         val channels = heard.orEmpty().mapNotNull { id ->
-            app.db.one("SELECT p.slug, p.name, p.group_id, g.slug FROM projects AS p LEFT JOIN project_groups AS g ON g.id = p.group_id WHERE p.id = ?", id) {
+            app.db.one("SELECT p.slug, p.name, p.group_id, g.slug FROM projects AS p LEFT JOIN project_groups AS g ON g.id = p.group_id WHERE p.team_id = :team AND p.id = ?", id) {
                 Channel(id, it.getString(1), it.getString(2), it.getString(4), own[id], it.getString(3) in followedGroups)
             }
         }

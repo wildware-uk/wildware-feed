@@ -113,7 +113,7 @@ private fun inScope(projectId: String?, subscribed: Subscription) =
     subscribed !is Subscription.Projects || projectId == null || projectId in subscribed.ids
 
 private fun projectNames(app: App, projectId: String?): Pair<JsonElement, JsonElement> {
-    val p = projectId?.let { id -> app.db.one("SELECT slug, name FROM projects WHERE id = ?", id) { it.getString(1) to it.getString(2) } }
+    val p = projectId?.let { id -> app.db.one("SELECT slug, name FROM projects WHERE team_id = :team AND id = ?", id) { it.getString(1) to it.getString(2) } }
     return (p?.first?.let(::JsonPrimitive) ?: JsonNull) to (p?.second?.let(::JsonPrimitive) ?: JsonNull)
 }
 
@@ -122,7 +122,7 @@ private fun str(v: String?): JsonElement = v?.let(::JsonPrimitive) ?: JsonNull
 private fun messageItem(app: App, m: AgentWork.Line): JsonObject {
     val (slug, name) = projectNames(app, m.projectId)
     val quoted = app.work.quoted(m)
-    val media = app.db.query("SELECT id, kind FROM media WHERE message_id = ? ORDER BY seq", m.id) {
+    val media = app.db.query("SELECT id, kind FROM media WHERE team_id = :team AND message_id = ? ORDER BY seq", m.id) {
         buildJsonObject { put("id", JsonPrimitive(it.getString(1))); put("kind", JsonPrimitive(it.getString(2))) }
     }
     return buildJsonObject {
@@ -158,7 +158,7 @@ private fun messageItem(app: App, m: AgentWork.Line): JsonObject {
 private fun answerFrame(app: App, agentId: String, subscribed: Subscription, payload: JsonObject): String? {
     val requestId = payload["requestId"]?.jsonPrimitive?.content ?: return null
     data class Req(val agentId: String, val projectId: String?, val updateId: String?, val state: String, val kind: String, val question: String, val answer: String?, val decidedAt: Long?)
-    val r = app.db.one("SELECT agent_id, project_id, update_id, state, kind, question, answer, decided_at FROM approvals WHERE id = ?", requestId) {
+    val r = app.db.one("SELECT agent_id, project_id, update_id, state, kind, question, answer, decided_at FROM approvals WHERE team_id = :team AND id = ?", requestId) {
         Req(it.getString(1), it.getString(2), it.getString(3), it.getString(4), it.getString(5), it.getString(6), it.getString(7),
             it.getLong(8).let { v -> if (it.wasNull()) null else v })
     } ?: return null
@@ -168,7 +168,7 @@ private fun answerFrame(app: App, agentId: String, subscribed: Subscription, pay
     val value: JsonElement = r.answer?.let { (Wire.json.parseToJsonElement(it) as? JsonObject)?.get("value") }
         ?: if (r.state == "approved" || r.state == "rejected") JsonPrimitive(r.state == "approved") else JsonNull
     val (slug, name) = projectNames(app, r.projectId)
-    val by = if (state == "answered") app.db.one("SELECT decided_by FROM approvals WHERE id = ?", requestId) { it.getString(1) } else null
+    val by = if (state == "answered") app.db.one("SELECT decided_by FROM approvals WHERE team_id = :team AND id = ?", requestId) { it.getString(1) } else null
     val byName = dev.wildware.feed.server.domain.People.teamName(app.db, by)
     return Frames.named("answer", buildJsonObject {
         put("type", JsonPrimitive("answer"))
@@ -193,7 +193,7 @@ private fun reactionFrame(app: App, agentId: String, subscribed: Subscription, p
     if (m.deletedAt != null) return null
     val mine = "agent:$agentId"
     val concerns = m.author == mine ||
-        (m.updateId != null && app.db.one("SELECT agent_id FROM updates WHERE id = ?", m.updateId) { it.getString(1) } == agentId) ||
+        (m.updateId != null && app.db.one("SELECT agent_id FROM updates WHERE team_id = :team AND id = ?", m.updateId) { it.getString(1) } == agentId) ||
         app.work.threadOf(m).any { it.author == mine }
     if (!concerns || !inScope(m.projectId, subscribed)) return null
     val (slug, name) = projectNames(app, m.projectId)
@@ -227,9 +227,9 @@ private fun blockFrame(app: App, agentId: String, subscribed: Subscription, payl
     val kind = card["kind"]?.jsonPrimitive?.content ?: return null
     val id = card["id"]?.jsonPrimitive?.content ?: return null
     val author = when (kind) {
-        "update" -> app.db.one("SELECT agent_id FROM updates WHERE id = ?", id) { "agent:" + it.getString(1) }
-        "request" -> app.db.one("SELECT agent_id FROM approvals WHERE id = ?", id) { "agent:" + it.getString(1) }
-        else -> app.db.one("SELECT author FROM messages WHERE id = ?", id) { it.getString(1) }
+        "update" -> app.db.one("SELECT agent_id FROM updates WHERE team_id = :team AND id = ?", id) { "agent:" + it.getString(1) }
+        "request" -> app.db.one("SELECT agent_id FROM approvals WHERE team_id = :team AND id = ?", id) { "agent:" + it.getString(1) }
+        else -> app.db.one("SELECT author FROM messages WHERE team_id = :team AND id = ?", id) { it.getString(1) }
     }
     if (author != "agent:$agentId") return null
     val projectId = (payload["projectId"] as? JsonPrimitive)?.takeIf { it.isString }?.content

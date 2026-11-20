@@ -1,6 +1,7 @@
 package dev.wildware.feed.server.media
 
 import dev.wildware.feed.server.db.Database
+import dev.wildware.feed.server.db.Tenant
 import java.nio.file.Files
 import java.nio.file.Path
 import java.security.MessageDigest
@@ -71,16 +72,18 @@ class MediaToStore(private val root: Path, private val store: MediaStore, privat
      */
     fun verify(db: Database, hashes: Boolean, threads: Int = 4): VerifyReport {
         val paths = MediaPaths(root.parent.toString())
-        class Original(val id: String, val mime: String, val bytes: Long, val sha256: String)
-        val originals = db.query("SELECT id, mime, bytes, sha256 FROM media WHERE sha256 <> '' ORDER BY seq") {
-            Original(it.getString(1), it.getString(2), it.getLong(3), it.getString(4))
+        class Original(val id: String, val mime: String, val bytes: Long, val sha256: String, val team: String)
+        // The whole store, every team's media in it: each original's key is worked out in its own team.
+        val (originals, derivatives) = Tenant.allTeams {
+            db.query("SELECT id, mime, bytes, sha256, team_id FROM media WHERE sha256 <> '' ORDER BY seq") {
+                Original(it.getString(1), it.getString(2), it.getLong(3), it.getString(4), it.getString(5))
+            } to db.query("SELECT path, bytes FROM derivatives ORDER BY seq") { it.getString(1) to it.getLong(2) }
         }
-        val derivatives = db.query("SELECT path, bytes FROM derivatives ORDER BY seq") { it.getString(1) to it.getLong(2) }
         val problems = ConcurrentHashMap.newKeySet<String>()
         val checked = AtomicLong()
         val pool = Executors.newFixedThreadPool(threads)
         for (o in originals) pool.execute {
-            val key = paths.originalKey(o.id, o.mime)
+            val key = Tenant.with(o.team) { paths.originalKey(o.id, o.mime) }
             try {
                 val size = store.size(key)
                 when {

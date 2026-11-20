@@ -30,6 +30,16 @@ class Database private constructor(
 ) : AutoCloseable {
     private val lock = ReentrantLock()
 
+    /**
+     * Postgres row security (docs/HOSTING.md §2), the backstop behind every statement naming its
+     * team: when on, each statement first tells the connection whose rows it may see
+     * (`app.team`), and the policies migration 058 made hide every other team's rows. Set by
+     * [TeamTables.setRowSecurity]. One connection behind one lock, so the setting is the
+     * connection's own, changed only when the team changes, and forgotten on reconnect.
+     */
+    @Volatile var rowSecurity: Boolean = false
+    private var teamOnConnection: String? = null
+
     /** How many statements [query] and [update] have run, for tests that keep reads from growing per row. */
     @Volatile var statements: Long = 0L
         private set
@@ -43,23 +53,39 @@ class Database private constructor(
         if (connection.autoCommit && (connection.isClosed || !connection.isValid(5))) {
             runCatching { connection.close() }
             connection = again()
+            teamOnConnection = null
         }
         return connection
     }
 
+    /** Before a statement: tell Postgres whose rows it may touch, when that changed. */
+    private fun setTeam(c: Connection) {
+        if (!rowSecurity) return
+        val team = Tenant.currentOrNull ?: (if (Tenant.strict) "" else Tenant.HOME)
+        if (team == teamOnConnection) return
+        c.prepareStatement("SELECT set_config('app.team', ?, false)").use { st ->
+            st.setString(1, team)
+            st.executeQuery().close()
+        }
+        teamOnConnection = team
+    }
+
     /** Run [block] with the connection, alone. */
-    fun <T> withConnection(block: (Connection) -> T): T = lock.withLock { block(live()) }
+    fun <T> withConnection(block: (Connection) -> T): T = lock.withLock { live().let { c -> setTeam(c); block(c) } }
 
     /** Run [block] in one transaction: all of it or none. */
     fun <T> transaction(block: (Connection) -> T): T = lock.withLock {
         val c = live()
         c.autoCommit = false
         try {
+            setTeam(c)
             val result = block(c)
             c.commit()
             result
         } catch (e: Throwable) {
             c.rollback()
+            // A setting made inside the transaction is rolled back with it.
+            teamOnConnection = null
             throw e
         } finally {
             c.autoCommit = true
@@ -82,9 +108,11 @@ class Database private constructor(
 
     fun <T> query(sql: String, vararg args: Any?, row: (ResultSet) -> T): List<T> = withConnection { c ->
         statements++
-        checkText(args)
-        c.prepareStatement(sql(sql)).use { st ->
-            st.bind(args)
+        val (text, bound) = TeamTables.expand(sql, args)
+        checkText(bound)
+        setTeam(c)
+        c.prepareStatement(sql(text)).use { st ->
+            st.bind(bound)
             st.executeQuery().use { rs -> buildList { while (rs.next()) add(row(rs)) } }
         }
     }
@@ -93,8 +121,10 @@ class Database private constructor(
 
     fun update(sql: String, vararg args: Any?): Int = withConnection { c ->
         statements++
-        checkText(args)
-        c.prepareStatement(sql(sql)).use { st -> st.bind(args); st.executeUpdate() }
+        val (text, bound) = TeamTables.expand(sql, args)
+        checkText(bound)
+        setTeam(c)
+        c.prepareStatement(sql(text)).use { st -> st.bind(bound); st.executeUpdate() }
     }
 
     /** SQLite's two-argument `max(a, b)`. */
@@ -156,19 +186,29 @@ class Database private constructor(
          * Postgres at [url]: Heroku's `postgres://user:password@host:port/name` (SSL required unless
          * the host is local) or a `jdbc:postgresql:` URL. [schema] picks a schema other than `public`.
          */
-        fun openPostgres(url: String, migrate: Boolean = true, schema: String? = null, onClose: () -> Unit = {}): Database {
-            val connect = { postgresConnection(url, schema) }
+        fun openPostgres(url: String, migrate: Boolean = true, schema: String? = null, onClose: () -> Unit = {}, role: String? = null): Database {
+            val connect = { postgresConnection(url, schema, role) }
             val db = Database(connect(), Dialect.POSTGRES, connect, onClose)
             if (migrate) PostgresMigrations.run(db)
+            // Row security switched on by a server with many teams stays on in the database; any
+            // other program opening it (the admin commands, export) then says its team too.
+            db.rowSecurity = TeamTables.rowSecurityForced(db)
             return db
         }
 
-        internal fun postgresConnection(url: String, schema: String?): Connection {
+        internal fun postgresConnection(url: String, schema: String?, role: String? = null): Connection {
             val (jdbc, props) = postgresJdbc(url)
             val c = DriverManager.getConnection(jdbc, props)
             if (schema != null) c.createStatement().use { it.execute("SET search_path TO \"$schema\"") }
+            if (role != null) c.createStatement().use { it.execute("SET ROLE \"$role\"") }
             return c
         }
+
+        /**
+         * The role the Postgres tests work as: not a superuser and not allowed to skip row security,
+         * like Heroku's database user, so the policies of migration 058 really apply to them.
+         */
+        private const val TEST_ROLE = "feed_test_app"
 
         /** A JDBC URL and properties from Heroku's DATABASE_URL form. */
         fun postgresJdbc(url: String): Pair<String, java.util.Properties> {
@@ -193,10 +233,20 @@ class Database private constructor(
             val pg = System.getenv("PG_TEST_URL")
             if (!pg.isNullOrBlank()) {
                 val schema = "t_" + java.util.UUID.randomUUID().toString().replace("-", "")
-                postgresConnection(pg, null).use { c -> c.createStatement().use { it.execute("CREATE SCHEMA \"$schema\"") } }
-                return openPostgres(pg, schema = schema, onClose = {
+                postgresConnection(pg, null).use { c ->
+                    c.createStatement().use {
+                        it.execute(
+                            "DO $$ BEGIN CREATE ROLE $TEST_ROLE NOLOGIN NOSUPERUSER NOBYPASSRLS; " +
+                                "EXCEPTION WHEN duplicate_object OR unique_violation THEN NULL; END $$",
+                        )
+                        it.execute("CREATE SCHEMA \"$schema\"")
+                        it.execute("GRANT ALL ON SCHEMA \"$schema\" TO $TEST_ROLE")
+                    }
+                }
+                // Every test on Postgres runs with row security on: the server must say its team everywhere.
+                return openPostgres(pg, schema = schema, role = TEST_ROLE, onClose = {
                     postgresConnection(pg, null).use { c -> c.createStatement().use { it.execute("DROP SCHEMA \"$schema\" CASCADE") } }
-                })
+                }).also { TeamTables.setRowSecurity(it, true) }
             }
             return sqliteMemory()
         }
@@ -343,6 +393,9 @@ object PostgresMigrations {
         }
         for (migration in all.filter { it.version !in applied && it.version <= upTo }) {
             db.transaction { c ->
+                // Row security, once switched on, stays on in the database: a migration that moves
+                // data sees every team's rows (TeamTables.kt).
+                c.createStatement().use { it.execute("SELECT set_config('app.team', '*', true)") }
                 c.createStatement().use { st -> SqlScript.split(migration.sql).forEach { st.execute(it) } }
                 c.prepareStatement("INSERT INTO ${Database.MIGRATIONS_TABLE} (version, name, checksum, applied_at) VALUES (?, ?, ?, ?)").use {
                     it.bind(arrayOf<Any?>(migration.version, migration.name, Migrations.checksum(migration.sql), System.currentTimeMillis()))

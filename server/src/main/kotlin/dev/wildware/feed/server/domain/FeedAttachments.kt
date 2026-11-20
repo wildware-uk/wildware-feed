@@ -29,7 +29,7 @@ object FeedAttachments {
 
     private class MediaRow(val agentId: String?, val author: String, val anchors: List<String?>, val sha256: String)
 
-    private fun media(db: Database, id: String) = db.one("SELECT agent_id, author, update_id, message_id, request_id, sha256 FROM media WHERE id = ?", id) {
+    private fun media(db: Database, id: String) = db.one("SELECT agent_id, author, update_id, message_id, request_id, sha256 FROM media WHERE team_id = :team AND id = ?", id) {
         MediaRow(it.getString(1), it.getString(2), listOf(it.getString(3), it.getString(4), it.getString(5)), it.getString(6))
     }
 
@@ -76,7 +76,7 @@ object FeedAttachments {
     fun attachMedia(db: Database, ids: List<String>, anchor: String, cardId: String, ownerColumn: String, owner: String?) {
         if (ids.isEmpty()) return
         db.update(
-            "UPDATE media SET $anchor = ? WHERE id IN (${ids.joinToString(", ") { "?" }}) AND " +
+            "UPDATE media SET $anchor = ? WHERE team_id = :team AND id IN (${ids.joinToString(", ") { "?" }}) AND " +
                 ANCHORS.joinToString(" AND ") { "$it IS NULL" } + " AND (? IS NULL OR $ownerColumn = ?)",
             cardId, *ids.toTypedArray(), owner, owner,
         )
@@ -86,7 +86,7 @@ object FeedAttachments {
         if (embeds.size > EMBEDS_MAX) throw invalid("a post may carry at most $EMBEDS_MAX embeds")
         return embeds.mapIndexed { at, embed ->
             val slug = embed.type.jsTrim().lowercase()
-            val typeId = db.one("SELECT id FROM embed_types WHERE slug = ?", slug) { it.getString(1) }
+            val typeId = db.one("SELECT id FROM embed_types WHERE team_id = :team AND slug = ?", slug) { it.getString(1) }
                 ?: throw invalid(
                     "embeds[$at]: no embed type \"$slug\". Call list_embed_types to see what is registered, or register_embed_type to add it.",
                 )
@@ -112,7 +112,7 @@ object FeedAttachments {
     fun attachEmbeds(db: Database, embeds: List<CheckedEmbed>, anchor: String, cardId: String, agentId: String?, author: String, at: Long) {
         for (embed in embeds) {
             db.update(
-                "INSERT INTO embeds (id, type_id, $anchor, agent_id, author, data, source_url, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO embeds (team_id, id, type_id, $anchor, agent_id, author, data, source_url, created_at) VALUES (:team, ?, ?, ?, ?, ?, ?, ?, ?)",
                 Ulid.next(), embed.typeId, cardId, agentId, author, embed.data, embed.sourceUrl, at,
             )
         }
@@ -122,7 +122,7 @@ object FeedAttachments {
         if (apps.size > APPS_MAX) throw invalid("a post may carry at most $APPS_MAX apps")
         return apps.mapIndexed { at, entry ->
             val uri = appUri(entry.app, "apps[$at].app")
-            val appId = db.one("SELECT id FROM apps WHERE uri = ?", uri) { it.getString(1) }
+            val appId = db.one("SELECT id FROM apps WHERE team_id = :team AND uri = ?", uri) { it.getString(1) }
                 ?: throw invalid("apps[$at]: no app \"$uri\". Call register_app to ship it, or list_apps to see what is already registered.")
             CheckedApp(appId, appData(entry.data, "apps[$at].data"), appTitle(entry.title, "apps[$at].title"))
         }
@@ -158,7 +158,7 @@ object FeedAttachments {
     fun attachApps(db: Database, apps: List<CheckedApp>, card: CardRef, agentId: String?, author: String, at: Long) {
         for (app in apps) {
             db.update(
-                "INSERT INTO app_views (id, app_id, ${card.anchor}, agent_id, author, data, title, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO app_views (team_id, id, app_id, ${card.anchor}, agent_id, author, data, title, created_at, updated_at) VALUES (:team, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 Ulid.next(), app.appId, card.id, agentId, author, app.data, app.title, at, at,
             )
         }
@@ -166,7 +166,7 @@ object FeedAttachments {
 
     /** `appsOn`: the card's views whose app still exists, oldest first. */
     fun appsOn(db: Database, card: CardRef): List<AppViewRef> = db.query(
-        "SELECT v.id, a.uri, v.title FROM app_views AS v JOIN apps AS a ON a.id = v.app_id WHERE v.${card.anchor} = ? ORDER BY v.seq",
+        "SELECT v.id, a.uri, v.title FROM app_views AS v JOIN apps AS a ON a.id = v.app_id WHERE v.team_id = :team AND v.${card.anchor} = ? ORDER BY v.seq",
         card.id,
     ) { AppViewRef(it.getString(1), it.getString(2), it.getString(3)) }
 }

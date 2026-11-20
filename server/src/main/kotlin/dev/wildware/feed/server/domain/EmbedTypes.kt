@@ -31,7 +31,7 @@ class EmbedTypes(private val feed: Feed) {
 
         val parsed = Embeds.parseSpec(spec)
 
-        val existing = db.one("SELECT agent_id FROM embed_types WHERE slug = ?", cleanSlug) { Given(it.getString(1)) }
+        val existing = db.one("SELECT agent_id FROM embed_types WHERE team_id = :team AND slug = ?", cleanSlug) { Given(it.getString(1)) }
         if (existing != null && existing.value != agentId) {
             throw conflict(
                 if (existing.value == null) {
@@ -44,8 +44,8 @@ class EmbedTypes(private val feed: Feed) {
 
         val at = feed.now()
         db.one(
-            "INSERT INTO embed_types (id, slug, name, agent_id, spec, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?) " +
-                "ON CONFLICT (slug) DO UPDATE SET name = excluded.name, spec = excluded.spec, updated_at = excluded.updated_at " +
+            "INSERT INTO embed_types (team_id, id, slug, name, agent_id, spec, created_at, updated_at) VALUES (:team, ?, ?, ?, ?, ?, ?, ?) " +
+                "ON CONFLICT (team_id, slug) DO UPDATE SET name = excluded.name, spec = excluded.spec, updated_at = excluded.updated_at " +
                 "RETURNING slug, name, agent_id, updated_at",
             Ulid.next(), cleanSlug, cleanName, agentId, Wire.encode(parsed), at, at,
         ) { TypeView(it.getString(1), it.getString(2), it.getString(3) == null, parsed, it.getLong(4)) }!!
@@ -53,7 +53,7 @@ class EmbedTypes(private val feed: Feed) {
 
     /** `listEmbedTypeViews`: built-ins first, then by name; a spec that cannot be read is left out. */
     fun list(): List<TypeView> = db.query(
-        "SELECT slug, name, agent_id, spec, updated_at FROM embed_types ORDER BY agent_id IS NOT NULL, ${db.asciiFold("name")}, slug",
+        "SELECT slug, name, agent_id, spec, updated_at FROM embed_types WHERE team_id = :team ORDER BY agent_id IS NOT NULL, ${db.asciiFold("name")}, slug",
     ) { rs ->
         Embeds.specOf(rs.getString(4))?.let { TypeView(rs.getString(1), rs.getString(2), rs.getString(3) == null, it, rs.getLong(5)) }
     }.filterNotNull()

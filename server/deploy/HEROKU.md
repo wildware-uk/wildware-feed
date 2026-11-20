@@ -70,6 +70,10 @@ outside Heroku: without it the stored secrets cannot be opened, backups included
 the old one in `SECRETS_KEY_OLD`, restart, and remove `SECRETS_KEY_OLD` once the log says the rows
 were re-sealed.
 
+`ROW_SECURITY=on` (optional, off by default) turns on Postgres row security: a backstop that keeps
+each team's rows to itself even if a query forgot to say its team (docs/HOSTING.md §2). A server
+with one team doesn't need it; a server with many always has it on.
+
 `TOKEN_SECRET` must be the old server's, or every agent token stops working. `PORT` is set by
 Heroku. The server prints `Database: Postgres` and `Media: bucket <name>` when it starts; check
 the log for both.

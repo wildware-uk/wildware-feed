@@ -157,8 +157,8 @@ class Requests(
         val now = clock()
         val id = Ulid.next(now)
         val row = db.one(
-            "INSERT INTO approvals (id, agent_id, project_id, update_id, message_id, kind, question, detail, options, config, state, expires_at, priority) " +
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?) RETURNING ${Rows.APPROVAL}",
+            "INSERT INTO approvals (team_id, id, agent_id, project_id, update_id, message_id, kind, question, detail, options, config, state, expires_at, priority) " +
+                "VALUES (:team, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?) RETURNING ${Rows.APPROVAL}",
             id, agentId, anchor.projectId, anchor.updateId, anchor.messageId, kind, question, detail,
             options?.let { Wire.encode(JsonArray(it.map(::JsonPrimitive))) }, config?.let { jsonText(JsonObject(it)) },
             now + (timeoutS * 1000).toLong(), priority,
@@ -167,15 +167,15 @@ class Requests(
         if (mediaIds.isNotEmpty()) {
             val marks = mediaIds.joinToString(", ") { "?" }
             db.update(
-                "UPDATE media SET request_id = ? WHERE id IN ($marks) AND update_id IS NULL AND message_id IS NULL " +
+                "UPDATE media SET request_id = ? WHERE team_id = :team AND id IN ($marks) AND update_id IS NULL AND message_id IS NULL " +
                     "AND request_id IS NULL AND task_id IS NULL AND (? IS NULL OR author = ?)",
                 id, *mediaIds.toTypedArray(), author, author,
             )
         }
         for (embed in embeds) {
             db.update(
-                "INSERT INTO embeds (id, type_id, update_id, message_id, request_id, task_id, agent_id, author, data, source_url, created_at) " +
-                    "VALUES (?, ?, NULL, NULL, ?, NULL, ?, ?, ?, ?, ?)",
+                "INSERT INTO embeds (team_id, id, type_id, update_id, message_id, request_id, task_id, agent_id, author, data, source_url, created_at) " +
+                    "VALUES (:team, ?, ?, NULL, NULL, ?, NULL, ?, ?, ?, ?, ?)",
                 Ulid.next(clock()), embed.typeId, id, agentId, author, embed.data, embed.sourceUrl, clock(),
             )
         }
@@ -237,7 +237,7 @@ class Requests(
     /** Undo [claimSecret]: the request waits again, as if it had never been answered. */
     fun releaseSecret(claimed: JsonObject) {
         val id = OwnerRequest(claimed).id
-        db.update("UPDATE approvals SET state = 'pending', decided_value = NULL, answer = NULL, decided_at = NULL, decided_by = NULL WHERE id = ? AND state = 'approved'", id)
+        db.update("UPDATE approvals SET state = 'pending', decided_value = NULL, answer = NULL, decided_at = NULL, decided_by = NULL WHERE team_id = :team AND id = ? AND state = 'approved'", id)
     }
 
     /** A person dismisses (`DELETE /api/requests/:id`). Not idempotent: the second is a 409. */
@@ -318,7 +318,7 @@ class Requests(
         if (configGiven) { sets += "config = ?"; args += config?.let { jsonText(JsonObject(it)) } }
         args += request.id
         val row = db.one(
-            "UPDATE approvals SET ${sets.joinToString(", ")} WHERE id = ? AND state = 'pending' RETURNING ${Rows.APPROVAL}",
+            "UPDATE approvals SET ${sets.joinToString(", ")} WHERE team_id = :team AND id = ? AND state = 'pending' RETURNING ${Rows.APPROVAL}",
             *args.toTypedArray(),
         ) { Rows.request(it) } ?: throw settledAlready(mustFind(request.id))
         if (refs != null) cardRefs.set(card, refs)
@@ -336,13 +336,13 @@ class Requests(
     fun expireDue(): List<OwnerRequest> {
         val now = clock()
         return db.query(
-            "UPDATE approvals SET state = 'timeout', decided_at = ? WHERE state = 'pending' AND expires_at <= ? RETURNING ${Rows.APPROVAL}",
+            "UPDATE approvals SET state = 'timeout', decided_at = ? WHERE team_id = :team AND state = 'pending' AND expires_at <= ? RETURNING ${Rows.APPROVAL}",
             now, now,
         ) { Rows.request(it) }.map { settle(it, "timeout") }
     }
 
     fun find(requestId: String): OwnerRequest? =
-        db.one("SELECT ${Rows.APPROVAL} FROM approvals WHERE id = ?", requestId) { OwnerRequest(Rows.request(it)) }
+        db.one("SELECT ${Rows.APPROVAL} FROM approvals WHERE team_id = :team AND id = ?", requestId) { OwnerRequest(Rows.request(it)) }
 
     // ---- the wait ---------------------------------------------------------------------------------
 
@@ -405,7 +405,7 @@ class Requests(
     }
 
     private fun decide(id: String, state: String, value: String?, answer: String?, at: Long, by: String? = null): JsonObject? = db.one(
-        "UPDATE approvals SET state = ?, decided_value = ?, answer = ?, decided_at = ?, decided_by = ? WHERE id = ? AND state = 'pending' RETURNING ${Rows.APPROVAL}",
+        "UPDATE approvals SET state = ?, decided_value = ?, answer = ?, decided_at = ?, decided_by = ? WHERE team_id = :team AND id = ? AND state = 'pending' RETURNING ${Rows.APPROVAL}",
         state, value, answer, at, by, id,
     ) { Rows.request(it) }
 
@@ -509,7 +509,7 @@ class Requests(
         val named = input.project?.takeIf { it.jsTrim().isNotEmpty() }?.let { reads.resolveProject(it) }
         val messageRef = input.message?.jsTrim()
         if (!messageRef.isNullOrEmpty()) {
-            val message = db.one("SELECT id, project_id, update_id, deleted_at FROM messages WHERE id = ?", messageRef) {
+            val message = db.one("SELECT id, project_id, update_id, deleted_at FROM messages WHERE team_id = :team AND id = ?", messageRef) {
                 listOf(it.getString(1), it.getString(2), it.getString(3), it.getObject(4))
             }
             if (message == null || message[3] != null) throw notFound("no such message: $messageRef")
@@ -519,7 +519,7 @@ class Requests(
         }
         val updateRef = input.update?.jsTrim()
         if (updateRef.isNullOrEmpty()) return Anchor(named?.id, null, null)
-        val update = db.one("SELECT id, project_id FROM updates WHERE id = ?", updateRef) { it.getString(1) to it.getString(2) }
+        val update = db.one("SELECT id, project_id FROM updates WHERE team_id = :team AND id = ?", updateRef) { it.getString(1) to it.getString(2) }
             ?: throw notFound("no such update: $updateRef")
         if (named != null && named.id != update.second) throw invalid("the update named belongs to a different project")
         return Anchor(update.second, update.first, null)
@@ -528,7 +528,7 @@ class Requests(
     private class MediaRow(val author: String, val attachedTo: String?, val sha256: String, val kind: String)
 
     private fun media(id: String): MediaRow? = db.one(
-        "SELECT author, update_id, message_id, request_id, sha256, kind FROM media WHERE id = ?", id,
+        "SELECT author, update_id, message_id, request_id, sha256, kind FROM media WHERE team_id = :team AND id = ?", id,
     ) {
         val on = when {
             it.getString("update_id") != null -> "an update"
@@ -572,7 +572,7 @@ class Requests(
         if (embeds.size > EMBEDS_PER_POST_MAX) throw invalid("a post may carry at most $EMBEDS_PER_POST_MAX embeds")
         return embeds.mapIndexed { at, embed ->
             val slug = embed.type.jsTrim().lowercase()
-            val typeId = db.one("SELECT id FROM embed_types WHERE slug = ?", slug) { it.getString(1) }
+            val typeId = db.one("SELECT id FROM embed_types WHERE team_id = :team AND slug = ?", slug) { it.getString(1) }
                 ?: throw invalid("embeds[$at]: no embed type \"$slug\". Call list_embed_types to see what is registered, or register_embed_type to add it.")
             CheckedEmbed(typeId, Wire.encode(Embeds.parseData(embed.data, "embeds[$at].data")), sourceUrl(embed.sourceUrl, "embeds[$at].source_url"))
         }

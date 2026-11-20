@@ -36,12 +36,12 @@ fun ToolRegistry.registerMediaTools(app: App) {
         val wanted = (call.args["media_ids"] as JsonArray).map { (it as JsonPrimitive).content }
         val ids = checkedMediaIds(wanted)
         val agentId = call.agent.id
-        val update = app.db.one("SELECT agent_id, deleted_at FROM updates WHERE id = ?", updateId) {
+        val update = app.db.one("SELECT agent_id, deleted_at FROM updates WHERE team_id = :team AND id = ?", updateId) {
             it.getString(1) to it.getLong(2).let { v -> if (it.wasNull()) null else v }
         }
         if (update == null || update.second != null || update.first != agentId) throw notFound("no such update: $updateId")
         val eligible = ids.filter { id ->
-            app.db.one("SELECT agent_id, sha256 FROM media WHERE id = ?", id) { it.getString(1) to it.getString(2) }
+            app.db.one("SELECT agent_id, sha256 FROM media WHERE team_id = :team AND id = ?", id) { it.getString(1) to it.getString(2) }
                 ?.let { (owner, sha) -> owner == agentId && sha.isNotEmpty() } == true
         }
         val attached = if (eligible.isEmpty()) emptyList() else attach(app, eligible, updateId, agentId)
@@ -60,7 +60,7 @@ fun ToolRegistry.registerMediaTools(app: App) {
 
 /** Point the eligible, unattached media at the update; the ids it took, in SQLite's RETURNING order. */
 private fun attach(app: App, ids: List<String>, updateId: String, agentId: String): List<String> = app.db.query(
-    "UPDATE media SET update_id = ? WHERE id IN (${ids.joinToString(", ") { "?" }}) " +
+    "UPDATE media SET update_id = ? WHERE team_id = :team AND id IN (${ids.joinToString(", ") { "?" }}) " +
         "AND update_id IS NULL AND message_id IS NULL AND request_id IS NULL AND task_id IS NULL " +
         "AND (? IS NULL OR agent_id = ?) RETURNING id",
     updateId, *ids.toTypedArray(), agentId, agentId,

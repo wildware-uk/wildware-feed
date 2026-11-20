@@ -68,23 +68,23 @@ class OAuth(private val db: Database, private val tokenSecret: String, private v
         sweep()
         val now = clock()
         // Full of clients nobody allowed: the oldest makes room, so filling it never locks real clients out.
-        val waiting = db.one("SELECT count(*) FROM oauth_clients WHERE approved_at IS NULL") { it.getInt(1) } ?: 0
+        val waiting = db.one("SELECT count(*) FROM oauth_clients WHERE team_id = :team AND approved_at IS NULL") { it.getInt(1) } ?: 0
         if (waiting >= MAX_UNAPPROVED_CLIENTS) {
             val oldest = db.query(
-                "SELECT id FROM oauth_clients WHERE approved_at IS NULL AND id NOT IN (SELECT client_id FROM oauth_grants) ORDER BY seq LIMIT ?",
+                "SELECT id FROM oauth_clients WHERE team_id = :team AND approved_at IS NULL AND id NOT IN (SELECT client_id FROM oauth_grants) ORDER BY seq LIMIT ?",
                 waiting - MAX_UNAPPROVED_CLIENTS + 1,
             ) { it.getString(1) }
-            for (old in oldest) db.update("DELETE FROM oauth_clients WHERE id = ?", old)
+            for (old in oldest) db.update("DELETE FROM oauth_clients WHERE team_id = :team AND id = ?", old)
         }
         val id = Tokens.random()
         db.update(
-            "INSERT INTO oauth_clients (id, name, client_uri, redirect_uris, address, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO oauth_clients (team_id, id, name, client_uri, redirect_uris, address, created_at) VALUES (:team, ?, ?, ?, ?, ?, ?)",
             id, cleanName, cleanUri, JsonArray(redirectUris.map(::JsonPrimitive)).toString(), address, now,
         )
         return client(id)!!
     }
 
-    fun client(id: String): Client? = db.one("SELECT * FROM oauth_clients WHERE id = ?", id) { rs ->
+    fun client(id: String): Client? = db.one("SELECT * FROM oauth_clients WHERE team_id = :team AND id = ?", id) { rs ->
         Client(
             rs.getString("id"), rs.getString("name"), rs.getString("client_uri"),
             kotlinx.serialization.json.Json.parseToJsonElement(rs.getString("redirect_uris")).jsonArray.map { it.jsonPrimitive.content },
@@ -115,12 +115,12 @@ class OAuth(private val db: Database, private val tokenSecret: String, private v
         val now = clock()
         db.transaction { _ ->
             db.update(
-                "INSERT INTO oauth_grants (id, client_id, agent_id, resource, scope, redirect_uri, redirect_uri_given, code_hash, code_challenge, " +
-                    "code_expires_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO oauth_grants (team_id, id, client_id, agent_id, resource, scope, redirect_uri, redirect_uri_given, code_hash, code_challenge, " +
+                    "code_expires_at, created_at) VALUES (:team, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 Ulid.next(now), client.id, agentId, resource, scope, redirectUri, if (redirectUriGiven) 1 else 0, hash(code), codeChallenge,
                 now + CODE_MS, now,
             )
-            db.update("UPDATE oauth_clients SET approved_at = ? WHERE id = ? AND approved_at IS NULL", now, client.id)
+            db.update("UPDATE oauth_clients SET approved_at = ? WHERE team_id = :team AND id = ? AND approved_at IS NULL", now, client.id)
         }
         return code
     }
@@ -132,7 +132,7 @@ class OAuth(private val db: Database, private val tokenSecret: String, private v
      */
     fun agentsAllowedFor(redirectUri: String): Set<String> {
         val key = redirectKey(redirectUri) ?: return emptySet()
-        return db.query("SELECT agent_id, redirect_uri FROM oauth_grants WHERE revoked_at IS NULL AND code_used_at IS NOT NULL") {
+        return db.query("SELECT agent_id, redirect_uri FROM oauth_grants WHERE team_id = :team AND revoked_at IS NULL AND code_used_at IS NOT NULL") {
             it.getString(1) to it.getString(2)
         }.filter { redirectKey(it.second) == key }.map { it.first }.toSet()
     }
@@ -140,7 +140,7 @@ class OAuth(private val db: Database, private val tokenSecret: String, private v
     /** The owner's list of [agentId]'s live connections, newest first. */
     fun connections(agentId: String): List<Connection> = db.query(
         "SELECT g.id, c.name, g.redirect_uri, g.created_at, g.last_used_at FROM oauth_grants g JOIN oauth_clients c ON c.id = g.client_id " +
-            "WHERE g.agent_id = ? AND g.revoked_at IS NULL AND g.code_used_at IS NOT NULL ORDER BY g.seq DESC",
+            "WHERE g.team_id = :team AND g.agent_id = ? AND g.revoked_at IS NULL AND g.code_used_at IS NOT NULL ORDER BY g.seq DESC",
         agentId,
     ) { Connection(it.getString(1), it.getString(2), it.getString(3), it.getLong(4), it.longOrNull("last_used_at")) }
 
@@ -175,7 +175,7 @@ class OAuth(private val db: Database, private val tokenSecret: String, private v
         if (resource != null && resource != grant.resource) throw Refused("invalid_target", "resource is not the one this code was issued for")
         if (!agentLive(grant.agentId)) throw Refused("invalid_grant", "the agent this was allowed as has been revoked")
         val issued = db.transaction { _ ->
-            val marked = db.update("UPDATE oauth_grants SET code_used_at = ? WHERE id = ? AND code_used_at IS NULL", clock(), grant.id)
+            val marked = db.update("UPDATE oauth_grants SET code_used_at = ? WHERE team_id = :team AND id = ? AND code_used_at IS NULL", clock(), grant.id)
             if (marked == 1) issue(grant, spent = null) else null
         }
         if (issued == null) {
@@ -194,7 +194,7 @@ class OAuth(private val db: Database, private val tokenSecret: String, private v
     fun refresh(token: String, clientId: String, resource: String?, agentLive: (String) -> Boolean): Issued {
         val bad = Refused("invalid_grant", "the refresh token is unknown, expired, revoked or was issued to another client")
         if (!Tokens.wellFormed(token)) throw bad
-        val row = db.one("SELECT grant_id, expires_at, used_at FROM oauth_tokens WHERE token_hash = ? AND kind = 'refresh'", hash(token)) {
+        val row = db.one("SELECT grant_id, expires_at, used_at FROM oauth_tokens WHERE team_id = :team AND token_hash = ? AND kind = 'refresh'", hash(token)) {
             Triple(it.getString(1), it.getLong(2), it.longOrNull("used_at"))
         } ?: throw bad
         val (grantId, expiresAt, usedAt) = row
@@ -208,7 +208,7 @@ class OAuth(private val db: Database, private val tokenSecret: String, private v
         if (resource != null && resource != grant.resource) throw Refused("invalid_target", "resource is not the one this token was issued for")
         if (!agentLive(grant.agentId)) throw Refused("invalid_grant", "the agent this was allowed as has been revoked")
         return db.transaction { _ ->
-            val spent = db.update("UPDATE oauth_tokens SET used_at = ? WHERE token_hash = ? AND used_at IS NULL", clock(), hash(token))
+            val spent = db.update("UPDATE oauth_tokens SET used_at = ? WHERE team_id = :team AND token_hash = ? AND used_at IS NULL", clock(), hash(token))
             if (spent != 1) throw bad
             issue(grant, spent = hash(token))
         }
@@ -217,7 +217,7 @@ class OAuth(private val db: Database, private val tokenSecret: String, private v
     /** RFC 7009: revoke the grant behind [token] when it is [clientId]'s. Unknown tokens are not an error. */
     fun revoke(token: String, clientId: String) {
         if (!Tokens.wellFormed(token)) return
-        val grantId = db.one("SELECT grant_id FROM oauth_tokens WHERE token_hash = ?", hash(token)) { it.getString(1) } ?: return
+        val grantId = db.one("SELECT grant_id FROM oauth_tokens WHERE team_id = :team AND token_hash = ?", hash(token)) { it.getString(1) } ?: return
         val grant = grantBy("id", grantId) ?: return
         if (grant.clientId == clientId) revokeGrant(grant.id)
     }
@@ -230,23 +230,23 @@ class OAuth(private val db: Database, private val tokenSecret: String, private v
     private fun issue(grant: Grant, spent: String?): Issued {
         val now = clock()
         db.update(
-            "DELETE FROM oauth_tokens WHERE grant_id = ? AND (kind = 'access' OR (kind = 'refresh' AND used_at IS NOT NULL AND token_hash <> ?))",
+            "DELETE FROM oauth_tokens WHERE team_id = :team AND grant_id = ? AND (kind = 'access' OR (kind = 'refresh' AND used_at IS NOT NULL AND token_hash <> ?))",
             grant.id, spent ?: "",
         )
         val access = Tokens.random()
         val refresh = Tokens.random()
         db.update(
-            "INSERT INTO oauth_tokens (token_hash, grant_id, kind, created_at, expires_at) VALUES (?, ?, 'access', ?, ?), (?, ?, 'refresh', ?, ?)",
+            "INSERT INTO oauth_tokens (team_id, token_hash, grant_id, kind, created_at, expires_at) VALUES (:team, ?, ?, 'access', ?, ?), (:team, ?, ?, 'refresh', ?, ?)",
             hash(access), grant.id, now, now + ACCESS_MS, hash(refresh), grant.id, now, now + REFRESH_MS,
         )
         return Issued(access, refresh, ACCESS_MS / 1000, grant.scope)
     }
 
     private fun revokeGrant(id: String) {
-        db.update("UPDATE oauth_grants SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL", clock(), id)
+        db.update("UPDATE oauth_grants SET revoked_at = ? WHERE team_id = :team AND id = ? AND revoked_at IS NULL", clock(), id)
     }
 
-    private fun grantBy(column: String, value: String): Grant? = db.one("SELECT * FROM oauth_grants WHERE $column = ?", value) { rs ->
+    private fun grantBy(column: String, value: String): Grant? = db.one("SELECT * FROM oauth_grants WHERE team_id = :team AND $column = ?", value) { rs ->
         Grant(
             rs.getString("id"), rs.getString("client_id"), rs.getString("agent_id"), rs.getString("resource"), rs.getString("scope"),
             rs.getString("redirect_uri"), rs.getInt("redirect_uri_given") == 1, rs.getString("code_challenge"), rs.getLong("code_expires_at"), rs.longOrNull("code_used_at"),
@@ -263,13 +263,13 @@ class OAuth(private val db: Database, private val tokenSecret: String, private v
     fun sweep() {
         val now = clock()
         db.transaction { _ ->
-            db.update("DELETE FROM oauth_tokens WHERE expires_at <= ?", now)
+            db.update("DELETE FROM oauth_tokens WHERE team_id = :team AND expires_at <= ?", now)
             val dead = "revoked_at IS NOT NULL OR (code_used_at IS NULL AND code_expires_at <= ?) " +
                 "OR (code_used_at IS NOT NULL AND id NOT IN (SELECT grant_id FROM oauth_tokens))"
-            db.update("DELETE FROM oauth_tokens WHERE grant_id IN (SELECT id FROM oauth_grants WHERE $dead)", now)
-            db.update("DELETE FROM oauth_grants WHERE $dead", now)
+            db.update("DELETE FROM oauth_tokens WHERE team_id = :team AND grant_id IN (SELECT id FROM oauth_grants WHERE team_id = :team AND ($dead))", now)
+            db.update("DELETE FROM oauth_grants WHERE team_id = :team AND ($dead)", now)
             db.update(
-                "DELETE FROM oauth_clients WHERE approved_at IS NULL AND created_at <= ? AND id NOT IN (SELECT client_id FROM oauth_grants)",
+                "DELETE FROM oauth_clients WHERE team_id = :team AND approved_at IS NULL AND created_at <= ? AND id NOT IN (SELECT client_id FROM oauth_grants)",
                 now - UNAPPROVED_KEEP_MS,
             )
         }

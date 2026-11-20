@@ -37,7 +37,7 @@ class Blocks(private val feed: Feed) {
     private fun insert(card: CardRef, block: JsonObject, at: Long) {
         try {
             db.update(
-                "INSERT INTO card_blocks (${card.anchor}, block_id, type, data, rev, created_at, updated_at) VALUES (?, ?, ?, ?, 1, ?, ?)",
+                "INSERT INTO card_blocks (team_id, ${card.anchor}, block_id, type, data, rev, created_at, updated_at) VALUES (:team, ?, ?, ?, ?, 1, ?, ?)",
                 card.id, block["id"].jsString, block["type"].jsString, Wire.encode(block), at, at,
             )
         } catch (e: java.sql.SQLException) {
@@ -78,7 +78,7 @@ class Blocks(private val feed: Feed) {
             return@op viewsOn(card).first { it["id"].jsString == blockId }
         }
         if (remove) {
-            db.update("DELETE FROM card_blocks WHERE seq = ?", stored.seq)
+            db.update("DELETE FROM card_blocks WHERE team_id = :team AND seq = ?", stored.seq)
             announce(card, row, stored, "agent:$agentId", buildJsonObject { put("action", "remove") }, rev = stored.rev + 1)
             return@op null
         }
@@ -139,13 +139,13 @@ class Blocks(private val feed: Feed) {
 
     /** Who posted [card]: `agent:<id>`, or `human` for a person's message. */
     fun author(card: CardRef): String? = when (card.kind) {
-        "update" -> db.one("SELECT agent_id FROM updates WHERE id = ?", card.id) { "agent:" + it.getString(1) }
-        "request" -> db.one("SELECT agent_id FROM approvals WHERE id = ?", card.id) { "agent:" + it.getString(1) }
-        else -> db.one("SELECT author FROM messages WHERE id = ?", card.id) { it.getString(1) }
+        "update" -> db.one("SELECT agent_id FROM updates WHERE team_id = :team AND id = ?", card.id) { "agent:" + it.getString(1) }
+        "request" -> db.one("SELECT agent_id FROM approvals WHERE team_id = :team AND id = ?", card.id) { "agent:" + it.getString(1) }
+        else -> db.one("SELECT author FROM messages WHERE team_id = :team AND id = ?", card.id) { it.getString(1) }
     }
 
     private fun find(card: CardRef, blockId: String): StoredBlock? = db.one(
-        "SELECT seq, block_id, data, rev, updated_at FROM card_blocks WHERE ${card.anchor} = ? AND block_id = ?", card.id, blockId,
+        "SELECT seq, block_id, data, rev, updated_at FROM card_blocks WHERE team_id = :team AND ${card.anchor} = ? AND block_id = ?", card.id, blockId,
     ) { StoredBlock(it.getLong(1), card, it.getString(2), Js.parse(it.getString(3)) as JsonObject, it.getLong(4), it.getLong(5)) }
 
     /** Read, change, write if nobody else wrote in between; otherwise read again. */
@@ -157,7 +157,7 @@ class Blocks(private val feed: Feed) {
             val next = change(current)
             val at = feed.now()
             val written = db.update(
-                "UPDATE card_blocks SET data = ?, type = ?, rev = rev + 1, updated_at = ? WHERE seq = ? AND rev = ?",
+                "UPDATE card_blocks SET data = ?, type = ?, rev = rev + 1, updated_at = ? WHERE team_id = :team AND seq = ? AND rev = ?",
                 Wire.encode(next), next["type"].jsString, at, current.seq, current.rev,
             )
             if (written == 1) return StoredBlock(current.seq, card, blockId, next, current.rev + 1, at)
@@ -198,7 +198,7 @@ class BlockReads(private val db: Database, private val clock: () -> Long) {
         val out = LinkedHashMap<String, MutableList<StoredBlock>>()
         for (chunk in ids.distinct().chunked(CHUNK)) {
             db.query(
-                "SELECT seq, $anchor, block_id, data, rev, updated_at FROM card_blocks WHERE $anchor IN (${marks(chunk)}) ORDER BY seq",
+                "SELECT seq, $anchor, block_id, data, rev, updated_at FROM card_blocks WHERE team_id = :team AND $anchor IN (${marks(chunk)}) ORDER BY seq",
                 *chunk.toTypedArray(),
             ) { StoredBlock(it.getLong(1), CardRef(kind, it.getString(2)), it.getString(3), Js.parse(it.getString(4)) as JsonObject, it.getLong(5), it.getLong(6)) }
                 .forEach { out.getOrPut(it.card.id) { mutableListOf() } += it }
@@ -230,11 +230,11 @@ class BlockReads(private val db: Database, private val clock: () -> Long) {
         val agents = distinct.filter { it.startsWith(AGENT) }.map { it.removePrefix(AGENT) }
         val people = distinct.filter { it.startsWith(PERSON) }.map { it.removePrefix(PERSON) }
         val agentNames = agents.chunked(CHUNK).flatMap { chunk ->
-            db.query("SELECT id, name FROM agents WHERE id IN (${marks(chunk)})", *chunk.toTypedArray()) { it.getString(1) to it.getString(2) }
+            db.query("SELECT id, name FROM agents WHERE team_id = :team AND id IN (${marks(chunk)})", *chunk.toTypedArray()) { it.getString(1) to it.getString(2) }
         }.toMap()
         val personNames = people.chunked(CHUNK).flatMap { chunk ->
             db.query(
-                "SELECT m.id, u.name FROM memberships AS m JOIN users AS u ON u.id = m.user_id WHERE m.id IN (${marks(chunk)})", *chunk.toTypedArray(),
+                "SELECT m.id, u.name FROM memberships AS m JOIN users AS u ON u.id = m.user_id WHERE m.team_id = :team AND m.id IN (${marks(chunk)})", *chunk.toTypedArray(),
             ) { it.getString(1) to it.getString(2) }
         }.toMap()
         return distinct.associateWith { actor ->

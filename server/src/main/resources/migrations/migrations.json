@@ -397,5 +397,12 @@
   "file": "057-card-blocks.sql",
   "rebuildsTables": false,
   "checksum": "515b9437baa9f0a2632f52f40291bf0b8095036e510d45dcba488c1a218c99df"
+ },
+ {
+  "version": 58,
+  "name": "teams-apart",
+  "file": "058-teams-apart.sql",
+  "rebuildsTables": false,
+  "checksum": "3e8cb8fd8b9d04d121b03885bcfc72ff684ae2197d64604c19b65a0fefa52cc3"
  }
 ]

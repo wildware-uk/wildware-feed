@@ -8,16 +8,16 @@ import kotlinx.serialization.json.put
 class Tags(private val feed: Feed) {
     private val db get() = feed.db
 
-    fun byId(id: String): TagRow? = db.one("SELECT ${Rows.TAG} FROM tags WHERE id = ?", id) { TagRow(Rows.tag(it)) }
+    fun byId(id: String): TagRow? = db.one("SELECT ${Rows.TAG} FROM tags WHERE team_id = :team AND id = ?", id) { TagRow(Rows.tag(it)) }
 
     fun bySlug(projectId: String, slug: String): TagRow? =
-        db.one("SELECT ${Rows.TAG} FROM tags WHERE project_id = ? AND slug = ?", projectId, slug) { TagRow(Rows.tag(it)) }
+        db.one("SELECT ${Rows.TAG} FROM tags WHERE team_id = :team AND project_id = ? AND slug = ?", projectId, slug) { TagRow(Rows.tag(it)) }
 
     /** One project's tags (a non-empty reference is resolved) or every project's, oldest first. */
     fun list(project: String?): List<TagRow> {
-        if (project.isNullOrEmpty()) return db.query("SELECT ${Rows.TAG} FROM tags ORDER BY seq") { TagRow(Rows.tag(it)) }
+        if (project.isNullOrEmpty()) return db.query("SELECT ${Rows.TAG} FROM tags WHERE team_id = :team ORDER BY seq") { TagRow(Rows.tag(it)) }
         val id = feed.projects.resolve(project).id
-        return db.query("SELECT ${Rows.TAG} FROM tags WHERE project_id IN (?) ORDER BY seq", id) { TagRow(Rows.tag(it)) }
+        return db.query("SELECT ${Rows.TAG} FROM tags WHERE team_id = :team AND project_id IN (?) ORDER BY seq", id) { TagRow(Rows.tag(it)) }
     }
 
     private fun checkedName(raw: String): Pair<String, String> {
@@ -39,11 +39,11 @@ class Tags(private val feed: Feed) {
         val (clean, slug) = checkedName(name)
         checkColour(colour)
         bySlug(projectId, slug)?.let { return@op it }
-        val count = db.one("SELECT count(*) FROM tags WHERE project_id = ?", projectId) { it.getLong(1) } ?: 0
+        val count = db.one("SELECT count(*) FROM tags WHERE team_id = :team AND project_id = ?", projectId) { it.getLong(1) } ?: 0
         if (count >= PER_PROJECT) throw invalid("this project already has $PER_PROJECT tags, which is as many as a picker can show")
         val id = Ulid.next()
         db.update(
-            "INSERT INTO tags (id, project_id, name, slug, colour, agent_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?) " +
+            "INSERT INTO tags (team_id, id, project_id, name, slug, colour, agent_id, created_at) VALUES (:team, ?, ?, ?, ?, ?, ?, ?) " +
                 "ON CONFLICT (project_id, slug) DO NOTHING",
             id, projectId, clean, slug, colour, agentId, feed.now(),
         )
@@ -63,7 +63,7 @@ class Tags(private val feed: Feed) {
             if (clash != null && clash.id != tag.id) throw invalid("this project already has a tag called ${JsText.quote(clash.name)}")
         }
         db.update(
-            "UPDATE tags SET name = ?, slug = ?, colour = ? WHERE id = ?",
+            "UPDATE tags SET name = ?, slug = ?, colour = ? WHERE team_id = :team AND id = ?",
             clean?.first ?: tag.name,
             clean?.second ?: tag.slug,
             if (colour == null) tag.colour else colour.value,
@@ -77,8 +77,8 @@ class Tags(private val feed: Feed) {
     fun retire(id: String): Pair<String, String> = feed.op {
         val tag = byId(id) ?: throw notFound("no such tag: $id")
         db.transaction {
-            db.update("DELETE FROM card_tags WHERE tag_id = ?", id)
-            db.update("DELETE FROM tags WHERE id = ?", id)
+            db.update("DELETE FROM card_tags WHERE team_id = :team AND tag_id = ?", id)
+            db.update("DELETE FROM tags WHERE team_id = :team AND id = ?", id)
         }
         feed.publish("tags.changed", buildJsonObject { put("projectId", tag.projectId) })
         id to tag.projectId
@@ -90,20 +90,20 @@ class Tags(private val feed: Feed) {
         val projectId = row.projectId?.takeIf { it.isNotEmpty() }
             ?: throw invalid("this card does not belong to a project, so it cannot be tagged")
         val found = resolveTag(projectId, tag, create, actor)
-        val already = db.one("SELECT id FROM card_tags WHERE tag_id = ? AND ${card.anchor} = ?", found.id, card.id) { it.getString(1) } != null
+        val already = db.one("SELECT id FROM card_tags WHERE team_id = :team AND tag_id = ? AND ${card.anchor} = ?", found.id, card.id) { it.getString(1) } != null
         val wanted = on ?: !already
         if (wanted == already) return@op found to wanted
 
         if (wanted) {
-            val worn = db.one("SELECT count(*) FROM card_tags WHERE ${card.anchor} IN (?)", card.id) { it.getLong(1) } ?: 0
+            val worn = db.one("SELECT count(*) FROM card_tags WHERE team_id = :team AND ${card.anchor} IN (?)", card.id) { it.getLong(1) } ?: 0
             if (worn >= PER_CARD) throw invalid("a card may carry at most $PER_CARD tags")
             db.update(
-                "INSERT INTO card_tags (id, tag_id, ${card.anchor}, author, created_at) VALUES (?, ?, ?, ?, ?) " +
+                "INSERT INTO card_tags (team_id, id, tag_id, ${card.anchor}, author, created_at) VALUES (:team, ?, ?, ?, ?, ?) " +
                     "ON CONFLICT (tag_id, ${card.anchor}) WHERE ${card.anchor} IS NOT NULL DO NOTHING",
                 Ulid.next(), found.id, card.id, actor, feed.now(),
             )
         } else {
-            db.update("DELETE FROM card_tags WHERE tag_id = ? AND ${card.anchor} = ?", found.id, card.id)
+            db.update("DELETE FROM card_tags WHERE team_id = :team AND tag_id = ? AND ${card.anchor} = ?", found.id, card.id)
         }
         feed.cards.announce(card, row)
         feed.publish("tags.changed", buildJsonObject { put("projectId", projectId) })

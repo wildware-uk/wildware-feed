@@ -15,8 +15,8 @@ class PushMessages(private val app: App) {
     private val db get() = app.db
     private val base get() = app.config.publicBaseUrl
 
-    private fun agentName(id: String?) = id?.let { db.one("SELECT name FROM agents WHERE id = ?", it) { rs -> rs.getString(1) } }
-    private fun slug(projectId: String?) = projectId?.let { db.one("SELECT slug FROM projects WHERE id = ?", it) { rs -> rs.getString(1) } }
+    private fun agentName(id: String?) = id?.let { db.one("SELECT name FROM agents WHERE team_id = :team AND id = ?", it) { rs -> rs.getString(1) } }
+    private fun slug(projectId: String?) = projectId?.let { db.one("SELECT slug FROM projects WHERE team_id = :team AND id = ?", it) { rs -> rs.getString(1) } }
 
     private fun projectUrl(projectId: String?, focus: String?): String {
         val where = if (focus.isNullOrEmpty()) "" else "?focus=${Serve.encodeURIComponent(focus)}"
@@ -54,7 +54,7 @@ class PushMessages(private val app: App) {
 
     fun update(updateId: String): Update? {
         data class Row(val agentId: String?, val projectId: String?, val title: String?, val body: String, val deletedAt: Long?, val level: String?, val priority: String?)
-        val row = db.one("SELECT agent_id, project_id, title, body, deleted_at, level, priority FROM updates WHERE id = ?", updateId) {
+        val row = db.one("SELECT agent_id, project_id, title, body, deleted_at, level, priority FROM updates WHERE team_id = :team AND id = ?", updateId) {
             Row(it.getString(1), it.getString(2), it.getString(3), it.getString(4), it.getLong(5).let { v -> if (it.wasNull()) null else v }, it.getString(6), it.getString(7))
         } ?: return null
         if (row.deletedAt != null) return null
@@ -78,7 +78,7 @@ class PushMessages(private val app: App) {
      */
     fun reply(messageId: String, member: String = People.FOUNDER): Reply? {
         data class Row(val author: String, val projectId: String?, val body: String, val replyTo: String?, val updateId: String?, val taskId: String?, val userId: String?)
-        val row = db.one("SELECT author, project_id, body, reply_to, update_id, task_id, user_id FROM messages WHERE id = ?", messageId) {
+        val row = db.one("SELECT author, project_id, body, reply_to, update_id, task_id, user_id FROM messages WHERE team_id = :team AND id = ?", messageId) {
             Row(it.getString(1), it.getString(2), it.getString(3), it.getString(4), it.getString(5), it.getString(6), it.getString(7))
         } ?: return null
         val person = if (row.author == "human") row.userId ?: People.FOUNDER else null
@@ -102,7 +102,7 @@ class PushMessages(private val app: App) {
     /** Does this message answer [member]: a reply to their post, or a line in a thread they spoke in? */
     private fun repliesTo(member: String, replyTo: String?, updateId: String?, taskId: String?): Boolean {
         if (replyTo != null) {
-            return db.one("SELECT author, user_id FROM messages WHERE id = ?", replyTo) { it.getString(1) to it.getString(2) }
+            return db.one("SELECT author, user_id FROM messages WHERE team_id = :team AND id = ?", replyTo) { it.getString(1) to it.getString(2) }
                 ?.let { (author, user) -> author == "human" && (user ?: People.FOUNDER) == member } == true
         }
         val (column, value) = when {
@@ -111,7 +111,7 @@ class PushMessages(private val app: App) {
             else -> return false
         }
         return db.one(
-            "SELECT 1 FROM messages WHERE $column = ? AND author = 'human' AND coalesce(user_id, ?) = ? AND deleted_at IS NULL LIMIT 1",
+            "SELECT 1 FROM messages WHERE team_id = :team AND $column = ? AND author = 'human' AND coalesce(user_id, ?) = ? AND deleted_at IS NULL LIMIT 1",
             value, People.FOUNDER, member,
         ) { 1 } != null
     }

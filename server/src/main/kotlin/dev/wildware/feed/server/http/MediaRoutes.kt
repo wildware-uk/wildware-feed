@@ -154,7 +154,7 @@ private suspend fun ApplicationCall.serveMedia(app: App, id: String, variant: St
 }
 
 private fun dev.wildware.feed.server.db.Database.mediaAttached(id: String) = one(
-    "SELECT 1 FROM media WHERE id = ? AND (update_id IS NOT NULL OR message_id IS NOT NULL OR request_id IS NOT NULL)", id,
+    "SELECT 1 FROM media WHERE team_id = :team AND id = ? AND (update_id IS NOT NULL OR message_id IS NOT NULL OR request_id IS NOT NULL)", id,
 ) { 1 } != null
 
 /** A span of a stored object (or nothing) with exact headers; [contentLength] null means no Content-Length at all. */

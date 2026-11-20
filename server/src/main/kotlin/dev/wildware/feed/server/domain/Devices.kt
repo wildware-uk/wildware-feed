@@ -31,13 +31,13 @@ class Devices(private val db: Database, private val tokenSecret: String, private
         val id = Ulid.next()
         val now = clock()
         db.update(
-            "INSERT INTO owner_devices (id, name, token_hash, created_at, user_id) VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO owner_devices (team_id, id, name, token_hash, created_at, user_id) VALUES (:team, ?, ?, ?, ?, ?)",
             id, clean, Tokens.hash(key, tokenSecret), now, userId,
         )
         return find(id)!! to key
     }
 
-    fun find(id: String): Device? = db.one("SELECT * FROM owner_devices WHERE id = ?", id) { row(it) }
+    fun find(id: String): Device? = db.one("SELECT * FROM owner_devices WHERE team_id = :team AND id = ?", id) { row(it) }
 
     /**
      * The device a key belongs to, stamping last-seen at most once a minute; null for any other key,
@@ -48,31 +48,32 @@ class Devices(private val db: Database, private val tokenSecret: String, private
         if (!Tokens.wellFormed(trimmed)) return null
         val hash = Tokens.hash(trimmed, tokenSecret)
         val found = db.one(
-            "SELECT d.* FROM owner_devices AS d JOIN memberships AS m ON m.id = d.user_id WHERE d.token_hash = ? AND m.removed_at IS NULL", hash,
+            "SELECT d.* FROM owner_devices AS d JOIN memberships AS m ON m.id = d.user_id AND m.team_id = d.team_id " +
+                "WHERE d.team_id = :team AND d.token_hash = ? AND m.removed_at IS NULL", hash,
         ) { it.getString("token_hash") to row(it) } ?: return null
         if (!Tokens.same(found.first, hash)) return null
         val now = clock()
         db.update(
-            "UPDATE owner_devices SET last_seen_at = ? WHERE id = ? AND (last_seen_at IS NULL OR last_seen_at <= ?)",
+            "UPDATE owner_devices SET last_seen_at = ? WHERE team_id = :team AND id = ? AND (last_seen_at IS NULL OR last_seen_at <= ?)",
             now, found.second.id, now - 60_000,
         )
         return found.second
     }
 
-    fun list(): List<Device> = db.query("SELECT * FROM owner_devices ORDER BY seq") { row(it) }
+    fun list(): List<Device> = db.query("SELECT * FROM owner_devices WHERE team_id = :team ORDER BY seq") { row(it) }
 
     /** [userId]'s devices. */
-    fun listFor(userId: String): List<Device> = db.query("SELECT * FROM owner_devices WHERE user_id = ? ORDER BY seq", userId) { row(it) }
+    fun listFor(userId: String): List<Device> = db.query("SELECT * FROM owner_devices WHERE team_id = :team AND user_id = ? ORDER BY seq", userId) { row(it) }
 
-    fun remove(id: String): Boolean = db.update("DELETE FROM owner_devices WHERE id = ?", id) == 1
+    fun remove(id: String): Boolean = db.update("DELETE FROM owner_devices WHERE team_id = :team AND id = ?", id) == 1
 
     fun setApns(id: String, token: Any?, environment: Any?) {
         val clean = hexToken(token, "token")
         if (environment != "sandbox" && environment != "production") throw invalid("environment must be sandbox or production")
         db.transaction {
             requireDevice(id)
-            db.update("UPDATE owner_devices SET apns_token = NULL WHERE apns_token = ? AND id != ?", clean, id)
-            db.update("UPDATE owner_devices SET apns_token = ?, apns_environment = ?, failures = 0 WHERE id = ?", clean, environment as String, id)
+            db.update("UPDATE owner_devices SET apns_token = NULL WHERE team_id = :team AND apns_token = ? AND id != ?", clean, id)
+            db.update("UPDATE owner_devices SET apns_token = ?, apns_environment = ?, failures = 0 WHERE team_id = :team AND id = ?", clean, environment as String, id)
         }
     }
 
@@ -86,12 +87,12 @@ class Devices(private val db: Database, private val tokenSecret: String, private
         db.transaction {
             requireDevice(id)
             if (update is Optional.Present) {
-                if (updateToken != null) db.update("UPDATE owner_devices SET live_activity_token = NULL WHERE live_activity_token = ? AND id != ?", updateToken, id)
-                db.update("UPDATE owner_devices SET live_activity_token = ? WHERE id = ?", updateToken, id)
+                if (updateToken != null) db.update("UPDATE owner_devices SET live_activity_token = NULL WHERE team_id = :team AND live_activity_token = ? AND id != ?", updateToken, id)
+                db.update("UPDATE owner_devices SET live_activity_token = ? WHERE team_id = :team AND id = ?", updateToken, id)
             }
             if (pushToStart is Optional.Present) {
-                if (startToken != null) db.update("UPDATE owner_devices SET push_to_start_token = NULL WHERE push_to_start_token = ? AND id != ?", startToken, id)
-                db.update("UPDATE owner_devices SET push_to_start_token = ? WHERE id = ?", startToken, id)
+                if (startToken != null) db.update("UPDATE owner_devices SET push_to_start_token = NULL WHERE team_id = :team AND push_to_start_token = ? AND id != ?", startToken, id)
+                db.update("UPDATE owner_devices SET push_to_start_token = ? WHERE team_id = :team AND id = ?", startToken, id)
             }
         }
     }
@@ -113,7 +114,7 @@ class Devices(private val db: Database, private val tokenSecret: String, private
         }
         requireDevice(id)
         db.update(
-            "UPDATE owner_devices SET alert_project_ids = ? WHERE id = ?",
+            "UPDATE owner_devices SET alert_project_ids = ? WHERE team_id = :team AND id = ?",
             ids?.let { JsonArray(it.map(::JsonPrimitive)).toString() }, id,
         )
     }
@@ -144,7 +145,7 @@ class Devices(private val db: Database, private val tokenSecret: String, private
     /** `PUT /api/devices/current/alert-prefs`: checked prefs, or null for every alert. */
     fun setAlertPrefs(deviceId: String, prefs: kotlinx.serialization.json.JsonElement?): kotlinx.serialization.json.JsonObject? {
         val checked = AlertPrefs.check(prefs)
-        if (db.update("UPDATE owner_devices SET alert_prefs = ? WHERE id = ?", checked?.let { dev.wildware.feed.server.http.Wire.encode(it) }, deviceId) != 1) {
+        if (db.update("UPDATE owner_devices SET alert_prefs = ? WHERE team_id = :team AND id = ?", checked?.let { dev.wildware.feed.server.http.Wire.encode(it) }, deviceId) != 1) {
             throw notFound("no such device: $deviceId")
         }
         return checked

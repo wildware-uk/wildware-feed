@@ -1,6 +1,7 @@
 package dev.wildware.feed.server.media
 
 import dev.wildware.feed.server.db.Database
+import dev.wildware.feed.server.db.Tenant
 import dev.wildware.feed.server.db.Ulid
 import dev.wildware.feed.server.events.Bus
 import dev.wildware.feed.server.http.Wire
@@ -133,14 +134,16 @@ class Derive(
     private val pool = Executors.newFixedThreadPool(workers) { r -> Thread(r, "media-derive").apply { isDaemon = true } }
     private val queued = ConcurrentHashMap.newKeySet<String>()
 
-    /** One worker tick: queue every pending media with bytes, oldest first, 50 at a time. */
+    /** One worker tick for this team: queue every pending media with bytes, oldest first, 50 at a time. */
     fun tick() {
-        val ids = db.query("SELECT id FROM media WHERE status IN ('pending') AND sha256 <> '' ORDER BY seq LIMIT 50") { it.getString(1) }
+        val team = Tenant.id
+        val ids = db.query("SELECT id FROM media WHERE team_id = :team AND status IN ('pending') AND sha256 <> '' ORDER BY seq LIMIT 50") { it.getString(1) }
         for (id in ids) {
             if (!queued.add(id)) continue
             pool.execute {
                 try {
-                    process(id)
+                    // The worker thread works for the team that queued it.
+                    Tenant.with(team) { process(id) }
                 } catch (e: Exception) {
                     System.err.println("derive $id failed: $e")
                 } finally {
@@ -154,7 +157,7 @@ class Derive(
 
     /** Derive one media; never throws for a bad file (it is marked failed instead). */
     fun process(id: String) {
-        val media = db.one("SELECT id, kind, mime, sha256, status FROM media WHERE id = ?", id) {
+        val media = db.one("SELECT id, kind, mime, sha256, status FROM media WHERE team_id = :team AND id = ?", id) {
             Row(it.getString(1), it.getString(2), it.getString(3), it.getString(4), it.getString(5))
         } ?: return
         if (media.sha256.isEmpty() || media.status == "ready") return
@@ -175,7 +178,7 @@ class Derive(
         }
         for (f in measured.files) {
             db.update(
-                "INSERT INTO derivatives (id, media_id, kind, path, bytes, width, height) VALUES (?, ?, ?, ?, ?, ?, ?) " +
+                "INSERT INTO derivatives (team_id, id, media_id, kind, path, bytes, width, height) VALUES (:team, ?, ?, ?, ?, ?, ?, ?) " +
                     "ON CONFLICT (media_id, kind, coalesce(width, -1)) DO UPDATE SET path = excluded.path, bytes = excluded.bytes, height = excluded.height",
                 Ulid.next(clock()), id, f.kind, paths.relative(id, f.name), f.bytes, f.width, f.height,
             )
@@ -187,7 +190,7 @@ class Derive(
     private fun ready(id: String, width: Int?, height: Int?, durationMs: Long?) {
         val payload = db.one(
             "UPDATE media SET status = 'ready', width = coalesce(?, width), height = coalesce(?, height), duration_ms = coalesce(?, duration_ms) " +
-                "WHERE id = ? RETURNING id, update_id, message_id, request_id, kind",
+                "WHERE team_id = :team AND id = ? RETURNING id, update_id, message_id, request_id, kind",
             width, height, durationMs, id,
         ) { rs ->
             fun s(i: Int) = rs.getString(i)?.let(::JsonPrimitive) ?: JsonNull
@@ -201,7 +204,7 @@ class Derive(
     private fun failureKey(id: String) = paths.relative(id, "error.txt")
 
     private fun fail(id: String, reason: String) {
-        db.update("UPDATE media SET status = 'failed' WHERE id = ?", id)
+        db.update("UPDATE media SET status = 'failed' WHERE team_id = :team AND id = ?", id)
         runCatching { paths.store.writeText(failureKey(id), "${Wire.isoOf(clock())} $reason\n") }
     }
 

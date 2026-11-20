@@ -1,6 +1,7 @@
 package dev.wildware.feed.server.push
 
 import dev.wildware.feed.server.App
+import dev.wildware.feed.server.db.Tenant
 import dev.wildware.feed.server.domain.Reads
 import dev.wildware.feed.server.http.Wire
 import kotlinx.serialization.json.JsonElement
@@ -21,19 +22,29 @@ import java.util.concurrent.TimeUnit
  * and every minute anyway) each activity gets the new state if it changed. A phone that has none
  * is pushed one (at most every 5 minutes) when a new request waits on the owner, or when agents
  * start working after a quiet spell. Once nothing has waited on him and nothing has been worked on
- * for [IDLE_END_MS], each activity is ended. State is kept in memory only.
+ * for [IDLE_END_MS], each activity is ended. State is kept in memory only, per team: each team's
+ * phones get their own team's state.
  */
 class LiveActivity(private val app: App, private val apns: Apns, private val bundleId: String) {
     private val messages = PushMessages(app)
     private val lastSent = HashMap<String, JsonObject>()
     private val startedAt = HashMap<String, Long>()
     private val timer = Executors.newSingleThreadScheduledExecutor { r -> Thread(r, "live-activity").apply { isDaemon = true } }
-    private var pending: ScheduledFuture<*>? = null
-    @Volatile private var newRequestId: String? = null
-    /** Whether the last run found the owner [busy]; null before the first, so a restart starts nothing. */
-    private var wasBusy: Boolean? = null
-    /** Since when nothing has been [busy], or null while something is. */
-    private var idleSince: Long? = null
+
+    /** What one team's activities remember between runs. */
+    private class TeamState {
+        var pending: ScheduledFuture<*>? = null
+        @Volatile var newRequestId: String? = null
+        /** Whether the last run found the owner [busy]; null before the first, so a restart starts nothing. */
+        var wasBusy: Boolean? = null
+        /** Since when nothing has been [busy], or null while something is. */
+        var idleSince: Long? = null
+    }
+
+    private val teams = HashMap<String, TeamState>()
+
+    /** This team's state ([Tenant.id]). */
+    private fun team(): TeamState = synchronized(teams) { teams.getOrPut(Tenant.id) { TeamState() } }
 
     /** The content state; optional fields for later designs are appended through [extra]. */
     fun state(extra: List<Pair<String, JsonElement>> = emptyList()): JsonObject {
@@ -65,29 +76,35 @@ class LiveActivity(private val app: App, private val apns: Apns, private val bun
         }
     }
 
+    /** A run for [teamId] in [COALESCE_MS], unless one is already due. */
     @Synchronized
-    private fun schedule() {
-        if (pending != null) return
-        pending = timer.schedule({
-            synchronized(this) { pending = null }
-            runCatching { run() }.onFailure { System.err.println("live activity push failed: $it") }
+    private fun schedule(teamId: String) {
+        val t = Tenant.with(teamId) { team() }
+        if (t.pending != null) return
+        t.pending = timer.schedule({
+            synchronized(this) { t.pending = null }
+            runCatching { Tenant.with(teamId) { run() } }.onFailure { System.err.println("live activity push failed: $it") }
         }, COALESCE_MS, TimeUnit.MILLISECONDS)
     }
 
     fun start(): () -> Unit {
-        val stop = app.bus.subscribe { event ->
-            if (event.type !in WATCHED) return@subscribe
-            if (event.type == "request.created") newRequestId = (event.payload["requestId"] as? JsonPrimitive)?.content
-            schedule()
+        val stop = app.bus.subscribeEveryTeam { event ->
+            if (event.type !in WATCHED) return@subscribeEveryTeam
+            if (event.type == "request.created") team().newRequestId = (event.payload["requestId"] as? JsonPrimitive)?.content
+            schedule(event.team)
         }
-        val refresh = timer.scheduleAtFixedRate({ schedule() }, REFRESH_MS, REFRESH_MS, TimeUnit.MILLISECONDS)
+        // Every minute anyway, for each team heard from since the server started.
+        val refresh = timer.scheduleAtFixedRate({
+            synchronized(teams) { teams.keys.toList() }.forEach(::schedule)
+        }, REFRESH_MS, REFRESH_MS, TimeUnit.MILLISECONDS)
         return { stop(); refresh.cancel(false); timer.shutdownNow() }
     }
 
     /** One run: runs one at a time on the timer thread. */
     fun run() {
-        val requestId = newRequestId
-        newRequestId = null
+        val t = team()
+        val requestId = t.newRequestId
+        t.newRequestId = null
         val devices = apns.devices()
         if (devices.none { it.liveActivityToken != null || it.pushToStartToken != null }) return
         val now = app.clock()
@@ -95,10 +112,10 @@ class LiveActivity(private val app: App, private val apns: Apns, private val bun
         val waiting = state["waiting"]!!.jsonPrimitive.int
         val timestamp = now / 1000
         val busy = busy(state)
-        val workBegan = busy && wasBusy == false && waiting == 0
-        wasBusy = busy
-        idleSince = if (busy) null else idleSince ?: now
-        val ending = idleSince?.let { now - it >= IDLE_END_MS } == true
+        val workBegan = busy && t.wasBusy == false && waiting == 0
+        t.wasBusy = busy
+        t.idleSince = if (busy) null else t.idleSince ?: now
+        val ending = t.idleSince?.let { now - it >= IDLE_END_MS } == true
         for (device in devices) {
             val token = device.liveActivityToken ?: continue
             if (ending) {
@@ -176,7 +193,7 @@ class LiveActivity(private val app: App, private val apns: Apns, private val bun
         }
         val outcome = apns.deliver(device, "live_activity_token", headers(10), Wire.encode(payload))
         if (outcome == "sent") {
-            app.db.update("UPDATE owner_devices SET live_activity_token = NULL WHERE id = ? AND live_activity_token = ?", device.id, token)
+            app.db.update("UPDATE owner_devices SET live_activity_token = NULL WHERE team_id = :team AND id = ? AND live_activity_token = ?", device.id, token)
         }
         if (outcome != "failed") lastSent.remove("${device.id}:$token")
     }

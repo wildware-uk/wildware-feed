@@ -37,14 +37,14 @@ object Mentions {
 
     fun mentionedAgentIds(db: Database, body: String, author: String? = null, now: Long = System.currentTimeMillis()): List<String> {
         if ('@' !in body) return emptyList()
-        val agents = db.query("SELECT id, name FROM agents WHERE revoked_at IS NULL ORDER BY seq") { it.getString(1) to it.getString(2) }
+        val agents = db.query("SELECT id, name FROM agents WHERE team_id = :team AND revoked_at IS NULL ORDER BY seq") { it.getString(1) to it.getString(2) }
         val names = mentionedNames(body, agents.map { it.second }.distinct() + listOf(EVERYONE, HERE))
         val named = agents.filter { it.second.lowercase() in names }.map { it.first }
         val sender = author?.takeIf { it.startsWith("agent:") }?.removePrefix("agent:")
         val group = when {
             EVERYONE in names -> agents.map { it.first }
             HERE in names -> db.query(
-                "SELECT DISTINCT agent_id FROM sessions WHERE ended_at IS NULL AND last_heartbeat_at >= ?", now - Sessions.PRESENCE_WINDOW_MS,
+                "SELECT DISTINCT agent_id FROM sessions WHERE team_id = :team AND ended_at IS NULL AND last_heartbeat_at >= ?", now - Sessions.PRESENCE_WINDOW_MS,
             ) { it.getString(1) }.toSet().let { live -> agents.map { it.first }.filter { it in live } }
             else -> emptyList()
         }
@@ -55,10 +55,10 @@ object Mentions {
     fun record(db: Database, messageId: String, body: String, author: String? = null, now: Long = System.currentTimeMillis()): List<String> {
         val ids = mentionedAgentIds(db, body, author, now)
         db.transaction {
-            db.update("DELETE FROM message_mentions WHERE message_id = ?", messageId)
+            db.update("DELETE FROM message_mentions WHERE team_id = :team AND message_id = ?", messageId)
             for (id in ids) {
                 db.update(
-                    "INSERT INTO message_mentions (id, message_id, agent_id) VALUES (?, ?, ?) ON CONFLICT (message_id, agent_id) DO NOTHING",
+                    "INSERT INTO message_mentions (team_id, id, message_id, agent_id) VALUES (:team, ?, ?, ?) ON CONFLICT (message_id, agent_id) DO NOTHING",
                     Ulid.next(), messageId, id,
                 )
             }
@@ -72,8 +72,8 @@ object Mentions {
      */
     fun mentionedPeople(db: Database, body: String): List<String> {
         if ('@' !in body) return emptyList()
-        if ((db.one("SELECT count(*) FROM memberships") { it.getLong(1) } ?: 0) < 2) return emptyList()
-        val people = db.query("SELECT id, handle FROM memberships WHERE removed_at IS NULL ORDER BY seq") { it.getString(1) to it.getString(2) }
+        if ((db.one("SELECT count(*) FROM memberships WHERE team_id = :team") { it.getLong(1) } ?: 0) < 2) return emptyList()
+        val people = db.query("SELECT id, handle FROM memberships WHERE team_id = :team AND removed_at IS NULL ORDER BY seq") { it.getString(1) to it.getString(2) }
         val names = mentionedNames(body, people.map { it.second })
         return people.filter { it.second.lowercase() in names }.map { it.first }
     }

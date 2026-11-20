@@ -37,7 +37,7 @@ class Notifications(private val db: Database, private val bus: Bus, private val 
     )
 
     /** Listen for the events that ring the bell or settle what it rang for; call the result to stop. */
-    fun startRecorder(): () -> Unit = bus.subscribe(::onEvent)
+    fun startRecorder(): () -> Unit = bus.subscribeEveryTeam(::onEvent)
 
     private fun onEvent(event: AppEvent) {
         val id = { key: String -> (event.payload[key] as? JsonPrimitive)?.content }
@@ -62,7 +62,7 @@ class Notifications(private val db: Database, private val bus: Bus, private val 
 
     /** One row for each person who follows what [build] describes for them, except whoever wrote it. */
     private fun recordForEach(build: (String) -> New?) {
-        for (member in db.query("SELECT id FROM memberships WHERE removed_at IS NULL ORDER BY seq") { it.getString(1) }) {
+        for (member in db.query("SELECT id FROM memberships WHERE team_id = :team AND removed_at IS NULL ORDER BY seq") { it.getString(1) }) {
             val input = build(member) ?: continue
             if (input.authorMember == member) continue
             if (followed(input, People.subscriber(member))) record(input, member)
@@ -80,14 +80,14 @@ class Notifications(private val db: Database, private val bus: Bus, private val 
         }
     }
 
-    private fun priorityOf(table: String, id: String): String? = db.one("SELECT priority FROM $table WHERE id = ?", id) { it.getString(1) }
+    private fun priorityOf(table: String, id: String): String? = db.one("SELECT priority FROM $table WHERE team_id = :team AND id = ?", id) { it.getString(1) }
 
     /** Insert one row (once per target and person) and publish `notification.created` for a new one. */
     fun record(input: New, member: String = People.FOUNDER): String? {
         val id = Ulid.next(clock())
         val inserted = db.one(
-            "INSERT INTO notifications (id, kind, project_id, update_id, message_id, request_id, agent_id, title, body, created_at, member_id) " +
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING RETURNING id, kind, project_id",
+            "INSERT INTO notifications (team_id, id, kind, project_id, update_id, message_id, request_id, agent_id, title, body, created_at, member_id) " +
+                "VALUES (:team, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING RETURNING id, kind, project_id",
             id, input.kind, input.projectId, input.updateId, input.messageId, input.requestId, input.agentId, input.title, input.body, clock(), member,
         ) { Triple(it.getString(1), it.getString(2), it.getString(3)) } ?: return null
         bus.publish("notification.created", buildJsonObject {
@@ -100,10 +100,10 @@ class Notifications(private val db: Database, private val bus: Bus, private val 
     }
 
     private fun agentName(agentId: String?): String =
-        agentId?.let { db.one("SELECT name FROM agents WHERE id = ?", it) { rs -> rs.getString(1) } } ?: "An agent"
+        agentId?.let { db.one("SELECT name FROM agents WHERE team_id = :team AND id = ?", it) { rs -> rs.getString(1) } } ?: "An agent"
 
     fun forUpdate(updateId: String): New? {
-        val row = db.one("SELECT id, project_id, agent_id, title, body, deleted_at FROM updates WHERE id = ?", updateId) {
+        val row = db.one("SELECT id, project_id, agent_id, title, body, deleted_at FROM updates WHERE team_id = :team AND id = ?", updateId) {
             listOf(it.getString(1), it.getString(2), it.getString(3), it.getString(4), it.getString(5), it.getObject(6))
         } ?: return null
         if (row[5] != null) return null
@@ -124,7 +124,7 @@ class Notifications(private val db: Database, private val bus: Bus, private val 
      */
     fun forMessage(messageId: String, member: String = People.FOUNDER): New? {
         val row = db.one(
-            "SELECT id, project_id, update_id, task_id, author, body, reply_to, deleted_at, user_id FROM messages WHERE id = ?", messageId,
+            "SELECT id, project_id, update_id, task_id, author, body, reply_to, deleted_at, user_id FROM messages WHERE team_id = :team AND id = ?", messageId,
         ) { rs -> (1..9).map { rs.getObject(it)?.toString() } } ?: return null
         val id = row[0]!!
         val projectId = row[1]
@@ -158,7 +158,7 @@ class Notifications(private val db: Database, private val bus: Bus, private val 
      */
     private fun repliesTo(member: String, replyTo: String?, updateId: String?, taskId: String?): Boolean {
         if (replyTo != null) {
-            return db.one("SELECT author, user_id FROM messages WHERE id = ?", replyTo) { it.getString(1) to it.getString(2) }
+            return db.one("SELECT author, user_id FROM messages WHERE team_id = :team AND id = ?", replyTo) { it.getString(1) to it.getString(2) }
                 ?.let { (author, user) -> author == HUMAN && (user ?: People.FOUNDER) == member } == true
         }
         val (column, value) = when {
@@ -167,13 +167,13 @@ class Notifications(private val db: Database, private val bus: Bus, private val 
             else -> return false
         }
         return db.one(
-            "SELECT 1 FROM messages WHERE $column = ? AND deleted_at IS NULL AND author = ? AND coalesce(user_id, ?) = ? LIMIT 1",
+            "SELECT 1 FROM messages WHERE team_id = :team AND $column = ? AND deleted_at IS NULL AND author = ? AND coalesce(user_id, ?) = ? LIMIT 1",
             value, HUMAN, People.FOUNDER, member,
         ) { true } == true
     }
 
     fun forRequest(requestId: String): New? {
-        val row = db.one("SELECT id, project_id, agent_id, question FROM approvals WHERE id = ?", requestId) {
+        val row = db.one("SELECT id, project_id, agent_id, question FROM approvals WHERE team_id = :team AND id = ?", requestId) {
             listOf(it.getString(1), it.getString(2), it.getString(3), it.getString(4))
         } ?: return null
         return New(
@@ -193,11 +193,11 @@ class Notifications(private val db: Database, private val bus: Bus, private val 
     fun markSeen(ids: List<String>?, member: String = People.FOUNDER): Int {
         val at = clock()
         val changed = when {
-            ids == null -> db.query("UPDATE notifications SET seen_at = ? WHERE seen_at IS NULL AND member_id = ? RETURNING $SEEN_COLUMNS", at, member, row = ::tagOf)
+            ids == null -> db.query("UPDATE notifications SET seen_at = ? WHERE team_id = :team AND seen_at IS NULL AND member_id = ? RETURNING $SEEN_COLUMNS", at, member, row = ::tagOf)
             ids.isEmpty() -> emptyList()
             else -> ids.distinct().chunked(CHUNK).flatMap { chunk ->
                 db.query(
-                    "UPDATE notifications SET seen_at = ? WHERE seen_at IS NULL AND member_id = ? AND id IN (${marks(chunk)}) RETURNING $SEEN_COLUMNS",
+                    "UPDATE notifications SET seen_at = ? WHERE team_id = :team AND seen_at IS NULL AND member_id = ? AND id IN (${marks(chunk)}) RETURNING $SEEN_COLUMNS",
                     at, member, *chunk.toTypedArray(), row = ::tagOf,
                 )
             }
@@ -218,9 +218,9 @@ class Notifications(private val db: Database, private val bus: Bus, private val 
         val changed = cards.distinct().chunked(CHUNK).flatMap { chunk ->
             val m = marks(chunk)
             db.query(
-                "UPDATE notifications SET seen_at = ? WHERE seen_at IS NULL$whose AND (" +
+                "UPDATE notifications SET seen_at = ? WHERE team_id = :team AND seen_at IS NULL$whose AND (" +
                     "update_id IN ($m) OR request_id IN ($m) OR message_id IN ($m) OR message_id IN (" +
-                    "SELECT id FROM messages WHERE update_id IN ($m) OR reply_to IN ($m) OR request_id IN ($m) OR task_id IN ($m))" +
+                    "SELECT id FROM messages WHERE team_id = :team AND (update_id IN ($m) OR reply_to IN ($m) OR request_id IN ($m) OR task_id IN ($m)))" +
                     ") RETURNING $SEEN_COLUMNS",
                 at, *listOfNotNull(member).toTypedArray(), *List(7) { chunk }.flatten().toTypedArray(), row = ::tagOf,
             )
@@ -265,7 +265,7 @@ class Notifications(private val db: Database, private val bus: Bus, private val 
      * and phones act on it. Only on a team: a team of one's events read as they always have.
      */
     private fun kotlinx.serialization.json.JsonObjectBuilder.whose(member: String?) {
-        if (member != null && (db.one("SELECT count(*) FROM memberships") { it.getLong(1) } ?: 0) > 1) put("memberId", member)
+        if (member != null && (db.one("SELECT count(*) FROM memberships WHERE team_id = :team") { it.getLong(1) } ?: 0) > 1) put("memberId", member)
     }
 
     /**
@@ -293,22 +293,22 @@ class Notifications(private val db: Database, private val bus: Bus, private val 
                 db.query(sql(marks(chunk)), *chunk.toTypedArray(), member) { it.getString(1) }.forEach { done += "$kind-$it" }
             }
         }
-        stillOpen("request", { "SELECT id FROM approvals WHERE state = 'pending' AND expires_at > ? AND id IN ($it)" }, now)
-        stillOpen("pairing", { "SELECT id FROM agent_pairings WHERE state = 'pending' AND expires_at > ? AND id IN ($it)" }, now)
+        stillOpen("request", { "SELECT id FROM approvals WHERE team_id = :team AND state = 'pending' AND expires_at > ? AND id IN ($it)" }, now)
+        stillOpen("pairing", { "SELECT id FROM agent_pairings WHERE team_id = :team AND state = 'pending' AND expires_at > ? AND id IN ($it)" }, now)
         // Seen means seen by [member]: their own bell row.
         finished("update", {
-            "SELECT u.id FROM updates AS u WHERE u.id IN ($it) AND (u.deleted_at IS NOT NULL OR EXISTS " +
+            "SELECT u.id FROM updates AS u WHERE u.team_id = :team AND u.id IN ($it) AND (u.deleted_at IS NOT NULL OR EXISTS " +
                 "(SELECT 1 FROM notifications AS n WHERE n.update_id = u.id AND n.kind = 'update' AND n.seen_at IS NOT NULL AND n.member_id = ?))"
         })
         finished("message", {
-            "SELECT m.id FROM messages AS m WHERE m.id IN ($it) AND (m.deleted_at IS NOT NULL OR EXISTS " +
+            "SELECT m.id FROM messages AS m WHERE m.team_id = :team AND m.id IN ($it) AND (m.deleted_at IS NOT NULL OR EXISTS " +
                 "(SELECT 1 FROM notifications AS n WHERE n.message_id = m.id AND n.seen_at IS NOT NULL AND n.member_id = ?))"
         })
         return tags.distinct().filter { it in done }
     }
 
     fun unseen(member: String = People.FOUNDER): Long =
-        db.one("SELECT count(*) AS n FROM notifications WHERE seen_at IS NULL AND member_id = ?", member) { it.getLong(1) } ?: 0
+        db.one("SELECT count(*) AS n FROM notifications WHERE team_id = :team AND seen_at IS NULL AND member_id = ?", member) { it.getLong(1) } ?: 0
 
     companion object {
         const val HUMAN = "human"

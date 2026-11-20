@@ -42,6 +42,12 @@ data class Config(
     val webDir: String? = null,
     /** SECRETS_KEY and SECRETS_KEY_OLD: what seals shared secrets (docs/SECRETS.md). Null: secrets are off. */
     val secretsKeys: SecretsKeys? = null,
+    /**
+     * ROW_SECURITY=on: Postgres row security on every team table (docs/HOSTING.md §2), the backstop
+     * that keeps a forgotten `team_id` from showing one team another's rows. Off by default, and
+     * nothing on SQLite. Null (tests, the desktop app): leave the database as it is.
+     */
+    val rowSecurity: Boolean? = null,
 ) {
     /** The key secrets are sealed under now, and older ones still accepted while they are re-sealed. [toString] leaves them out. */
     class SecretsKeys(val current: String, val old: List<String> = emptyList()) {
@@ -145,6 +151,12 @@ data class Config(
             if (oldSecretsKeys.any { it.length < MIN_SECRET_LENGTH }) issues += "SECRETS_KEY_OLD: each old key must be at least $MIN_SECRET_LENGTH characters"
             if (oldSecretsKeys.isNotEmpty() && secretsKey == null) issues += "SECRETS_KEY_OLD: SECRETS_KEY_OLD needs SECRETS_KEY, the key to re-seal under"
 
+            val rowSecurity = when (val raw = get("ROW_SECURITY") ?: "off") {
+                "on" -> true
+                "off" -> false
+                else -> { issues += "ROW_SECURITY: ROW_SECURITY must be on or off, not $raw"; false }
+            }
+
             if (issues.isNotEmpty()) throw Invalid(issues)
 
             val port = env["PORT"]?.takeIf { it.isNotBlank() }?.toIntOrNull() ?: 3000
@@ -173,6 +185,7 @@ data class Config(
                 deriveWorkers = env["DERIVE_WORKERS"]?.toIntOrNull()?.takeIf { it > 0 } ?: 2,
                 webDir = env["WEB_DIR"]?.takeIf { it.isNotBlank() } ?: dev.wildware.feed.server.http.WebApp.besideInstall(),
                 secretsKeys = secretsKey?.let { SecretsKeys(it, oldSecretsKeys.filter { old -> old != it }) },
+                rowSecurity = rowSecurity,
             )
         }
 

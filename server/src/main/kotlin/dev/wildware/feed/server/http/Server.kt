@@ -3,7 +3,9 @@ package dev.wildware.feed.server.http
 import dev.wildware.feed.server.App
 import dev.wildware.feed.server.CrashReports
 import dev.wildware.feed.server.domain.DomainError
+import dev.wildware.feed.server.db.Tenant
 import io.ktor.http.HttpMethod
+import kotlinx.coroutines.withContext
 import io.ktor.server.application.Application
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.ApplicationCallPipeline
@@ -60,8 +62,12 @@ class FeedServer(val app: App) {
     }
 }
 
-/** The whole HTTP surface, as a Ktor module the desktop app can mount too. */
-fun Application.feed(app: App) {
+/**
+ * The whole HTTP surface, as a Ktor module the desktop app can mount too. [teamOf] says which team
+ * a request is for, or null for none (`404 no_such_team`); every request runs inside its team
+ * ([Tenant]), so every statement it makes is that team's.
+ */
+fun Application.feed(app: App, teamOf: (ApplicationCall) -> String? = { Tenant.HOME }) {
     // A request that throws is answered with a 500; it is reported first, when reports are on.
     intercept(ApplicationCallPipeline.Monitoring) {
         try {
@@ -72,6 +78,14 @@ fun Application.feed(app: App) {
             }
             throw e
         }
+    }
+    intercept(ApplicationCallPipeline.Monitoring) {
+        val team = teamOf(call)
+        if (team == null) {
+            call.respondRaw(404, """{"error":"no_such_team","message":"there is no team at this address"}""", Wire.JSON)
+            return@intercept finish()
+        }
+        withContext(Tenant.element(team)) { proceed() }
     }
     intercept(ApplicationCallPipeline.Plugins) {
         if (guardRefused(call, app)) return@intercept finish()

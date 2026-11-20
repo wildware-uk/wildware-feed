@@ -46,7 +46,8 @@ object Migrate {
         val tool = SqliteToPostgres(out)
         return try {
             tool.openSource(File(from, Database.FILE_NAME)).use { source ->
-                Database.openPostgres(url).use { target ->
+                // Every team's rows: row security, when on, would show none without this.
+                Database.openPostgres(url).use { target -> dev.wildware.feed.server.db.Tenant.allTeams {
                     if (!verifyOnly) {
                         out("Copying…")
                         val copied = tool.copy(source, target)
@@ -73,7 +74,7 @@ object Migrate {
                     }
                     out("Media identical: ${v.originals} originals${if (sizesOnly) " by size" else " by SHA-256"}, ${v.derivatives} derivatives by size")
                     0
-                }
+                } }
             }
         } catch (e: Exception) {
             err(e.message ?: e.toString())

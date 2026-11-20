@@ -2,6 +2,7 @@ package dev.wildware.feed.server.push
 
 import dev.wildware.feed.server.App
 import dev.wildware.feed.server.Config
+import dev.wildware.feed.server.db.Tenant
 import dev.wildware.feed.server.auth.Tokens
 import dev.wildware.feed.server.events.AppEvent
 import dev.wildware.feed.server.http.Wire
@@ -120,10 +121,10 @@ class Apns(
     private val sender = Executors.newScheduledThreadPool(2) { r -> Thread(r, "apns").apply { isDaemon = true } }
 
     /**
-     * Tags waiting for the next background clear, oldest first, by whose phones they clear (null:
-     * everyone's); a flush is due while it is not empty.
+     * Tags waiting for the next background clear, by team, then oldest first by whose phones they
+     * clear (null: everyone's); a flush is due while it is not empty.
      */
-    private val clearing = LinkedHashMap<String?, LinkedHashSet<String>>()
+    private val clearing = LinkedHashMap<String, LinkedHashMap<String?, LinkedHashSet<String>>>()
 
     /** One alert, with room for optional fields after today's (they are appended in order). */
     class Alert(
@@ -145,7 +146,8 @@ class Apns(
     )
 
     fun devices(): List<PushDevice> = app.db.query(
-        "SELECT id, apns_token, apns_environment, live_activity_token, push_to_start_token, alert_project_ids, alert_prefs, user_id FROM owner_devices ORDER BY seq",
+        "SELECT id, apns_token, apns_environment, live_activity_token, push_to_start_token, alert_project_ids, alert_prefs, user_id FROM owner_devices " +
+            "WHERE team_id = :team ORDER BY seq",
     ) { rs ->
         PushDevice(
             rs.getString(1), rs.getString(2), rs.getString(3), rs.getString(4), rs.getString(5),
@@ -155,7 +157,7 @@ class Apns(
         )
     }
 
-    private fun slug(projectId: String?) = projectId?.let { app.db.one("SELECT slug FROM projects WHERE id = ?", it) { rs -> rs.getString(1) } }
+    private fun slug(projectId: String?) = projectId?.let { app.db.one("SELECT slug FROM projects WHERE team_id = :team AND id = ?", it) { rs -> rs.getString(1) } }
 
     private fun thread(projectId: String?) = slug(projectId) ?: "dashboard"
 
@@ -211,9 +213,10 @@ class Apns(
 
     /** Start listening; returns how to stop. */
     fun start(): () -> Unit {
-        val stop = app.bus.subscribe { event ->
-            if (event.type == "notifications.cleared") return@subscribe queueClear(event)
-            if (event.type !in ALERTING) return@subscribe
+        // Every team's events, each heard inside its own team; the sends carry that team with them.
+        val stop = app.bus.subscribeEveryTeam { event ->
+            if (event.type == "notifications.cleared") return@subscribeEveryTeam queueClear(event)
+            if (event.type !in ALERTING) return@subscribeEveryTeam
             val now = app.clock()
             // Each person's phones, with that person's alert: what they follow decides whether to alert
             // at all, then each phone's own projects, kinds, levels and priorities (migration 047).
@@ -233,7 +236,8 @@ class Apns(
                 for (device in wanted) {
                     // Paged only on a phone that turned critical alerts on, for this agent and project.
                     val payload = if (dev.wildware.feed.server.domain.AlertPrefs.pages(device.alertPrefs, alert.about)) paged else normal
-                    sender.execute { deliver(device, "apns_token", headers, payload) }
+                    val team = event.team
+                    sender.execute { Tenant.with(team) { deliver(device, "apns_token", headers, payload) } }
                 }
             }
         }
@@ -248,7 +252,9 @@ class Apns(
         val tags = (event.payload["tags"] as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.content }.orEmpty()
         if (tags.isEmpty()) return
         val member = (event.payload["memberId"] as? JsonPrimitive)?.content
-        val first = synchronized(clearing) { clearing.isEmpty().also { clearing.getOrPut(member) { LinkedHashSet() } += tags } }
+        val first = synchronized(clearing) {
+            clearing.isEmpty().also { clearing.getOrPut(event.team) { LinkedHashMap() }.getOrPut(member) { LinkedHashSet() } += tags }
+        }
         if (first) runCatching { sender.schedule(::flushClears, clearDelayMs, java.util.concurrent.TimeUnit.MILLISECONDS) }
     }
 
@@ -257,7 +263,11 @@ class Apns(
      * and those of its own person (migration 055).
      */
     fun flushClears() {
-        val pending = synchronized(clearing) { clearing.mapValues { it.value.toList() }.also { clearing.clear() } }
+        val byTeam = synchronized(clearing) { clearing.mapValues { (_, m) -> m.mapValues { it.value.toList() } }.also { clearing.clear() } }
+        for ((team, pending) in byTeam) Tenant.with(team) { flushClears(pending) }
+    }
+
+    private fun flushClears(pending: Map<String?, List<String>>) {
         if (pending.isEmpty()) return
         val phones = devices().filter { it.apnsToken != null }
         if (phones.isEmpty()) return
@@ -281,20 +291,20 @@ class Apns(
             val response = transport.send(ApnsRequest(device.environment ?: "production", token, headers, payload))
             when {
                 response.status == 200 -> {
-                    app.db.update("UPDATE owner_devices SET failures = 0 WHERE id = ?", device.id)
+                    app.db.update("UPDATE owner_devices SET failures = 0 WHERE team_id = :team AND id = ?", device.id)
                     "sent"
                 }
                 response.status == 410 || (response.status == 400 && response.reason in setOf("BadDeviceToken", "DeviceTokenNotForTopic")) -> {
-                    app.db.update("UPDATE owner_devices SET $column = NULL WHERE id = ? AND $column = ?", device.id, token)
+                    app.db.update("UPDATE owner_devices SET $column = NULL WHERE team_id = :team AND id = ? AND $column = ?", device.id, token)
                     "removed"
                 }
                 else -> {
-                    app.db.update("UPDATE owner_devices SET failures = failures + 1 WHERE id = ?", device.id)
+                    app.db.update("UPDATE owner_devices SET failures = failures + 1 WHERE team_id = :team AND id = ?", device.id)
                     "failed"
                 }
             }
         } catch (e: Exception) {
-            runCatching { app.db.update("UPDATE owner_devices SET failures = failures + 1 WHERE id = ?", device.id) }
+            runCatching { app.db.update("UPDATE owner_devices SET failures = failures + 1 WHERE team_id = :team AND id = ?", device.id) }
             System.err.println("apple push failed: $e")
             "failed"
         }

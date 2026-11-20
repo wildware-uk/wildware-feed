@@ -17,28 +17,28 @@ class Agents(private val db: Database, private val tokenSecret: String, private 
         val token = Tokens.random()
         val agent = Agent(Ulid.next(), clean, clock(), null, null)
         db.update(
-            "INSERT INTO agents (id, name, token_hash, created_at) VALUES (?, ?, ?, ?)",
+            "INSERT INTO agents (team_id, id, name, token_hash, created_at) VALUES (:team, ?, ?, ?, ?)",
             agent.id, agent.name, Tokens.hash(token, tokenSecret), agent.createdAt,
         )
         return agent to token
     }
 
     fun list(includeRevoked: Boolean): List<Agent> = db.query(
-        "SELECT * FROM agents ${if (includeRevoked) "" else "WHERE revoked_at IS NULL"} ORDER BY seq",
+        "SELECT * FROM agents WHERE team_id = :team ${if (includeRevoked) "" else "AND revoked_at IS NULL"} ORDER BY seq",
     ) { row(it) }
 
-    fun find(id: String): Agent? = db.one("SELECT * FROM agents WHERE id = ?", id) { row(it) }
+    fun find(id: String): Agent? = db.one("SELECT * FROM agents WHERE team_id = :team AND id = ?", id) { row(it) }
 
     /** True when this call revoked it, false when it already was. */
     fun revoke(id: String): Boolean {
         find(id) ?: throw notFound("no such agent: $id")
-        return db.update("UPDATE agents SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL", clock(), id) == 1
+        return db.update("UPDATE agents SET revoked_at = ? WHERE team_id = :team AND id = ? AND revoked_at IS NULL", clock(), id) == 1
     }
 
     fun rename(id: String, name: String): Agent {
         find(id) ?: throw notFound("no such agent: $id")
         val clean = requiredText(name, "name", 100)
-        db.update("UPDATE agents SET name = ? WHERE id = ?", clean, id)
+        db.update("UPDATE agents SET name = ? WHERE team_id = :team AND id = ?", clean, id)
         return find(id)!!
     }
 
@@ -62,12 +62,12 @@ class Agents(private val db: Database, private val tokenSecret: String, private 
     /** Identity for a well-formed token, stamping last-seen; or why not (§7.2 step 4-5). */
     fun authenticate(token: String): Pair<Agent?, Refusal?> {
         val hash = hashOf(token)
-        val row = db.one("SELECT * FROM agents WHERE token_hash = ?", hash) { it.getString("token_hash") to row(it) }
+        val row = db.one("SELECT * FROM agents WHERE team_id = :team AND token_hash = ?", hash) { it.getString("token_hash") to row(it) }
             ?: return oauthAccess(hash)
         if (!Tokens.same(row.first, hash)) return null to Refusal("unknown_token", "unknown bearer token: no agent holds it")
         val agent = row.second
         if (agent.revokedAt != null) return null to Refusal("revoked_token", "revoked bearer token: ask the dashboard owner to mint a new one")
-        db.update("UPDATE agents SET last_seen_at = ${db.greatest("coalesce(last_seen_at, 0)", "?")} WHERE id = ?", clock(), agent.id)
+        db.update("UPDATE agents SET last_seen_at = ${db.greatest("coalesce(last_seen_at, 0)", "?")} WHERE team_id = :team AND id = ?", clock(), agent.id)
         return agent to null
     }
 
@@ -78,7 +78,8 @@ class Agents(private val db: Database, private val tokenSecret: String, private 
     private fun oauthAccess(hash: String): Pair<Agent?, Refusal?> {
         val found = db.one(
             "SELECT t.token_hash AS hash, t.expires_at AS token_expires, g.revoked_at AS grant_revoked, g.id AS grant_id, a.* FROM oauth_tokens t " +
-                "JOIN oauth_grants g ON g.id = t.grant_id JOIN agents a ON a.id = g.agent_id WHERE t.token_hash = ? AND t.kind = 'access'",
+                "JOIN oauth_grants g ON g.id = t.grant_id AND g.team_id = t.team_id JOIN agents a ON a.id = g.agent_id AND a.team_id = t.team_id " +
+                "WHERE t.team_id = :team AND t.token_hash = ? AND t.kind = 'access'",
             hash,
         ) { Triple(it.getString("hash"), Triple(it.getLong("token_expires"), it.longOrNull("grant_revoked"), it.getString("grant_id")), row(it)) }
         if (found == null || !Tokens.same(found.first, hash)) return null to Refusal("unknown_token", "unknown bearer token: no agent holds it")
@@ -88,8 +89,8 @@ class Agents(private val db: Database, private val tokenSecret: String, private 
             return null to Refusal("revoked_token", "revoked bearer token: sign in again, or ask the dashboard owner to allow this client again")
         }
         if (expires <= clock()) return null to Refusal("expired_token", "expired access token: use your refresh token, or sign in again")
-        db.update("UPDATE agents SET last_seen_at = ${db.greatest("coalesce(last_seen_at, 0)", "?")} WHERE id = ?", clock(), agent.id)
-        db.update("UPDATE oauth_grants SET last_used_at = ${db.greatest("coalesce(last_used_at, 0)", "?")} WHERE id = ?", clock(), grantId)
+        db.update("UPDATE agents SET last_seen_at = ${db.greatest("coalesce(last_seen_at, 0)", "?")} WHERE team_id = :team AND id = ?", clock(), agent.id)
+        db.update("UPDATE oauth_grants SET last_used_at = ${db.greatest("coalesce(last_used_at, 0)", "?")} WHERE team_id = :team AND id = ?", clock(), grantId)
         return agent to null
     }
 

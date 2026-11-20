@@ -10,7 +10,7 @@ class Fields(private val feed: Feed) {
 
     /** Every field on the card, oldest first. Unknown cards have none. */
     fun on(card: CardRef): List<FieldRow> =
-        db.query("SELECT ${Rows.FIELD} FROM card_fields WHERE ${card.anchor} IN (?) ORDER BY seq", card.id) { FieldRow(Rows.field(it)) }
+        db.query("SELECT ${Rows.FIELD} FROM card_fields WHERE team_id = :team AND ${card.anchor} IN (?) ORDER BY seq", card.id) { FieldRow(Rows.field(it)) }
 
     /** Set (upsert by slug) or, with a null [value], remove. Returns the card's fields and whether one is set. */
     fun set(card: CardRef, name: String, value: String?, actor: String): Pair<List<FieldRow>, Boolean> = feed.op {
@@ -22,7 +22,7 @@ class Fields(private val feed: Feed) {
         if (slug.isEmpty()) throw invalid("${JsText.quote(name)} has no letters or digits in it")
 
         if (value == null) {
-            val removed = db.update("DELETE FROM card_fields WHERE ${card.anchor} = ? AND slug = ?", card.id, slug) > 0
+            val removed = db.update("DELETE FROM card_fields WHERE team_id = :team AND ${card.anchor} = ? AND slug = ?", card.id, slug) > 0
             if (!removed) throw notFound("this card has no field called ${JsText.quote(clean)}")
             changed(card, row)
             return@op on(card) to false
@@ -31,7 +31,7 @@ class Fields(private val feed: Feed) {
         val text = value.jsTrim()
         if (text.isEmpty()) throw invalid("a field needs a value, or null to remove it")
         if (text.length > VALUE_MAX) throw invalid("a field value may be at most $VALUE_MAX characters")
-        val already = db.one("SELECT name, value FROM card_fields WHERE ${card.anchor} = ? AND slug = ?", card.id, slug) {
+        val already = db.one("SELECT name, value FROM card_fields WHERE team_id = :team AND ${card.anchor} = ? AND slug = ?", card.id, slug) {
             it.getString(1) to it.getString(2)
         }
         if (already == null && on(card).size >= PER_CARD) throw invalid("a card may carry at most $PER_CARD fields")
@@ -39,7 +39,7 @@ class Fields(private val feed: Feed) {
 
         val now = feed.now()
         db.update(
-            "INSERT INTO card_fields (id, ${card.anchor}, name, slug, value, author, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?) " +
+            "INSERT INTO card_fields (team_id, id, ${card.anchor}, name, slug, value, author, created_at, updated_at) VALUES (:team, ?, ?, ?, ?, ?, ?, ?, ?) " +
                 "ON CONFLICT (${card.anchor}, slug) WHERE ${card.anchor} IS NOT NULL " +
                 "DO UPDATE SET name = excluded.name, value = excluded.value, author = excluded.author, updated_at = excluded.updated_at",
             Ulid.next(), card.id, clean, slug, text, actor, now, now,

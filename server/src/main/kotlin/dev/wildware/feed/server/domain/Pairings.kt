@@ -65,7 +65,7 @@ class Pairings(
         expireDue()
         val now = clock()
         fun open(where: String, vararg args: Any?) =
-            db.one("SELECT count(*) FROM agent_pairings WHERE state = 'pending' AND expires_at > ? $where", now, *args) { it.getInt(1) } ?: 0
+            db.one("SELECT count(*) FROM agent_pairings WHERE team_id = :team AND state = 'pending' AND expires_at > ? $where", now, *args) { it.getInt(1) } ?: 0
         if (open("") >= MAX_PENDING) throw tooMany("too many agents are waiting to pair; ask your owner to allow or deny them, or try again in a few minutes")
         if (address != null && open("AND address = ?", address) >= MAX_PENDING_PER_ASKER) {
             throw tooMany("this address already has $MAX_PENDING_PER_ASKER pairings waiting; wait for those first")
@@ -77,8 +77,8 @@ class Pairings(
         val id = Ulid.next(now)
         val code = newCode()
         db.update(
-            "INSERT INTO agent_pairings (id, name, host, cwd, address, asked_by, code, secret_hash, state, created_at, expires_at) " +
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)",
+            "INSERT INTO agent_pairings (team_id, id, name, host, cwd, address, asked_by, code, secret_hash, state, created_at, expires_at) " +
+                "VALUES (:team, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)",
             id, clean, cleanHost, cleanCwd, address, askedBy, code, Tokens.hash(secret, tokenSecret), now, now + TTL_MS,
         )
         val pairing = find(id)!!
@@ -88,9 +88,9 @@ class Pairings(
 
     /** Every pairing waiting on the owner, oldest first. */
     fun pending(): List<Pairing> =
-        db.query("SELECT * FROM agent_pairings WHERE state = 'pending' AND expires_at > ? ORDER BY seq", clock()) { row(it) }
+        db.query("SELECT * FROM agent_pairings WHERE team_id = :team AND state = 'pending' AND expires_at > ? ORDER BY seq", clock()) { row(it) }
 
-    fun find(id: String): Pairing? = db.one("SELECT * FROM agent_pairings WHERE id = ?", id) { row(it) }
+    fun find(id: String): Pairing? = db.one("SELECT * FROM agent_pairings WHERE team_id = :team AND id = ?", id) { row(it) }
 
     /**
      * The owner allows it, under [name] when given (else the name the agent asked for). The name
@@ -100,7 +100,7 @@ class Pairings(
         expireDue()
         val pairing = waiting(id)
         val chosen = if (name == null) pairing.name else requiredText(name, "name", NAME_MAX)
-        val taken = db.query("SELECT name FROM agents WHERE revoked_at IS NULL") { it.getString(1) }
+        val taken = db.query("SELECT name FROM agents WHERE team_id = :team AND revoked_at IS NULL") { it.getString(1) }
             .any { it.lowercase() == chosen.lowercase() }
         if (taken) throw DomainError("name_taken", "an agent is already called \"$chosen\"; choose another name", 409)
         val now = clock()
@@ -108,12 +108,12 @@ class Pairings(
         val decided = db.transaction { _ ->
             // A hash of a token nobody holds: the name is kept, and nothing can sign in as it yet.
             db.update(
-                "INSERT INTO agents (id, name, token_hash, created_at) VALUES (?, ?, ?, ?)",
+                "INSERT INTO agents (team_id, id, name, token_hash, created_at) VALUES (:team, ?, ?, ?, ?)",
                 agentId, chosen, Tokens.hash(Tokens.random(), tokenSecret), now,
             )
             db.update(
                 "UPDATE agent_pairings SET state = 'approved', name = ?, agent_id = ?, decided_at = ?, expires_at = ? " +
-                    "WHERE id = ? AND state = 'pending'",
+                    "WHERE team_id = :team AND id = ? AND state = 'pending'",
                 chosen, agentId, now, now + COLLECT_MS, id,
             ).also { if (it != 1) throw conflict("this pairing was already decided") }
         }
@@ -124,7 +124,7 @@ class Pairings(
     fun deny(id: String): Pairing {
         expireDue()
         waiting(id)
-        val changed = db.update("UPDATE agent_pairings SET state = 'denied', decided_at = ? WHERE id = ? AND state = 'pending'", clock(), id)
+        val changed = db.update("UPDATE agent_pairings SET state = 'denied', decided_at = ? WHERE team_id = :team AND id = ? AND state = 'pending'", clock(), id)
         if (changed != 1) throw conflict("this pairing was already decided")
         return find(id)!!.also { bus.publish("pairing.updated", event(it)) }
     }
@@ -168,17 +168,17 @@ class Pairings(
         val token = tokenFor(pairing, secret)
         val collected = db.transaction { _ ->
             val marked = db.update(
-                "UPDATE agent_pairings SET state = 'collected', collected_at = ? WHERE id = ? AND state = 'approved' AND expires_at > ?",
+                "UPDATE agent_pairings SET state = 'collected', collected_at = ? WHERE team_id = :team AND id = ? AND state = 'approved' AND expires_at > ?",
                 clock(), pairing.id, clock(),
             )
-            if (marked == 1) db.update("UPDATE agents SET token_hash = ? WHERE id = ?", Tokens.hash(token, tokenSecret), pairing.agentId)
+            if (marked == 1) db.update("UPDATE agents SET token_hash = ? WHERE team_id = :team AND id = ?", Tokens.hash(token, tokenSecret), pairing.agentId)
             marked == 1
         }
         val now = find(pairing.id)!!
         // Another poll collected it first: this one may still have it, as a repeat.
         if (!collected) return if (now.state == "collected") again(now, secret) else Poll(now)
         bus.publish("pairing.updated", event(now))
-        val name = db.one("SELECT name FROM agents WHERE id = ?", pairing.agentId) { it.getString(1) }
+        val name = db.one("SELECT name FROM agents WHERE team_id = :team AND id = ?", pairing.agentId) { it.getString(1) }
         return Poll(now, token, name)
     }
 
@@ -189,11 +189,11 @@ class Pairings(
      */
     private fun again(pairing: Pairing, secret: String): Poll {
         val agentId = pairing.agentId ?: return Poll(pairing)
-        val collectedAt = db.one("SELECT collected_at FROM agent_pairings WHERE id = ?", pairing.id) { it.longOrNull("collected_at") }
+        val collectedAt = db.one("SELECT collected_at FROM agent_pairings WHERE team_id = :team AND id = ?", pairing.id) { it.longOrNull("collected_at") }
             ?: return Poll(pairing)
         if (clock() >= collectedAt + COLLECT_MS) return Poll(pairing)
         data class Holder(val hash: String, val name: String, val unused: Boolean)
-        val agent = db.one("SELECT token_hash, name, revoked_at, last_seen_at FROM agents WHERE id = ?", agentId) {
+        val agent = db.one("SELECT token_hash, name, revoked_at, last_seen_at FROM agents WHERE team_id = :team AND id = ?", agentId) {
             Holder(it.getString("token_hash"), it.getString("name"), it.longOrNull("revoked_at") == null && it.longOrNull("last_seen_at") == null)
         } ?: return Poll(pairing)
         val token = tokenFor(pairing, secret)
@@ -207,23 +207,23 @@ class Pairings(
      */
     fun expireDue(): List<Pairing> {
         val now = clock()
-        val due = db.query("SELECT * FROM agent_pairings WHERE state IN ('pending', 'approved') AND expires_at <= ?", now) { row(it) }
+        val due = db.query("SELECT * FROM agent_pairings WHERE team_id = :team AND state IN ('pending', 'approved') AND expires_at <= ?", now) { row(it) }
         val expired = due.filter { p ->
             db.transaction { _ ->
-                val changed = db.update("UPDATE agent_pairings SET state = 'expired' WHERE id = ? AND state = ?", p.id, p.state)
+                val changed = db.update("UPDATE agent_pairings SET state = 'expired' WHERE team_id = :team AND id = ? AND state = ?", p.id, p.state)
                 if (changed == 1 && p.state == "approved" && p.agentId != null) {
-                    db.update("UPDATE agents SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL", now, p.agentId)
+                    db.update("UPDATE agents SET revoked_at = ? WHERE team_id = :team AND id = ? AND revoked_at IS NULL", now, p.agentId)
                 }
                 changed == 1
             }
         }
-        db.update("DELETE FROM agent_pairings WHERE state NOT IN ('pending', 'approved') AND created_at < ?", now - KEEP_MS)
+        db.update("DELETE FROM agent_pairings WHERE team_id = :team AND state NOT IN ('pending', 'approved') AND created_at < ?", now - KEEP_MS)
         return expired.mapNotNull { find(it.id) }.onEach { bus.publish("pairing.updated", event(it)) }
     }
 
     private fun authorised(id: String, secret: String): Pairing {
         val missing = notFound("no such pairing, or the poll secret is wrong")
-        val hash = db.one("SELECT secret_hash FROM agent_pairings WHERE id = ?", id) { it.getString(1) }
+        val hash = db.one("SELECT secret_hash FROM agent_pairings WHERE team_id = :team AND id = ?", id) { it.getString(1) }
         if (hash == null || !Tokens.wellFormed(secret) || !Tokens.same(hash, Tokens.hash(secret, tokenSecret))) throw missing
         return find(id) ?: throw missing
     }
@@ -252,7 +252,7 @@ class Pairings(
         if (p.askedBy != null) {
             put("askedBy", buildJsonObject {
                 put("id", p.askedBy)
-                put("name", db.one("SELECT name FROM agents WHERE id = ?", p.askedBy) { it.getString(1) })
+                put("name", db.one("SELECT name FROM agents WHERE team_id = :team AND id = ?", p.askedBy) { it.getString(1) })
             })
         } else {
             put("askedBy", JsonNull)

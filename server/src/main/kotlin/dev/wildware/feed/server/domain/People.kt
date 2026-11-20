@@ -3,6 +3,7 @@ package dev.wildware.feed.server.domain
 import dev.wildware.feed.server.auth.Passwords
 import dev.wildware.feed.server.auth.Tokens
 import dev.wildware.feed.server.db.Database
+import dev.wildware.feed.server.db.Tenant
 import dev.wildware.feed.server.db.Ulid
 import dev.wildware.feed.server.db.longOrNull
 
@@ -60,30 +61,30 @@ class People(
 
     // ---- reading ----------------------------------------------------------------------------------
 
-    fun find(id: String): Person? = db.one("$SELECT WHERE m.id = ?", id, row = ::person)
+    fun find(id: String): Person? = db.one("$SELECT AND m.id = ?", id, row = ::person)
 
     /** Everyone who has ever been in the team, removed people too (their names still label their work). */
     fun list(): List<Person> = db.query("$SELECT ORDER BY m.seq", row = ::person)
 
-    fun active(): List<Person> = db.query("$SELECT WHERE m.removed_at IS NULL ORDER BY m.seq", row = ::person)
+    fun active(): List<Person> = db.query("$SELECT AND m.removed_at IS NULL ORDER BY m.seq", row = ::person)
 
     /**
      * Whether the team has ever had more than one person. Until it has, nothing about people goes on
      * the wire, so a team of one reads exactly as a server did before teams.
      */
-    fun isTeam(): Boolean = (db.one("SELECT count(*) FROM memberships") { it.getLong(1) } ?: 0) > 1
+    fun isTeam(): Boolean = (db.one("SELECT count(*) FROM memberships WHERE team_id = :team") { it.getLong(1) } ?: 0) > 1
 
     /** Names by membership id, for labelling what people did. */
-    fun names(): Map<String, String> = db.query("SELECT m.id, u.name FROM memberships AS m JOIN users AS u ON u.id = m.user_id") {
+    fun names(): Map<String, String> = db.query("SELECT m.id, u.name FROM memberships AS m JOIN users AS u ON u.id = m.user_id WHERE m.team_id = :team") {
         it.getString(1) to it.getString(2)
     }.toMap()
 
-    fun nameOf(id: String?): String? = id?.let { db.one("SELECT u.name FROM memberships AS m JOIN users AS u ON u.id = m.user_id WHERE m.id = ?", it) { rs -> rs.getString(1) } }
+    fun nameOf(id: String?): String? = id?.let { db.one("SELECT u.name FROM memberships AS m JOIN users AS u ON u.id = m.user_id WHERE m.team_id = :team AND m.id = ?", it) { rs -> rs.getString(1) } }
 
     /** Whether any account has an email, so signing in by email is worth offering. */
-    fun anyEmail(): Boolean = db.one("SELECT 1 FROM users WHERE email IS NOT NULL LIMIT 1") { true } == true
+    fun anyEmail(): Boolean = db.one("SELECT 1 FROM users AS u JOIN memberships AS m ON m.user_id = u.id WHERE m.team_id = :team AND u.email IS NOT NULL LIMIT 1") { true } == true
 
-    fun activeCount(): Int = db.one("SELECT count(*) FROM memberships WHERE removed_at IS NULL") { it.getInt(1) } ?: 0
+    fun activeCount(): Int = db.one("SELECT count(*) FROM memberships WHERE team_id = :team AND removed_at IS NULL") { it.getInt(1) } ?: 0
 
     // ---- signing in -------------------------------------------------------------------------------
 
@@ -99,7 +100,7 @@ class People(
             return null
         }
         if (!accountPassword(account.first, account.second, password)) return null
-        return db.one("$SELECT WHERE m.user_id = ? AND m.team_id = ? AND m.removed_at IS NULL", account.first, HOME, row = ::person)
+        return db.one("$SELECT AND m.user_id = ? AND m.removed_at IS NULL", account.first, row = ::person)
     }
 
     /** Today's sign-in, with no email: the founder, by ADMIN_PASSWORD_HASH or a password they set. */
@@ -122,7 +123,8 @@ class People(
     private fun accountPassword(accountId: String, hash: String?, password: String): Boolean {
         if (password.isEmpty()) return false
         if (hash != null) return Passwords.verify(hash, password)
-        return accountId == FOUNDER && Passwords.verify(adminPasswordHash, password)
+        // ADMIN_PASSWORD_HASH is the home team's founder's, and opens no other team.
+        return accountId == FOUNDER && Tenant.id == HOME && Passwords.verify(adminPasswordHash, password)
     }
 
     /** The founder's own password hash, or null while they still use ADMIN_PASSWORD_HASH. */
@@ -133,7 +135,7 @@ class People(
      * an owner can't both pass the last-owner check. SQLite already runs one write at a time.
      */
     private fun lockTeam() {
-        if (db.dialect == dev.wildware.feed.server.db.Dialect.POSTGRES) db.one("SELECT id FROM teams WHERE id = ? FOR UPDATE", HOME) { it.getString(1) }
+        if (db.dialect == dev.wildware.feed.server.db.Dialect.POSTGRES) db.one("SELECT id FROM teams WHERE id = ? FOR UPDATE", Tenant.id) { it.getString(1) }
     }
 
     private val dummyHash by lazy { Passwords.hash(Tokens.random()) }
@@ -147,27 +149,27 @@ class People(
         val clean = email?.let(::checkedEmail)
         if (clean != null) {
             val taken = db.one(
-                "SELECT 1 FROM users AS u JOIN memberships AS m ON m.user_id = u.id WHERE u.email = ? AND m.removed_at IS NULL", clean,
+                "SELECT 1 FROM users AS u JOIN memberships AS m ON m.user_id = u.id WHERE m.team_id = :team AND u.email = ? AND m.removed_at IS NULL", clean,
             ) { true }
             if (taken == true) throw conflict("$clean is already in the team")
         }
         val now = clock()
-        val recent = db.one("SELECT count(*) FROM invites WHERE created_by = ? AND created_at > ?", by.id, now - DAY_MS) { it.getInt(1) } ?: 0
+        val recent = db.one("SELECT count(*) FROM invites WHERE team_id = :team AND created_by = ? AND created_at > ?", by.id, now - DAY_MS) { it.getInt(1) } ?: 0
         if (recent >= INVITES_PER_DAY) throw DomainError("rate_limited", "That is $INVITES_PER_DAY invites today. Try again tomorrow.", 429)
         val token = Tokens.random()
         val id = Ulid.next(now)
         db.update(
-            "INSERT INTO invites (id, team_id, email, role, token_hash, created_by, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            id, HOME, clean, role.wire, inviteHash(token), by.id, now, now + INVITE_TTL_MS,
+            "INSERT INTO invites (id, team_id, email, role, token_hash, created_by, created_at, expires_at) VALUES (?, :team, ?, ?, ?, ?, ?, ?)",
+            id, clean, role.wire, inviteHash(token), by.id, now, now + INVITE_TTL_MS,
         )
         findInvite(id)!! to token
     }
 
-    fun findInvite(id: String): Invite? = db.one("SELECT $INVITE FROM invites WHERE id = ?", id, row = ::invite)
+    fun findInvite(id: String): Invite? = db.one("SELECT $INVITE FROM invites WHERE team_id = :team AND id = ?", id, row = ::invite)
 
     /** Invites still waiting: not used, not revoked, not expired. */
     fun pendingInvites(): List<Invite> = db.query(
-        "SELECT $INVITE FROM invites WHERE accepted_at IS NULL AND revoked_at IS NULL AND expires_at > ? ORDER BY seq", clock(), row = ::invite,
+        "SELECT $INVITE FROM invites WHERE team_id = :team AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at > ? ORDER BY seq", clock(), row = ::invite,
     )
 
     /** Revoke a waiting invite; only someone who could have made it may. False when it was not waiting. */
@@ -175,7 +177,7 @@ class People(
         requireActive(by)
         val invite = findInvite(id) ?: throw notFound("no such invite: $id")
         if (!canGrant(by, invite.role)) throw forbidden("only an owner can revoke an invite for an ${invite.role.wire}")
-        return db.update("UPDATE invites SET revoked_at = ? WHERE id = ? AND accepted_at IS NULL AND revoked_at IS NULL", clock(), id) == 1
+        return db.update("UPDATE invites SET revoked_at = ? WHERE team_id = :team AND id = ? AND accepted_at IS NULL AND revoked_at IS NULL", clock(), id) == 1
     }
 
     /** The waiting invite this token opens, or null for any other token (used, revoked, expired or made up). */
@@ -183,7 +185,7 @@ class People(
         val trimmed = token.jsTrim()
         if (!Tokens.wellFormed(trimmed)) return null
         return db.one(
-            "SELECT $INVITE FROM invites WHERE token_hash = ? AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at > ?",
+            "SELECT $INVITE FROM invites WHERE team_id = :team AND token_hash = ? AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at > ?",
             inviteHash(trimmed), clock(), row = ::invite,
         )
     }
@@ -212,15 +214,15 @@ class People(
                     db.update("INSERT INTO users (id, email, name, password_hash, created_at) VALUES (?, ?, ?, ?, ?)", it, cleanEmail, cleanName, hashed, clock())
                 }
             }
-            val already = db.one("SELECT 1 FROM memberships WHERE user_id = ? AND team_id = ? AND removed_at IS NULL", accountId, HOME) { true }
+            val already = db.one("SELECT 1 FROM memberships WHERE team_id = :team AND user_id = ? AND removed_at IS NULL", accountId) { true }
             if (already == true) throw conflict("$cleanEmail is already in the team")
             val id = Ulid.next(clock())
             db.update(
-                "INSERT INTO memberships (id, team_id, user_id, role, handle, founder, created_at) VALUES (?, ?, ?, ?, ?, 0, ?)",
-                id, HOME, accountId, invite.role.wire, freeHandle(cleanName, null), clock(),
+                "INSERT INTO memberships (id, team_id, user_id, role, handle, founder, created_at) VALUES (?, :team, ?, ?, ?, 0, ?)",
+                id, accountId, invite.role.wire, freeHandle(cleanName, null), clock(),
             )
             val used = db.update(
-                "UPDATE invites SET accepted_at = ?, accepted_by = ? WHERE id = ? AND accepted_at IS NULL AND revoked_at IS NULL",
+                "UPDATE invites SET accepted_at = ?, accepted_by = ? WHERE team_id = :team AND id = ? AND accepted_at IS NULL AND revoked_at IS NULL",
                 clock(), id, invite.id,
             )
             if (used != 1) throw DomainError("invalid_invite", "That invite was used already. Ask for a new one.", 400)
@@ -241,7 +243,7 @@ class People(
         if (target.id == by.id) throw forbidden("nobody changes their own role")
         if (by.role != Role.OWNER) throw forbidden("only an owner changes roles")
         if (target.role == Role.OWNER && role != Role.OWNER && ownerCount() <= 1) throw conflict("the team needs at least one owner")
-        db.update("UPDATE memberships SET role = ? WHERE id = ?", role.wire, target.id)
+        db.update("UPDATE memberships SET role = ? WHERE team_id = :team AND id = ?", role.wire, target.id)
         // Invites they made that their new role could not make are withdrawn with it.
         if (role.rank < target.role.rank) revokeInvitesBeyond(target.id, role)
         find(target.id)!!
@@ -264,10 +266,10 @@ class People(
             }
         }
         if (target.role == Role.OWNER && ownerCount() <= 1) throw conflict("the team needs at least one owner")
-        db.update("UPDATE memberships SET removed_at = ? WHERE id = ? AND removed_at IS NULL", clock(), target.id)
+        db.update("UPDATE memberships SET removed_at = ? WHERE team_id = :team AND id = ? AND removed_at IS NULL", clock(), target.id)
         revokeInvitesBeyond(target.id, null)
-        val devices = db.query("SELECT id FROM owner_devices WHERE user_id = ?", target.id) { it.getString(1) }
-        db.update("DELETE FROM owner_devices WHERE user_id = ?", target.id)
+        val devices = db.query("SELECT id FROM owner_devices WHERE team_id = :team AND user_id = ?", target.id) { it.getString(1) }
+        db.update("DELETE FROM owner_devices WHERE team_id = :team AND user_id = ?", target.id)
         find(target.id)!! to devices
     }
 
@@ -290,7 +292,7 @@ class People(
         if (name != null) {
             val clean = requiredText(name, "name", NAME_MAX)
             db.update("UPDATE users SET name = ? WHERE id = ?", clean, me.accountId)
-            db.update("UPDATE memberships SET handle = ? WHERE id = ?", freeHandle(clean, me.id), me.id)
+            db.update("UPDATE memberships SET handle = ? WHERE team_id = :team AND id = ?", freeHandle(clean, me.id), me.id)
         }
         if (email != null) {
             val clean = checkedEmail(email)
@@ -317,7 +319,7 @@ class People(
         checkNewPassword(password)
         val account = db.one("SELECT id FROM users WHERE email = ?", checkedEmail(email)) { it.getString(1) } ?: throw notFound("no account with that email")
         db.update("UPDATE users SET password_hash = ? WHERE id = ?", Passwords.hash(password), account)
-        return db.one("$SELECT WHERE m.user_id = ? ORDER BY m.removed_at IS NULL DESC, m.seq DESC", account, row = ::person)!!
+        return db.one("$SELECT AND m.user_id = ? ORDER BY m.removed_at IS NULL DESC, m.seq DESC", account, row = ::person)!!
     }
 
     /**
@@ -338,15 +340,15 @@ class People(
             db.update("INSERT INTO users (id, email, name, password_hash, created_at) VALUES (?, ?, ?, ?, ?)", it, cleanEmail, cleanName, hashed, clock())
         }
         if (existing != null) db.update("UPDATE users SET password_hash = ? WHERE id = ?", hashed, accountId)
-        val membership = db.one("SELECT id FROM memberships WHERE user_id = ? AND team_id = ? AND removed_at IS NULL", accountId, HOME) { it.getString(1) }
+        val membership = db.one("SELECT id FROM memberships WHERE team_id = :team AND user_id = ? AND removed_at IS NULL", accountId) { it.getString(1) }
         return if (membership != null) {
-            db.update("UPDATE memberships SET role = 'owner' WHERE id = ?", membership)
+            db.update("UPDATE memberships SET role = 'owner' WHERE team_id = :team AND id = ?", membership)
             find(membership)!!
         } else {
             val id = Ulid.next(clock())
             db.update(
-                "INSERT INTO memberships (id, team_id, user_id, role, handle, founder, created_at) VALUES (?, ?, ?, 'owner', ?, 0, ?)",
-                id, HOME, accountId, freeHandle(cleanName, null), clock(),
+                "INSERT INTO memberships (id, team_id, user_id, role, handle, founder, created_at) VALUES (?, :team, ?, 'owner', ?, 0, ?)",
+                id, accountId, freeHandle(cleanName, null), clock(),
             )
             find(id)!!
         }
@@ -366,7 +368,7 @@ class People(
     }
 
     private fun ownerCount(): Int =
-        db.one("SELECT count(*) FROM memberships WHERE team_id = ? AND role = 'owner' AND removed_at IS NULL", HOME) { it.getInt(1) } ?: 0
+        db.one("SELECT count(*) FROM memberships WHERE team_id = :team AND role = 'owner' AND removed_at IS NULL") { it.getInt(1) } ?: 0
 
     /** Withdraw [personId]'s waiting invites; with [role], only those that role could not make. */
     private fun revokeInvitesBeyond(personId: String, role: Role?) {
@@ -377,7 +379,7 @@ class People(
         }
         val roles = listOf("owner", "admin", "member").filter { it !in keep }
         db.update(
-            "UPDATE invites SET revoked_at = ? WHERE created_by = ? AND accepted_at IS NULL AND revoked_at IS NULL AND role IN (${roles.joinToString(", ") { "?" }})",
+            "UPDATE invites SET revoked_at = ? WHERE team_id = :team AND created_by = ? AND accepted_at IS NULL AND revoked_at IS NULL AND role IN (${roles.joinToString(", ") { "?" }})",
             clock(), personId, *roles.toTypedArray(),
         )
     }
@@ -385,7 +387,7 @@ class People(
     /** A handle made from [name], unique among the people still here, never a word mentions reserve. */
     private fun freeHandle(name: String, self: String?): String {
         val base = name.lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-').take(HANDLE_MAX).trim('-').ifEmpty { "person" }
-        val taken = db.query("SELECT handle FROM memberships WHERE team_id = ? AND removed_at IS NULL AND id <> ?", HOME, self ?: "") { it.getString(1) }.toSet()
+        val taken = db.query("SELECT handle FROM memberships WHERE team_id = :team AND removed_at IS NULL AND id <> ?", self ?: "") { it.getString(1) }.toSet()
         fun free(h: String) = h !in taken && h !in RESERVED_HANDLES
         if (free(base)) return base
         return (2..Int.MAX_VALUE).asSequence().map { "$base-$it" }.first(::free)
@@ -445,7 +447,7 @@ class People(
          */
         fun followsChanged(db: Database, memberId: String): kotlinx.serialization.json.JsonObject =
             kotlinx.serialization.json.buildJsonObject {
-                if ((db.one("SELECT count(*) FROM memberships") { it.getLong(1) } ?: 0) > 1) {
+                if ((db.one("SELECT count(*) FROM memberships WHERE team_id = :team") { it.getLong(1) } ?: 0) > 1) {
                     put("subscriber", kotlinx.serialization.json.JsonPrimitive(subscriber(memberId)))
                     put("memberId", kotlinx.serialization.json.JsonPrimitive(memberId))
                 } else {
@@ -459,8 +461,8 @@ class People(
          */
         fun teamName(db: Database, memberId: String?): String? {
             if (memberId == null) return null
-            if ((db.one("SELECT count(*) FROM memberships") { it.getLong(1) } ?: 0) < 2) return null
-            return db.one("SELECT u.name FROM memberships AS m JOIN users AS u ON u.id = m.user_id WHERE m.id = ?", memberId) { it.getString(1) }
+            if ((db.one("SELECT count(*) FROM memberships WHERE team_id = :team") { it.getLong(1) } ?: 0) < 2) return null
+            return db.one("SELECT u.name FROM memberships AS m JOIN users AS u ON u.id = m.user_id WHERE m.team_id = :team AND m.id = ?", memberId) { it.getString(1) }
         }
 
         const val INVITE_TTL_MS = 7L * 24 * 60 * 60 * 1000
@@ -477,7 +479,7 @@ class People(
         private val RESERVED_HANDLES = setOf("here", "everyone", "you", "owner", "all")
 
         private const val SELECT = "SELECT m.id, m.user_id, u.name, u.email, m.role, m.handle, m.founder, m.created_at, m.removed_at, u.password_hash " +
-            "FROM memberships AS m JOIN users AS u ON u.id = m.user_id"
+            "FROM memberships AS m JOIN users AS u ON u.id = m.user_id WHERE m.team_id = :team"
         private const val INVITE = "id, email, role, created_by, created_at, expires_at, accepted_at, accepted_by, revoked_at"
     }
 }

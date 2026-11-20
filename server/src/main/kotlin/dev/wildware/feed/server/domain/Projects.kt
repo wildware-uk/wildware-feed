@@ -39,7 +39,7 @@ class Projects(private val feed: Feed) {
     fun bySlug(slug: String): ProjectRow? = row("slug", slug)
 
     private fun row(column: String, value: String) =
-        db.one("SELECT ${Rows.PROJECT} FROM projects WHERE $column = ?", value) { ProjectRow(Rows.project(it)) }
+        db.one("SELECT ${Rows.PROJECT} FROM projects WHERE team_id = :team AND $column = ?", value) { ProjectRow(Rows.project(it)) }
 
     /** An id-shaped reference tries the id first, anything else the (lowercased) slug first. */
     fun find(reference: String): ProjectRow? {
@@ -52,7 +52,7 @@ class Projects(private val feed: Feed) {
 
     /** Pinned first, then newest. */
     fun list(status: String?): List<ProjectRow> = db.query(
-        "SELECT ${Rows.PROJECT} FROM projects WHERE (? IS NULL OR status = ?) ORDER BY pinned DESC, seq DESC",
+        "SELECT ${Rows.PROJECT} FROM projects WHERE team_id = :team AND (? IS NULL OR status = ?) ORDER BY pinned DESC, seq DESC",
         status, status,
     ) { ProjectRow(Rows.project(it)) }
 
@@ -66,7 +66,7 @@ class Projects(private val feed: Feed) {
         val now = feed.now()
         val id = dev.wildware.feed.server.db.Ulid.next()
         db.update(
-            "INSERT INTO projects (id, slug, name, description, status, pinned, created_at, updated_at) VALUES (?, ?, ?, ?, 'active', 0, ?, ?)",
+            "INSERT INTO projects (team_id, id, slug, name, description, status, pinned, created_at, updated_at) VALUES (:team, ?, ?, ?, ?, 'active', 0, ?, ?)",
             id, cleanSlug, cleanName, cleanDescription, now, now,
         )
         val project = byId(id)!!
@@ -102,7 +102,7 @@ class Projects(private val feed: Feed) {
         sets["updated_at"] = feed.now()
 
         db.update(
-            "UPDATE projects SET ${sets.keys.joinToString(", ") { "$it = ?" }} WHERE id = ?",
+            "UPDATE projects SET ${sets.keys.joinToString(", ") { "$it = ?" }} WHERE team_id = :team AND id = ?",
             *sets.values.toTypedArray(), project.id,
         )
         val updated = byId(project.id)!!
@@ -142,7 +142,7 @@ class Projects(private val feed: Feed) {
     }
 
     private fun logo(mediaId: String): String {
-        val (kind, status) = db.one("SELECT kind, status FROM media WHERE id = ?", mediaId) { it.getString(1) to it.getString(2) }
+        val (kind, status) = db.one("SELECT kind, status FROM media WHERE team_id = :team AND id = ?", mediaId) { it.getString(1) to it.getString(2) }
             ?: throw notFound("no such media: $mediaId")
         if (kind != "image") throw invalid("a logo must be an image")
         if (status != "ready") throw invalid("that image is still being processed")

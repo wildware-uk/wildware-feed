@@ -41,7 +41,8 @@ object Export {
         return try {
             Database.openPostgres(url, migrate = false).use { source ->
                 out("Copying…")
-                val checked = PostgresToSqlite(out).export(source, to)
+                // Every team's rows: row security, when on, would show none without this.
+                val checked = dev.wildware.feed.server.db.Tenant.allTeams { PostgresToSqlite(out).export(source, to) }
                 out("Identical: ${checked.sumOf { it.rows }} rows in ${checked.size} tables")
             }
             val store = Migrate.bucket(env) ?: return 0

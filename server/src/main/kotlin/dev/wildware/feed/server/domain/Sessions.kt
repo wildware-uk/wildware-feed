@@ -22,7 +22,7 @@ class Sessions(private val db: Database, private val bus: Bus, private val work:
         val wasOnline = onlineAt(agentId, at)
         val id = Ulid.next(at)
         db.update(
-            "INSERT INTO sessions (id, agent_id, started_at, last_heartbeat_at, meta) VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO sessions (team_id, id, agent_id, started_at, last_heartbeat_at, meta) VALUES (:team, ?, ?, ?, ?, ?)",
             id, agentId, at, at, clean?.toString(),
         )
         if (!wasOnline) announce(agentId, id, true)
@@ -34,7 +34,7 @@ class Sessions(private val db: Database, private val bus: Bus, private val work:
         val session = own(sessionId, agentId)
         if (session.endedAt != null) throw ended(session.id)
         val wasOnline = onlineAt(session.agentId, at)
-        if (db.update("UPDATE sessions SET last_heartbeat_at = ? WHERE id = ? AND ended_at IS NULL", at, session.id) != 1) throw ended(session.id)
+        if (db.update("UPDATE sessions SET last_heartbeat_at = ? WHERE team_id = :team AND id = ? AND ended_at IS NULL", at, session.id) != 1) throw ended(session.id)
         if (!wasOnline) announce(session.agentId, session.id, true)
         return work.countWork(session.agentId)
     }
@@ -45,7 +45,7 @@ class Sessions(private val db: Database, private val bus: Bus, private val work:
         val session = own(sessionId, agentId)
         if (session.endedAt != null) return session to false
         val wasOnline = onlineAt(session.agentId, at)
-        db.update("UPDATE sessions SET ended_at = ? WHERE id = ? AND ended_at IS NULL", at, session.id)
+        db.update("UPDATE sessions SET ended_at = ? WHERE team_id = :team AND id = ? AND ended_at IS NULL", at, session.id)
         if (wasOnline && !onlineAt(session.agentId, at)) announce(session.agentId, session.id, false)
         return find(session.id)!! to true
     }
@@ -54,7 +54,7 @@ class Sessions(private val db: Database, private val bus: Bus, private val work:
     fun endAll(agentId: String) {
         val at = clock()
         val wasOnline = onlineAt(agentId, at)
-        db.update("UPDATE sessions SET ended_at = ? WHERE agent_id = ? AND ended_at IS NULL", at, agentId)
+        db.update("UPDATE sessions SET ended_at = ? WHERE team_id = :team AND agent_id = ? AND ended_at IS NULL", at, agentId)
         if (wasOnline) announce(agentId, null, false)
     }
 
@@ -62,10 +62,10 @@ class Sessions(private val db: Database, private val bus: Bus, private val work:
     fun sweep(idleMs: Long = SESSION_IDLE_MS) {
         val at = clock()
         val onlineBefore = db.query(
-            "SELECT DISTINCT agent_id FROM sessions WHERE ended_at IS NULL AND last_heartbeat_at >= ?", at - PRESENCE_WINDOW_MS,
+            "SELECT DISTINCT agent_id FROM sessions WHERE team_id = :team AND ended_at IS NULL AND last_heartbeat_at >= ?", at - PRESENCE_WINDOW_MS,
         ) { it.getString(1) }.toSet()
         val closed = db.query(
-            "UPDATE sessions SET ended_at = ? WHERE ended_at IS NULL AND last_heartbeat_at < ? RETURNING agent_id", at, at - idleMs,
+            "UPDATE sessions SET ended_at = ? WHERE team_id = :team AND ended_at IS NULL AND last_heartbeat_at < ? RETURNING agent_id", at, at - idleMs,
         ) { it.getString(1) }.toSet()
         for (agentId in closed) {
             if (agentId !in onlineBefore || onlineAt(agentId, at)) continue
@@ -73,13 +73,13 @@ class Sessions(private val db: Database, private val bus: Bus, private val work:
         }
     }
 
-    fun find(id: String): Session? = db.one("SELECT * FROM sessions WHERE id = ?", id) {
+    fun find(id: String): Session? = db.one("SELECT * FROM sessions WHERE team_id = :team AND id = ?", id) {
         Session(it.getString("id"), it.getString("agent_id"), it.getLong("started_at"), it.getLong("last_heartbeat_at"),
             it.getLong("ended_at").let { v -> if (it.wasNull()) null else v })
     }
 
     private fun onlineAt(agentId: String, at: Long) = db.one(
-        "SELECT 1 FROM sessions WHERE agent_id = ? AND ended_at IS NULL AND last_heartbeat_at >= ? LIMIT 1", agentId, at - PRESENCE_WINDOW_MS,
+        "SELECT 1 FROM sessions WHERE team_id = :team AND agent_id = ? AND ended_at IS NULL AND last_heartbeat_at >= ? LIMIT 1", agentId, at - PRESENCE_WINDOW_MS,
     ) { 1 } != null
 
     private fun announce(agentId: String, sessionId: String?, online: Boolean) {

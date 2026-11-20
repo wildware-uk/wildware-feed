@@ -2,6 +2,7 @@ package dev.wildware.feed.server.media
 
 import dev.wildware.feed.server.auth.Tokens
 import dev.wildware.feed.server.db.Database
+import dev.wildware.feed.server.db.Tenant
 import dev.wildware.feed.server.db.Ulid
 import dev.wildware.feed.server.db.longOrNull
 import dev.wildware.feed.server.domain.jsTrim
@@ -26,7 +27,11 @@ fun interface Chunks {
     suspend fun next(): ByteArray?
 }
 
-/** Where media lives on disk (spec/07 §6). */
+/**
+ * Where media lives on disk (spec/07 §6). Keys are `<id[0:2]>/<id>/<name>` for the home team, as
+ * always, and `t/<team id>/<id[0:2]>/<id>/<name>` for any other team (docs/HOSTING.md §3), so one
+ * team's files can be listed, measured and deleted together. The team is the work's ([Tenant.id]).
+ */
 class MediaPaths(dataDir: String, store: MediaStore? = null) {
     val root: Path = Path.of(dataDir, "media").toAbsolutePath().normalize()
     val tempRoot: Path = Path.of(dataDir, "tmp", "uploads").toAbsolutePath().normalize()
@@ -36,15 +41,18 @@ class MediaPaths(dataDir: String, store: MediaStore? = null) {
     /** Where the bytes live: [root] on disk unless a bucket is configured. */
     val store: MediaStore = store ?: LocalMediaStore(root)
 
-    fun originalKey(id: String, mime: String) = relative(id, "original.${Mime.extensionOf(mime)}")
-    fun folder(id: String) = "${id.substring(0, 2)}/$id/"
+    /** Where this team's keys start: nothing for the home team, `t/<team id>/` for any other. */
+    fun teamPrefix(team: String = Tenant.id): String = if (team == Tenant.HOME) "" else "t/$team/"
 
-    fun dir(id: String): Path = root.resolve(id.substring(0, 2)).resolve(id)
+    fun originalKey(id: String, mime: String) = relative(id, "original.${Mime.extensionOf(mime)}")
+    fun folder(id: String) = "${teamPrefix()}${id.substring(0, 2)}/$id/"
+
+    fun dir(id: String): Path = root.resolve(folder(id).trimEnd('/'))
     fun original(id: String, mime: String): Path = dir(id).resolve("original.${Mime.extensionOf(mime)}")
 
-    /** A stored derivative path (`<id[0:2]>/<id>/<name>`), or null when it escapes the root. */
+    /** A stored derivative path (`<id[0:2]>/<id>/<name>`, team prefix first), or null when it escapes the root. */
     fun stored(relative: String): Path? = root.resolve(relative).normalize().takeIf { it.startsWith(root) && it != root }
-    fun relative(id: String, name: String) = "${id.substring(0, 2)}/$id/$name"
+    fun relative(id: String, name: String) = "${folder(id)}$name"
 }
 
 /**
@@ -101,7 +109,7 @@ class Uploads(
         if (bytes < 1) throw MediaError("invalid_argument", "bytes must be the whole number of bytes the file has, and at least 1")
         val limit = limitFor(kind)
         if (bytes > limit) throw tooLarge(kind, limit, bytes)
-        db.one("SELECT 1 FROM agents WHERE id = ?", agentId) { 1 } ?: throw MediaError("not_found", "no such agent: $agentId")
+        db.one("SELECT 1 FROM agents WHERE team_id = :team AND id = ?", agentId) { 1 } ?: throw MediaError("not_found", "no such agent: $agentId")
         val maxBytes = minOf(bytes, limit)
         val expiresAt = now + TOKEN_TTL_MS
         val mediaId = Ulid.next(now)
@@ -109,7 +117,7 @@ class Uploads(
         db.transaction { _ ->
             insertMedia(mediaId, agentId, "agent:$agentId", kind, mime, bytes, keptName(kind, name), now)
             db.update(
-                "INSERT INTO upload_tokens (id, agent_id, media_id, max_bytes, mime_allow, expires_at) VALUES (?, ?, ?, ?, ?, ?)",
+                "INSERT INTO upload_tokens (team_id, id, agent_id, media_id, max_bytes, mime_allow, expires_at) VALUES (:team, ?, ?, ?, ?, ?, ?)",
                 tokenId, agentId, mediaId, maxBytes, Wire.encode(kotlinx.serialization.json.JsonArray(listOf(JsonPrimitive(mime)))), expiresAt,
             )
         }
@@ -118,7 +126,7 @@ class Uploads(
 
     private fun insertMedia(id: String, agentId: String?, author: String, kind: String, mime: String, bytes: Long, filename: String?, at: Long) {
         db.update(
-            "INSERT INTO media (id, agent_id, author, kind, mime, bytes, sha256, filename, status, created_at) VALUES (?, ?, ?, ?, ?, ?, '', ?, 'pending', ?)",
+            "INSERT INTO media (team_id, id, agent_id, author, kind, mime, bytes, sha256, filename, status, created_at) VALUES (:team, ?, ?, ?, ?, ?, ?, '', ?, 'pending', ?)",
             id, agentId, author, kind, mime, bytes, filename, at,
         )
     }
@@ -130,7 +138,7 @@ class Uploads(
         if (body == null) throw MediaError("invalid_argument", NO_BODY)
         data class Spent(val mediaId: String, val maxBytes: Long, val allow: List<String>)
         val spent = db.one(
-            "UPDATE upload_tokens SET used_at = ? WHERE id = ? AND used_at IS NULL AND expires_at > ? RETURNING media_id, max_bytes, mime_allow",
+            "UPDATE upload_tokens SET used_at = ? WHERE team_id = :team AND id = ? AND used_at IS NULL AND expires_at > ? RETURNING media_id, max_bytes, mime_allow",
             now, tokenId, now,
         ) { rs ->
             Spent(rs.getString(1), rs.getLong(2), Wire.json.parseToJsonElement(rs.getString(3)).let { el ->
@@ -143,7 +151,7 @@ class Uploads(
             return storeBytes(media, body, spent.maxBytes, spent.allow, contentLength)
         } catch (e: Throwable) {
             // A failed upload hands its token back, so the same url can be retried (decided fix 7).
-            db.update("UPDATE upload_tokens SET used_at = NULL WHERE id = ? AND used_at = ?", tokenId, now)
+            db.update("UPDATE upload_tokens SET used_at = NULL WHERE team_id = :team AND id = ? AND used_at = ?", tokenId, now)
             throw e
         }
     }
@@ -159,7 +167,7 @@ class Uploads(
         if (contentLength != null && contentLength > limit) throw tooLarge(kind, limit, contentLength)
         val id = Ulid.next(now)
         db.update(
-            "INSERT INTO media (id, agent_id, author, kind, mime, bytes, sha256, filename, status, created_at) VALUES (?, NULL, 'human', ?, ?, 0, '', ?, 'pending', ?)",
+            "INSERT INTO media (team_id, id, agent_id, author, kind, mime, bytes, sha256, filename, status, created_at) VALUES (:team, ?, NULL, 'human', ?, ?, 0, '', ?, 'pending', ?)",
             id, kind, mime, keptName(kind, name), now,
         )
         return storeBytes(row(id)!!, body, limit, listOf(mime), contentLength)
@@ -168,7 +176,7 @@ class Uploads(
     class Row(val id: String, val kind: String, val mime: String, val sha256: String)
 
     private fun row(id: String): Row? =
-        db.one("SELECT id, kind, mime, sha256 FROM media WHERE id = ?", id) { Row(it.getString(1), it.getString(2), it.getString(3), it.getString(4)) }
+        db.one("SELECT id, kind, mime, sha256 FROM media WHERE team_id = :team AND id = ?", id) { Row(it.getString(1), it.getString(2), it.getString(3), it.getString(4)) }
 
     private suspend fun storeBytes(media: Row, body: Chunks, maxBytes: Long, allowedRaw: List<String>, contentLength: Long?): Stored {
         val declared = if (media.kind == "file") media.mime else null
@@ -177,7 +185,7 @@ class Uploads(
         if (contentLength != null && contentLength > maxBytes) throw overCap(maxBytes)
         val written = streamToTemp(body, maxBytes, allowed, declared)
         val deduped = place(media.id, written.temp, written.mime, written.sha256)
-        db.update("UPDATE media SET bytes = ?, sha256 = ? WHERE id = ?", written.bytes, written.sha256, media.id)
+        db.update("UPDATE media SET bytes = ?, sha256 = ? WHERE team_id = :team AND id = ?", written.bytes, written.sha256, media.id)
         val view = mediaView(media.id)!!
         return Stored(view, media.id, media.kind, media.mime, written.bytes, written.sha256, view["status"]!!.let { (it as JsonPrimitive).content }, deduped)
     }
@@ -246,7 +254,7 @@ class Uploads(
     /** Move the temp file into the store, or link a twin with the same bytes and type (a hard link, or a copy in the bucket). */
     private fun place(id: String, temp: Path, mime: String, sha256: String): Boolean {
         val key = paths.originalKey(id, mime)
-        val twin = db.one("SELECT id, mime FROM media WHERE sha256 = ? AND removed_at IS NULL ORDER BY seq DESC LIMIT 1", sha256) { it.getString(1) to it.getString(2) }
+        val twin = db.one("SELECT id, mime FROM media WHERE team_id = :team AND sha256 = ? AND removed_at IS NULL ORDER BY seq DESC LIMIT 1", sha256) { it.getString(1) to it.getString(2) }
         if (twin != null && twin.first != id && twin.second == mime && paths.store.link(paths.originalKey(twin.first, twin.second), key)) {
             Files.deleteIfExists(temp)
             return true
@@ -263,7 +271,7 @@ class Uploads(
         val now = clock()
         val ids = db.query(
             """SELECT id FROM media
-                WHERE update_id IS NULL AND message_id IS NULL AND request_id IS NULL AND task_id IS NULL
+                WHERE team_id = :team AND update_id IS NULL AND message_id IS NULL AND request_id IS NULL AND task_id IS NULL
                   AND status IN ('ready', 'pending', 'failed')
                   AND created_at < ?
                   AND id NOT IN (${logoIds()})
@@ -273,26 +281,26 @@ class Uploads(
         ) { it.getString(1) }
         for (id in ids) {
             runCatching { paths.store.deletePrefix(paths.folder(id)) }
-            db.update("DELETE FROM media WHERE id = ?", id)
+            db.update("DELETE FROM media WHERE team_id = :team AND id = ?", id)
         }
-        db.update("DELETE FROM upload_tokens WHERE used_at IS NULL AND expires_at <= ?", now)
+        db.update("DELETE FROM upload_tokens WHERE team_id = :team AND used_at IS NULL AND expires_at <= ?", now)
     }
 
     /** Every project's logo media id (TS: `json_extract(theme, '$.logoMediaId')`). */
     private fun logoIds() = if (db.dialect == dev.wildware.feed.server.db.Dialect.SQLITE)
-        "SELECT json_extract(theme, '$.logoMediaId') FROM projects WHERE theme IS NOT NULL AND json_extract(theme, '$.logoMediaId') IS NOT NULL"
+        "SELECT json_extract(theme, '$.logoMediaId') FROM projects WHERE team_id = :team AND theme IS NOT NULL AND json_extract(theme, '$.logoMediaId') IS NOT NULL"
     else
-        "SELECT theme::jsonb ->> 'logoMediaId' FROM projects WHERE theme IS NOT NULL AND theme::jsonb ->> 'logoMediaId' IS NOT NULL"
+        "SELECT theme::jsonb ->> 'logoMediaId' FROM projects WHERE team_id = :team AND theme IS NOT NULL AND theme::jsonb ->> 'logoMediaId' IS NOT NULL"
 
     /** Every string anywhere in any embed's data (TS: `json_tree` values of type text). */
     private fun embedStrings() = if (db.dialect == dev.wildware.feed.server.db.Dialect.SQLITE)
-        "SELECT value FROM embeds, json_tree(embeds.data) WHERE json_tree.type = 'text'"
+        "SELECT value FROM embeds, json_tree(embeds.data) WHERE embeds.team_id = :team AND json_tree.type = 'text'"
     else
-        "SELECT v #>> '{}' FROM embeds, jsonb_path_query(embeds.data::jsonb, 'strict $.**') AS v WHERE jsonb_typeof(v) = 'string'"
+        "SELECT v #>> '{}' FROM embeds, jsonb_path_query(embeds.data::jsonb, 'strict $.**') AS v WHERE embeds.team_id = :team AND jsonb_typeof(v) = 'string'"
 
     /** `Media` as the owner API answers it (`src/db/media.ts`), or null. */
     fun mediaView(id: String): JsonObject? = db.one(
-        "SELECT seq, id, agent_id, author, update_id, message_id, request_id, task_id, kind, mime, bytes, sha256, width, height, duration_ms, filename, status, created_at FROM media WHERE id = ?",
+        "SELECT seq, id, agent_id, author, update_id, message_id, request_id, task_id, kind, mime, bytes, sha256, width, height, duration_ms, filename, status, created_at FROM media WHERE team_id = :team AND id = ?",
         id,
     ) { rs ->
         buildJsonObject {

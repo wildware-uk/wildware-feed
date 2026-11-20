@@ -35,14 +35,17 @@ class SqliteToPostgres(private val log: (String) -> Unit = {}) {
         return c
     }
 
-    /** The tables to copy, in SQLite's order, with their columns. */
+    /**
+     * The tables to copy, in SQLite's order, with their columns. A table a later migration dropped
+     * ([DROPPED]) is left behind when an older file is copied.
+     */
     fun tables(source: Connection): List<Pair<String, List<String>>> {
         val names = source.createStatement().use { st ->
             st.executeQuery(
                 "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' " +
                     "AND name <> '${Database.MIGRATIONS_TABLE}' ORDER BY rowid",
             ).use { rs -> buildList { while (rs.next()) add(rs.getString(1)) } }
-        }
+        }.filter { it !in DROPPED }
         return names.map { t ->
             t to source.prepareStatement("SELECT name FROM pragma_table_info(?) ORDER BY cid").use { st ->
                 st.setString(1, t)
@@ -229,6 +232,9 @@ class SqliteToPostgres(private val log: (String) -> Unit = {}) {
 
     companion object {
         const val NUL_STAND_IN = '␀'
+
+        /** Tables later migrations dropped: web push (058), unused since the TypeScript server. */
+        val DROPPED = setOf("push_subscriptions")
         private const val BATCH = 500
 
         private val SUBSCRIPTION_TABLES = setOf("project_subscriptions", "group_subscriptions", "thread_subscriptions")

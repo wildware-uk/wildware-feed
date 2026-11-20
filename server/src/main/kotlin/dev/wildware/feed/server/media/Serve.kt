@@ -10,7 +10,7 @@ class Serve(private val db: Database, private val paths: MediaPaths) {
     fun open(id: String, variant: String): MediaFile? {
         if (variant !in VARIANTS || !ULID.matches(id)) return null
         class Row(val kind: String, val mime: String, val sha256: String, val filename: String?, val status: String, val removed: Boolean)
-        val row = db.one("SELECT kind, mime, sha256, filename, status, removed_at FROM media WHERE id = ?", id) {
+        val row = db.one("SELECT kind, mime, sha256, filename, status, removed_at FROM media WHERE team_id = :team AND id = ?", id) {
             Row(it.getString(1), it.getString(2), it.getString(3), it.getString(4), it.getString(5), it.getObject(6) != null)
         } ?: return null
         if (row.removed) return null
@@ -29,7 +29,7 @@ class Serve(private val db: Database, private val paths: MediaPaths) {
                 else -> "mp4" to null
             }
             val stored = db.one(
-                "SELECT path FROM derivatives WHERE media_id = ? AND kind = ? AND (? IS NULL OR width = ?) ORDER BY width LIMIT 1",
+                "SELECT path FROM derivatives WHERE team_id = :team AND media_id = ? AND kind = ? AND (? IS NULL OR width = ?) ORDER BY width LIMIT 1",
                 id, kind, width, width,
             ) { it.getString(1) } ?: return null
             if (paths.stored(stored) == null) return null

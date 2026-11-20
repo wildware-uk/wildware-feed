@@ -34,17 +34,17 @@ class Updates(private val feed: Feed) {
         val refs: List<CardRef>? = null,
     )
 
-    fun find(id: String): UpdateRow? = db.one("SELECT ${Rows.UPDATE} FROM updates WHERE id = ?", id) { UpdateRow(Rows.update(it)) }
+    fun find(id: String): UpdateRow? = db.one("SELECT ${Rows.UPDATE} FROM updates WHERE team_id = :team AND id = ?", id) { UpdateRow(Rows.update(it)) }
 
     fun post(input: Post): UpdateRow = feed.op {
         val project = feed.projects.resolve(input.project)
-        val agentId = db.one("SELECT id FROM agents WHERE id = ?", input.agentId) { it.getString(1) }
+        val agentId = db.one("SELECT id FROM agents WHERE team_id = :team AND id = ?", input.agentId) { it.getString(1) }
             ?: throw notFound("no such agent: ${input.agentId}")
         val body = requiredText(input.body, "body", BODY_MAX)
         val title = optionalText(input.title, "title", TITLE_MAX)
         val sessionId = input.sessionId
         if (sessionId != null) {
-            val owner = db.one("SELECT agent_id FROM sessions WHERE id = ?", sessionId) { it.getString(1) }
+            val owner = db.one("SELECT agent_id FROM sessions WHERE team_id = :team AND id = ?", sessionId) { it.getString(1) }
                 ?: throw notFound("no such session: $sessionId")
             if (owner != agentId) throw invalid("session belongs to another agent")
         }
@@ -58,8 +58,8 @@ class Updates(private val feed: Feed) {
 
         val id = Ulid.next()
         db.update(
-            "INSERT INTO updates (id, project_id, agent_id, session_id, title, body, level, priority, task_id, pinned, created_at) " +
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, 0, ?)",
+            "INSERT INTO updates (team_id, id, project_id, agent_id, session_id, title, body, level, priority, task_id, pinned, created_at) " +
+                "VALUES (:team, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 0, ?)",
             id, project.id, agentId, sessionId, title, body, input.level ?: "info", priority, feed.now(),
         )
         val update = find(id)!!
@@ -101,7 +101,7 @@ class Updates(private val feed: Feed) {
         val refs = edit.refs?.let { cardRefs.check("agent:$agentId", it, self = card, kept = cardRefs.on(card)) }
         if (sets.size == 1 && refs == null) throw invalid("an edit must change the title, the body, the level or the priority")
         db.update(
-            "UPDATE updates SET ${sets.keys.joinToString(", ") { "$it = ?" }} WHERE id = ? AND deleted_at IS NULL",
+            "UPDATE updates SET ${sets.keys.joinToString(", ") { "$it = ?" }} WHERE team_id = :team AND id = ? AND deleted_at IS NULL",
             *sets.values.toTypedArray(), update.id,
         )
         if (refs != null) cardRefs.set(card, refs)
@@ -116,7 +116,7 @@ class Updates(private val feed: Feed) {
     fun delete(updateId: String): UpdateRow = feed.op {
         val update = find(updateId) ?: throw notFound("no such update: $updateId")
         if (update.deletedAt != null) return@op update
-        db.update("UPDATE updates SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL", feed.now(), update.id)
+        db.update("UPDATE updates SET deleted_at = ? WHERE team_id = :team AND id = ? AND deleted_at IS NULL", feed.now(), update.id)
         feed.publish("update.deleted", buildJsonObject { put("updateId", update.id); put("projectId", update.projectId) })
         find(update.id)!!
     }

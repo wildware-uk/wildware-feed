@@ -24,6 +24,10 @@ import dev.wildware.feed.server.push.startApplePush
  * restart forgets (limiters). The desktop app builds one of these to host the server itself.
  */
 class App(val config: Config, val db: Database, val clock: () -> Long = System::currentTimeMillis) : AutoCloseable {
+    init {
+        config.rowSecurity?.let { on -> if (on != db.rowSecurity) dev.wildware.feed.server.db.TeamTables.setRowSecurity(db, on) }
+    }
+
     val agents = Agents(db, config.tokenSecret, clock)
     val devices = Devices(db, config.tokenSecret, clock)
 
@@ -149,26 +153,48 @@ class App(val config: Config, val db: Database, val clock: () -> Long = System::
         }, periodMs, periodMs, java.util.concurrent.TimeUnit.MILLISECONDS)
     }
 
+    /**
+     * Run [block] every [periodMs] as [every] does, once for each team in turn, inside that team
+     * (docs/HOSTING.md §3: one process sweeps every team). One team's failure doesn't stop the rest.
+     */
+    fun everyTeam(periodMs: Long, name: String = "job", block: () -> Unit) = every(periodMs, name) { forEachTeam(name, block) }
+
+    /** [block] once inside each team that is open for work. */
+    fun forEachTeam(name: String = "job", block: () -> Unit) {
+        for (team in teamIds()) {
+            try {
+                dev.wildware.feed.server.db.Tenant.with(team, block)
+            } catch (e: Exception) {
+                System.err.println("$name failed for a team: $e")
+            }
+        }
+    }
+
+    /** Every team's id, oldest first. */
+    fun teamIds(): List<String> = db.query("SELECT id FROM teams ORDER BY seq") { it.getString(1) }
+
     private var stopApplePush: () -> Unit = {}
 
     /** After SECRETS_KEY changes: re-seal what is still under an old key, and say how it went (counts only). */
     private fun resealSecrets() {
-        val (done, unopened) = secrets.reseal()
+        var done = 0
+        var unopened = 0
+        forEachTeam("secret reseal") { secrets.reseal().let { (d, u) -> done += d; unopened += u } }
         if (done > 0) println("secrets: re-sealed $done under the current SECRETS_KEY; SECRETS_KEY_OLD can go once nothing is left")
         if (unopened > 0) System.err.println("secrets: $unopened are sealed under a key that is neither SECRETS_KEY nor in SECRETS_KEY_OLD")
     }
 
     /** The background jobs (spec/08 §1). Called once when the server starts serving. */
     fun startJobs() {
-        every(dev.wildware.feed.server.domain.Sessions.SWEEP_INTERVAL_MS, "presence sweep") { sessions.sweep() }
-        every(dev.wildware.feed.server.domain.Requests.SWEEP_INTERVAL_MS, "request sweep") { requests.expireDue() }
-        every(dev.wildware.feed.server.domain.Pairings.SWEEP_INTERVAL_MS, "pairing sweep") { pairings.expireDue() }
-        every(dev.wildware.feed.server.domain.OAuth.SWEEP_INTERVAL_MS, "oauth sweep") { oauth.sweep() }
-        every(dev.wildware.feed.server.domain.Secrets.SWEEP_INTERVAL_MS, "secret sweep") { secrets.sweep() }
+        everyTeam(dev.wildware.feed.server.domain.Sessions.SWEEP_INTERVAL_MS, "presence sweep") { sessions.sweep() }
+        everyTeam(dev.wildware.feed.server.domain.Requests.SWEEP_INTERVAL_MS, "request sweep") { requests.expireDue() }
+        everyTeam(dev.wildware.feed.server.domain.Pairings.SWEEP_INTERVAL_MS, "pairing sweep") { pairings.expireDue() }
+        everyTeam(dev.wildware.feed.server.domain.OAuth.SWEEP_INTERVAL_MS, "oauth sweep") { oauth.sweep() }
+        everyTeam(dev.wildware.feed.server.domain.Secrets.SWEEP_INTERVAL_MS, "secret sweep") { secrets.sweep() }
         resealSecrets()
-        every(dev.wildware.feed.server.media.Derive.WORKER_INTERVAL_MS, "media derive") { derive.tick() }
-        every(15 * 60_000L, "media sweep") { uploads.sweep() }
-        every(dev.wildware.feed.server.media.Retention.CHECK_INTERVAL_MS, "media retention") { retention.tick() }
+        everyTeam(dev.wildware.feed.server.media.Derive.WORKER_INTERVAL_MS, "media derive") { derive.tick() }
+        everyTeam(15 * 60_000L, "media sweep") { uploads.sweep() }
+        everyTeam(dev.wildware.feed.server.media.Retention.CHECK_INTERVAL_MS, "media retention") { retention.tick() }
         stopApplePush = startApplePush()
     }
 

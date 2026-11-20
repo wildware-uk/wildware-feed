@@ -56,11 +56,11 @@ class CardRefs(private val db: Database, private val clock: () -> Long) {
 
     /** The refs on [card] become [refs], in that order. */
     fun set(card: CardRef, refs: List<CardRef>) {
-        db.update("DELETE FROM card_refs WHERE ${card.anchor} = ?", card.id)
+        db.update("DELETE FROM card_refs WHERE team_id = :team AND ${card.anchor} = ?", card.id)
         val at = clock()
         for (ref in refs) {
             db.update(
-                "INSERT INTO card_refs (${card.anchor}, ref_kind, ref_id, created_at) VALUES (?, ?, ?, ?)",
+                "INSERT INTO card_refs (team_id, ${card.anchor}, ref_kind, ref_id, created_at) VALUES (:team, ?, ?, ?, ?)",
                 card.id, ref.kind, ref.id, at,
             )
         }
@@ -68,7 +68,7 @@ class CardRefs(private val db: Database, private val clock: () -> Long) {
 
     /** The refs on one card, in order. */
     fun on(card: CardRef): List<CardRef> = db.query(
-        "SELECT ref_kind, ref_id FROM card_refs WHERE ${card.anchor} = ? ORDER BY seq", card.id,
+        "SELECT ref_kind, ref_id FROM card_refs WHERE team_id = :team AND ${card.anchor} = ? ORDER BY seq", card.id,
     ) { CardRef(it.getString(1), it.getString(2)) }
 
     /** The refs on many cards of one [kind], as [CardRef]s, by card id. Cards without refs are left out. */
@@ -78,7 +78,7 @@ class CardRefs(private val db: Database, private val clock: () -> Long) {
         val out = LinkedHashMap<String, MutableList<CardRef>>()
         for (chunk in ids.distinct().chunked(CHUNK)) {
             db.query(
-                "SELECT $anchor, ref_kind, ref_id, seq FROM card_refs WHERE $anchor IN (${marks(chunk)})", *chunk.toTypedArray(),
+                "SELECT $anchor, ref_kind, ref_id, seq FROM card_refs WHERE team_id = :team AND $anchor IN (${marks(chunk)})", *chunk.toTypedArray(),
             ) { Triple(it.getString(1), CardRef(it.getString(2), it.getString(3)), it.getLong(4)) }
                 .sortedBy { it.third }
                 .forEach { (card, ref, _) -> out.getOrPut(card) { mutableListOf() } += ref }
@@ -142,7 +142,7 @@ class CardRefs(private val db: Database, private val clock: () -> Long) {
      */
     private fun visible(by: String, target: Target): Boolean {
         if (by == Messages.HUMAN || target.kind != "message" || target.author == by) return true
-        val named = db.query("SELECT agent_id FROM message_mentions WHERE message_id = ?", target.id) { it.getString(1) }
+        val named = db.query("SELECT agent_id FROM message_mentions WHERE team_id = :team AND message_id = ?", target.id) { it.getString(1) }
         return named.isEmpty() || by.removePrefix(AGENT) in named
     }
 
@@ -156,7 +156,7 @@ class CardRefs(private val db: Database, private val clock: () -> Long) {
                     "request" -> "SELECT id, project_id, agent_id, question, detail, state FROM approvals"
                     else -> continue
                 }
-                db.query("$sql WHERE id IN (${marks(chunk)})", *chunk.toTypedArray()) { rs ->
+                db.query("$sql WHERE team_id = :team AND id IN (${marks(chunk)})", *chunk.toTypedArray()) { rs ->
                     when (kind) {
                         "update" -> Target(
                             kind, rs.getString("id"), rs.getString("project_id"), AGENT + rs.getString("agent_id"),
@@ -180,7 +180,7 @@ class CardRefs(private val db: Database, private val clock: () -> Long) {
     }
 
     private fun agentNames(ids: List<String>): Map<String, String> = ids.distinct().chunked(CHUNK).flatMap { chunk ->
-        db.query("SELECT id, name FROM agents WHERE id IN (${marks(chunk)})", *chunk.toTypedArray()) { it.getString(1) to it.getString(2) }
+        db.query("SELECT id, name FROM agents WHERE team_id = :team AND id IN (${marks(chunk)})", *chunk.toTypedArray()) { it.getString(1) to it.getString(2) }
     }.toMap()
 
     companion object {

@@ -64,5 +64,11 @@
   "name": "card-blocks",
   "file": "057-card-blocks.sql",
   "checksum": "a8cefa1218eecdaf283bf407b1bebd7014edb883fa80973bf24e1c7fcc0a3bc4"
+ },
+ {
+  "version": 58,
+  "name": "teams-apart",
+  "file": "058-teams-apart.sql",
+  "checksum": "0ef711da432bfd98e09bfbcb13dacc83aacd4feb95cd5ef906c968409ede7e94"
  }
 ]

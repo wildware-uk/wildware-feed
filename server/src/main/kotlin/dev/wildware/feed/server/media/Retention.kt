@@ -107,13 +107,13 @@ class Retention(
 
     private fun candidates(kinds: List<String>, cutoff: Long): List<String> = db.query(
         """SELECT m.id FROM media m
-            WHERE m.removed_at IS NULL AND m.sha256 <> '' AND m.status IN ('ready', 'failed')
+            WHERE m.team_id = :team AND m.removed_at IS NULL AND m.sha256 <> '' AND m.status IN ('ready', 'failed')
               AND m.created_at < ? AND m.kind IN (${kinds.joinToString(", ") { "?" }})
               AND NOT EXISTS (SELECT 1 FROM updates u WHERE u.id = m.update_id AND u.pinned = 1)
               AND NOT EXISTS (SELECT 1 FROM messages g WHERE g.id = m.message_id AND g.pinned = 1)
               AND NOT EXISTS (SELECT 1 FROM tasks t WHERE t.id = m.task_id AND t.pinned = 1)
               AND NOT EXISTS (SELECT 1 FROM approvals a WHERE a.id = m.request_id AND (a.pinned = 1 OR a.state = 'pending'))
-              AND NOT EXISTS (SELECT 1 FROM approvals a WHERE a.state = 'pending'
+              AND NOT EXISTS (SELECT 1 FROM approvals a WHERE a.team_id = :team AND a.state = 'pending'
                               AND ((m.update_id IS NOT NULL AND a.update_id = m.update_id)
                                 OR (m.message_id IS NOT NULL AND a.message_id = m.message_id)))
               AND m.id NOT IN (${logoIds()})
@@ -122,17 +122,17 @@ class Retention(
     ) { it.getString(1) }
 
     private fun logoIds() = if (db.dialect == Dialect.SQLITE)
-        "SELECT json_extract(theme, '$.logoMediaId') FROM projects WHERE theme IS NOT NULL AND json_extract(theme, '$.logoMediaId') IS NOT NULL"
+        "SELECT json_extract(theme, '$.logoMediaId') FROM projects WHERE team_id = :team AND theme IS NOT NULL AND json_extract(theme, '$.logoMediaId') IS NOT NULL"
     else
-        "SELECT theme::jsonb ->> 'logoMediaId' FROM projects WHERE theme IS NOT NULL AND theme::jsonb ->> 'logoMediaId' IS NOT NULL"
+        "SELECT theme::jsonb ->> 'logoMediaId' FROM projects WHERE team_id = :team AND theme IS NOT NULL AND theme::jsonb ->> 'logoMediaId' IS NOT NULL"
 
     /** Files first, then the row: a crash in between leaves a row that the next run finishes. */
     private fun remove(id: String, days: Int, now: Long): Boolean {
         paths.store.deletePrefix(paths.folder(id))
         val payload = db.transaction { _ ->
-            db.update("DELETE FROM derivatives WHERE media_id = ?", id)
+            db.update("DELETE FROM derivatives WHERE team_id = :team AND media_id = ?", id)
             db.one(
-                "UPDATE media SET removed_at = ?, removed_after_days = ? WHERE id = ? AND removed_at IS NULL " +
+                "UPDATE media SET removed_at = ?, removed_after_days = ? WHERE team_id = :team AND id = ? AND removed_at IS NULL " +
                     "RETURNING id, update_id, message_id, request_id, task_id, kind",
                 now, days, id,
             ) { rs ->
@@ -147,12 +147,12 @@ class Retention(
         return true
     }
 
-    private fun setting(key: String): String? = db.one("SELECT value FROM server_settings WHERE key = ?", key) { it.getString(1) }
+    private fun setting(key: String): String? = db.one("SELECT value FROM server_settings WHERE team_id = :team AND key = ?", key) { it.getString(1) }
 
     private fun put(key: String, value: String) {
         db.update(
-            "INSERT INTO server_settings (key, value, updated_at) VALUES (?, ?, ?) " +
-                "ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+            "INSERT INTO server_settings (team_id, key, value, updated_at) VALUES (:team, ?, ?, ?) " +
+                "ON CONFLICT (team_id, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
             key, value, clock(),
         )
     }

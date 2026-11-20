@@ -27,7 +27,7 @@ class Groups(private val feed: Feed) {
     fun bySlug(slug: String): GroupRow? = row("slug", slug)
 
     private fun row(column: String, value: String) =
-        db.one("SELECT $COLUMNS FROM project_groups WHERE $column = ?", value) { GroupRow(json(it)) }
+        db.one("SELECT $COLUMNS FROM project_groups WHERE team_id = :team AND $column = ?", value) { GroupRow(json(it)) }
 
     /** As [Projects.find]: an id-shaped reference tries the id first, anything else the slug first. */
     fun find(reference: String): GroupRow? {
@@ -39,7 +39,7 @@ class Groups(private val feed: Feed) {
     fun resolve(reference: String): GroupRow = find(reference) ?: throw notFound("no such group: ${reference.jsTrim()}")
 
     /** By name, as the app lists them. */
-    fun list(): List<GroupRow> = db.query("SELECT $COLUMNS FROM project_groups ORDER BY lower(name), seq") { GroupRow(json(it)) }
+    fun list(): List<GroupRow> = db.query("SELECT $COLUMNS FROM project_groups WHERE team_id = :team ORDER BY lower(name), seq") { GroupRow(json(it)) }
 
     /** Idempotent on the slug, as [Projects.create]: an existing group comes back untouched. */
     fun create(name: String, slug: String?): Pair<GroupRow, Boolean> = feed.op {
@@ -49,7 +49,7 @@ class Groups(private val feed: Feed) {
         val now = feed.now()
         val id = Ulid.next(now)
         db.update(
-            "INSERT INTO project_groups (id, slug, name, status, created_at, updated_at) VALUES (?, ?, ?, 'active', ?, ?)",
+            "INSERT INTO project_groups (team_id, id, slug, name, status, created_at, updated_at) VALUES (:team, ?, ?, ?, 'active', ?, ?)",
             id, cleanSlug, cleanName, now, now,
         )
         val group = byId(id)!!
@@ -74,17 +74,17 @@ class Groups(private val feed: Feed) {
         patch.theme?.let { t -> sets["theme"] = t.value?.let { feed.projects.mergeTheme(group.theme as? JsonObject, it) }?.let(Wire::encode) }
         if (sets.isEmpty()) throw invalid("update requires at least one field to change")
         sets["updated_at"] = feed.now()
-        db.update("UPDATE project_groups SET ${sets.keys.joinToString(", ") { "$it = ?" }} WHERE id = ?", *sets.values.toTypedArray(), group.id)
+        db.update("UPDATE project_groups SET ${sets.keys.joinToString(", ") { "$it = ?" }} WHERE team_id = :team AND id = ?", *sets.values.toTypedArray(), group.id)
         byId(group.id)!!.also { changed("group.updated", it) }
     }
 
     /** Deleting a group only ungroups its channels; what anyone chose for it goes with it. */
     fun delete(reference: String): GroupRow = feed.op {
         val group = resolve(reference)
-        val channels = db.query("SELECT id, slug FROM projects WHERE group_id = ?", group.id) { it.getString(1) to it.getString(2) }
-        db.update("UPDATE projects SET group_id = NULL, updated_at = ? WHERE group_id = ?", feed.now(), group.id)
-        db.update("DELETE FROM group_subscriptions WHERE group_id = ?", group.id)
-        db.update("DELETE FROM project_groups WHERE id = ?", group.id)
+        val channels = db.query("SELECT id, slug FROM projects WHERE team_id = :team AND group_id = ?", group.id) { it.getString(1) to it.getString(2) }
+        db.update("UPDATE projects SET group_id = NULL, updated_at = ? WHERE team_id = :team AND group_id = ?", feed.now(), group.id)
+        db.update("DELETE FROM group_subscriptions WHERE team_id = :team AND group_id = ?", group.id)
+        db.update("DELETE FROM project_groups WHERE team_id = :team AND id = ?", group.id)
         for ((id, slug) in channels) feed.publish("project.updated", buildJsonObject { put("projectId", id); put("slug", slug) })
         changed("group.deleted", group)
         group

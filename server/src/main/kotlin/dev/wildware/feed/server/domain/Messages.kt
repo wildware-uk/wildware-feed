@@ -38,9 +38,9 @@ class Messages(private val feed: Feed) {
 
     class Quoted(val id: String, val author: String, val body: String, val truncated: Boolean, val userId: String? = null)
 
-    fun find(id: String): MessageRow? = db.one("SELECT ${Rows.MESSAGE} FROM messages WHERE id = ?", id) { MessageRow(Rows.message(it)) }
+    fun find(id: String): MessageRow? = db.one("SELECT ${Rows.MESSAGE} FROM messages WHERE team_id = :team AND id = ?", id) { MessageRow(Rows.message(it)) }
 
-    private fun agentExists(id: String) = db.one("SELECT id FROM agents WHERE id = ?", id) { it.getString(1) } != null
+    private fun agentExists(id: String) = db.one("SELECT id FROM agents WHERE team_id = :team AND id = ?", id) { it.getString(1) } != null
 
     /** `assertAuthor`: an agent author must exist. */
     private fun checkAuthor(author: String) {
@@ -66,7 +66,7 @@ class Messages(private val feed: Feed) {
             throw invalid("a message belongs to a request`s discussion, or to a card, not both")
         }
         val requestProject: Pair<Boolean, String?>? = requestId?.let { id ->
-            db.one("SELECT project_id FROM approvals WHERE id = ?", id) { true to it.getString(1) }
+            db.one("SELECT project_id FROM approvals WHERE team_id = :team AND id = ?", id) { true to it.getString(1) }
                 ?: throw notFound("no such request: $id")
         }
         val request = requestProject != null
@@ -112,8 +112,8 @@ class Messages(private val feed: Feed) {
         val id = Ulid.next()
         val person = if (author == HUMAN) input.userId ?: People.FOUNDER else null
         db.update(
-            "INSERT INTO messages (id, project_id, update_id, task_id, author, body, created_at, reply_to, answers, request_id, user_id) " +
-                "VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO messages (team_id, id, project_id, update_id, task_id, author, body, created_at, reply_to, answers, request_id, user_id) " +
+                "VALUES (:team, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?)",
             id, projectId, updateId, author, body, feed.now(), if (request) null else anchor, answersId, requestId, person,
         )
         val message = find(id)!!
@@ -153,7 +153,7 @@ class Messages(private val feed: Feed) {
         val clean = requiredText(body, "body", BODY_MAX)
         val card = CardRef("message", message.id)
         val newRefs = refs?.let { cardRefs.check(by, it, self = card, kept = cardRefs.on(card)) }
-        db.update("UPDATE messages SET body = ?, edited_at = ? WHERE id = ? AND deleted_at IS NULL", clean, feed.now(), message.id)
+        db.update("UPDATE messages SET body = ?, edited_at = ? WHERE team_id = :team AND id = ? AND deleted_at IS NULL", clean, feed.now(), message.id)
         if (newRefs != null) cardRefs.set(card, newRefs)
         val saved = find(message.id)!!
         followed(subscriptions.afterPost(saved, Mentions.record(db, saved.id, saved.body, saved.author, feed.now()), Mentions.mentionedPeople(db, saved.body)))
@@ -181,12 +181,12 @@ class Messages(private val feed: Feed) {
         }
         val at = feed.now()
         val replies = if (message.replyTo == null) {
-            db.query("SELECT id FROM messages WHERE reply_to = ? AND deleted_at IS NULL ORDER BY seq ASC", message.id) { it.getString(1) }
+            db.query("SELECT id FROM messages WHERE team_id = :team AND reply_to = ? AND deleted_at IS NULL ORDER BY seq ASC", message.id) { it.getString(1) }
         } else {
             emptyList()
         }
-        db.update("UPDATE messages SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL", at, message.id)
-        for (reply in replies) db.update("UPDATE messages SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL", at, reply)
+        db.update("UPDATE messages SET deleted_at = ? WHERE team_id = :team AND id = ? AND deleted_at IS NULL", at, message.id)
+        for (reply in replies) db.update("UPDATE messages SET deleted_at = ? WHERE team_id = :team AND id = ? AND deleted_at IS NULL", at, reply)
         feed.publish("message.deleted", buildJsonObject {
             put("messageId", message.id)
             put("projectId", message.projectId)
@@ -214,7 +214,7 @@ class Messages(private val feed: Feed) {
         if (author == HUMAN) return People.teamName(db, userId)
         if (!author.startsWith(AGENT_PREFIX)) return null
         val id = author.removePrefix(AGENT_PREFIX).ifEmpty { return null }
-        return db.one("SELECT name FROM agents WHERE id = ?", id) { it.getString(1) }
+        return db.one("SELECT name FROM agents WHERE team_id = :team AND id = ?", id) { it.getString(1) }
     }
 
     // ---- reading (get_messages) ------------------------------------------------------------------
@@ -244,7 +244,7 @@ class Messages(private val feed: Feed) {
         val where = readerScope(scope, params)
         params.add(limit)
         return db.query(
-            "SELECT ${columns()} FROM messages AS m WHERE m.seq > ? AND m.author <> ? AND m.deleted_at IS NULL$where ORDER BY m.seq ASC LIMIT ?",
+            "SELECT ${columns()} FROM messages AS m WHERE m.team_id = :team AND m.seq > ? AND m.author <> ? AND m.deleted_at IS NULL$where ORDER BY m.seq ASC LIMIT ?",
             *params.toTypedArray(),
         ) { MessageRow(Rows.message(it)) }
     }
@@ -253,7 +253,7 @@ class Messages(private val feed: Feed) {
         params.add(agentId)
         params.add(excludeAuthor)
         var where = " FROM messages AS m LEFT JOIN read_cursors AS rc ON rc.agent_id = ? AND rc.project_id = coalesce(m.project_id, '') " +
-            "WHERE m.seq > coalesce(rc.last_seen_message_seq, 0) AND m.deleted_at IS NULL AND m.author <> ?"
+            "WHERE m.team_id = :team AND m.seq > coalesce(rc.last_seen_message_seq, 0) AND m.deleted_at IS NULL AND m.author <> ?"
         where += readerScope(Scope(scope.reach, agentId), params)
         if (within != null) {
             where += " AND coalesce(m.project_id, '') = ?"
@@ -324,12 +324,12 @@ class Messages(private val feed: Feed) {
             }
             if (to <= 0) continue
             db.update(
-                "INSERT INTO read_cursors (id, agent_id, project_id, last_seen_message_seq) VALUES (?, ?, ?, ?) " +
+                "INSERT INTO read_cursors (team_id, id, agent_id, project_id, last_seen_message_seq) VALUES (:team, ?, ?, ?, ?) " +
                     "ON CONFLICT (agent_id, project_id) DO UPDATE SET last_seen_message_seq = " +
                     db.greatest("read_cursors.last_seen_message_seq", "excluded.last_seen_message_seq"),
                 Ulid.next(), agentId, projectId, to,
             )
-            val cursor = db.one("SELECT last_seen_message_seq FROM read_cursors WHERE agent_id = ? AND project_id = ?", agentId, projectId) { it.getLong(1) }!!
+            val cursor = db.one("SELECT last_seen_message_seq FROM read_cursors WHERE team_id = :team AND agent_id = ? AND project_id = ?", agentId, projectId) { it.getLong(1) }!!
             moved = maxOf(moved, cursor)
         }
         return moved

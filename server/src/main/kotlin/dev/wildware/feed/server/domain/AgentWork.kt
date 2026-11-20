@@ -69,7 +69,8 @@ class AgentWork(private val db: Database, private val bus: Bus, private val cloc
         val base = """
             FROM messages AS m
             LEFT JOIN read_cursors AS rc ON rc.agent_id = ? AND rc.project_id = coalesce(m.project_id, '')
-            WHERE m.seq > coalesce(rc.last_seen_message_seq, 0)
+            WHERE m.team_id = :team
+              AND m.seq > coalesce(rc.last_seen_message_seq, 0)
               AND m.deleted_at IS NULL
               AND m.author <> ?
               AND (NOT $namesAnyone OR $namesReader)"""
@@ -97,8 +98,8 @@ class AgentWork(private val db: Database, private val bus: Bus, private val cloc
         val args = OPEN + (projects ?: emptyList())
         val states = OPEN.joinToString(", ") { "?" }
         return db.one(
-            "SELECT (SELECT COUNT(*) FROM updates WHERE status IN ($states) AND deleted_at IS NULL $scope) + " +
-                "(SELECT COUNT(*) FROM messages WHERE status IN ($states) AND deleted_at IS NULL $scope)",
+            "SELECT (SELECT COUNT(*) FROM updates WHERE team_id = :team AND status IN ($states) AND deleted_at IS NULL $scope) + " +
+                "(SELECT COUNT(*) FROM messages WHERE team_id = :team AND status IN ($states) AND deleted_at IS NULL $scope)",
             *(args + args).toTypedArray(),
         ) { it.getInt(1) } ?: 0
     }
@@ -106,11 +107,11 @@ class AgentWork(private val db: Database, private val bus: Bus, private val cloc
     /** Pending requests of the agent: all of them, or those in [projects] plus the project-less ones. */
     fun countPending(agentId: String, projects: List<String>?): Int {
         if (projects == null) {
-            return db.one("SELECT COUNT(*) FROM approvals WHERE agent_id = ? AND state = 'pending'", agentId) { it.getInt(1) } ?: 0
+            return db.one("SELECT COUNT(*) FROM approvals WHERE team_id = :team AND agent_id = ? AND state = 'pending'", agentId) { it.getInt(1) } ?: 0
         }
         val inProjects = if (projects.isEmpty()) "" else " OR project_id IN (${projects.joinToString(", ") { "?" }})"
         return db.one(
-            "SELECT COUNT(*) FROM approvals WHERE agent_id = ? AND state = 'pending' AND (project_id IS NULL$inProjects)",
+            "SELECT COUNT(*) FROM approvals WHERE team_id = :team AND agent_id = ? AND state = 'pending' AND (project_id IS NULL$inProjects)",
             agentId, *projects.toTypedArray(),
         ) { it.getInt(1) } ?: 0
     }
@@ -119,7 +120,7 @@ class AgentWork(private val db: Database, private val bus: Bus, private val cloc
     fun alreadyDelivered(agentId: String, clientId: String?, ids: List<String>): Set<String> {
         if (ids.isEmpty() || clientId == null) return emptySet()
         return db.query(
-            "SELECT message_id FROM message_deliveries WHERE agent_id = ? AND client_id = ? AND message_id IN (${ids.joinToString(", ") { "?" }})",
+            "SELECT message_id FROM message_deliveries WHERE team_id = :team AND agent_id = ? AND client_id = ? AND message_id IN (${ids.joinToString(", ") { "?" }})",
             agentId, clientId, *ids.toTypedArray(),
         ) { it.getString(1) }.toSet()
     }
@@ -142,18 +143,18 @@ class AgentWork(private val db: Database, private val bus: Bus, private val cloc
     private fun recordDelivery(messageId: String, agentId: String, clientId: String?): Boolean = db.transaction { _ ->
         if (clientId == null) {
             val already = db.one(
-                "SELECT 1 FROM message_deliveries WHERE message_id = ? AND agent_id = ? AND client_id IS NULL", messageId, agentId,
+                "SELECT 1 FROM message_deliveries WHERE team_id = :team AND message_id = ? AND agent_id = ? AND client_id IS NULL", messageId, agentId,
             ) { 1 }
             if (already != null) return@transaction false
         }
         db.update(
-            "INSERT INTO message_deliveries (id, message_id, agent_id, client_id, delivered_at) VALUES (?, ?, ?, ?, ?) " +
+            "INSERT INTO message_deliveries (team_id, id, message_id, agent_id, client_id, delivered_at) VALUES (:team, ?, ?, ?, ?, ?) " +
                 "ON CONFLICT (message_id, agent_id, client_id) DO NOTHING",
             Ulid.next(clock()), messageId, agentId, clientId, clock(),
         ) == 1
     }
 
-    fun find(id: String): Line? = db.one("SELECT ${LINE.joinToString(", ")} FROM messages WHERE id = ?", id) { line(it) }
+    fun find(id: String): Line? = db.one("SELECT ${LINE.joinToString(", ")} FROM messages WHERE team_id = :team AND id = ?", id) { line(it) }
 
     /** `threadKeys` (TS): the message's own thread columns. */
     fun threadKeys(m: Line): List<Pair<String, String?>> = listOf(
@@ -167,7 +168,7 @@ class AgentWork(private val db: Database, private val bus: Bus, private val cloc
     fun authorName(author: String, userId: String? = null): String? {
         if (author == "human") return People.teamName(db, userId)
         if (!author.startsWith("agent:")) return null
-        return db.one("SELECT name FROM agents WHERE id = ?", author.removePrefix("agent:")) { it.getString(1) }
+        return db.one("SELECT name FROM agents WHERE team_id = :team AND id = ?", author.removePrefix("agent:")) { it.getString(1) }
     }
 
     /** The line a message answers or replies to, quoted (240 characters at most), or null. */
@@ -182,12 +183,12 @@ class AgentWork(private val db: Database, private val bus: Bus, private val cloc
     /** Every line in [m]'s thread (TS `threadOf`), for "does this concern the agent". */
     fun threadOf(m: Line): List<Line> {
         if (m.updateId != null) {
-            return db.query("SELECT ${LINE.joinToString(", ")} FROM messages WHERE update_id = ? AND deleted_at IS NULL ORDER BY seq DESC LIMIT 200", m.updateId) { line(it) }
+            return db.query("SELECT ${LINE.joinToString(", ")} FROM messages WHERE team_id = :team AND update_id = ? AND deleted_at IS NULL ORDER BY seq DESC LIMIT 200", m.updateId) { line(it) }
         }
         val root = m.replyTo ?: m.id
         if (m.projectId == null) return emptyList()
         return db.query(
-            "SELECT ${LINE.joinToString(", ")} FROM messages WHERE project_id = ? AND deleted_at IS NULL ORDER BY seq DESC LIMIT 200", m.projectId,
+            "SELECT ${LINE.joinToString(", ")} FROM messages WHERE team_id = :team AND project_id = ? AND deleted_at IS NULL ORDER BY seq DESC LIMIT 200", m.projectId,
         ) { line(it) }.filter { it.id == root || it.replyTo == root }
     }
 

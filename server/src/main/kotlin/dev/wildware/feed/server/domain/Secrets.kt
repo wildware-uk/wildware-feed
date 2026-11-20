@@ -80,12 +80,12 @@ class Secrets(
 
     fun list(): List<Secret> {
         val scopes = scopes()
-        return db.query("SELECT * FROM secrets ORDER BY name") { row(it, scopes) }
+        return db.query("SELECT * FROM secrets WHERE team_id = :team ORDER BY name") { row(it, scopes) }
     }
 
-    fun find(id: String): Secret? = db.one("SELECT * FROM secrets WHERE id = ?", id) { row(it, scopes(id)) }
+    fun find(id: String): Secret? = db.one("SELECT * FROM secrets WHERE team_id = :team AND id = ?", id) { row(it, scopes(id)) }
 
-    private fun byName(name: String): Secret? = db.one("SELECT * FROM secrets WHERE name = ?", name) { row(it, null) }
+    private fun byName(name: String): Secret? = db.one("SELECT * FROM secrets WHERE team_id = :team AND name = ?", name) { row(it, null) }
         ?.let { it.copy(agentIds = scopes(it.id)[it.id].orEmpty()) }
 
     fun create(name: String, value: ByteArray, note: String?, allAgents: Boolean, agentIds: List<String>, actor: Actor): Secret {
@@ -100,11 +100,11 @@ class Secrets(
         val sealed = sealer.seal(id, value)
         db.transaction {
             db.update(
-                "INSERT INTO secrets (id, name, note, all_agents, key_id, wrapped_key, sealed, bytes, created_by, created_at, updated_at) " +
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO secrets (team_id, id, name, note, all_agents, key_id, wrapped_key, sealed, bytes, created_by, created_at, updated_at) " +
+                    "VALUES (:team, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 id, clean, cleanNote, allAgents, sealed.keyId, sealed.wrappedKey, sealed.sealed, value.size, by(actor), now, now,
             )
-            for (agent in agents) db.update("INSERT INTO secret_agents (secret_id, agent_id) VALUES (?, ?)", id, agent)
+            for (agent in agents) db.update("INSERT INTO secret_agents (team_id, secret_id, agent_id) VALUES (:team, ?, ?)", id, agent)
             audit(id, clean, "created", actor, scopeText(allAgents, agents))
         }
         changed(id, "created")
@@ -133,32 +133,32 @@ class Secrets(
         db.transaction {
             if (sealed != null) {
                 db.update(
-                    "UPDATE secrets SET key_id = ?, wrapped_key = ?, sealed = ?, bytes = ?, updated_at = ? WHERE id = ?",
+                    "UPDATE secrets SET key_id = ?, wrapped_key = ?, sealed = ?, bytes = ?, updated_at = ? WHERE team_id = :team AND id = ?",
                     sealed.keyId, sealed.wrappedKey, sealed.sealed, value!!.size, now, id,
                 )
                 audit(id, secret.name, "value_changed", actor, null)
             }
-            if (noteGiven) db.update("UPDATE secrets SET note = ?, updated_at = ? WHERE id = ?", cleanNote, now, id)
+            if (noteGiven) db.update("UPDATE secrets SET note = ?, updated_at = ? WHERE team_id = :team AND id = ?", cleanNote, now, id)
             if (allAgents != null || agents != null) {
                 val all = allAgents ?: secret.allAgents
-                db.update("UPDATE secrets SET all_agents = ?, updated_at = ? WHERE id = ?", all, now, id)
+                db.update("UPDATE secrets SET all_agents = ?, updated_at = ? WHERE team_id = :team AND id = ?", all, now, id)
                 val named = agents ?: secret.agentIds
                 if (agents != null) {
-                    db.update("DELETE FROM secret_agents WHERE secret_id = ?", id)
-                    for (agent in agents) db.update("INSERT INTO secret_agents (secret_id, agent_id) VALUES (?, ?)", id, agent)
+                    db.update("DELETE FROM secret_agents WHERE team_id = :team AND secret_id = ?", id)
+                    for (agent in agents) db.update("INSERT INTO secret_agents (team_id, secret_id, agent_id) VALUES (:team, ?, ?)", id, agent)
                 }
                 audit(id, secret.name, "scope_changed", actor, scopeText(all, named))
             }
             if (paused != null && paused != (secret.pausedAt != null)) {
-                db.update("UPDATE secrets SET paused_at = ? WHERE id = ?", if (paused) now else null, id)
+                db.update("UPDATE secrets SET paused_at = ? WHERE team_id = :team AND id = ?", if (paused) now else null, id)
                 audit(id, secret.name, if (paused) "paused" else "resumed", actor, null)
             }
             // Once the owner has changed it, it is the owner's: the agent that uploaded it can no
             // longer overwrite what every other reader fetches.
-            if (actor.kind == "owner") db.update("UPDATE secrets SET created_by = 'owner' WHERE id = ?", id)
+            if (actor.kind == "owner") db.update("UPDATE secrets SET created_by = 'owner' WHERE team_id = :team AND id = ?", id)
             // Any change of value, scope or pause makes the URLs already handed out worthless.
             if (sealed != null || allAgents != null || agents != null || paused == true) {
-                db.update("DELETE FROM secret_grants WHERE secret_id = ? AND used_at IS NULL", id)
+                db.update("DELETE FROM secret_grants WHERE team_id = :team AND secret_id = ? AND used_at IS NULL", id)
             }
         }
         changed(id, "changed")
@@ -168,7 +168,7 @@ class Secrets(
     fun delete(id: String, actor: Actor) {
         val secret = find(id) ?: throw notFound("no such secret: $id")
         db.transaction {
-            db.update("DELETE FROM secrets WHERE id = ?", id)
+            db.update("DELETE FROM secrets WHERE team_id = :team AND id = ?", id)
             audit(id, secret.name, "deleted", actor, null)
         }
         changed(id, "deleted")
@@ -187,7 +187,7 @@ class Secrets(
 
     /** Newest first; [secretId] narrows it to one secret, deleted ones included. */
     fun audit(secretId: String? = null, limit: Int = 200): List<AuditEntry> = db.query(
-        "SELECT * FROM secret_audit WHERE (? IS NULL OR secret_id = ?) ORDER BY seq DESC LIMIT ?",
+        "SELECT * FROM secret_audit WHERE team_id = :team AND (? IS NULL OR secret_id = ?) ORDER BY seq DESC LIMIT ?",
         secretId, secretId, limit.coerceIn(1, 1000),
     ) {
         AuditEntry(
@@ -269,7 +269,7 @@ class Secrets(
             throw conflict("$clean is taken and is not yours to replace: pick another name")
         }
         if (existing == null) {
-            val mine = db.one("SELECT count(*) FROM secrets WHERE created_by = ?", "agent:${agent.id}") { it.getInt(1) } ?: 0
+            val mine = db.one("SELECT count(*) FROM secrets WHERE team_id = :team AND created_by = ?", "agent:${agent.id}") { it.getInt(1) } ?: 0
             if (mine >= AGENT_SECRETS_MAX) throw conflict("you have uploaded $mine secrets, the most an agent may: ask your owner to delete some")
         }
         val grant = grant(agent, "write", existing?.id, clean, cleanNote)
@@ -298,7 +298,7 @@ class Secrets(
         }
         val value = opener.open(secret!!.id, sealedOf(secret.id))
         db.transaction {
-            db.update("UPDATE secrets SET last_used_at = ? WHERE id = ?", clock(), secret.id)
+            db.update("UPDATE secrets SET last_used_at = ? WHERE team_id = :team AND id = ?", clock(), secret.id)
             audit(secret.id, secret.name, "downloaded", actor, from)
         }
         changed(secret.id, "audited")
@@ -316,7 +316,7 @@ class Secrets(
         val id = when {
             existing == null -> {
                 if (grant.secretId != null) throw Rejected() // it was deleted since the URL was issued
-                val mine = db.one("SELECT count(*) FROM secrets WHERE created_by = ?", "agent:${agent.id}") { it.getInt(1) } ?: 0
+                val mine = db.one("SELECT count(*) FROM secrets WHERE team_id = :team AND created_by = ?", "agent:${agent.id}") { it.getInt(1) } ?: 0
                 if (mine >= AGENT_SECRETS_MAX) throw Rejected()
                 create(grant.name, value, grant.note, allAgents = false, agentIds = listOf(agent.id), actor = actor).id
             }
@@ -326,10 +326,10 @@ class Secrets(
                 val now = clock()
                 db.transaction {
                     db.update(
-                        "UPDATE secrets SET key_id = ?, wrapped_key = ?, sealed = ?, bytes = ?, updated_at = ?, note = coalesce(?, note) WHERE id = ?",
+                        "UPDATE secrets SET key_id = ?, wrapped_key = ?, sealed = ?, bytes = ?, updated_at = ?, note = coalesce(?, note) WHERE team_id = :team AND id = ?",
                         sealed.keyId, sealed.wrappedKey, sealed.sealed, value.size, now, grant.note, existing.id,
                     )
-                    db.update("DELETE FROM secret_grants WHERE secret_id = ? AND used_at IS NULL", existing.id)
+                    db.update("DELETE FROM secret_grants WHERE team_id = :team AND secret_id = ? AND used_at IS NULL", existing.id)
                 }
                 existing.id
             }
@@ -345,7 +345,7 @@ class Secrets(
     /** Re-seal every data key still under an old SECRETS_KEY; how many were. Rows it cannot open are left and counted in [unopened]. */
     fun reseal(): Pair<Int, Int> {
         val sealer = box ?: return 0 to 0
-        val stale = db.query("SELECT id, key_id, wrapped_key, sealed FROM secrets WHERE key_id <> ?", sealer.currentKeyId) {
+        val stale = db.query("SELECT id, key_id, wrapped_key, sealed FROM secrets WHERE team_id = :team AND key_id <> ?", sealer.currentKeyId) {
             it.getString(1) to SecretBox.Sealed(it.getString(2), it.getString(3), it.getString(4))
         }
         var done = 0
@@ -357,7 +357,7 @@ class Secrets(
                 unopened++
                 null
             } ?: continue
-            if (db.update("UPDATE secrets SET key_id = ?, wrapped_key = ? WHERE id = ? AND key_id = ?", fresh.keyId, fresh.wrappedKey, id, row.keyId) == 1) done++
+            if (db.update("UPDATE secrets SET key_id = ?, wrapped_key = ? WHERE team_id = :team AND id = ? AND key_id = ?", fresh.keyId, fresh.wrappedKey, id, row.keyId) == 1) done++
         }
         return done to unopened
     }
@@ -366,7 +366,7 @@ class Secrets(
     fun sweep() {
         val now = clock()
         db.update(
-            "DELETE FROM secret_grants WHERE (used_at IS NULL AND expires_at <= ?) OR (used_at IS NOT NULL AND used_at <= ?)",
+            "DELETE FROM secret_grants WHERE team_id = :team AND (used_at IS NULL AND expires_at <= ?) OR (used_at IS NOT NULL AND used_at <= ?)",
             now - SPENT_KEPT_MS, now - SPENT_KEPT_MS,
         )
     }
@@ -411,13 +411,13 @@ class Secrets(
     private fun grant(agent: Agents.Agent, kind: String, secretId: String?, name: String, note: String?): Grant {
         val now = clock()
         val live = db.one(
-            "SELECT count(*) FROM secret_grants WHERE agent_id = ? AND used_at IS NULL AND expires_at > ?", agent.id, now,
+            "SELECT count(*) FROM secret_grants WHERE team_id = :team AND agent_id = ? AND used_at IS NULL AND expires_at > ?", agent.id, now,
         ) { it.getInt(1) } ?: 0
         if (live >= LIVE_GRANTS_MAX) throw conflict("you have $live unused secret URLs: use or let those expire first")
         val token = Tokens.random()
         val expiresAt = now + GRANT_TTL_MS
         db.update(
-            "INSERT INTO secret_grants (id, token_hash, kind, secret_id, name, note, agent_id, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO secret_grants (team_id, id, token_hash, kind, secret_id, name, note, agent_id, created_at, expires_at) VALUES (:team, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             Ulid.next(now), hashOf(token), kind, secretId, name, note, agent.id, now, expiresAt,
         )
         return Grant(name, "$baseUrl/api/agent/secret/$token", expiresAt)
@@ -427,7 +427,7 @@ class Secrets(
     fun writeLinkLive(token: String): Boolean {
         if (!Tokens.wellFormed(token)) return false
         return db.one(
-            "SELECT 1 FROM secret_grants WHERE token_hash = ? AND kind = 'write' AND used_at IS NULL AND expires_at > ?", hashOf(token), clock(),
+            "SELECT 1 FROM secret_grants WHERE team_id = :team AND token_hash = ? AND kind = 'write' AND used_at IS NULL AND expires_at > ?", hashOf(token), clock(),
         ) { 1 } != null
     }
 
@@ -437,13 +437,13 @@ class Secrets(
         val hash = hashOf(token)
         val now = clock()
         val spent = db.one(
-            "UPDATE secret_grants SET used_at = ? WHERE token_hash = ? AND kind = ? AND used_at IS NULL AND expires_at > ? " +
+            "UPDATE secret_grants SET used_at = ? WHERE team_id = :team AND token_hash = ? AND kind = ? AND used_at IS NULL AND expires_at > ? " +
                 "RETURNING secret_id, agent_id, name, note",
             now, hash, kind, now,
         ) { Spent(it.getString(1), it.getString(2), it.getString(3), it.getString(4)) }
         if (spent != null) return spent
         // A second use of a real URL may mean somebody else has it: worth the owner knowing.
-        db.one("SELECT secret_id, name, agent_id, used_at FROM secret_grants WHERE token_hash = ? AND kind = ?", hash, kind) {
+        db.one("SELECT secret_id, name, agent_id, used_at FROM secret_grants WHERE team_id = :team AND token_hash = ? AND kind = ?", hash, kind) {
             Triple(it.getString(1), it.getString(2), it.getString(3)) to it.longOrNull("used_at")
         }?.let { (grant, usedAt) ->
             val (secretId, name, agentId) = grant
@@ -456,7 +456,7 @@ class Secrets(
 
     private fun hashOf(token: String) = Tokens.hex(Tokens.hmac(tokenSecret, "secret-grant:$token"))
 
-    private fun liveAgent(id: String): Agents.Agent? = db.one("SELECT id, name, created_at, revoked_at, last_seen_at FROM agents WHERE id = ?", id) {
+    private fun liveAgent(id: String): Agents.Agent? = db.one("SELECT id, name, created_at, revoked_at, last_seen_at FROM agents WHERE team_id = :team AND id = ?", id) {
         Agents.Agent(it.getString(1), it.getString(2), it.getLong(3), it.longOrNull("revoked_at"), it.longOrNull("last_seen_at"))
     }?.takeIf { it.revokedAt == null }
 
@@ -467,12 +467,12 @@ class Secrets(
         secret.createdBy == "agent:$agentId" && mayRead(secret, agentId) && secret.pausedAt == null
 
     private fun sealedOf(id: String): SecretBox.Sealed =
-        db.one("SELECT key_id, wrapped_key, sealed FROM secrets WHERE id = ?", id) {
+        db.one("SELECT key_id, wrapped_key, sealed FROM secrets WHERE team_id = :team AND id = ?", id) {
             SecretBox.Sealed(it.getString(1), it.getString(2), it.getString(3))
         } ?: throw notFound("no such secret: $id")
 
     private fun scopes(only: String? = null): Map<String, List<String>> = db.query(
-        "SELECT secret_id, agent_id FROM secret_agents WHERE (? IS NULL OR secret_id = ?) ORDER BY agent_id", only, only,
+        "SELECT secret_id, agent_id FROM secret_agents WHERE team_id = :team AND (? IS NULL OR secret_id = ?) ORDER BY agent_id", only, only,
     ) { it.getString(1) to it.getString(2) }.groupBy({ it.first }, { it.second })
 
     private fun row(rs: ResultSet, scopes: Map<String, List<String>>?): Secret {
@@ -509,7 +509,7 @@ class Secrets(
         val unique = ids.distinct()
         if (unique.size > 200) throw invalid("at most 200 agents")
         for (id in unique) {
-            db.one("SELECT 1 FROM agents WHERE id = ?", id) { 1 } ?: throw notFound("no such agent: $id")
+            db.one("SELECT 1 FROM agents WHERE team_id = :team AND id = ?", id) { 1 } ?: throw notFound("no such agent: $id")
         }
         return unique
     }
@@ -522,7 +522,7 @@ class Secrets(
         arrayOf(Ulid.next(clock()), secretId, name, action, actor.kind, actor.id, actor.name, detail, clock())
 
     private fun audit(secretId: String?, name: String, action: String, actor: Actor, detail: String?) {
-        db.update("INSERT INTO secret_audit $AUDIT_COLUMNS VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", *auditArgs(secretId, name, action, actor, detail))
+        db.update("INSERT INTO secret_audit $AUDIT_COLUMNS VALUES (:team, ?, ?, ?, ?, ?, ?, ?, ?, ?)", *auditArgs(secretId, name, action, actor, detail))
     }
 
     /** Tell the owner's app; only the id and what happened, never a name or a value. */
@@ -539,6 +539,6 @@ class Secrets(
         const val SWEEP_INTERVAL_MS = 60_000L
         private const val SPENT_KEPT_MS = 24 * 60 * 60_000L
         private val NAME = Regex("^[A-Za-z_][A-Za-z0-9_.-]{0,99}$")
-        private const val AUDIT_COLUMNS = "(id, secret_id, secret_name, action, actor, actor_id, actor_name, detail, at)"
+        private const val AUDIT_COLUMNS = "(team_id, id, secret_id, secret_name, action, actor, actor_id, actor_name, detail, at)"
     }
 }

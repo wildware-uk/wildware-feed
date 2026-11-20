@@ -23,7 +23,7 @@ class Cards(private val feed: Feed) {
         val statusAt = if (request) "NULL" else "status_at"
         val deleted = if (request) "NULL" else "deleted_at"
         return db.one(
-            "SELECT id, project_id, pinned, $status AS status, $statusAt AS status_at, $deleted AS deleted_at FROM ${card.table} WHERE id = ?",
+            "SELECT id, project_id, pinned, $status AS status, $statusAt AS status_at, $deleted AS deleted_at FROM ${card.table} WHERE team_id = :team AND id = ?",
             card.id,
         ) { CardRow(it.getString("id"), it.getString("project_id"), it.getInt("pinned") == 1, it.getString("status"), it.longOrNull("status_at"), it.longOrNull("deleted_at")) }
     }
@@ -53,7 +53,7 @@ class Cards(private val feed: Feed) {
     fun pin(card: CardRef, pinned: Boolean): Boolean = feed.op {
         val row = resolve(card)
         if (row.pinned == pinned) return@op row.pinned
-        db.update("UPDATE ${card.table} SET pinned = ? WHERE id = ?", pinned, card.id)
+        db.update("UPDATE ${card.table} SET pinned = ? WHERE team_id = :team AND id = ?", pinned, card.id)
         val saved = find(card) ?: throw notFound("no such ${card.kind}: ${card.id}")
         announce(card, saved)
         saved.pinned
@@ -64,14 +64,14 @@ class Cards(private val feed: Feed) {
         if (status != null && status !in STATUSES) throw invalid("status must be one of: ${STATUSES.joinToString(", ")}")
         val row = resolve(card)
         if (row.status == status) return@op row.status
-        db.update("UPDATE ${card.table} SET status = ?, status_at = ? WHERE id = ?", status, feed.now(), card.id)
+        db.update("UPDATE ${card.table} SET status = ?, status_at = ? WHERE team_id = :team AND id = ?", status, feed.now(), card.id)
         val saved = find(card) ?: throw notFound("no such ${card.kind}: ${card.id}")
         announce(card, saved)
         saved.status
     }
 
     fun reactions(card: CardRef): List<ReactionRow> =
-        db.query("SELECT ${Rows.REACTION} FROM reactions WHERE ${card.anchor} IN (?) ORDER BY seq", card.id) { ReactionRow(Rows.reaction(it)) }
+        db.query("SELECT ${Rows.REACTION} FROM reactions WHERE team_id = :team AND ${card.anchor} IN (?) ORDER BY seq", card.id) { ReactionRow(Rows.reaction(it)) }
 
     /**
      * `reactToCard`: the card is checked before the emoji; omitting [on] toggles. A person reacts as
@@ -86,13 +86,13 @@ class Cards(private val feed: Feed) {
         var changed = false
         if (wanted && !already) {
             changed = db.update(
-                "INSERT INTO reactions (id, ${card.anchor}, actor, emoji, created_at, user_id) VALUES (?, ?, ?, ?, ?, ?) " +
+                "INSERT INTO reactions (team_id, id, ${card.anchor}, actor, emoji, created_at, user_id) VALUES (:team, ?, ?, ?, ?, ?, ?) " +
                     "ON CONFLICT (${card.anchor}, actor, user_id, emoji) WHERE ${card.anchor} IS NOT NULL DO NOTHING",
                 Ulid.next(), card.id, actor, clean, feed.now(), person,
             ) > 0
         } else if (!wanted && already) {
             changed = db.update(
-                "DELETE FROM reactions WHERE ${card.anchor} = ? AND actor = ? AND user_id = ? AND emoji = ?", card.id, actor, person, clean,
+                "DELETE FROM reactions WHERE team_id = :team AND ${card.anchor} = ? AND actor = ? AND user_id = ? AND emoji = ?", card.id, actor, person, clean,
             ) > 0
         }
         if (changed) {
@@ -112,17 +112,17 @@ class Cards(private val feed: Feed) {
     /** One row per (agent, card), updated in place; `ack.updated` on every call. */
     fun acknowledge(agentId: String, card: CardRef, state: String): AckRow = feed.op {
         if (state !in ACK_STATES) throw invalid("state must be one of: ${ACK_STATES.joinToString(", ")}")
-        db.one("SELECT id FROM agents WHERE id = ?", agentId) { it.getString(1) } ?: throw notFound("no such agent: $agentId")
+        db.one("SELECT id FROM agents WHERE team_id = :team AND id = ?", agentId) { it.getString(1) } ?: throw notFound("no such agent: $agentId")
         resolve(card)
         val now = feed.now()
         db.update(
-            "INSERT INTO acknowledgements (id, agent_id, ${card.anchor}, state, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?) " +
+            "INSERT INTO acknowledgements (team_id, id, agent_id, ${card.anchor}, state, created_at, updated_at) VALUES (:team, ?, ?, ?, ?, ?, ?) " +
                 "ON CONFLICT (agent_id, ${card.anchor}) WHERE ${card.anchor} IS NOT NULL " +
                 "DO UPDATE SET state = excluded.state, updated_at = excluded.updated_at",
             Ulid.next(), agentId, card.id, state, now, now,
         )
         val ack = db.one(
-            "SELECT ${Rows.ACK} FROM acknowledgements WHERE agent_id = ? AND ${card.anchor} = ?", agentId, card.id,
+            "SELECT ${Rows.ACK} FROM acknowledgements WHERE team_id = :team AND agent_id = ? AND ${card.anchor} = ?", agentId, card.id,
         ) { AckRow(Rows.ack(it)) }!!
         feed.publish("ack.updated", buildJsonObject {
             put("ackId", ack.id)
@@ -146,9 +146,9 @@ class Cards(private val feed: Feed) {
         val params = states + projectIds.orEmpty()
         return db.query(
             "SELECT 'update' AS kind, id, project_id, status, status_at, created_at, title, body, 'agent:' || agent_id AS author, " +
-                "COALESCE(status_at, created_at) AS moved_at FROM updates WHERE status IN ($marks) AND deleted_at IS NULL $scope " +
+                "COALESCE(status_at, created_at) AS moved_at FROM updates WHERE team_id = :team AND status IN ($marks) AND deleted_at IS NULL $scope " +
                 "UNION ALL SELECT 'message' AS kind, id, project_id, status, status_at, created_at, NULL AS title, body, author, " +
-                "COALESCE(status_at, created_at) AS moved_at FROM messages WHERE status IN ($marks) AND deleted_at IS NULL $scope " +
+                "COALESCE(status_at, created_at) AS moved_at FROM messages WHERE team_id = :team AND status IN ($marks) AND deleted_at IS NULL $scope " +
                 "ORDER BY moved_at DESC, id DESC LIMIT ?",
             *(params + params).toTypedArray(), limit,
         ) {

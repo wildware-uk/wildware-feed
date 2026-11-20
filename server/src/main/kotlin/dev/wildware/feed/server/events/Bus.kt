@@ -1,5 +1,6 @@
 package dev.wildware.feed.server.events
 
+import dev.wildware.feed.server.db.Tenant
 import dev.wildware.feed.server.http.Wire
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.withTimeoutOrNull
@@ -10,8 +11,11 @@ import java.util.UUID
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 
-/** One published event: `{type, seq, at, payload}` on the wire (spec/04-stream-and-events.md §1). */
-data class AppEvent(val type: String, val seq: Long, val at: String, val payload: JsonObject) {
+/**
+ * One published event: `{type, seq, at, payload}` on the wire (spec/04-stream-and-events.md §1).
+ * [team] is whose it is; it never goes on the wire, and only that team's listeners hear it.
+ */
+data class AppEvent(val type: String, val seq: Long, val at: String, val payload: JsonObject, val team: String = Tenant.HOME) {
     val envelope: JsonObject get() = buildJsonObject {
         put("type", JsonPrimitive(type))
         put("seq", JsonPrimitive(seq))
@@ -27,20 +31,38 @@ data class AppEvent(val type: String, val seq: Long, val at: String, val payload
  * event waits until every listener has seen the current one, so every listener sees events in seq
  * order (decided fix 2). Listeners run under the bus lock and must not block: streams only queue a
  * frame.
+ *
+ * Each team has its own seq and replay ring (docs/HOSTING.md §3), and an event goes only to
+ * listeners of its own team: a stream, a wait or a poll listens to the team it was opened in
+ * ([Tenant.id]). The few listeners that serve every team ([subscribeEveryTeam]: the bell, iOS
+ * alerts, Live Activities) run inside the event's team.
  */
 class Bus(capacity: Int = RING_CAPACITY, val boot: String = newBootId(), private val clock: () -> Long = System::currentTimeMillis) {
     private val lock = ReentrantLock()
-    private val ring = Ring(capacity)
-    private val listeners = LinkedHashSet<(AppEvent) -> Unit>()
+    private val capacity = capacity
+
+    /** One team's seq and replay ring. */
+    private class Log(capacity: Int) {
+        val ring = Ring(capacity)
+        var seq = 0L
+    }
+
+    private val logs = HashMap<String, Log>()
+    private fun log(team: String) = logs.getOrPut(team) { Log(capacity) }
+
+    /** A listener and the team it hears; null hears every team. */
+    private class Listener(val team: String?, val handle: (AppEvent) -> Unit)
+
+    private val listeners = LinkedHashSet<Listener>()
     private val pending = ArrayDeque<AppEvent>()
     private var dispatching = false
-    private var seq = 0L
 
     init {
         require(Regex("^[0-9a-z]{1,32}$").matches(boot)) { "Invalid boot id: $boot" }
     }
 
-    val lastSeq: Long get() = lock.withLock { seq }
+    /** The seq of this team's newest event. */
+    val lastSeq: Long get() = lock.withLock { log(Tenant.id).seq }
 
     /**
      * Checked before every publish. The app sets it to refuse a publish while the database lock is
@@ -56,9 +78,11 @@ class Bus(capacity: Int = RING_CAPACITY, val boot: String = newBootId(), private
     }
 
     private fun publishLocked(type: String, payload: JsonObject): AppEvent = lock.withLock {
-        seq += 1
-        val event = AppEvent(type, seq, Wire.isoOf(clock()), payload)
-        ring.push(event)
+        val team = Tenant.id
+        val log = log(team)
+        log.seq += 1
+        val event = AppEvent(type, log.seq, Wire.isoOf(clock()), payload, team)
+        log.ring.push(event)
         pending.addLast(event)
         if (!dispatching) drain()
         event
@@ -71,8 +95,9 @@ class Bus(capacity: Int = RING_CAPACITY, val boot: String = newBootId(), private
                 val event = pending.removeFirstOrNull() ?: break
                 for (listener in listeners.toList()) {
                     if (listener !in listeners) continue
+                    if (listener.team != null && listener.team != event.team) continue
                     try {
-                        listener(event)
+                        Tenant.with(event.team) { listener.handle(event) }
                     } catch (e: Exception) {
                         System.err.println("event subscriber threw on ${event.type}: $e")
                     }
@@ -83,21 +108,28 @@ class Bus(capacity: Int = RING_CAPACITY, val boot: String = newBootId(), private
         }
     }
 
-    /** Listen to every event from now on; call the result to stop. */
-    fun subscribe(listener: (AppEvent) -> Unit): () -> Unit {
-        lock.withLock { listeners += listener }
-        return { lock.withLock { listeners -= listener } }
+    /** Listen to every event of this team from now on; call the result to stop. */
+    fun subscribe(listener: (AppEvent) -> Unit): () -> Unit = add(Listener(Tenant.id, listener))
+
+    /** Listen to every team's events, each run inside its own team. For the server's own effects only. */
+    fun subscribeEveryTeam(listener: (AppEvent) -> Unit): () -> Unit = add(Listener(null, listener))
+
+    private fun add(entry: Listener): () -> Unit {
+        lock.withLock { listeners += entry }
+        return { lock.withLock { listeners -= entry } }
     }
 
-    /** Subscribe and replay [since] in one step, so nothing falls between the two. */
+    /** Subscribe and replay [since] in one step, so nothing falls between the two. This team only. */
     fun <T> subscribeFrom(since: Long?, listener: (AppEvent) -> Unit, onReplay: (Ring.Replay?) -> T): Pair<T, () -> Unit> = lock.withLock {
-        val replay = since?.let { ring.since(it) }
+        val team = Tenant.id
+        val replay = since?.let { log(team).ring.since(it) }
         val result = onReplay(replay)
-        listeners += listener
-        result to { lock.withLock { listeners -= listener } }
+        val entry = Listener(team, listener)
+        listeners += entry
+        result to { lock.withLock { listeners -= entry } }
     }
 
-    fun replaySince(seq: Long): Ring.Replay = lock.withLock { ring.since(seq) }
+    fun replaySince(seq: Long): Ring.Replay = lock.withLock { log(Tenant.id).ring.since(seq) }
 
     /** The first event matching [matches] within [timeoutMs], or null. */
     suspend fun waitFor(timeoutMs: Long, matches: (AppEvent) -> Boolean): AppEvent? {
