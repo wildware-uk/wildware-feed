@@ -152,6 +152,8 @@ class ManyTeamsTest {
         assertEquals("slug_taken", admin("POST", "/admin/teams", acme, "Idempotency-Key" to "k2").obj().s("error"))
         assertEquals("invalid_slug", admin("POST", "/admin/teams", acme.replace("\"acme\"", "\"a--b\""), "Idempotency-Key" to "k3").obj().s("error"))
         assertEquals("slug_reserved", admin("POST", "/admin/teams", acme.replace("\"acme\"", "\"www\""), "Idempotency-Key" to "k4").obj().s("error"))
+        // Names the mail provider's records sit at.
+        assertEquals("slug_reserved", admin("POST", "/admin/teams", acme.replace("\"acme\"", "\"send\""), "Idempotency-Key" to "k4b").obj().s("error"))
 
         // Where requests go: a team's address, the directory, an unknown team, any other address.
         assertTrue(send("acme.feed.test", "GET", "/api/server").bodyAsText().contains("\"product\":\"wildware-feed\""))

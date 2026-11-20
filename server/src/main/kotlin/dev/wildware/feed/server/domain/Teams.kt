@@ -320,6 +320,8 @@ class Teams(
             "feed", "feeds", "help", "status", "docs", "doc", "blog", "billing", "pay", "payments", "support", "static", "cdn", "assets",
             "auth", "login", "signin", "signup", "sign-in", "sign-up", "account", "accounts", "dashboard", "wildware", "team", "teams",
             "root", "system", "internal", "staging", "dev", "test", "mcp", "oauth", "media", "security", "abuse", "postmaster",
+            // The mail provider's records live at these names under the team domain.
+            "send", "rsend", "resend", "bounce", "bounces", "dkim", "dmarc", "spf",
         )
     }
 }
