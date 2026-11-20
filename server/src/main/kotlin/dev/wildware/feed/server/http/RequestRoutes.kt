@@ -3,6 +3,8 @@ package dev.wildware.feed.server.http
 import dev.wildware.feed.server.App
 import dev.wildware.feed.server.domain.Apps
 import dev.wildware.feed.server.domain.Js
+import dev.wildware.feed.server.domain.Requests
+import dev.wildware.feed.server.domain.jsNumber
 import dev.wildware.feed.server.domain.feed
 import dev.wildware.feed.server.domain.conflict
 import dev.wildware.feed.server.domain.invalid
@@ -27,7 +29,15 @@ fun Route.requestRoutes(app: App) {
         HttpMethod.Post to {
             val body = call.jsonObjectBody()
             val value = body["value"] ?: throw invalid("an answer must carry a value")
-            val request = app.requests.answer(call.parameters["id"] ?: "", value, call.person.id)
+            // The question's editedAt as the app showed it (null: never edited). An app that sends it
+            // is refused when the question changed since; one that doesn't is answered as before.
+            val shown = if ("editedAt" in body) {
+                val raw = body["editedAt"]
+                Requests.Shown(if (raw == null || raw is kotlinx.serialization.json.JsonNull) null else raw.jsNumber?.toLong() ?: throw invalid("editedAt must be a number, or null"))
+            } else {
+                null
+            }
+            val request = app.requests.answer(call.parameters["id"] ?: "", value, call.person.id, shown)
             call.respondOwner(200, buildJsonObject { put("request", request.json) })
         },
     )

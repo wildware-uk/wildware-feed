@@ -292,4 +292,17 @@ class EmbedAppsTest {
         register(uri = "ui://board", html = null, url = "https://fix.example.com/")
         assertNull(feed.apps.document(view), "an app that frames a page has no document here")
     }
+
+    @Test
+    fun `app data nested past the limit is refused, and an old deep row reads as empty`() {
+        fun nested(depth: Int): kotlinx.serialization.json.JsonObject {
+            var value: kotlinx.serialization.json.JsonElement = kotlinx.serialization.json.JsonPrimitive(1)
+            repeat(depth - 1) { value = kotlinx.serialization.json.JsonArray(listOf(value)) }
+            return kotlinx.serialization.json.JsonObject(mapOf("v" to value))
+        }
+        FeedAttachments.appData(nested(FeedAttachments.APP_JSON_DEPTH_MAX), "data")
+        val e = kotlin.test.assertFailsWith<DomainError> { FeedAttachments.appData(nested(FeedAttachments.APP_JSON_DEPTH_MAX + 1), "data") }
+        kotlin.test.assertEquals("data may nest at most 32 levels deep", e.message)
+        kotlin.test.assertTrue(FeedAttachments.tooDeep(nested(400)))
+    }
 }

@@ -199,7 +199,15 @@ class Requests(
     var people: People? = null
 
     /** A person answers (`POST /api/requests/:id/answer`); [by] is their membership. The first answer wins. */
-    fun answer(requestId: String, value: JsonElement, by: String = People.FOUNDER): OwnerRequest {
+    /** Which version of a question the person answering was shown: its editedAt, null when never edited. */
+    data class Shown(val editedAt: Long?)
+
+    /**
+     * Answers [requestId] with [value]. With [shown], the answer counts only for the question as it
+     * was shown: if it was edited since, the answer is refused, and an edit that lands while this
+     * answer is written makes it lose too.
+     */
+    fun answer(requestId: String, value: JsonElement, by: String = People.FOUNDER, shown: Shown? = null): OwnerRequest {
         val request = expireIfDue(mustFind(requestId))
         // The same person giving the same answer again is an app trying again after the reply was lost:
         // it already worked, so it says so rather than "already answered".
@@ -212,11 +220,12 @@ class Requests(
         if (request.kind == "secret") {
             throw invalid("a secret request is answered with POST /api/requests/${request.id}/secret, so its value never sits on the request")
         }
+        if (shown != null && shown.editedAt != request.editedAt) throw changedSinceShown()
         val answer = validateAnswer(request, value)
         val answerValue = answer["value"]!!
         val state = if (request.kind == "confirm" && answerValue.jsBoolean == false) "rejected" else "approved"
-        val row = decide(request.id, state, scalarOf(answerValue), jsonText(answer), clock(), by)
-            ?: throw settledAlready(mustFind(request.id))
+        val row = decide(request.id, state, scalarOf(answerValue), jsonText(answer), clock(), by, shown)
+            ?: mustFind(request.id).let { now -> if (now.state == "pending") throw changedSinceShown() else throw settledAlready(now) }
         return settle(row, "answered")
     }
 
@@ -411,10 +420,20 @@ class Requests(
         return settle(row, "timeout")
     }
 
-    private fun decide(id: String, state: String, value: String?, answer: String?, at: Long, by: String? = null): JsonObject? = db.one(
-        "UPDATE approvals SET state = ?, decided_value = ?, answer = ?, decided_at = ?, decided_by = ? WHERE team_id = :team AND id = ? AND state = 'pending' RETURNING ${Rows.APPROVAL}",
-        state, value, answer, at, by, id,
-    ) { Rows.request(it) }
+    private fun decide(id: String, state: String, value: String?, answer: String?, at: Long, by: String? = null, shown: Shown? = null): JsonObject? {
+        // With [shown], only while the question is still the one that was shown.
+        val (version, versionArgs) = when {
+            shown == null -> "" to emptyList()
+            shown.editedAt == null -> " AND edited_at IS NULL" to emptyList()
+            else -> " AND edited_at = ?" to listOf(shown.editedAt)
+        }
+        return db.one(
+            "UPDATE approvals SET state = ?, decided_value = ?, answer = ?, decided_at = ?, decided_by = ? WHERE team_id = :team AND id = ? AND state = 'pending'$version RETURNING ${Rows.APPROVAL}",
+            state, value, answer, at, by, id, *versionArgs.toTypedArray(),
+        ) { Rows.request(it) }
+    }
+
+    private fun changedSinceShown() = conflict("This question changed after you saw it. Read it again, then answer.")
 
     private fun mustFind(requestId: String): OwnerRequest = find(requestId) ?: throw notFound("no such request: $requestId")
 

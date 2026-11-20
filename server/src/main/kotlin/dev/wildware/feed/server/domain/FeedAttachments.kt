@@ -16,6 +16,29 @@ object FeedAttachments {
     const val EMBEDS_MAX = 8
     const val APPS_MAX = 4
     const val APP_DATA_MAX = 100_000
+
+    /**
+     * Deepest an app's data or saved state may nest. The apps read it inside the snapshot, whose
+     * reader stops far deeper; a value nested past it would stop them loading the feed.
+     */
+    const val APP_JSON_DEPTH_MAX = 32
+
+    /** Whether [value] nests deeper than [APP_JSON_DEPTH_MAX], worked out without recursion. */
+    fun tooDeep(value: JsonElement): Boolean {
+        val stack = ArrayDeque<Pair<JsonElement, Int>>().apply { addLast(value to 1) }
+        while (stack.isNotEmpty()) {
+            val (e, depth) = stack.removeLast()
+            // Each object or list is a level; a plain value inside one adds none.
+            val children = when (e) {
+                is JsonObject -> e.values
+                is kotlinx.serialization.json.JsonArray -> e
+                else -> continue
+            }
+            if (depth > APP_JSON_DEPTH_MAX) return true
+            children.forEach { stack.addLast(it to depth + 1) }
+        }
+        return false
+    }
     const val APP_TITLE_MAX = 120
     const val APP_URI_MAX = 120
     private val APP_URI_PATH = Regex("^[a-z0-9]+(?:[-.][a-z0-9]+)*(?:/[a-z0-9]+(?:[-.][a-z0-9]+)*)*$")
@@ -142,6 +165,7 @@ object FeedAttachments {
     internal fun appData(raw: JsonElement?, field: String): String {
         val value = if (raw == null || raw is JsonNull) JsonObject(emptyMap()) else raw
         if (value !is JsonObject) throw invalid("$field must be a JSON object")
+        if (tooDeep(value)) throw invalid("$field may nest at most $APP_JSON_DEPTH_MAX levels deep")
         val text = Wire.encode(Js.normalize(value))
         if (text.length > APP_DATA_MAX) throw invalid("$field may be at most $APP_DATA_MAX characters of JSON")
         return text

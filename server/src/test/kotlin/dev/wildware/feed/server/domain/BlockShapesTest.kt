@@ -269,6 +269,37 @@ class BlockShapesTest {
     }
 
     @Test
+    fun `a person's tick stands only for the words they ticked`() {
+        val list = block("""{"id":"ship","type":"checklist","items":[{"id":"1","text":"Delete the test data"},{"id":"2","text":"Notes"}]}""")
+        val ticked = BlockShapes.check(list, "1", true, person, t1)
+        // Reworded by a patch: the line is open again, and the person's name is not on the new words.
+        val patched = patch(ticked, """{"items":[{"id":"1","text":"Delete the live data"}]}""", at = t1 + 1)
+        assertEquals("false", patched.list("items")[0].s("done"))
+        assertNull(patched.list("items")[0]["done_by"])
+        // Reworded by replacing the whole block, done still sent: open again too.
+        val replaced = BlockShapes.normalize(
+            j("""{"id":"ship","type":"checklist","items":[{"id":"1","text":"Delete the live data","done":true},{"id":"2","text":"Notes"}]}"""),
+            "blocks[0]", agent, t1 + 2, previous = ticked,
+        )
+        assertEquals("false", replaced.list("items")[0].s("done"), "the agent can't carry the person's tick onto new words")
+        assertNull(replaced.list("items")[0]["done_by"])
+        // Other changes keep the person's tick.
+        val retitled = patch(ticked, """{"title":"Release","items":[{"id":"1","owner":"you"}]}""", at = t1 + 3)
+        assertEquals("person:founder", retitled.list("items")[0].s("done_by"))
+    }
+
+    @Test
+    fun `a vote stands only for the question and option it was given to`() {
+        val poll = block("""{"id":"p","type":"poll","question":"Ship on Friday?","options":[{"id":"a","label":"Yes"},{"id":"b","label":"No"}]}""")
+        val voted = BlockShapes.vote(BlockShapes.vote(poll, listOf("a"), person, t1), listOf("b"), Actor.person("m2"), t1)
+        val relabelled = patch(voted, """{"options":[{"id":"a","label":"Yes, and skip the tests"}]}""")
+        assertEquals(listOf("m2"), relabelled["votes"]!!.jsonArray.map { it.jsonObject.s("by")!!.removePrefix("person:") }, "only the relabelled option's votes go")
+        val newQuestion = patch(voted, """{"question":"Ship on Monday?"}""")
+        assertNull(newQuestion["votes"], "a new question drops every vote")
+        assertEquals(2, patch(voted, """{"closed":true}""")["votes"]!!.jsonArray.size, "other changes keep them")
+    }
+
+    @Test
     fun `replacing a block with another type starts it afresh`() {
         val list = block("""{"id":"x","type":"checklist","items":[{"id":"1","text":"a","done":true}]}""")
         val log = BlockShapes.normalize(j("""{"id":"x","type":"log","lines":["hi"]}"""), "block", agent, t1, previous = list)

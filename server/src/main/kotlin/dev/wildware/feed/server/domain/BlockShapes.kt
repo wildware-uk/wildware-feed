@@ -283,16 +283,21 @@ object BlockShapes {
             val item = obj(raw, path)
             only(item, path, c.itemKeys(listOf("id", "text", "done", "owner")), "a checklist line")
             val id = id(item["id"], "$path.id")
-            val done = bool(item, "done", path) ?: false
+            val text = text(item, "text", path, ITEM_TEXT_MAX)
             val before = c.before("items", id)
             val was = before?.get("done").jsBoolean ?: false
+            // A person's tick stands for the words they ticked: reworded by anyone else, the line is open again.
+            val tickedBy = before?.get("done_by").jsString.takeIf { was }
+            val reworded = before != null && before["text"].jsString != text
+            val unticked = reworded && tickedBy != null && tickedBy.startsWith("person:") && tickedBy != c.actor.value
+            val done = (bool(item, "done", path) ?: false) && !unticked
             buildMap {
                 put("id", JsonPrimitive(id))
-                put("text", JsonPrimitive(text(item, "text", path, ITEM_TEXT_MAX)))
+                put("text", JsonPrimitive(text))
                 put("done", JsonPrimitive(done))
                 optionalText(item, "owner", path, OWNER_MAX)?.let { put("owner", JsonPrimitive(it)) }
                 if (done) {
-                    if (was && before != null && before["done_by"] != null) {
+                    if (was && !reworded && before != null && before["done_by"] != null) {
                         put("done_by", before["done_by"]!!)
                         before["done_at"]?.let { put("done_at", it) }
                     } else {
@@ -549,8 +554,12 @@ object BlockShapes {
         out["multi"] = JsonPrimitive(multi)
         iso(o, "closes_at", c.path)?.let { out["closes_at"] = JsonPrimitive(it) }
         out["closed"] = JsonPrimitive(bool(o, "closed", c.path) ?: false)
-        // Votes are the server's: the ones from before, for options still there.
-        val ids = written.map { it["id"]!!.jsString!! }.toSet()
+        // Votes are the server's: the ones from before, for options still there and still worded as
+        // voted on. A vote stands for the words it was given to, so a new question drops them all.
+        val before = (c.prev?.get("options") as? JsonArray).orEmpty().associate { (it as JsonObject)["id"].jsString to it["label"].jsString }
+        val sameQuestion = c.prev == null || c.prev["question"].jsString == out["question"].jsString
+        val ids = written.filter { o -> o["id"]!!.jsString!!.let { it !in before || before[it] == o["label"]!!.jsString } }
+            .map { it["id"]!!.jsString!! }.toSet().takeIf { sameQuestion }.orEmpty()
         val votes = (c.prev?.get("votes") as? JsonArray).orEmpty().mapNotNull { v ->
             v as JsonObject
             val kept = (v["options"] as JsonArray).filter { it.jsString in ids }.let { if (multi) it else it.take(1) }

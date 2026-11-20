@@ -256,7 +256,7 @@ class OwnerActions(
      * strings, or `{action, text}` for a form. The server checks it against the question.
      */
     fun answer(request: RequestView, agentName: String, value: JsonElement): String =
-        queue(emptyList()) { id, _ -> Outbox.requestAnswer(id, clock(), agentName, request.id, value) }
+        queue(emptyList()) { id, _ -> Outbox.requestAnswer(id, clock(), agentName, request.id, value, request.editedAt) }
 
     /** Lets the agent go without an answer: it hears "cancelled". */
     fun dismiss(request: RequestView, agentName: String): String =

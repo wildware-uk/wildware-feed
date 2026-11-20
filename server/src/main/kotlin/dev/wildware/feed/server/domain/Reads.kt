@@ -395,8 +395,9 @@ class Reads(private val db: Database, private val clock: () -> Long = System::cu
         val author: String, val agentId: String?, val createdAt: Long, val updatedAt: Long,
     )
 
+    /** `{}` too for a value stored before the depth limit that nests past it, so old rows can't stop the apps loading. */
     private fun jsonObjectOrEmpty(text: String): JsonObject =
-        runCatching { Js.parse(text) as? JsonObject }.getOrNull() ?: Rows.empty
+        runCatching { Js.parse(text) as? JsonObject }.getOrNull()?.takeUnless(FeedAttachments::tooDeep) ?: Rows.empty
 
     // ---- agents ---------------------------------------------------------------------------------
 

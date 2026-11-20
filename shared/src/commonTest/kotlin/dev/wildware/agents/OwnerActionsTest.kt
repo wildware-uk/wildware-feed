@@ -80,7 +80,7 @@ class OwnerActionsTest {
     }
 
     @Test
-    fun `answers go as typed JSON values`() = runTest {
+    fun `answers go as typed JSON values, for the question as it was shown`() = runTest {
         val server = FakeDashboard(testScheduler)
         val (_, actions) = setUp(server)
         val request = FakeDashboard.request("r1", 1)
@@ -88,13 +88,16 @@ class OwnerActionsTest {
         actions.answer(request, "Builder", JsonPrimitive(true))
         actions.answer(request.copy(id = "r2"), "Builder", buildJsonArray { add(JsonPrimitive("a")); add(JsonPrimitive("b")) })
         actions.answer(request.copy(id = "r3"), "Builder", buildJsonObject { put("action", "Approve"); put("text", "ok") })
+        // An edited question: the answer says which version it was given to.
+        actions.answer(request.copy(id = "r4", editedAt = 5), "Builder", JsonPrimitive(false))
         runCurrent()
 
         assertEquals(
             listOf(
-                "POST /api/requests/r1/answer" to """{"value":true}""",
-                "POST /api/requests/r2/answer" to """{"value":["a","b"]}""",
-                "POST /api/requests/r3/answer" to """{"value":{"action":"Approve","text":"ok"}}""",
+                "POST /api/requests/r1/answer" to """{"value":true,"editedAt":null}""",
+                "POST /api/requests/r2/answer" to """{"value":["a","b"],"editedAt":null}""",
+                "POST /api/requests/r3/answer" to """{"value":{"action":"Approve","text":"ok"},"editedAt":null}""",
+                "POST /api/requests/r4/answer" to """{"value":false,"editedAt":5}""",
             ),
             server.writes,
         )

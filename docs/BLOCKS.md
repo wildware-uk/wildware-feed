@@ -33,6 +33,10 @@ The server adds what only it knows: who ticked a line and when (`done_by`, `done
 started and ended (`started_at`, `ended_at`), how many lines a log dropped (`dropped`), the files
 and line counts of a diff, and a poll's votes with who cast them.
 
+A person's tick or vote stands for the words they saw. If an agent rewords a line a person ticked,
+the line is open again. If it rewords an option, that option's votes go; a new question drops every
+vote.
+
 ## Changing a block
 
 `update_block({update_id | message_id | request_id, block_id, patch})` changes one block in place.

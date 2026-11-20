@@ -60,6 +60,10 @@ data class OutboxAnswer(
     val typedText: String? = null,
 )
 
+/** The question as the owner saw it when answering: its `editedAt`, null when it had never been edited. */
+@Serializable
+data class QuestionShown(val editedAt: Long? = null)
+
 /** A tag a post goes up wearing: a tag's id, or with [create] a new word the project doesn't have yet. */
 @Serializable
 data class OutboxTag(val tag: String, val create: Boolean = false)
@@ -101,6 +105,8 @@ data class OutboxItem(
     val create: Boolean? = null,
     /** For a field: its name. */
     val field: String? = null,
+    /** For an in-app answer: the version of the question it answers, so a question changed since is not answered. */
+    val shown: QuestionShown? = null,
     /** For a post: the tags it goes up wearing, put on once it is posted. */
     val tags: List<OutboxTag> = emptyList(),
 ) {
@@ -176,8 +182,11 @@ object Outbox {
     fun reply(id: String, nowMillis: Long, label: String, thread: Map<String, String>, text: String?, answers: String?, files: List<OutboxFile>) =
         message(id, nowMillis, label, thread, text, files).copy(answers = answers)
 
-    fun requestAnswer(id: String, nowMillis: Long, agentName: String, requestId: String, value: JsonElement) =
-        OutboxItem(id, nowMillis, OutboxKind.RequestAnswer, "Answer to $agentName", card = CardRef(CardKinds.Request, requestId), value = value.toString())
+    fun requestAnswer(id: String, nowMillis: Long, agentName: String, requestId: String, value: JsonElement, shownEditedAt: Long?) =
+        OutboxItem(
+            id, nowMillis, OutboxKind.RequestAnswer, "Answer to $agentName", card = CardRef(CardKinds.Request, requestId), value = value.toString(),
+            shown = QuestionShown(shownEditedAt),
+        )
 
     fun dismiss(id: String, nowMillis: Long, agentName: String, requestId: String) =
         OutboxItem(id, nowMillis, OutboxKind.Dismiss, "Dismiss ${agentName}'s question", card = CardRef(CardKinds.Request, requestId))
@@ -351,7 +360,9 @@ internal suspend fun DashboardClient.deliverQueued(
                 val requestId = item.card?.id ?: return DeliveryResult(DeliveryOutcome.GiveUp, message = "It has no question.")
                 val value = item.value?.let { runCatching { Json.parseToJsonElement(it) }.getOrNull() }
                     ?: return DeliveryResult(DeliveryOutcome.GiveUp, message = "It has no answer.")
-                answer(requestId, value)
+                // Older queued answers carry no version and are sent as before.
+                val shown = item.shown
+                if (shown != null) answerAsShown(requestId, value, shown.editedAt) else answer(requestId, value)
             }
             OutboxKind.Dismiss -> {
                 val requestId = item.card?.id ?: return DeliveryResult(DeliveryOutcome.GiveUp, message = "It has no question.")

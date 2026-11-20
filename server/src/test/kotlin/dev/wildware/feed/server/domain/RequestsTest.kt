@@ -106,6 +106,19 @@ class RequestsTest {
     }
 
     @Test
+    fun `an answer counts only for the question as it was shown`() {
+        val request = ask()
+        now += 1_000
+        val edited = requests.edit(request.id, "A1", RequestEdit(question = "Delete the live database?"))
+        val e = assertFailsWith<DomainError> { requests.answer(request.id, JsonPrimitive(true), shown = Requests.Shown(editedAt = null)) }
+        assertEquals(409, e.status)
+        assertEquals("pending", requests.find(request.id)!!.state, "the old Yes was not recorded")
+        assertEquals("answered", requests.answer(request.id, JsonPrimitive(true), shown = Requests.Shown(edited.editedAt)).state)
+        // An app that sends no version is answered as before.
+        assertEquals("answered", requests.answer(ask().id, JsonPrimitive(true)).state)
+    }
+
+    @Test
     fun `answers are checked per kind`() {
         fun answerOf(kind: String, value: JsonElement, setup: NewRequest.() -> NewRequest = { this }) =
             Wire.encode(requests.answer(ask(kind, block = setup).id, value).answer!!)

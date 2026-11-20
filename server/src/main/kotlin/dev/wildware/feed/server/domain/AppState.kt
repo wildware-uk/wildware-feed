@@ -26,6 +26,7 @@ class AppState(private val db: Database, private val clock: () -> Long = System:
         if (live != true) throw notFound("no such $kind: $cardId")
 
         val text = state?.let {
+            if (FeedAttachments.tooDeep(it)) throw invalid("state may nest at most ${FeedAttachments.APP_JSON_DEPTH_MAX} levels deep")
             val encoded = Wire.encode(Js.normalize(it))
             if (encoded.length > STATE_MAX_LENGTH) throw invalid("state may be at most $STATE_MAX_LENGTH characters of JSON")
             encoded
@@ -38,9 +39,9 @@ class AppState(private val db: Database, private val clock: () -> Long = System:
         return viewId to stored.second?.let(::readObject)
     }
 
-    /** Stored JSON back as an object, `{}` for anything that does not parse to one. */
+    /** Stored JSON back as an object, `{}` for anything that does not parse to one or nests too deep. */
     private fun readObject(text: String): JsonObject =
-        runCatching { Js.parse(text) }.getOrNull() as? JsonObject ?: JsonObject(emptyMap())
+        (runCatching { Js.parse(text) }.getOrNull() as? JsonObject)?.takeUnless(FeedAttachments::tooDeep) ?: JsonObject(emptyMap())
 
     companion object {
         const val STATE_MAX_LENGTH = 20_000

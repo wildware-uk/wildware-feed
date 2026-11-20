@@ -733,6 +733,18 @@ class DashboardClient(
     }
 
     /**
+     * [answer], for the question as it was shown: [editedAt] is its `editedAt` then (null when it
+     * had never been edited). The dashboard refuses it (409) when the question changed since.
+     */
+    @Throws(Exception::class)
+    suspend fun answerAsShown(requestId: String, value: JsonElement, editedAt: Long?) {
+        http.post("api/requests/$requestId/answer") {
+            authorise()
+            jsonBody(buildJsonObject { put("value", value); put("editedAt", editedAt) })
+        }.requireSuccess()
+    }
+
+    /**
      * Answers a request from a notification button. Returns false when the button no longer
      * answers anything, such as a stale notification for a request that changed shape.
      */
