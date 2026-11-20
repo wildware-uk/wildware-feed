@@ -1,0 +1,43 @@
+name: Set up an emoji font
+description: >
+  Installs a pinned Noto Color Emoji font for the current user. Ubuntu has no colour emoji font,
+  and the screenshots show emoji. The font is cached between runs; on a cache miss it is downloaded
+  from a fixed release tag and checked against its SHA-256. No apt, so slow mirrors can't hold a job up.
+inputs:
+  url:
+    description: The font file, at a fixed release tag.
+    default: https://raw.githubusercontent.com/googlefonts/noto-emoji/v2.051/fonts/NotoColorEmoji.ttf
+  sha256:
+    description: SHA-256 of that file. Change it together with the URL.
+    default: 72a635cb3d2f3524c51620cdde406b217204e8a6a06c6a096ff8ed4b5fd6e27b
+runs:
+  using: composite
+  steps:
+    - id: cache
+      uses: actions/cache/restore@v4
+      with:
+        path: ~/.emoji-font
+        key: emoji-font-${{ inputs.sha256 }}
+    - if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        URL: ${{ inputs.url }}
+        SHA256: ${{ inputs.sha256 }}
+      run: |
+        set -euo pipefail
+        mkdir -p ~/.emoji-font
+        font=~/.emoji-font/NotoColorEmoji.ttf
+        curl -fsSL --retry 5 --retry-all-errors --retry-delay 5 --connect-timeout 15 --max-time 60 -o "$font" "$URL"
+        echo "$SHA256  $font" | sha256sum -c - || { rm -f "$font"; exit 1; }
+    # Saved straight away, so a job that fails later still warms the cache.
+    - if: steps.cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: ~/.emoji-font
+        key: ${{ steps.cache.outputs.cache-primary-key }}
+    - shell: bash
+      run: |
+        mkdir -p ~/.local/share/fonts
+        cp ~/.emoji-font/NotoColorEmoji.ttf ~/.local/share/fonts/
+        fc-cache -f ~/.local/share/fonts
+        fc-list | grep -i "Noto Color Emoji"

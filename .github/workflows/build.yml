@@ -42,9 +42,9 @@ jobs:
           java-version: 21
       - uses: gradle/actions/setup-gradle@v4
       # Ubuntu has no colour emoji font, and the screenshots show emoji reactions.
-      - name: Install an emoji font
+      - name: Set up an emoji font
         timeout-minutes: 5
-        run: sudo apt-get update -q && sudo apt-get install -yq fonts-noto-color-emoji
+        uses: ./.github/actions/setup-emoji-font
       - name: Build the desktop app
         timeout-minutes: 10
         run: ./gradlew :composeApp:desktopJar
