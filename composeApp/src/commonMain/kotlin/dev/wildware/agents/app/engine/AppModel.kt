@@ -229,7 +229,21 @@ class AppModel(
     fun signOut(notice: String? = null) {
         if ((mutableScreen.value as? AppScreen.Signed)?.demo == true) return leaveDemo()
         watcher?.cancel()
-        (mutableScreen.value as? AppScreen.Signed)?.session?.stop()
+        val signed = (mutableScreen.value as? AppScreen.Signed)?.session
+        // The owner chose to sign out: tell the dashboard, so this device's key stops working and its
+        // alerts stop. A notice means the dashboard ended it already. Nothing waits on the answer.
+        if (signed != null && notice == null) {
+            val saved = signed.saved
+            scope.launch {
+                val client = dev.wildware.agents.DashboardClient(saved.server, saved.token, platform.httpEngine())
+                try {
+                    runCatching { client.signOut() }
+                } finally {
+                    client.close()
+                }
+            }
+        }
+        signed?.stop()
         platform.sessions.clear()
         platform.clearLocalData()
         mutableScreen.value = AppScreen.SigningIn(notice)

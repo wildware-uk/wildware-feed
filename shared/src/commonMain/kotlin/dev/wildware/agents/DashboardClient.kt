@@ -850,6 +850,21 @@ class DashboardClient(
 
     fun close() = http.close()
 
+    /**
+     * Signs this device out on the dashboard: its key stops working, it leaves the device list, and
+     * no more alerts go to it. True when the dashboard removed it (false: it was gone already).
+     */
+    @Throws(Exception::class)
+    suspend fun signOut(): Boolean {
+        val response = http.post("api/devices/sign-out") {
+            authorise()
+            jsonBody(buildJsonObject {})
+        }
+        response.requireSuccess()
+        val body = runCatching { json.parseToJsonElement(response.bodyAsText()) as? JsonObject }.getOrNull()
+        return body?.get("signedOut")?.jsonPrimitive?.contentOrNull == "true"
+    }
+
     private suspend fun upload(attachment: Attachment): String = uploadMedia(attachment).id
 
     private suspend fun postMessage(fields: Map<String, String>, mediaIds: List<String>, sendKey: String? = null): Posted {
