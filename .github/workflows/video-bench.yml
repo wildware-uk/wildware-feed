@@ -1,0 +1,83 @@
+# Measures the desktop video player on each desktop: startup, frames shown, stalls, seeks, CPU.
+# Clips are made once with ffmpeg; each desktop plays them from disk and through the app's media
+# proxy from a local server that answers 80 ms late, like a far-off dashboard.
+name: video-bench
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [fix/desktop-video]
+    paths:
+      - .github/workflows/video-bench.yml
+      - composeApp/src/desktopTest/kotlin/dev/wildware/agents/app/feed/bench/**
+      - composeApp/src/desktopMain/kotlin/dev/wildware/agents/app/feed/**
+
+jobs:
+  clips:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Install ffmpeg
+        timeout-minutes: 5
+        run: sudo apt-get update -q && sudo apt-get install -yq ffmpeg
+      - name: Make the clips
+        timeout-minutes: 8
+        run: |
+          mkdir clips && cd clips
+          enc="-c:v libx264 -preset veryfast -pix_fmt yuv420p -c:a aac -b:a 128k"
+          ffmpeg -loglevel error -f lavfi -i testsrc2=size=1920x1080:rate=60 -f lavfi -i sine=f=440:sample_rate=48000 -t 12 $enc -crf 23 -movflags +faststart 1080p60.mp4
+          ffmpeg -loglevel error -f lavfi -i testsrc2=size=3840x2160:rate=30 -f lavfi -i sine=f=440:sample_rate=48000 -t 12 $enc -crf 23 -movflags +faststart 4k30.mp4
+          # A screen recording as it arrives: big, mostly still, and its index at the end of the file.
+          ffmpeg -loglevel error -f lavfi -i testsrc=size=2560x1440:rate=30 -f lavfi -i sine=f=440:sample_rate=48000 -t 12 $enc -crf 23 screen1440p.mp4
+          ffmpeg -loglevel error -f lavfi -i testsrc2=size=1920x1080:rate=30 -f lavfi -i sine=f=440:sample_rate=48000 -t 120 $enc -crf 28 -movflags +faststart long1080p30.mp4
+          ls -la
+      - uses: actions/upload-artifact@v4
+        timeout-minutes: 5
+        with:
+          name: clips
+          path: clips/
+
+  bench:
+    needs: clips
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v4
+      - uses: actions/download-artifact@v4
+        timeout-minutes: 5
+        with:
+          name: clips
+          path: clips
+      - name: Install GStreamer and a display (Linux)
+        if: runner.os == 'Linux'
+        timeout-minutes: 8
+        run: sudo apt-get update -q && sudo apt-get install -yq xvfb gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-libav
+      - name: Run the bench
+        timeout-minutes: 30
+        shell: bash
+        env:
+          VIDEO_BENCH_CLIPS: ${{ github.workspace }}/clips
+        run: |
+          cmd="./gradlew :composeApp:desktopTest --tests dev.wildware.agents.app.feed.bench.VideoBench --no-daemon"
+          if [ "$RUNNER_OS" = Linux ]; then xvfb-run -a -s "-screen 0 1920x1080x24" $cmd; else $cmd; fi
+      - name: Show the numbers
+        if: always()
+        timeout-minutes: 1
+        shell: bash
+        run: cat composeApp/build/video-bench.txt || true
+      - if: always()
+        uses: actions/upload-artifact@v4
+        timeout-minutes: 5
+        with:
+          name: video-bench-${{ matrix.os }}
+          path: composeApp/build/video-bench.txt
+          if-no-files-found: warn
