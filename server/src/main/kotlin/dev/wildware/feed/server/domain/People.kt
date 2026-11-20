@@ -385,6 +385,32 @@ class People(
         }
     }
 
+    /**
+     * The admin API's adoption of a team (docs/HOSTING.md §7): the control plane has proved [email]
+     * is the person's who runs the team, so it becomes this team's first owner's email, proved. Their
+     * account keeps its password, devices and tokens. Refused when the owner already has another
+     * email, or another account has this one: nothing is taken from anyone. Doing it twice is fine.
+     */
+    fun proveOwnerEmail(email: String): Person {
+        val clean = checkedEmail(email)
+        return db.transaction { _ ->
+            val owner = firstOwner() ?: throw DomainError("no_owner", "The team has no owner.", 409)
+            if (owner.email != null && owner.email != clean) {
+                throw DomainError("owner_has_email", "The team's owner already has a different email.", 409)
+            }
+            val other = db.one("SELECT id FROM users WHERE email = ? AND id <> ?", clean, owner.accountId) { it.getString(1) }
+            if (other != null) throw DomainError("email_taken", "Another account has that email.", 409)
+            if (owner.email == null) {
+                // No setup link or ticket can be out for an email the account never had, but be sure.
+                Tenant.allTeams {
+                    db.update("DELETE FROM auth_codes WHERE membership_id IN (SELECT id FROM memberships WHERE user_id = ?)", owner.accountId)
+                }
+            }
+            db.update("UPDATE users SET email = ?, email_verified_at = coalesce(email_verified_at, ?) WHERE id = ?", clean, clock(), owner.accountId)
+            find(owner.id)!!
+        }
+    }
+
     /** The person still in this team with [email], or null; with [proved], only if that email was proved theirs. */
     fun findByEmail(email: String, proved: Boolean = false): Person? {
         val clean = runCatching { checkedEmail(email) }.getOrNull() ?: return null

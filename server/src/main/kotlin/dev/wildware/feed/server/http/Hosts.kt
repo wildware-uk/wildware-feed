@@ -13,7 +13,8 @@ import io.ktor.util.AttributeKey
  * Where a request was sent, and so whose it is (docs/HOSTING.md §4). With `TEAM_DOMAIN` unset,
  * every address is the home team's, as on any self-hosted server. With it set:
  *
- * - `<slug>.<TEAM_DOMAIN>` is that team's, while it is open;
+ * - `<slug>.<TEAM_DOMAIN>` is that team's, while it is open; the home team is there too once it has
+ *   a slug of its own (one the admin API gave it), as a second name for the same team;
  * - `<TEAM_DOMAIN>` itself is the directory: the admin API and `/api/server`, nothing else;
  * - any other address (the home team's own, `localhost`) is the home team's.
  */
@@ -32,8 +33,9 @@ object Hosts {
         if (!host.endsWith(".$domain")) return Place.Team(Tenant.HOME)
         val slug = host.removeSuffix(".$domain")
         if ('.' in slug) return Place.Nowhere
-        // The home team keeps its own address; it is never also at home.<domain>.
-        val team = app.teams.bySlug(slug)?.takeIf { it.id != Tenant.HOME } ?: return Place.Nowhere
+        // The home team keeps its own address, and is never at home.<domain>; a slug it was given is a second name for it.
+        if (slug == Tenant.HOME) return Place.Nowhere
+        val team = app.teams.bySlug(slug) ?: return Place.Nowhere
         return Place.Team(team.id)
     }
 }

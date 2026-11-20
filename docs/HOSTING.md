@@ -342,7 +342,9 @@ What changes, piece by piece:
 - **New public routes** (`/api/account/sign-in`, `/api/devices/ticket`, `/auth/ticket`, `/join/…`) join the guard's
   public list (`http/Guard.kt`). `/admin` has its own token check and is public to the guard.
 - **Today's live server** becomes the home team at its current address: `PUBLIC_BASE_URL` stays the
-  home team's address, and nothing about it moves to a subdomain. Hosted customers' teams get
+  home team's address, and nothing about it moves to a subdomain. Once the control plane adopts it
+  (`POST /admin/teams/{id}/adopt`, section 7) with a slug, it answers at `<slug>.<TEAM_DOMAIN>` too, as
+  a second name: its links still use `PUBLIC_BASE_URL`, and it is never at `home.<TEAM_DOMAIN>`. Hosted customers' teams get
   subdomains.
 - **Renaming a team's address** keeps the old one as a permanent alias of the same team, not a
   redirect: device keys, agent configs, MCP URLs, OAuth tokens and open streams keep working on it.
@@ -505,7 +507,7 @@ and moves the timestamp on by a second if it would send the very same call twice
 Otherwise someone who saw one call in transit could send it again: a replayed sign-up would revoke
 the owner's setup link and hand the replayer a new one.
 
-**Idempotency.** `POST /admin/teams` and `POST /admin/teams/{id}/invites` require an
+**Idempotency.** `POST /admin/teams`, `POST /admin/teams/{id}/adopt` and `POST /admin/teams/{id}/invites` require an
 `Idempotency-Key` header (1 to 255 printable ASCII). The server keeps it 24 hours with a fingerprint
 (method, path, SHA-256 of the body). Same key and request: the first status and body again, with
 `Idempotent-Replayed: true`, and nothing made twice; any one-time link in the answer (`setupUrl`,
@@ -526,13 +528,14 @@ Same key, different request: `422 idempotency_key_reused`. Same key still runnin
 `state` is `active` or `deleting`; once the purge is done the team is `404 no_such_team`.
 `externalRef` is the control plane's own id (up to 64 characters), stored and echoed, never
 interpreted. `ownerSetupDone` says whether the team's first owner has a password: `true` once their
-setup link is used (or when they had a password already), `false` while it is waiting. Reading it
-makes no new link.
+setup link is used (or when they had a password already, or are the home team's founder signing in
+with `ADMIN_PASSWORD_HASH`), `false` while it is waiting. Reading it makes no new link.
 
 | Call | Body | Answer | Errors |
 |---|---|---|---|
 | `POST /admin/teams` | `{slug, name, owner: {email, name}, limits: {seats, storageBytes}, externalRef}` | `201 {team, owner: {accountId, membershipId, email, newAccount, setupUrl, setupExpiresAt}}`. Links an existing account by email (lower-cased) or makes one with no password. `setupUrl` is a one-time password link, 24 h, `null` if the account has a password. | `400 invalid_request`, `422 invalid_slug` (3–30 of `a-z0-9-`, starts with a letter, no trailing `-`, no `--`), `409 slug_taken` (team or alias), `409 slug_reserved` (reserved, or a team deleted in the last 30 days) |
 | `GET /admin/teams/{id}` | – | `200 {team}` | `404 no_such_team` |
+| `POST /admin/teams/{id}/adopt` | `{slug?, name?, externalRef?, owner: {email}}` | `200 {team, owner: {…, newAccount: false, setupUrl: null}}`. Takes on a team the admin API didn't make, such as the home team of a server that ran before the control plane: sets the slug (so it is also at `<slug>.<TEAM_DOMAIN>`; reserved names allowed, `home` not), name and reference, and makes `owner.email`, which the control plane has proved, its first owner's email, proved. Nothing moves: id, address (`PUBLIC_BASE_URL` for the home team), rows, files, device keys, agent and OAuth tokens and the owner's password stay. Repeating it is fine. | `409 owner_has_email` (the owner has a different email), `409 email_taken` (another account has it), `409 slug_taken`, `422 invalid_slug`, `404 no_such_team` |
 | `GET /admin/teams?externalRef=` | – | `200 {teams: […]}` (empty if none) | – |
 | `GET /admin/teams/{id}/usage` | – | `200 {teamId, seats: {used, pendingInvites, limit}, storage: {bytes, limit}, agents, devices, projects: {active, archived}, databaseBytes, lastActivityAt, suspended}` | `404 no_such_team` |
 | `GET /admin/usage?since=&cursor=&limit=` | – | `200 {usage: […], nextCursor}`, teams changed since `since`, oldest first, `limit` 1–500 (100) | – |

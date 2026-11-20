@@ -410,6 +410,66 @@ class ManyTeamsTest {
     }
 
     @Test
+    fun `the control plane takes on the home team where it is, and every key it gave out keeps working`() = withApp { app ->
+        // Before: the home team, signed in on its own address, with an agent.
+        val home = send("agents.example.com", "POST", "/api/devices/sign-in", """{"password":"server password","name":"Phone"}""").obj().s("token")
+        val agent = Tenant.with(Tenant.HOME) { app.agents.mint("scout").second }
+        assertEquals("no_such_team", send("wildware.feed.test", "GET", "/api/server").obj().s("error"))
+
+        val adopt = """{"slug":"wildware","name":"Wildware","externalRef":"tm_home","owner":{"email":"Owner@Example.test"}}"""
+        assertEquals(400, admin("POST", "/admin/teams/home/adopt", adopt).status.value, "an Idempotency-Key is required")
+        val done = admin("POST", "/admin/teams/home/adopt", adopt, "Idempotency-Key" to "adopt-home")
+        assertEquals(200, done.status.value, done.bodyAsText())
+        val team = done.obj().o("team")
+        assertEquals("home", team.s("id"))
+        assertEquals("wildware", team.s("slug"), "a reserved name is fine for the operator's own team")
+        assertEquals("Wildware", team.s("name"))
+        assertEquals("tm_home", team.s("externalRef"))
+        assertEquals("https://agents.example.com", team.s("address"), "its own address doesn't move")
+        assertEquals("true", team.s("ownerSetupDone"), "the founder signs in with the server's password")
+        val owner = done.obj().o("owner")
+        assertEquals("founder", owner.s("membershipId"))
+        assertEquals("owner@example.test", owner.s("email"))
+        assertEquals("false", owner.s("newAccount"))
+        assertEquals("true", admin("POST", "/admin/teams/home/adopt", adopt, "Idempotency-Key" to "adopt-home").headers["Idempotent-Replayed"])
+        assertEquals(200, admin("POST", "/admin/teams/home/adopt", adopt, "Idempotency-Key" to "adopt-home-again").status.value, "doing it again is fine")
+
+        // Both names are the same team: the old key and the agent's token work at each.
+        for (host in listOf("agents.example.com", "wildware.feed.test")) {
+            assertEquals(401, send(host, "GET", "/api/summary").status.value)
+            assertEquals(200, send(host, "GET", "/api/summary", null, "application/json", "Authorization" to "Bearer $home").status.value, host)
+            val mcp = arrayOf("Authorization" to "Bearer $agent", "Accept" to "application/json, text/event-stream")
+            assertEquals(200, send(host, "POST", "/mcp", """{"jsonrpc":"2.0","id":1,"method":"tools/list"}""", "application/json", *mcp).status.value, host)
+        }
+        assertEquals("no_such_team", send("home.feed.test", "GET", "/api/server").obj().s("error"))
+        // The server's password still works, and so does the account's sign-in.
+        assertEquals(201, send("wildware.feed.test", "POST", "/api/devices/sign-in", """{"password":"server password","name":"Laptop"}""").status.value)
+        val lookup = admin("POST", "/admin/memberships/lookup", """{"email":"owner@example.test"}""").obj()["memberships"]!!.jsonArray.single().jsonObject
+        assertEquals("home", lookup.o("team").s("id"))
+        assertEquals("https://agents.example.com", lookup.o("team").s("address"))
+        val ticket = admin("POST", "/admin/teams/home/sign-in-tickets", """{"email":"owner@example.test"}""").obj()
+        assertEquals("https://agents.example.com", ticket.s("address"))
+        assertEquals(201, send("agents.example.com", "POST", "/api/devices/ticket", """{"ticket":"${ticket.s("ticket")}","deviceName":"iPad"}""").status.value)
+
+        // Nothing is taken from anyone.
+        assertEquals("owner_has_email", admin("POST", "/admin/teams/home/adopt", adopt.replace("Owner@", "Other@"), "Idempotency-Key" to "k1").obj().s("error"))
+        admin("POST", "/admin/teams", acme, "Idempotency-Key" to "create-tm_1")
+        assertEquals("slug_taken", admin("POST", "/admin/teams/home/adopt", adopt.replace("\"wildware\"", "\"acme\""), "Idempotency-Key" to "k2").obj().s("error"))
+        assertEquals("no_such_team", admin("POST", "/admin/teams/nope/adopt", adopt, "Idempotency-Key" to "k3").obj().s("error"))
+        assertEquals("wildware", app.teams.find("home")!!.slug)
+    }
+
+    @Test
+    fun `taking on the home team won't take an email another account has`() = withApp { app ->
+        admin("POST", "/admin/teams", acme, "Idempotency-Key" to "create-tm_1")
+        val taken = admin("POST", "/admin/teams/home/adopt", """{"slug":"wildware","owner":{"email":"ann@acme.test"}}""", "Idempotency-Key" to "a1")
+        assertEquals(409, taken.status.value)
+        assertEquals("email_taken", taken.obj().s("error"))
+        assertEquals("home", app.teams.find("home")!!.slug, "a refusal changes nothing")
+        assertEquals("slug_reserved", admin("POST", "/admin/teams/${app.teams.bySlug("acme")!!.id}/adopt", """{"slug":"home","owner":{"email":"ann@acme.test"}}""", "Idempotency-Key" to "a2").obj().s("error"))
+    }
+
+    @Test
     fun `the home team's address can't sit under the team domain`() {
         val env = mapOf(
             "ADMIN_PASSWORD_HASH" to "\$argon2id\$x", "SESSION_SECRET" to "s".repeat(32), "TOKEN_SECRET" to "t".repeat(32),

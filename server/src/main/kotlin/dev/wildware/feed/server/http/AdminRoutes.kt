@@ -187,6 +187,7 @@ private suspend fun ApplicationCall.route(app: App, c: AdminCall, pattern: Strin
         c.method == "GET" && s == listOf("usage") -> { named("usage"); usageSince(app) }
         c.method == "PUT" && s.size == 3 && s[0] == "teams" && s[2] == "limits" -> { named("teams/{id}/limits"); setLimits(app, c, s[1]) }
         c.method == "PUT" && s.size == 3 && s[0] == "teams" && s[2] == "suspended" -> { named("teams/{id}/suspended"); setSuspended(app, c, s[1]) }
+        c.method == "POST" && s.size == 3 && s[0] == "teams" && s[2] == "adopt" -> { named("teams/{id}/adopt"); idempotent(app, c) { adopt(app, c, s[1]) } }
         c.method == "POST" && s.size == 3 && s[0] == "teams" && s[2] == "invites" -> { named("teams/{id}/invites"); idempotent(app, c) { invite(app, c, s[1]) } }
         c.method == "POST" && s.size == 3 && s[0] == "teams" && s[2] == "setup-links" -> { named("teams/{id}/setup-links"); setupLink(app, c, s[1]) }
         c.method == "POST" && s.size == 3 && s[0] == "teams" && s[2] == "sign-in-tickets" -> { named("teams/{id}/sign-in-tickets"); ticket(app, c, s[1]) }
@@ -318,8 +319,9 @@ private fun teamJson(app: App, t: Teams.Team): JsonObject = buildJsonObject {
     put("suspended", t.suspended)
     put("suspendedReason", t.suspendedReason?.let(::JsonPrimitive) ?: JsonNull)
     put("state", t.state.wire)
-    // Whether the team's first owner has a password: their setup link is used, or wasn't needed. Read only, no link made.
-    put("ownerSetupDone", Tenant.with(t.id) { app.people.firstOwner()?.hasPassword ?: false })
+    // Whether the team's first owner can sign in with a password: their setup link is used, or wasn't needed (the
+    // home team's founder has the server's). Read only, no link made.
+    put("ownerSetupDone", Tenant.with(t.id) { app.people.firstOwner()?.let { app.people.passwordHashOf(it) != null } ?: false })
     put("createdAt", Wire.isoOf(t.createdAt))
 }
 
@@ -366,6 +368,43 @@ private fun createTeamAndOwner(app: App, slug: String, name: String, ref: String
             },
             buildJsonObject { put("kind", "setup"); put("team", team.id); put("membership", person.id) },
         )
+    }
+}
+
+/**
+ * Take on a team the admin API didn't make (the home team of a server that ran before the control
+ * plane): give it a slug, a name and the control plane's reference, and make the email the control
+ * plane has proved its first owner's. Nothing moves: its id, address, rows, files, keys and tokens
+ * stay as they are. Answers like a new team, with no setup link.
+ */
+private fun adopt(app: App, c: AdminCall, id: String): Outcome {
+    openTeam(app, id)
+    val body = c.json
+    val slug = c.string(body, "slug", 64, required = false)?.lowercase()
+    val name = c.string(body, "name", People.NAME_MAX, required = false)
+    val ref = c.string(body, "externalRef", Teams.EXTERNAL_REF_MAX, required = false)
+    val owner = body["owner"] as? JsonObject ?: throw bad("owner is required: {email}.")
+    val email = c.string(owner, "email", 254)!!.lowercase()
+    if (!Regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$").matches(email)) throw bad("owner.email doesn't look like an email address.")
+    return app.db.transaction { _ ->
+        val team = app.teams.adopt(id, slug, name, ref) ?: throw noTeam()
+        Tenant.with(team.id) {
+            val person = app.people.proveOwnerEmail(email)
+            Outcome(
+                200,
+                buildJsonObject {
+                    put("team", teamJson(app, team))
+                    put("owner", buildJsonObject {
+                        put("accountId", person.accountId)
+                        put("membershipId", person.id)
+                        put("email", email)
+                        put("newAccount", false)
+                        put("setupUrl", JsonNull)
+                        put("setupExpiresAt", JsonNull)
+                    })
+                },
+            )
+        }
     }
 }
 

@@ -82,9 +82,7 @@ class Teams(
 
     /** Why [slug] can't be a new team's, or null when it can. */
     fun slugProblem(slug: String): DomainError? {
-        if (!SLUG.matches(slug) || "--" in slug) {
-            return DomainError("invalid_slug", "A team's address is 3 to 30 of a-z, 0-9 and -, starting with a letter, with no -- and no - at the end.", 422)
-        }
+        if (!SLUG.matches(slug) || "--" in slug) return badSlug()
         if (slug in RESERVED_SLUGS) return DomainError("slug_reserved", "That address is reserved.", 409)
         val held = db.one("SELECT state, deleted_at FROM teams WHERE slug = ?", slug) { it.getString(1) to it.longOrNull("deleted_at") }
             ?: return null
@@ -93,6 +91,33 @@ class Teams(
         } else {
             DomainError("slug_taken", "That address is taken.", 409)
         }
+    }
+
+    private fun badSlug() =
+        DomainError("invalid_slug", "A team's address is 3 to 30 of a-z, 0-9 and -, starting with a letter, with no -- and no - at the end.", 422)
+
+    /**
+     * The admin API taking on a team it didn't make, such as the home team of a server that was
+     * running before the control plane (docs/HOSTING.md §7): a slug, so it is also at
+     * `<slug>.<TEAM_DOMAIN>`, a name, and the control plane's reference. Null leaves each as it is.
+     * The reserved slugs keep customers from passing off as the service; the operator's own team may
+     * have one. Its own address ([address]) doesn't change, so nothing it handed out moves.
+     */
+    fun adopt(id: String, slug: String?, name: String?, externalRef: String?): Team? {
+        val team = find(id)?.takeIf { it.open } ?: return null
+        if (slug != null && slug != team.slug) {
+            if (!SLUG.matches(slug) || "--" in slug) throw badSlug()
+            if (slug == Tenant.HOME) throw DomainError("slug_reserved", "That address is reserved.", 409)
+            if (db.one("SELECT 1 FROM teams WHERE slug = ? AND id <> ?", slug, id) { true } == true) {
+                throw DomainError("slug_taken", "That address is taken.", 409)
+            }
+        }
+        val now = clock()
+        db.update(
+            "UPDATE teams SET slug = coalesce(?, slug), name = coalesce(?, name), external_ref = coalesce(?, external_ref), updated_at = ? WHERE id = ? AND state = 'active'",
+            slug, name, externalRef, now, id,
+        )
+        return find(id)
     }
 
     /** A new, empty team with the built-in apps and embed types every team has. */
