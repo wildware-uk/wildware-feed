@@ -1,5 +1,6 @@
 package dev.wildware.agents.app.feed
 
+import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -68,6 +69,7 @@ internal fun ProjectGroups(ui: FeedUi, channel: @Composable (Project) -> Unit) {
                 }
             },
             spoken = "${group.name}, project, ${channels.size} channel${if (channels.size == 1) "" else "s"}, " + if (folded) "folded" else "open",
+            role = Role.Button,
             onClick = { folds.set(groupFoldKey(group.id), !folded) },
         )
         if (!folded) {
@@ -97,6 +99,7 @@ internal fun NewGroupRow(ui: FeedUi) {
         leading = { Icon(Icons.Plus, null, tint = colors.textMuted, modifier = Modifier.size(18.dp)) },
         trailing = {},
         spoken = "New project, a group of channels",
+        role = Role.Button,
         onClick = { ui.projectDialog = ProjectDialog.NewGroup },
     )
 }

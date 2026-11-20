@@ -126,6 +126,8 @@ internal fun NavRow(
     leading: @Composable () -> Unit,
     trailing: @Composable () -> Unit = {},
     spoken: String = label,
+    /** A place to go (a channel, a view) is a tab; a row that does something ("New channel") is a button. */
+    role: Role = Role.Tab,
     onClick: () -> Unit = {},
 ) {
     val colors = AgentTheme.colors
@@ -136,8 +138,8 @@ internal fun NavRow(
             .fillMaxWidth()
             .clip(shape)
             .background(bg)
-            .pressable(spoken, shape, role = Role.Tab, labelIsShown = spoken == label, onClick = onClick)
-            .semantics { this.selected = selected }
+            .pressable(spoken, shape, role = role, labelIsShown = spoken == label, onClick = onClick)
+            .then(if (role == Role.Tab) Modifier.semantics { this.selected = selected } else Modifier)
             .padding(horizontal = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -257,6 +259,7 @@ internal fun NewProjectRow(ui: FeedUi) {
         leading = { Icon(Icons.Plus, null, tint = colors.textMuted, modifier = Modifier.size(18.dp)) },
         trailing = {},
         spoken = "New channel",
+        role = Role.Button,
         onClick = { ui.projectDialog = ProjectDialog.New },
     )
 }
@@ -278,6 +281,7 @@ internal fun ArchivedProjects(ui: FeedUi) {
         leading = { Icon(if (ui.showArchived) Icons.ChevronDown else Icons.ChevronRight, null, tint = colors.textFaint, modifier = Modifier.size(15.dp)) },
         trailing = { MetaText("$count") },
         spoken = if (ui.showArchived) "Hide $count archived" else "Show $count archived",
+        role = Role.Button,
         onClick = { ui.showArchived = !ui.showArchived },
     )
     if (ui.showArchived) {
@@ -287,6 +291,7 @@ internal fun ArchivedProjects(ui: FeedUi) {
                 selected = false,
                 leading = { Icon(Icons.Settings, null, tint = colors.textFaint, modifier = Modifier.size(15.dp)) },
                 spoken = "${g.name}, archived project, settings",
+                role = Role.Button,
                 onClick = { ui.projectDialog = ProjectDialog.GroupSettings(g.id) },
             )
             Column(Modifier.padding(start = 14.dp)) {
