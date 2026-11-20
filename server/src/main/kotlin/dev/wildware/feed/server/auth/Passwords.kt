@@ -5,22 +5,35 @@ import org.bouncycastle.crypto.params.Argon2Parameters
 import java.security.MessageDigest
 import java.security.SecureRandom
 import java.util.Base64
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * argon2id in the PHC string format node-argon2 writes: `$argon2id$v=19$m=65536,p=4,t=3$salt$hash`
  * (spec/01-config-and-auth.md §4). Verification reads the parameters from the string.
+ *
+ * Every hash waits for a turn at [gate]. Request handlers wrap their password work in `gate.run`,
+ * so their wait holds no thread; any other caller blocks here for its turn.
  */
 object Passwords {
     private val encoder = Base64.getEncoder().withoutPadding()
     private val decoder = Base64.getDecoder()
 
-    fun hash(password: String): String {
+    val gate = PasswordGate.fromEnv()
+
+    private val running = AtomicInteger()
+
+    /** Tests: called as each hash starts, with how many are running then, this one included. */
+    @Volatile internal var onDerive: (running: Int) -> Unit = {}
+
+    fun hash(password: String): String = gate.blocking {
         val salt = ByteArray(16).also(SecureRandom()::nextBytes)
         val out = derive(Argon2Parameters.ARGON2_id, 0x13, 65536, 3, 4, salt, password, 32)
-        return "\$argon2id\$v=19\$m=65536,p=4,t=3\$${encoder.encodeToString(salt)}\$${encoder.encodeToString(out)}"
+        "\$argon2id\$v=19\$m=65536,p=4,t=3\$${encoder.encodeToString(salt)}\$${encoder.encodeToString(out)}"
     }
 
-    fun verify(encoded: String, password: String): Boolean = runCatching {
+    fun verify(encoded: String, password: String): Boolean = gate.blocking { check(encoded, password) }
+
+    private fun check(encoded: String, password: String): Boolean = runCatching {
         if (encoded.isEmpty() || password.isEmpty()) return false
         val parts = encoded.split('$')
         // ["", "argon2id", "v=19", "m=..,p=..,t=..", salt, hash]
@@ -40,6 +53,15 @@ object Passwords {
     }.getOrDefault(false)
 
     private fun derive(type: Int, version: Int, memoryKb: Int, iterations: Int, parallelism: Int, salt: ByteArray, password: String, length: Int): ByteArray {
+        onDerive(running.incrementAndGet())
+        try {
+            return generate(type, version, memoryKb, iterations, parallelism, salt, password, length)
+        } finally {
+            running.decrementAndGet()
+        }
+    }
+
+    private fun generate(type: Int, version: Int, memoryKb: Int, iterations: Int, parallelism: Int, salt: ByteArray, password: String, length: Int): ByteArray {
         val generator = Argon2BytesGenerator()
         generator.init(
             Argon2Parameters.Builder(type)

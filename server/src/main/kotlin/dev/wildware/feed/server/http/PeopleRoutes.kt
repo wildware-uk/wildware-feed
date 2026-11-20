@@ -1,6 +1,7 @@
 package dev.wildware.feed.server.http
 
 import dev.wildware.feed.server.App
+import dev.wildware.feed.server.auth.Passwords
 import dev.wildware.feed.server.domain.People
 import dev.wildware.feed.server.domain.invalid
 import dev.wildware.feed.server.domain.jsBoolean
@@ -34,7 +35,9 @@ fun Route.peopleRoutes(app: App) {
             fun optional(key: String) = if (key in body) body[key].jsString ?: throw invalid("$key must be a string") else null
             val unknown = body.keys - setOf("name", "email", "password", "currentPassword")
             if (unknown.isNotEmpty()) throw invalid("a change to you takes name, email, password and currentPassword, not ${unknown.joinToString(", ")}")
-            val me = app.people.updateMe(call.person, optional("name"), optional("email"), optional("password"), optional("currentPassword"))
+            val update = { app.people.updateMe(call.person, optional("name"), optional("email"), optional("password"), optional("currentPassword")) }
+            // A new email or password checks the current one: password work, so it waits its turn.
+            val me = if ("email" in body || "password" in body) Passwords.gate.run(update) else update()
             if ("name" in body) changed()
             call.respondOwner(200, buildJsonObject { put("person", personView(me, email = true)) })
         },
@@ -149,7 +152,8 @@ fun Route.peopleRoutes(app: App) {
             val body = call.jsonObjectBody(BodyLimits.PUBLIC)
             fun text(key: String) = body[key].jsString ?: throw invalid("$key must be a string")
             val deviceName = requiredText(text("deviceName"), "deviceName", 100)
-            val person = app.people.accept(tokenOf(body), text("name"), text("email"), text("password"))
+            val code = tokenOf(body)
+            val person = Passwords.gate.run { app.people.accept(code, text("name"), text("email"), text("password")) }
             val (device, token) = app.devices.mint(deviceName, person.id)
             changed()
             val minted = buildJsonObject {

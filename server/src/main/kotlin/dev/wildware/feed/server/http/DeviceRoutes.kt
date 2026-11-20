@@ -45,7 +45,11 @@ fun Route.deviceRoutes(app: App) {
             }
             when (val result = app.checkPassword(password, call.clientAddress(app.config), email)) {
                 is PasswordCheck.Refused -> {
-                    val code = if (result.status == 429) "rate_limited" else "wrong_password"
+                    val code = when (result.status) {
+                        429 -> "rate_limited"
+                        503 -> "busy"
+                        else -> "wrong_password"
+                    }
                     val headers = result.retryAfterS?.let { arrayOf("Retry-After" to it.toString()) } ?: emptyArray()
                     call.respondJson(result.status, Wire.error(code, result.message), Wire.JSON_UTF8, "Cache-Control" to "no-store", *headers)
                 }

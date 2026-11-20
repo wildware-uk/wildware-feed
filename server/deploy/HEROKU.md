@@ -23,7 +23,7 @@ of about 50 MB) + R2 (10 GB of storage free, then $0.015 per GB a month; no egre
 | --- | --- |
 | The router waits 30 s for the first byte of an answer, counted from the end of the request body | `HOLD_S=25`: `request_input` and `await_request` answer within 25 s (agents loop on `pending`). Uploads answer once the bytes are in the bucket: about 8 s for 200 MB at 25 MB/s to the bucket. |
 | 55 s without a byte closes a connection | Event streams already send a heartbeat every 15 s. |
-| 512 MB of memory | `JAVA_OPTS` caps the heap; `FFMPEG_THREADS=1` and `DERIVE_WORKERS=1` keep ffmpeg at about 215 MB. Measured peak, server and ffmpeg transcoding 1080p: 417 MB. |
+| 512 MB of memory | `JAVA_OPTS` caps the heap; `FFMPEG_THREADS=1` and `DERIVE_WORKERS=1` keep ffmpeg at about 215 MB. Measured peak, server and ffmpeg transcoding 1080p: 417 MB. A password check holds about 69 MiB of the heap, so the server sizes how many run at once from the heap (one here; `PASSWORD_HASH_CONCURRENCY` overrides it) and asks the rest to try again after 2 s. |
 | The disk is wiped on restart | `DATA_DIR=/tmp/feed` holds only uploads in progress and ffmpeg's work files. An upload cut off by a restart is retried by its client. |
 | The dyno restarts at least once a day | The boot id changes and clients resync, as after any restart. |
 | Requests reach the dyno through the router | `ADDRESS_HEADER=X-Forwarded-For`, `XFF_DEPTH=1`, so rate limits and sign-in lockouts see the real client address. |

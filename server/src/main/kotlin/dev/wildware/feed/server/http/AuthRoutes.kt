@@ -1,6 +1,9 @@
 package dev.wildware.feed.server.http
 
 import dev.wildware.feed.server.App
+import dev.wildware.feed.server.auth.PasswordGate
+import dev.wildware.feed.server.auth.Passwords
+import dev.wildware.feed.server.auth.SlidingLimiter
 import dev.wildware.feed.server.domain.People
 import dev.wildware.feed.server.domain.jsTrim
 
@@ -16,34 +19,36 @@ sealed interface PasswordCheck {
     data class Refused(val status: Int, val message: String, val retryAfterS: Long? = null) : PasswordCheck
 }
 
-fun App.checkPassword(password: String?, clientAddress: String, email: String? = null): PasswordCheck {
+suspend fun App.checkPassword(password: String?, clientAddress: String, email: String? = null): PasswordCheck {
     if (password == "") return PasswordCheck.Refused(400, "Enter your password.")
     if (email != null && email.isBlank()) return PasswordCheck.Refused(400, "Enter your email.")
-    val check = { pw: String -> if (email == null) people.signInFounder(pw) else people.signIn(email, pw) }
-    if (config.trustLoopback && isLoopback(clientAddress)) {
-        val verdict = loopbackLimiter.check(LOOPBACK)
-        if (!verdict.allowed) return PasswordCheck.Refused(429, "Too many attempts. Try again later.", (verdict.retryAfterMs + 999) / 1000)
-        val person = check(password ?: "")
-        if (person == null) {
-            loopbackLimiter.record(LOOPBACK)
-            return PasswordCheck.Refused(400, if (email == null) WRONG else WRONG_EMAIL)
-        }
-        loopbackLimiter.reset(LOOPBACK)
-        return PasswordCheck.Ok(person)
-    }
     // Cleaned as People.signIn cleans it, so one account is one budget however the email is spelled.
     val emailKey = email?.let { "email:" + it.jsTrim().lowercase() }
-    for (verdict in listOfNotNull(loginLimiter.check(clientAddress), emailKey?.let { emailLimiter.check(it) })) {
-        if (!verdict.allowed) return PasswordCheck.Refused(429, "Too many attempts. Try again later.", (verdict.retryAfterMs + 999) / 1000)
+    val budgets = if (config.trustLoopback && isLoopback(clientAddress)) {
+        listOf(loopbackLimiter to LOOPBACK)
+    } else {
+        listOfNotNull(loginLimiter to clientAddress, emailKey?.let { emailLimiter to it })
     }
-    val person = check(password ?: "")
-    if (person == null) {
-        loginLimiter.record(clientAddress)
-        emailKey?.let { emailLimiter.record(it) }
-        return PasswordCheck.Refused(400, if (email == null) WRONG else WRONG_EMAIL)
+    // Each guess is counted before the slow check, in the same step as the limit is checked, so
+    // guesses sent at once can't all get in under the limit. A right password clears them again.
+    val taken = mutableListOf<Pair<SlidingLimiter, String>>()
+    for ((limiter, key) in budgets) {
+        val verdict = limiter.take(key)
+        if (!verdict.allowed) {
+            taken.forEach { (l, k) -> l.giveBack(k) }
+            return PasswordCheck.Refused(429, "Too many attempts. Try again later.", (verdict.retryAfterMs + 999) / 1000)
+        }
+        taken += limiter to key
     }
-    loginLimiter.reset(clientAddress)
-    emailKey?.let { emailLimiter.reset(it) }
+    val person = try {
+        Passwords.gate.run { if (email == null) people.signInFounder(password ?: "") else people.signIn(email, password ?: "") }
+    } catch (e: PasswordGate.Busy) {
+        // No password was checked, so the guess doesn't count.
+        taken.forEach { (l, k) -> l.giveBack(k) }
+        return PasswordCheck.Refused(503, e.message, 1)
+    }
+    if (person == null) return PasswordCheck.Refused(400, if (email == null) WRONG else WRONG_EMAIL)
+    budgets.forEach { (limiter, key) -> limiter.reset(key) }
     return PasswordCheck.Ok(person)
 }
 

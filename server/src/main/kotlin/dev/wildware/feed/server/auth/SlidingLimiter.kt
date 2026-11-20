@@ -39,6 +39,12 @@ class SlidingLimiter(
     @Synchronized
     fun take(key: String): Verdict = check(key).also { if (it.allowed) record(key) }
 
+    /** Undo one [take] that turned out not to count. */
+    @Synchronized
+    fun giveBack(key: String) {
+        hits[key]?.removeLastOrNull()
+    }
+
     @Synchronized
     fun reset(key: String) {
         hits.remove(key)

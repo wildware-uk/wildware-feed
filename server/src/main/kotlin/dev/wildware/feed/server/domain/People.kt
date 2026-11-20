@@ -148,6 +148,8 @@ class People(
 
     private val dummyHash by lazy { Passwords.hash(Tokens.random()) }
 
+    private fun badInvite() = DomainError("invalid_invite", "That invite has expired, was used already, or isn't right. Ask for a new one.", 400)
+
     // ---- invites ----------------------------------------------------------------------------------
 
     /** A new invite and its token, shown once. Owners invite any role; admins invite members. */
@@ -209,9 +211,11 @@ class People(
         val cleanName = requiredText(name, "name", NAME_MAX)
         val cleanEmail = checkedEmail(email)
         checkNewPassword(password)
+        // A bad link is refused before any password work. It is checked again below, where it is used up.
+        peek(token) ?: throw badInvite()
         val hashed = Passwords.hash(password)
         return db.transaction { _ ->
-            val invite = peek(token) ?: throw DomainError("invalid_invite", "That invite has expired, was used already, or isn't right. Ask for a new one.", 400)
+            val invite = peek(token) ?: throw badInvite()
             if (invite.email != null && invite.email != cleanEmail) throw invalid("this invite is for another email address")
             val existing = db.one("SELECT id, password_hash FROM users WHERE email = ?", cleanEmail) { it.getString(1) to it.getString(2) }
             val accountId = if (existing != null) {

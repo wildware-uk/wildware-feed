@@ -1,6 +1,7 @@
 package dev.wildware.feed.server.http
 
 import dev.wildware.feed.server.App
+import dev.wildware.feed.server.auth.Passwords
 import dev.wildware.feed.server.domain.invalid
 import dev.wildware.feed.server.domain.requiredText
 import io.ktor.http.HttpMethod
@@ -79,7 +80,7 @@ fun Route.ticketRoutes(app: App) {
             if (password.length < 8) return@to call.setupPage(400, SetupPage.form("A password needs at least 8 characters."))
             val redeemed = app.teams.redeemCode("setup", code) ?: return@to call.setupPage(404, SetupPage.gone())
             val person = app.people.find(redeemed.membershipId)?.takeIf { it.active }
-                ?.let { app.people.setOwnPassword(it, password, redeemed.email) }
+                ?.let { Passwords.gate.run { app.people.setOwnPassword(it, password, redeemed.email) } }
                 ?: return@to call.setupPage(404, SetupPage.gone())
             call.setupPage(200, SetupPage.done(person.email.orEmpty(), app.teams.address()))
         },
