@@ -308,6 +308,7 @@ tasks.named<Test>("desktopTest") {
     val dir = layout.buildDirectory.dir("screenshots")
     outputs.dir(dir)
     systemProperty("screenshots.dir", dir.get().asFile.absolutePath)
-    systemProperty("java.awt.headless", "true")
+    // The video bench (VIDEO_BENCH_CLIPS) opens real windows; everything else runs without a screen.
+    systemProperty("java.awt.headless", (System.getenv("VIDEO_BENCH_CLIPS") == null).toString())
     maxHeapSize = "2g"
 }

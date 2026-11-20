@@ -11,6 +11,7 @@ on:
       - .github/workflows/video-bench.yml
       - composeApp/src/desktopTest/kotlin/dev/wildware/agents/app/feed/bench/**
       - composeApp/src/desktopMain/kotlin/dev/wildware/agents/app/feed/**
+      - composeApp/build.gradle.kts
 
 jobs:
   clips:
