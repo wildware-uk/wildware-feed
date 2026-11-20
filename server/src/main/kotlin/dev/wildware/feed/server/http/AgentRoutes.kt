@@ -130,6 +130,21 @@ private suspend fun ApplicationCall.mcp(app: App) {
 
     val requests = messages.map { it as JsonObject }.filter { "id" in it && "method" in it }
     if (requests.isEmpty()) return respondRaw(202, "", null)
+    // Each call in a batch counts against the rate limits, as it would sent alone; the POST took one.
+    if (requests.size > 1) {
+        val more = requests.size - 1
+        val limits = listOfNotNull(app.mcpLimiter to agent.id, (app.teamMcpLimiter to dev.wildware.feed.server.db.Tenant.id).takeIf { app.config.multiTeam })
+        val taken = mutableListOf<Pair<dev.wildware.feed.server.auth.SlidingLimiter, String>>()
+        for ((limiter, key) in limits) {
+            val verdict = limiter.take(key, more)
+            if (!verdict.allowed) {
+                taken.forEach { (l, k) -> l.giveBack(k, more) }
+                val s = verdict.retryAfterSeconds
+                return respondRaw(429, transportError(-32000, "rate limit exceeded: this batch holds more calls than are left; retry after ${s}s"), Wire.JSON, "Retry-After" to s.toString())
+            }
+            taken += limiter to key
+        }
+    }
     val answers = requests.map { answer(app, agent, it) }
     respondRaw(200, if (parsed is JsonArray) Wire.encode(JsonArray(answers)) else Wire.encode(answers.single()), Wire.JSON)
 }

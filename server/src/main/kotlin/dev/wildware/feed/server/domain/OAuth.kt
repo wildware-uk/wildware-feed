@@ -176,7 +176,7 @@ class OAuth(private val db: Database, private val tokenSecret: String, private v
         if (!agentLive(grant.agentId)) throw Refused("invalid_grant", "the agent this was allowed as has been revoked")
         val issued = db.transaction { _ ->
             val marked = db.update("UPDATE oauth_grants SET code_used_at = ? WHERE team_id = :team AND id = ? AND code_used_at IS NULL", clock(), grant.id)
-            if (marked == 1) issue(grant, spent = null) else null
+            if (marked == 1) issue(grant) else null
         }
         if (issued == null) {
             // Lost a race with another use of the same code: as for any second use, revoke the grant.
@@ -210,7 +210,7 @@ class OAuth(private val db: Database, private val tokenSecret: String, private v
         return db.transaction { _ ->
             val spent = db.update("UPDATE oauth_tokens SET used_at = ? WHERE team_id = :team AND token_hash = ? AND used_at IS NULL", clock(), hash(token))
             if (spent != 1) throw bad
-            issue(grant, spent = hash(token))
+            issue(grant)
         }
     }
 
@@ -224,14 +224,14 @@ class OAuth(private val db: Database, private val tokenSecret: String, private v
 
     /**
      * A new pair for [grant]. A grant holds one access token and one live refresh token at a time:
-     * the earlier access token goes, and of the spent refresh tokens only the one just spent ([spent])
-     * is kept, to catch it coming back.
+     * the earlier access token goes. Spent refresh tokens are kept until they would have expired, so
+     * a copy coming back revokes the grant however many refreshes came after it.
      */
-    private fun issue(grant: Grant, spent: String?): Issued {
+    private fun issue(grant: Grant): Issued {
         val now = clock()
         db.update(
-            "DELETE FROM oauth_tokens WHERE team_id = :team AND grant_id = ? AND (kind = 'access' OR (kind = 'refresh' AND used_at IS NOT NULL AND token_hash <> ?))",
-            grant.id, spent ?: "",
+            "DELETE FROM oauth_tokens WHERE team_id = :team AND grant_id = ? AND (kind = 'access' OR (kind = 'refresh' AND used_at IS NOT NULL AND expires_at <= ?))",
+            grant.id, now,
         )
         val access = Tokens.random()
         val refresh = Tokens.random()

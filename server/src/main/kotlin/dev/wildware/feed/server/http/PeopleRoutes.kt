@@ -114,7 +114,7 @@ fun Route.peopleRoutes(app: App) {
 
     /** Throttled per address: a token is unguessable, but nobody gets to try many. */
     suspend fun io.ktor.server.routing.RoutingContext.throttled(): Boolean {
-        val verdict = app.inviteLimiter.take(call.clientAddress(app.config))
+        val verdict = app.inviteLimiter.take(call.limiterAddress(app.config))
         if (verdict.allowed) return false
         call.respondJson(
             429, Wire.error("rate_limited", "Too many tries. Try again later."), Wire.JSON_UTF8,

@@ -90,7 +90,7 @@ fun Route.pairingRoutes(app: App) {
 }
 
 /** The client's address, or null when the configured address header is missing. */
-private fun ApplicationCall.clientAddressOrNull(app: App): String? = runCatching { clientAddress(app.config) }.getOrNull()
+private fun ApplicationCall.clientAddressOrNull(app: App): String? = runCatching { limiterAddress(app.config) }.getOrNull()
 
 /** Take one from [limiter] for [key], or answer 429 with Retry-After and return false. */
 private suspend fun ApplicationCall.allowed(limiter: dev.wildware.feed.server.auth.SlidingLimiter, key: String): Boolean {

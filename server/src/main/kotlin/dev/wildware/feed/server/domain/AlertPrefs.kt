@@ -16,6 +16,10 @@ object AlertPrefs {
     val LEVELS = listOf("info", "success", "warn", "error")
     val PRIORITIES = listOf("low", "medium", "high", "critical")
 
+    /** Most agents or channels one list may name, as for alert-projects; each an agent id or channel slug. */
+    const val MAX_NAMES = 200
+    const val MAX_NAME_LENGTH = 100
+
     /**
      * What an alert is about: its kind, for an update its level, its priority (updates and
      * questions), and who sent it from which project, for a phone that lets only some page it.
@@ -46,6 +50,8 @@ object AlertPrefs {
             val value = input[field] ?: return
             if (value !is JsonArray) throw invalid("$field must be a list")
             if (value.any { it.jsString == null }) throw invalid("$field must be a list of strings")
+            if (value.size > MAX_NAMES) throw invalid("$field must name at most $MAX_NAMES")
+            if (value.any { it.jsString!!.length > MAX_NAME_LENGTH }) throw invalid("$field: each name must be at most $MAX_NAME_LENGTH characters")
             out[field] = JsonArray(value.map { it.jsString!! }.distinct().map(::JsonPrimitive))
         }
         list("types", TYPES)

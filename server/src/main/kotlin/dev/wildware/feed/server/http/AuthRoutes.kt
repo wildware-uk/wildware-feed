@@ -11,7 +11,8 @@ import dev.wildware.feed.server.domain.jsTrim
  * The password check behind device sign-in (spec/01 §5.1) and the OAuth page. Without an email it
  * is today's sign-in: the founding owner's password (ADMIN_PASSWORD_HASH, or one they set). With an
  * email it is that person's (migration 055). Five wrong guesses in 15 minutes lock an address out,
- * and ten in an hour lock an email out, wherever they come from. On the desktop app's own server
+ * and ten in an hour lock an email out, wherever they come from. An IPv6 client counts as its /64
+ * ([limiterAddress]), as one client usually holds the whole /64. On the desktop app's own server
  * (trustLoopback) clients on this computer share a budget of their own instead.
  */
 sealed interface PasswordCheck {
@@ -48,7 +49,11 @@ suspend fun App.checkPassword(password: String?, clientAddress: String, email: S
         return PasswordCheck.Refused(503, e.message, 1)
     }
     if (person == null) return PasswordCheck.Refused(400, if (email == null) WRONG else WRONG_EMAIL)
-    budgets.forEach { (limiter, key) -> limiter.reset(key) }
+    // A right password doesn't count, and clears only the wrong guesses made at this account: its
+    // email's budget, or for the founder's sign-in this address's. An address is shared by every
+    // account tried from it, so signing in to one must not wipe guesses made at another.
+    taken.forEach { (l, k) -> l.giveBack(k) }
+    if (emailKey != null) emailLimiter.reset(emailKey) else if (budgets.none { it.first === loopbackLimiter }) loginLimiter.reset(clientAddress)
     return PasswordCheck.Ok(person)
 }
 

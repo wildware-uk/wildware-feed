@@ -396,6 +396,21 @@ class OAuthRoutesTest {
     }
 
     @Test
+    fun `a copied refresh token two rotations old still revokes the grant`() = withApp {
+        val first = connect("Codex")
+        val clientId = first.s("client_id")
+        fun refresh(t: String) = arrayOf("grant_type" to "refresh_token", "refresh_token" to t, "client_id" to clientId)
+        val second = token(*refresh(first.s("refresh_token"))).bodyAsText().json()
+        val third = token(*refresh(second.s("refresh_token"))).bodyAsText().json()
+        assertEquals(200, mcp(third.s("access_token")).status.value)
+
+        now += OAuth.REUSE_GRACE_MS + 1
+        assertEquals("invalid_grant", token(*refresh(first.s("refresh_token"))).bodyAsText().json().s("error"))
+        assertEquals(401, mcp(third.s("access_token")).status.value, "the whole grant is revoked")
+        assertEquals("invalid_grant", token(*refresh(third.s("refresh_token"))).bodyAsText().json().s("error"))
+    }
+
+    @Test
     fun `an existing agent can be chosen, and keeps its own token too`() = withApp {
         val (agent, minted) = app.agents.mint("laptop")
         val tokens = connect("laptop", "choice" to "existing", "agent_id" to agent.id)
@@ -509,7 +524,7 @@ class OAuthRoutesTest {
     }
 
     @Test
-    fun `refreshing replaces the access token, keeps one spent refresh token, and the rate limit is per agent`() = withApp {
+    fun `refreshing replaces the access token, keeps spent refresh tokens to catch copies, and the rate limit is per agent`() = withApp {
         val tokens = connect("Busy")
         val clientId = tokens.s("client_id")
         var refresh = tokens.s("refresh_token")
@@ -519,8 +534,9 @@ class OAuthRoutesTest {
             val next = token("grant_type" to "refresh_token", "refresh_token" to refresh, "client_id" to clientId).bodyAsText().json()
             refresh = next.s("refresh_token"); access = next.s("access_token"); accesses += access
         }
-        // One access, one live refresh, one spent refresh: refreshing does not pile up rows.
-        assertEquals(listOf("access" to 1, "refresh" to 2), app.db.query("SELECT kind, count(*) FROM oauth_tokens GROUP BY kind ORDER BY kind") { it.getString(1) to it.getInt(2) })
+        // One access and one live refresh. The five spent refresh tokens stay until they would have
+        // expired (then the sweep takes them), so a copy of any of them coming back is caught.
+        assertEquals(listOf("access" to 1, "refresh" to 6), app.db.query("SELECT kind, count(*) FROM oauth_tokens GROUP BY kind ORDER BY kind") { it.getString(1) to it.getInt(2) })
         for (old in accesses.dropLast(1)) assertEquals(401, mcp(old).status.value)
         assertEquals(200, mcp(access, "ping", "{}").status.value)
 

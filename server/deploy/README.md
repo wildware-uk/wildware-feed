@@ -5,6 +5,11 @@ variables, see `../spec/01-config-and-auth.md`), so an existing `.env` and data 
 are. It needs Java 21, and `ffmpeg` on `PATH` for video posters, transcodes and image thumbnails
 (without it, images keep only their original and videos fail to process).
 
+When `PUBLIC_BASE_URL` is https, the server won't start until it knows where each client's address
+comes from: behind a proxy set `ADDRESS_HEADER=X-Forwarded-For` and `XFF_DEPTH=1`; if clients
+really connect to it directly, set `TRUST_SOCKET_ADDRESS=true`. Otherwise every client would share
+the proxy's address, and one sign-in lockout would hold them all.
+
 ## Build the distribution
 
 ```sh

@@ -68,15 +68,17 @@ class FeedServer(val app: App) {
  * statement it makes is that team's.
  */
 fun Application.feed(app: App, placeOf: (ApplicationCall) -> Place = { Hosts.placeOf(app, it) }) {
-    // A request that throws is answered with a 500; it is reported first, when reports are on.
+    // A request that throws is answered with one fixed 500: the error's own text can hold anything,
+    // so it goes only to the log, and to crash reports when they are on.
     intercept(ApplicationCallPipeline.Monitoring) {
         try {
             proceed()
         } catch (e: Throwable) {
-            if (e !is kotlinx.coroutines.CancellationException) {
-                CrashReports.requestFailed(e, call.request.httpMethod.value, call.attributes.getOrNull(RoutePattern))
-            }
-            throw e
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            CrashReports.requestFailed(e, call.request.httpMethod.value, call.attributes.getOrNull(RoutePattern))
+            if (call.response.isCommitted) throw e
+            call.application.environment.log.error("Unhandled: ${call.request.httpMethod.value} ${call.attributes.getOrNull(RoutePattern) ?: "(no route)"}", e)
+            call.respondRaw(500, INTERNAL_ERROR, Wire.JSON)
         }
     }
     intercept(ApplicationCallPipeline.Monitoring) {
@@ -190,6 +192,13 @@ private suspend fun guardRefused(call: ApplicationCall, app: App): Boolean {
 }
 
 /** The socket peer, or ADDRESS_HEADER per adapter-node's rules: the login limiter's key. */
+/**
+ * [clientAddress] as a limiter's key: an IPv6 client counts by its /64, as one client usually holds
+ * the whole /64 and could otherwise take a fresh budget from each of its addresses. Loopback stays.
+ */
+fun ApplicationCall.limiterAddress(config: dev.wildware.feed.server.Config): String =
+    clientAddress(config).let { if (isLoopback(it)) it else rateKey(it) }
+
 fun ApplicationCall.clientAddress(config: dev.wildware.feed.server.Config): String {
     val header = config.addressHeader ?: return request.origin.remoteAddress
     if (header != "x-forwarded-for") {
@@ -227,6 +236,9 @@ private fun ApplicationCall.fromCloudflare(config: dev.wildware.feed.server.Conf
 
 /** The header our Cloudflare rule sets on every request it passes to the server (BEHIND_CLOUDFLARE). */
 const val ORIGIN_AUTH = "Feed-Origin-Auth"
+
+/** The whole answer to a request that failed in a way nobody planned for. */
+private const val INTERNAL_ERROR = """{"error":"internal","message":"Something went wrong on the server. See the server's logs."}"""
 
 /** Says, now and then, that Cloudflare connected from a range the server doesn't know: the list may be out of date. */
 internal object CloudflareWatch {

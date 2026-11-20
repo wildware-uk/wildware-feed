@@ -247,6 +247,13 @@ data class Config(
             if (behindCloudflare && get("ADDRESS_HEADER")?.lowercase() != "x-forwarded-for") {
                 issues += "BEHIND_CLOUDFLARE: needs ADDRESS_HEADER=X-Forwarded-For (the router's record of who connected)"
             }
+            // Behind a proxy every client arrives from the proxy's address, so one lockout would hold
+            // everyone (spec/01 §1.3). A server that really faces the internet says so.
+            val trustSocket = get("TRUST_SOCKET_ADDRESS")?.lowercase() == "true"
+            if (base.startsWith("https://") && get("ADDRESS_HEADER") == null && !trustSocket) {
+                issues += "ADDRESS_HEADER: PUBLIC_BASE_URL is https, so this server is likely behind a proxy. Set ADDRESS_HEADER=X-Forwarded-For " +
+                    "and XFF_DEPTH=1 so each client has its own sign-in limit, or TRUST_SOCKET_ADDRESS=true if clients connect to it directly"
+            }
             val originSecret = get("CLOUDFLARE_ORIGIN_SECRET")
             if (behindCloudflare && originSecret == null) issues += "BEHIND_CLOUDFLARE: needs CLOUDFLARE_ORIGIN_SECRET, the header our Cloudflare rule adds"
             if (originSecret != null && originSecret.length < MIN_SECRET_LENGTH) issues += "CLOUDFLARE_ORIGIN_SECRET: CLOUDFLARE_ORIGIN_SECRET must be at least $MIN_SECRET_LENGTH characters"

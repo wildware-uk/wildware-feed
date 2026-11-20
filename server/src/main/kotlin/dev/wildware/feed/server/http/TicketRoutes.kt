@@ -89,7 +89,7 @@ fun Route.ticketRoutes(app: App) {
 
 /** The person a sign-in ticket in this team is for, used up; null for any other ticket. Counted like a wrong password when it fails. */
 private fun ApplicationCall.redeemTicket(app: App, ticket: String): dev.wildware.feed.server.domain.People.Person? {
-    val address = runCatching { clientAddress(app.config) }.getOrElse { "unknown" }
+    val address = runCatching { limiterAddress(app.config) }.getOrElse { "unknown" }
     if (!app.loginLimiter.check(address).allowed) return null
     val redeemed = app.teams.redeemCode("ticket", ticket.trim())
     // Only while the account still has the email the ticket was made for.

@@ -225,6 +225,21 @@ class SecretRoutesTest {
     }
 
     @Test
+    fun `a reveal from the web app's cookie names its device in the audit`() = withApp { c ->
+        val id = owner("POST", "/api/secrets", c.key, """{"name":"K","value":"$value","allAgents":true}""").bodyAsText().json()["secret"]!!.jsonObject.s("id")
+        val revealed = client.post("/api/secrets/$id/reveal") {
+            header("Cookie", "${OwnerCookie.name}=${c.key}")
+            header("Sec-Fetch-Site", "same-origin")
+            header("Content-Type", "application/json")
+            setBody("""{"purpose":"copy"}""")
+        }
+        assertEquals(200, revealed.status.value)
+        val entries = owner("GET", "/api/secrets/audit?secret=$id", c.key).bodyAsText().json()["entries"]!!.jsonArray.map { it.jsonObject }
+        assertEquals("copied", entries.first().s("action"))
+        assertEquals("Phone", entries.first()["actor"]!!.jsonObject.s("name"))
+    }
+
+    @Test
     fun `the owner pauses, rescopes and deletes`() = withApp { c ->
         val id = owner("POST", "/api/secrets", c.key, """{"name":"K","value":"$value","allAgents":true}""").bodyAsText().json()["secret"]!!.jsonObject.s("id")
         assertEquals(200, owner("PATCH", "/api/secrets/$id", c.key, """{"paused":true}""").status.value)

@@ -43,7 +43,7 @@ fun Route.deviceRoutes(app: App) {
             } else {
                 null
             }
-            when (val result = app.checkPassword(password, call.clientAddress(app.config), email)) {
+            when (val result = app.checkPassword(password, call.limiterAddress(app.config), email)) {
                 is PasswordCheck.Refused -> {
                     val code = when (result.status) {
                         429 -> "rate_limited"

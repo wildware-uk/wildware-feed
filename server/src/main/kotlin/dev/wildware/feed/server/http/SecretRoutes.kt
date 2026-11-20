@@ -158,7 +158,7 @@ private suspend fun ApplicationCall.storeSecret(app: App) {
 
 /** Take one from the per-address limit on secret links, or answer 429. */
 private suspend fun ApplicationCall.linkAllowed(app: App): Boolean {
-    val address = runCatching { clientAddress(app.config) }.getOrNull() ?: "unknown"
+    val address = runCatching { limiterAddress(app.config) }.getOrNull() ?: "unknown"
     val verdict = app.secretLinkLimiter.take(address)
     if (verdict.allowed) return true
     respondJson(
@@ -184,7 +184,8 @@ private suspend fun ApplicationCall.boundedBody(max: Int): ByteArray {
 
 /** Who on the owner's side did it: the device whose key signed this request. */
 private fun ApplicationCall.owner(app: App): Secrets.Actor =
-    Secrets.Actor.owner(Guard.bearer(request.headers["Authorization"])?.let(app.devices::authenticate))
+    // The device the guard let in, whether its key came as a Bearer header or as the web app's cookie.
+    Secrets.Actor.owner(attributes.getOrNull(CallerKey)?.device ?: Guard.bearer(request.headers["Authorization"])?.let(app.devices::authenticate))
 
 private fun agentNames(app: App): (String) -> String? {
     val names = app.agents.list(includeRevoked = true).associate { it.id to it.name }

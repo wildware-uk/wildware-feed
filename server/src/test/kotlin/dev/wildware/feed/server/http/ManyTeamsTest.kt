@@ -431,7 +431,7 @@ class ManyTeamsTest {
     fun `the home team's address can't sit under the team domain`() {
         val env = mapOf(
             "ADMIN_PASSWORD_HASH" to "\$argon2id\$x", "SESSION_SECRET" to "s".repeat(32), "TOKEN_SECRET" to "t".repeat(32),
-            "DATABASE_URL" to "postgres://u:p@localhost/db", "TEAM_DOMAIN" to "feed.test",
+            "DATABASE_URL" to "postgres://u:p@localhost/db", "TEAM_DOMAIN" to "feed.test", "ADDRESS_HEADER" to "X-Forwarded-For",
         )
         val e = kotlin.test.assertFailsWith<Config.Invalid> { Config.load(env + ("PUBLIC_BASE_URL" to "https://x.feed.test")) }
         assertTrue(e.message!!.contains("PUBLIC_BASE_URL"))

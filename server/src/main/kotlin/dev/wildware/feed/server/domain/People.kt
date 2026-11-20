@@ -125,10 +125,15 @@ class People(
      * server can still get in with `reset-password`. One hash check either way.
      */
     private fun accountPassword(accountId: String, hash: String?, password: String): Boolean {
-        if (password.isEmpty()) return false
-        if (hash != null) return Passwords.verify(hash, password)
         // ADMIN_PASSWORD_HASH is the home team's founder's, and opens no other team.
-        return accountId == FOUNDER && Tenant.id == HOME && Passwords.verify(adminPasswordHash, password)
+        val against = hash ?: adminPasswordHash.takeIf { accountId == FOUNDER && Tenant.id == HOME }
+        if (against == null || password.isEmpty()) {
+            // An account with no password yet costs what a wrong one does, so the time taken
+            // tells nobody which emails have an account.
+            Passwords.verify(dummyHash, password)
+            return false
+        }
+        return Passwords.verify(against, password)
     }
 
     /** The hash [person] signs in with: their own, or ADMIN_PASSWORD_HASH for the home founder without one; null for none. */
