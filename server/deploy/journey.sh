@@ -22,8 +22,9 @@ router=""
 db="journey_$(od -An -N4 -tx1 /dev/urandom | tr -d ' \n')"
 : "${PG_ADMIN_URL:?PG_ADMIN_URL: a superuser URL for a throwaway Postgres}"
 cleanup() {
-    [ -n "$router" ] && kill "$router" 2>/dev/null
-    [ -n "$pid" ] && kill "$pid" 2>/dev/null && wait "$pid" 2>/dev/null
+    if [ -n "$router" ]; then kill "$router" 2>/dev/null || true; fi
+    # The server, killed, makes wait answer 143; that is no failure of the run.
+    if [ -n "$pid" ]; then kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true; fi
     psql -q "$PG_ADMIN_URL" -c "DROP DATABASE IF EXISTS $db" >/dev/null 2>&1 || true
     rm -rf "$work"
 }
