@@ -449,6 +449,27 @@ class DashboardClient(
     suspend fun blocks(card: CardRef): List<BlockView> =
         http.get("api/cards/${card.kind.encodeURLPathPart()}/${card.id.encodeURLPathPart()}/blocks") { authorise() }.decoded<BlocksBody>().blocks
 
+    /** Ticks or unticks one line of a checklist. Returns the block as it now stands. */
+    @Throws(Exception::class)
+    suspend fun checkBlockItem(card: CardRef, blockId: String, itemId: String, done: Boolean): BlockView =
+        http.post("api/cards/${card.kind.encodeURLPathPart()}/${card.id.encodeURLPathPart()}/blocks/${blockId.encodeURLPathPart()}/check") {
+            authorise()
+            jsonBody(buildJsonObject {
+                put("item", itemId)
+                put("done", done)
+            })
+        }.decoded<BlockBody>().block
+
+    /** Votes on a poll: [options] replaces your vote, and none takes it back. Returns the block as it now stands. */
+    @Throws(Exception::class)
+    suspend fun voteBlock(card: CardRef, blockId: String, options: List<String>): BlockView =
+        http.post("api/cards/${card.kind.encodeURLPathPart()}/${card.id.encodeURLPathPart()}/blocks/${blockId.encodeURLPathPart()}/vote") {
+            authorise()
+            jsonBody(buildJsonObject {
+                put("options", kotlinx.serialization.json.JsonArray(options.map { kotlinx.serialization.json.JsonPrimitive(it) }))
+            })
+        }.decoded<BlockBody>().block
+
     /** Uploads one file and returns it unattached: send its id with [postMessage] to attach it. */
     @Throws(Exception::class)
     suspend fun uploadMedia(attachment: Attachment): MediaView = uploadMedia(attachment, null)

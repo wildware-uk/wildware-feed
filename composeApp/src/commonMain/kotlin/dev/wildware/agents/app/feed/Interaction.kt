@@ -34,6 +34,10 @@ sealed interface FeedEvent {
     /** Turn an agent that asked to join away. */
     data class DenyAgent(val pairingId: String) : FeedEvent
     data class React(val targetId: String, val emoji: String) : FeedEvent
+    /** Tick or untick one line of a checklist block. */
+    data class CheckBlockItem(val cardKind: String, val cardId: String, val blockId: String, val itemId: String, val done: Boolean) : FeedEvent
+    /** Vote on a poll block: [options] replaces your vote; none takes it back. */
+    data class VoteBlock(val cardKind: String, val cardId: String, val blockId: String, val options: List<String>) : FeedEvent
     /** Start replying to a line in a thread: the reply box says who it answers. */
     data class Reply(val targetId: String) : FeedEvent
     /** Send a reply into a card's thread, answering [answers] when set. */

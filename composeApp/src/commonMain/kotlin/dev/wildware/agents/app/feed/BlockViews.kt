@@ -192,6 +192,8 @@ private fun BlockAction(label: String, spoken: String = label, modifier: Modifie
 private fun ChecklistBlock(block: CardBlock) {
     val view = block.block
     val colors = AgentTheme.colors
+    val ui = LocalFeedUi.current
+    // A tap goes to the engine, which shows it at once and puts it back if the server refuses.
     val items = view.items
     val done = items.count { it.done }
     BlockTitle(view.title ?: "Checklist", "$done of ${items.size}")
@@ -216,6 +218,7 @@ private fun ChecklistBlock(block: CardBlock) {
                         toggleableState = ToggleableState(item.done)
                     }
                     .heightIn(min = 48.dp)
+                    .clickable { ui?.emit(FeedEvent.CheckBlockItem(block.cardKind, block.cardId, view.id, item.id, !item.done)) }
                     .padding(vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -983,6 +986,7 @@ private fun PollBlock(block: CardBlock) {
     val colors = AgentTheme.colors
     val closesAt = view.closesAt?.let(::millis)
     val now = tickingNow(!view.closed && closesAt != null)
+    val ui = LocalFeedUi.current
     val closed = view.closed || (closesAt != null && closesAt <= now)
     fun mineOf(option: dev.wildware.agents.PollOption) = option.voters.any { it.kind == "person" && it.id == block.me }
     val mine = view.options.filter(::mineOf).map { it.id }
@@ -1019,7 +1023,15 @@ private fun PollBlock(block: CardBlock) {
                         }
                         if (closed) stateDescription = "Closed"
                     }
-                    .heightIn(min = 48.dp),
+                    .heightIn(min = 48.dp)
+                    .then(if (closed) Modifier else Modifier.clickable {
+                        val next = when {
+                            view.multi -> if (picked) mine - option.id else mine + option.id
+                            picked -> emptyList()
+                            else -> listOf(option.id)
+                        }
+                        ui?.emit(FeedEvent.VoteBlock(block.cardKind, block.cardId, view.id, next))
+                    }),
                 contentAlignment = Alignment.CenterStart,
             ) {
                 // How many chose it, as a fill behind the words.

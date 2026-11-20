@@ -63,7 +63,7 @@ class FakeDashboard(scheduler: TestCoroutineScheduler) {
     var streamStatus: HttpStatusCode = HttpStatusCode.OK
 
     /** Answers writes. Return null to fall through to the default success. */
-    var onWrite: (MockRequestHandleScope.(HttpRequestData, String) -> HttpResponseData?)? = null
+    var onWrite: (suspend MockRequestHandleScope.(HttpRequestData, String) -> HttpResponseData?)? = null
 
     val calls = mutableListOf<String>()
     val writes = mutableListOf<Pair<String, String>>()

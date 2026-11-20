@@ -726,6 +726,8 @@ class DashboardSession(
             is FeedEvent.AllowAgent -> decideJoin(event.pairingId) { client.approvePairing(event.pairingId, event.name) }
             is FeedEvent.DenyAgent -> decideJoin(event.pairingId) { client.denyPairing(event.pairingId) }
             is FeedEvent.React -> cardRef(event.targetId)?.let { actions.toggleReaction(it, event.emoji, reactionsOn(event.targetId)) }
+            is FeedEvent.CheckBlockItem -> dashboard.checkBlockItem(CardRef(event.cardKind, event.cardId), event.blockId, event.itemId, event.done)
+            is FeedEvent.VoteBlock -> dashboard.voteBlock(CardRef(event.cardKind, event.cardId), event.blockId, event.options, mutableTeam.value.me?.id)
             is FeedEvent.SendReply -> cardRef(event.threadId)?.let {
                 actions.reply(it, event.text.ifBlank { null }, answers = event.answers, files = event.files.map(::upload))
             }

@@ -276,6 +276,44 @@ class Dashboard internal constructor(
     /** What the owner follows: which projects and threads raise their alerts. */
     val followed: StateFlow<Follows> = mutableFollows.asStateFlow()
 
+    /**
+     * Ticks or unticks one line of a checklist block on [card]. Shown at once; the server's answer
+     * replaces it, and a refusal puts it back.
+     */
+    fun checkBlockItem(card: CardRef, blockId: String, itemId: String, done: Boolean) {
+        val part = "item:$itemId"
+        confined.launch {
+            blocks.expect(card, blockId, part) { block -> block.copy(items = block.items.map { if (it.id == itemId) it.copy(done = done) else it }) }
+            try {
+                val answered = client.checkBlockItem(card, blockId, itemId, done)
+                blocks.answered(card, answered, heldBlocks(card).orEmpty())
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Throwable) {
+                // Refused or offline: the line goes back to how the server has it.
+            } finally {
+                blocks.settle(card, blockId, part)
+            }
+        }
+    }
+
+    /** Votes on a poll block on [card]: [options] replaces your vote; none takes it back. Shown at once. */
+    fun voteBlock(card: CardRef, blockId: String, options: List<String>, me: String? = null) {
+        confined.launch {
+            blocks.expect(card, blockId, "vote") { block -> block.withVote(options, me) }
+            try {
+                val answered = client.voteBlock(card, blockId, options)
+                blocks.answered(card, answered, heldBlocks(card).orEmpty())
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Throwable) {
+                // Refused (the poll closed) or offline: the vote goes back to how the server has it.
+            } finally {
+                blocks.settle(card, blockId, "vote")
+            }
+        }
+    }
+
     /** The blocks on [card] as the open feeds and questions last read them, or null when none holds it. */
     private fun heldBlocks(card: CardRef): List<BlockView>? = when (card.kind) {
         CardKinds.Request -> (requests.items + requests.answered).firstOrNull { it.id == card.id }?.blocks

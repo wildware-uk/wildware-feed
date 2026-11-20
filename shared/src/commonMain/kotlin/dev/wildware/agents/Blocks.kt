@@ -71,6 +71,24 @@ data class BlockView(
     }
 }
 
+/** This poll with [me]'s vote moved to [chosen], before the server says so. */
+fun BlockView.withVote(chosen: List<String>, me: String?): BlockView {
+    val who = me ?: FounderId
+    val wasVoting = options.any { o -> o.voters.any { it.kind == "person" && it.id == who } }
+    val mine = BlockActor("person", who)
+    val next = options.map { option ->
+        val had = option.voters.any { it.kind == "person" && it.id == who }
+        val wants = option.id in chosen
+        when {
+            had && !wants -> option.copy(votes = option.votes - 1, voters = option.voters.filterNot { it.kind == "person" && it.id == who })
+            !had && wants -> option.copy(votes = option.votes + 1, voters = option.voters + mine)
+            else -> option
+        }
+    }
+    val total = totalVoters + (if (chosen.isNotEmpty() && !wasVoting) 1 else 0) - (if (chosen.isEmpty() && wasVoting) 1 else 0)
+    return copy(options = next, totalVoters = total)
+}
+
 @Serializable
 data class ChecklistItem(
     val id: String,
@@ -122,10 +140,13 @@ data class PollOption(val id: String, val label: String, val votes: Int = 0, val
 @Serializable
 internal data class BlocksBody(val blocks: List<BlockView> = emptyList())
 
+@Serializable
+internal data class BlockBody(val block: BlockView)
 
 /**
  * The newest blocks of each card that changed since its card was read. A `block.updated` event
- * re-reads only that card's blocks, small, rather than the whole page. What is here wins over the blocks on the card as read, since
+ * re-reads only that card's blocks, small, rather than the whole page; a tick or a vote puts the
+ * server's answer here straight away. What is here wins over the blocks on the card as read, since
  * it is always the newest: every change to a card's blocks comes with a `block.updated`.
  */
 internal class BlocksOverlay(
@@ -139,6 +160,12 @@ internal class BlocksOverlay(
     private val reading = HashSet<CardRef>()
     private val again = HashSet<CardRef>()
     private val waiting = HashSet<CardRef>()
+
+    /** What a person did and is not yet answered: drawn as done straight away. */
+    private val pending = LinkedHashMap<Pending, (BlockView) -> BlockView>()
+
+    /** One thing a person did to a block: a line ticked ("item:<id>"), or their vote ("vote"). */
+    data class Pending(val card: CardRef, val blockId: String, val part: String)
 
     fun receive(event: StreamEvent) {
         if (event.type == StreamEvent.Resync) {
@@ -200,8 +227,34 @@ internal class BlocksOverlay(
         onChange()
     }
 
+    /** One block, as the server answered a tick or vote with it. */
+    fun answered(card: CardRef, block: BlockView, base: List<BlockView>) {
+        val current = newest[card] ?: base
+        val known = current.firstOrNull { it.id == block.id }
+        if (known != null && known.rev > block.rev) return
+        put(card, if (known == null) current + block else current.map { if (it.id == block.id) block else it })
+    }
+
+    fun expect(card: CardRef, blockId: String, part: String, change: (BlockView) -> BlockView) {
+        // Two quick ticks on one checklist are two things waiting: each settles only itself.
+        pending.remove(Pending(card, blockId, part))
+        pending[Pending(card, blockId, part)] = change
+        onChange()
+    }
+
+    fun settle(card: CardRef, blockId: String, part: String) {
+        pending.remove(Pending(card, blockId, part))
+        onChange()
+    }
+
     /** [read] (the card's blocks as read with it), with anything newer put over it. */
-    fun on(card: CardRef, read: List<BlockView>): List<BlockView> = newest[card] ?: read
+    fun on(card: CardRef, read: List<BlockView>): List<BlockView> {
+        val base = newest[card] ?: read
+        if (pending.isEmpty()) return base
+        return base.map { block ->
+            pending.entries.fold(block) { shown, (key, change) -> if (key.card == card && key.blockId == block.id) change(shown) else shown }
+        }
+    }
 
     companion object {
         const val EventType = "block.updated"
