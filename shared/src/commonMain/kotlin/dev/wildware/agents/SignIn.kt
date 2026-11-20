@@ -33,6 +33,9 @@ enum class SignInFailure {
     /** The invite code is wrong, used up, revoked or expired. */
     BadInvite,
 
+    /** A hosted sign-in's one-time ticket was used already, ran out (a minute) or is for another team. */
+    BadTicket,
+
     /** The server turned it down for a reason of its own, such as a device name it won't take. [SignInException.message] says what it said. */
     Refused,
 }
@@ -98,6 +101,18 @@ object SignIn {
         put("password", password)
         put("deviceName", deviceName.trim().ifEmpty { "Wildware Feed app" }.take(100))
     }
+
+    /**
+     * The hosted "Log in"'s last step: trades a one-time [ticket] from the account service for a
+     * device key at the team's own [HostedTicket.address]. A ticket works once; ask for a new one
+     * rather than sending it again.
+     */
+    @Throws(SignInException::class, CancellationException::class)
+    suspend fun redeemTicket(ticket: HostedTicket, deviceName: String, engine: HttpClientEngine): SignedIn =
+        send(ticket.address, "api/devices/ticket", engine, cookie = false) {
+            put("ticket", ticket.ticket)
+            put("deviceName", deviceName.trim().ifEmpty { "Wildware Feed app" }.take(100))
+        }
 
     /** The server address an invite link points at, so pasting the link alone is enough. Null for a bare code. */
     fun serverOfInvite(invite: String): String? {
@@ -179,6 +194,8 @@ object SignIn {
                     SignInException(SignInFailure.NotSetUp, "This dashboard has no owner password set up yet.", status)
                 error?.error == "invalid_argument" || error?.error == "conflict" ->
                     SignInException(SignInFailure.Refused, error.message ?: "The dashboard won't take that device name.", status)
+                error?.error == "invalid_ticket" ->
+                    SignInException(SignInFailure.BadTicket, "That sign-in ran out before it was used. Try again.", status)
                 error?.error == "invalid_invite" ->
                     SignInException(SignInFailure.BadInvite, error.message ?: "That invite has expired, was used already, or isn't right.", status)
                 // A dashboard from before this sign-in existed, or not a dashboard at all.

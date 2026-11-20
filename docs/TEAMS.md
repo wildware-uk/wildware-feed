@@ -270,10 +270,15 @@ Shared code (`composeApp` common, `shared`) does most of it, on phone and deskto
 
 **The sign-in screen.** Two clear ways in, on every platform, plus the desktop's own server:
 
-- **Log in** (changed): the hosted service. Email and password on `feed.wildware.dev`, which
-  answers with the account's teams and a short-lived ticket; the app trades the ticket for a device
-  key on the chosen team's address and opens the feed (HOSTING.md §5). Until the control plane exists it is hidden behind a build flag, or
-  shown as "coming soon".
+- **Log in** (built): the hosted service. Email, then a 6-digit code emailed to it, then the team
+  (a list when the email is in several; one open team signs straight in). The account service hands
+  the app a one-time ticket (a minute, once, that team's address only); the app trades it for an
+  ordinary device key on the team's address and opens the feed (HOSTING.md §5). The account
+  service's own sign-in lives in memory only and is ended once the key is in hand. One team per
+  sign-in: to open another, sign out and log in again. Not in the web app: a browser is already
+  at its team's address, and the account site signs it in there itself. The service's address is
+  set at build time (`-Pfeed.accountUrl=…` or `FEED_ACCOUNT_URL`; default
+  `https://account.feed.wildware.dev`; empty for no "Log in").
 - **Connect to a host**: someone's own server, in two steps.
   1. *Address.* The app asks the public `GET /api/server` and checks it is a Wildware Feed server:
      `{"product": "wildware-feed", "version": "…", "signIn": ["password"], "team": false}`, where

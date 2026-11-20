@@ -104,7 +104,14 @@ class FakeServer {
     val authorizations: MutableList<String?> = Collections.synchronizedList(mutableListOf())
     private val streams = Collections.synchronizedList(mutableListOf<ByteChannel>())
 
-    fun engine() = MockEngine { request -> route(request) }
+    fun engine() = MockEngine { request -> otherHost?.invoke(this, request) ?: route(request) }
+
+    /** Answers first, for another host: the hosted account service. Null lets this server answer. */
+    @Volatile
+    var otherHost: (suspend MockRequestHandleScope.(HttpRequestData) -> HttpResponseData?)? = null
+
+    /** Sign-in tickets this server will take, each once (the hosted "Log in"). */
+    val tickets: MutableSet<String> = Collections.synchronizedSet(mutableSetOf())
 
     fun count(prefix: String) = calls.count { it.startsWith(prefix) }
 
@@ -118,6 +125,16 @@ class FakeServer {
         val path = request.url.encodedPath
         calls += path + request.url.encodedQuery.let { if (it.isEmpty()) "" else "?$it" }
         if (path == "/api/devices/sign-in") return signIn(request)
+        if (path == "/api/devices/ticket") {
+            val body = request.text()
+            writes += "POST /api/devices/ticket" to body
+            val ticket = Regex("\"ticket\":\"([^\"]+)\"").find(body)?.groupValues?.get(1)
+            return if (ticket != null && tickets.remove(ticket)) {
+                ok("""{"device":{"id":"d1","name":"Test device","createdAt":"2026-11-18T10:00:00Z"},"token":"key-1"}""", HttpStatusCode.Created)
+            } else {
+                ok("""{"error":"invalid_ticket","message":"That sign-in has expired or was used already. Sign in again."}""", HttpStatusCode.Unauthorized)
+            }
+        }
         // Public, and asked before any key exists: "Connect to a host", step 1.
         if (path == "/api/server") return ok("""{"product":"wildware-feed","version":"dev","signIn":["password"],"team":false}""")
         if (path == "/api/messages" && request.method == HttpMethod.Get && messagesDelayMs > 0) delay(messagesDelayMs)

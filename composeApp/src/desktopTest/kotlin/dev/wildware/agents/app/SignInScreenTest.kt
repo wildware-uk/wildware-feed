@@ -76,10 +76,10 @@ class SignInScreenTest {
     }
 
     @Test
-    fun logInNeverShowsWhileTheFlagIsOff() = runComposeUiTest {
-        assertFalse(SignInChoice.LogIn in signInChoices(canHostLocally = true))
-        assertFalse(SignInChoice.LogIn in signInChoices(canHostLocally = false))
-        // The one switch is what puts it there.
+    fun logInShowsOnlyWhereThereIsAHostedService() = runComposeUiTest {
+        assertFalse(SignInChoice.LogIn in signInChoices(canHostLocally = true, hostedLogin = false))
+        assertFalse(SignInChoice.LogIn in signInChoices(canHostLocally = false, hostedLogin = false))
+        // A hosted service (not the web app) is what puts it there.
         assertEquals(SignInChoice.LogIn, signInChoices(canHostLocally = false, hostedLogin = true).first())
 
         var desktop by mutableStateOf(true)

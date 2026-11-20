@@ -144,8 +144,16 @@ class EngineWiringTest {
         runOnIdle { node.config[SemanticsActions.CustomActions].first { it.label == label }.action() }
     }
 
+    /** The "Connect to a host" tab: "Log in" comes first in a build with a hosted service. */
+    private fun ComposeUiTest.hostTab() {
+        waitForIdle()
+        onAllNodes(hasText("Connect to a host") and hasClickAction()).fetchSemanticsNodes().takeIf { it.isNotEmpty() }
+            ?.let { onNode(hasText("Connect to a host") and hasClickAction()).performClick() }
+    }
+
     /** "Connect to a host", step 1: the address, checked against the server, then its password box. */
     private fun ComposeUiTest.connectTo(address: String) {
+        hostTab()
         onNodeWithContentDescription("Host address").performTextInput(address)
         onNode(hasText("Continue") and hasClickAction()).performClick()
         waitForLabel("Owner password")
@@ -163,6 +171,7 @@ class EngineWiringTest {
     @Test
     fun theAddressStartsEmptyAndIsAskedFor() = runDesktopComposeUiTest(width = 1440, height = 900) {
         app(MemorySessionStore())
+        hostTab()
         onNode(hasText("Continue") and hasClickAction()).performClick()
         waitFor("Type the host's address.")
         assertTrue(server.authorizations.isEmpty())
@@ -574,9 +583,11 @@ class EngineWiringTest {
         app(sessions)
         waitFor("Fixed the unread counts")
         onNodeWithContentDescription("Sign out").performClick()
-        waitForLabel("Host address")
+        // Back at sign-in, on its first choice ("Log in" in a build with a hosted service).
+        waitFor("Sign in")
         assertNull(sessions.load())
-        assertNotNull(onNodeWithContentDescription("Host address").fetchSemanticsNode())
+        hostTab()
+        waitForLabel("Host address")
     }
 
     @Test

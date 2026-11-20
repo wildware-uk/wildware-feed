@@ -1,6 +1,10 @@
 package dev.wildware.agents.app.engine
 
 import dev.wildware.agents.HostCheck
+import dev.wildware.agents.HostedAccount
+import dev.wildware.agents.HostedLoginException
+import dev.wildware.agents.HostedLoginFlow
+import dev.wildware.agents.HostedTeam
 import dev.wildware.agents.SignIn
 import dev.wildware.agents.SignInException
 import dev.wildware.agents.app.session.AppPlatform
@@ -38,7 +42,12 @@ sealed interface AppScreen {
  * The app's top: signed in or not. A saved key opens the feed straight away; signing in saves
  * one; signing out (or the dashboard refusing the key) forgets it and everything kept for it.
  */
-class AppModel(private val platform: AppPlatform, private val scope: CoroutineScope) {
+class AppModel(
+    private val platform: AppPlatform,
+    private val scope: CoroutineScope,
+    /** The hosted "Log in"'s account service; empty for none. Tests point it at a fake. */
+    accountService: String = dev.wildware.agents.app.signin.HostedLoginBuild.AccountService,
+) {
     private val mutableScreen = MutableStateFlow<AppScreen>(AppScreen.SigningIn())
     val screen: StateFlow<AppScreen> = mutableScreen.asStateFlow()
 
@@ -86,6 +95,27 @@ class AppModel(private val platform: AppPlatform, private val scope: CoroutineSc
 
     /** "Connect to a host", step 1: whether [address] is a Wildware Feed server, and how it signs in. */
     suspend fun checkHost(address: String): HostCheck = HostCheck.check(address, platform.httpEngine())
+
+    /**
+     * The hosted "Log in": email, code, team. Null in the web app, which a team's own server serves
+     * (the account site signs a browser in there itself), and in a build with no account service.
+     */
+    val hostedLogin: HostedLoginFlow? =
+        if (platform.homeServer == null && accountService.isNotBlank()) HostedLoginFlow(HostedAccount(accountService, platform.httpEngine), platform.httpEngine)
+        else null
+
+    /**
+     * The hosted "Log in"'s last step: signs this device in to [team] and opens its feed, saved and
+     * registered for alerts exactly as "Connect to a host" is.
+     */
+    @Throws(HostedLoginException::class, SignInException::class, kotlin.coroutines.cancellation.CancellationException::class)
+    suspend fun joinHostedTeam(team: HostedTeam, deviceName: String) {
+        val flow = hostedLogin ?: error("this app has no hosted Log in")
+        val signed = flow.join(team, deviceName)
+        val saved = SavedSession(signed.server, signed.token, signed.device.name, signed.device.id)
+        platform.sessions.save(saved)
+        open(saved)
+    }
 
     /** Signs in and opens the feed. Throws [SignInException] with what went wrong. */
     @Throws(SignInException::class, kotlin.coroutines.cancellation.CancellationException::class)

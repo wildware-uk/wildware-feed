@@ -12,8 +12,11 @@ import kotlin.test.assertTrue
 class ThisComputerTest {
     @Test
     fun theDesktopStartsOnThisComputerAndPhonesOnAHost() {
-        assertEquals(SignInChoice.ThisComputer, defaultSignInChoice(canHostLocally = true))
-        assertEquals(SignInChoice.Host, defaultSignInChoice(canHostLocally = false))
+        assertEquals(SignInChoice.ThisComputer, defaultSignInChoice(canHostLocally = true, hostedLogin = false))
+        assertEquals(SignInChoice.Host, defaultSignInChoice(canHostLocally = false, hostedLogin = false))
+        // With a hosted "Log in", that comes first everywhere.
+        assertEquals(SignInChoice.LogIn, defaultSignInChoice(canHostLocally = true, hostedLogin = true))
+        assertEquals(SignInChoice.LogIn, defaultSignInChoice(canHostLocally = false, hostedLogin = true))
     }
 
     @Test

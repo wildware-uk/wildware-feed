@@ -39,6 +39,7 @@ import androidx.compose.ui.semantics.error
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentType
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.graphics.Color
@@ -80,14 +81,7 @@ private fun SignInException.problem(): Problem = when (failure) {
     SignInFailure.NotSetUp -> Problem(Field.General, "This dashboard has no owner password yet. Set one on the server first.")
     SignInFailure.Refused -> Problem(Field.Device, message ?: "The dashboard turned that down.")
     SignInFailure.BadInvite -> Problem(Field.Invite, message ?: "That invite has expired, was used already, or isn't right. Ask for a new one.")
-}
-
-/**
- * "Log in", the hosted service. It isn't built yet, so the choice stays hidden until it is: this is
- * the one switch for it.
- */
-object HostedLogin {
-    val enabled: Boolean = false
+    SignInFailure.BadTicket -> Problem(Field.General, message ?: "That sign-in ran out. Try again.")
 }
 
 /** Where to sign in: the hosted service, a server this app runs itself, or someone's own server. */
@@ -97,15 +91,18 @@ enum class SignInChoice(val label: String) {
     Host("Connect to a host"),
 }
 
-/** The choices this app offers, in the order the tabs show them. With only one there are no tabs. */
-fun signInChoices(canHostLocally: Boolean, hostedLogin: Boolean = HostedLogin.enabled): List<SignInChoice> = buildList {
+/**
+ * The choices this app offers, in the order the tabs show them. With only one there are no tabs.
+ * [hostedLogin]: the build has an account service and this isn't the web app.
+ */
+fun signInChoices(canHostLocally: Boolean, hostedLogin: Boolean): List<SignInChoice> = buildList {
     if (hostedLogin) add(SignInChoice.LogIn)
     if (canHostLocally) add(SignInChoice.ThisComputer)
     add(SignInChoice.Host)
 }
 
-/** The first choice: "This computer" where the app can run a server itself (the desktop app); otherwise a host. */
-fun defaultSignInChoice(canHostLocally: Boolean): SignInChoice = signInChoices(canHostLocally).first()
+/** The first choice: "Log in" where there is one, then "This computer" where the app can run a server itself; otherwise a host. */
+fun defaultSignInChoice(canHostLocally: Boolean, hostedLogin: Boolean): SignInChoice = signInChoices(canHostLocally, hostedLogin).first()
 
 /**
  * "Connect to a host": the address as typed, and once it checks out, the host found there, which
@@ -156,8 +153,8 @@ fun SignInScreen(
     signInHere: (suspend (device: String) -> Unit)? = null,
     /** Why the server on this computer isn't running, when it tried and couldn't. */
     hostProblem: String? = null,
-    /** Which choice shows first. */
-    startWith: SignInChoice = defaultSignInChoice(signInHere != null),
+    /** Which choice shows first; null for the first there is. */
+    startWith: SignInChoice? = null,
     /** Where "Connect to a host" starts; screenshots set it to show step 2 or a problem. */
     connect: ConnectState = remember { ConnectState() },
     /** The host can't be changed: the web app signs in to the server that served it. */
@@ -170,6 +167,12 @@ fun SignInScreen(
     acceptInvite: (suspend (server: String, invite: String, name: String, email: String, password: String, device: String) -> Unit)? = null,
     /** Opens on "I have an invite", with this link or code filled in. */
     startInvite: String? = null,
+    /** "Log in", the hosted service: email, code, team. Null where there is none (the web app). */
+    hosted: dev.wildware.agents.HostedLoginFlow? = null,
+    /** Signs in to the team "Log in" picked and opens it. */
+    joinHosted: (suspend (team: dev.wildware.agents.HostedTeam, device: String) -> Unit)? = null,
+    /** Where "Log in" starts; screenshots set it to show a later step or a problem. */
+    hostedState: HostedState = remember { HostedState() },
     signIn: suspend (server: String, password: String, device: String) -> Unit,
 ) {
     val colors = AgentTheme.colors
@@ -183,8 +186,8 @@ fun SignInScreen(
     val device = rememberTextFieldState(deviceName)
     var busy by remember { mutableStateOf(false) }
     var problem by remember { mutableStateOf<Problem?>(null) }
-    val choices = signInChoices(signInHere != null)
-    var choice by remember { mutableStateOf(startWith.takeIf { it in choices } ?: choices.first()) }
+    val choices = signInChoices(signInHere != null, hostedLogin = hosted != null && joinHosted != null)
+    var choice by remember { mutableStateOf(startWith?.takeIf { it in choices } ?: choices.first()) }
     val here = choice == SignInChoice.ThisComputer && signInHere != null
     val host = connect.host
 
@@ -305,7 +308,7 @@ fun SignInScreen(
             if (choices.size > 1) {
                 Spacer(Modifier.height(16.dp))
                 ChoiceTabs(choices, choice) {
-                    if (!busy) {
+                    if (!busy && !hostedState.busy) {
                         choice = it
                         problem = null
                     }
@@ -317,7 +320,12 @@ fun SignInScreen(
             Text(
                 when {
                     joining -> "Paste the invite you were sent and make your account. This device keeps its own key."
-                    choice == SignInChoice.LogIn -> "Sign in to your ${dev.wildware.agents.app.ProductName} account."
+                    choice == SignInChoice.LogIn -> when (hostedState.step) {
+                        HostedStep.Email -> "Sign in to your team on ${dev.wildware.agents.app.ProductName} with your email."
+                        HostedStep.Code -> "We emailed you a 6-digit code. Type it here, or paste it."
+                        HostedStep.Teams -> if (hostedState.teams?.teams.isNullOrEmpty()) "You're signed in, but there's no team to open yet."
+                        else "Pick the team to open on this device. You can sign out and pick another later."
+                    }
                     here -> "Your feed runs right here, on this computer. No address or password needed."
                     host == null -> "Type the address of your ${dev.wildware.agents.app.ProductName} server."
                     hostFixed -> "The password is used once; this browser then stays signed in."
@@ -382,8 +390,8 @@ fun SignInScreen(
                         problem = null
                     })
                 }
-                // The hosted service isn't built yet; HostedLogin keeps this out of sight.
-                choice == SignInChoice.LogIn -> Banner("Coming soon.", isError = false)
+                choice == SignInChoice.LogIn && hosted != null && joinHosted != null ->
+                    HostedLoginForm(hosted, hostedState, device.text.toString(), joinHosted, tryDemo)
                 here -> {
                     LabelledField(
                         "Name for this device", device, problem.takeIf { it?.field == Field.Device }?.message,
@@ -582,7 +590,7 @@ private fun ChoiceTabs(choices: List<SignInChoice>, choice: SignInChoice, onChoo
 }
 
 @Composable
-private fun LabelledField(
+internal fun LabelledField(
     label: String,
     state: TextFieldState,
     error: String?,
@@ -593,6 +601,8 @@ private fun LabelledField(
     onSubmit: (() -> Unit)? = null,
     /** Takes the keyboard as soon as it shows. */
     focusFirst: Boolean = false,
+    /** What the box holds, so the system can fill it in (an email address, a code from a message). */
+    contentType: androidx.compose.ui.autofill.ContentType? = null,
 ) {
     val colors = AgentTheme.colors
     val shape = AgentTheme.shapes.medium
@@ -616,7 +626,10 @@ private fun LabelledField(
                 secret = secret,
                 keyboard = keyboard,
                 onSubmit = onSubmit,
-                modifier = Modifier.fillMaxWidth().focusRequester(focus).semantics { if (error != null) error(error) },
+                modifier = Modifier.fillMaxWidth().focusRequester(focus).semantics {
+                    if (error != null) error(error)
+                    if (contentType != null) this.contentType = contentType
+                },
             )
         }
         if (error != null) {
@@ -636,7 +649,7 @@ private fun LabelledField(
 
 /** A boxed message: why the app signed out, or a problem that isn't about one box. */
 @Composable
-private fun Banner(text: String, isError: Boolean) {
+internal fun Banner(text: String, isError: Boolean) {
     val colors = AgentTheme.colors
     val shape = AgentTheme.shapes.medium
     val tint = if (isError) colors.error else colors.warning

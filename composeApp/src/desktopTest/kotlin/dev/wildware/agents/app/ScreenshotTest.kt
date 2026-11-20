@@ -19,6 +19,10 @@ import dev.wildware.agents.app.design.AgentTheme
 import dev.wildware.agents.HostCheck
 import dev.wildware.agents.SignInMethod
 import dev.wildware.agents.app.signin.ConnectState
+import dev.wildware.agents.app.signin.HostedField
+import dev.wildware.agents.app.signin.HostedProblem
+import dev.wildware.agents.app.signin.HostedState
+import dev.wildware.agents.app.signin.HostedStep
 import dev.wildware.agents.app.signin.NotAFeedServer
 import dev.wildware.agents.app.signin.SignInChoice
 import dev.wildware.agents.app.signin.SignInScreen
@@ -239,6 +243,57 @@ class ScreenshotTest {
                                 startWith = SignInChoice.Host,
                                 connect = remember { start() },
                                 checkHost = { error("no network here") },
+                            ) { _, _, _ -> }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * "Log in", the hosted service: the email, the code, a wrong code, the team picker (one team
+     * read-only) and an email with no team yet. Nothing reaches a network.
+     */
+    @Test
+    fun hostedLogin() {
+        val flow = dev.wildware.agents.HostedLoginFlow(
+            dev.wildware.agents.HostedAccount("https://account.example", { error("no network here") }),
+            { error("no network here") },
+        )
+        val teams = dev.wildware.agents.HostedTeams(
+            listOf(
+                dev.wildware.agents.HostedTeam("acme", "Acme", "https://acme.feed.wildware.dev", "owner"),
+                dev.wildware.agents.HostedTeam("harbor", "Harbor Studio", "https://harbor.feed.wildware.dev", "member"),
+                dev.wildware.agents.HostedTeam("globex", "Globex", "https://globex.feed.wildware.dev", "member", readOnly = true),
+            ),
+            partial = false,
+        )
+        val email = "ada@example.com"
+        val steps = listOf<Pair<String, () -> HostedState>>(
+            "email" to { HostedState() },
+            "code" to { HostedState(email, HostedStep.Code) },
+            "wrong-code" to { HostedState(email, HostedStep.Code, problem = HostedProblem(HostedField.Code, "That code isn't right. Check the email and try again.")) },
+            "teams" to { HostedState(email, HostedStep.Teams, teams) },
+            "no-teams" to { HostedState(email, HostedStep.Teams, dev.wildware.agents.HostedTeams(emptyList(), false)) },
+            "too-many-tries" to { HostedState(email, problem = HostedProblem(HostedField.General, "Too many tries. Wait 15 minutes, then try again.")) },
+        )
+        for (size in listOf(Size.Phone, Size.Desktop)) {
+            for (dark in listOf(false, true)) {
+                val desktop = size != Size.Phone
+                for ((step, start) in steps) {
+                    shoot("${size.label}-${if (dark) "dark" else "light"}-hosted-login-$step", size, dark) {
+                        AgentTheme(dark) {
+                            SignInScreen(
+                                deviceName = if (desktop) "Ada's MacBook" else "Ada's iPhone",
+                                notice = null,
+                                safeArea = size.safeArea,
+                                tryDemo = {},
+                                signInHere = if (desktop) ({}) else null,
+                                checkHost = { error("no network here") },
+                                hosted = flow,
+                                joinHosted = { _, _ -> },
+                                hostedState = remember { start() },
                             ) { _, _, _ -> }
                         }
                     }

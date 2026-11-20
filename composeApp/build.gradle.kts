@@ -70,6 +70,38 @@ val generateCrashReportingBuild by tasks.registering {
     }
 }
 
+/**
+ * The hosted "Log in"'s account service (docs/HOSTING.md §5). `-Pfeed.accountUrl=…` or
+ * FEED_ACCOUNT_URL points a build at another one (a staging service, a fake on this computer);
+ * set to an empty string, the build offers no "Log in" at all.
+ */
+val generateHostedLoginBuild by tasks.registering {
+    val out = layout.buildDirectory.dir("generated/hostedLogin/kotlin")
+    val url = providers.gradleProperty("feed.accountUrl")
+        .orElse(providers.environmentVariable("FEED_ACCOUNT_URL"))
+        .orElse("https://account.feed.wildware.dev")
+    inputs.property("url", url)
+    outputs.dir(out)
+    doLast {
+        val value = url.get().trim().trimEnd('/')
+        require(value.isEmpty() || value.startsWith("https://") || value.startsWith("http://localhost") || value.startsWith("http://127.0.0.1")) {
+            "feed.accountUrl must be https:// (or http://localhost for a test): $value"
+        }
+        val file = out.get().file("dev/wildware/agents/app/signin/HostedLoginBuild.kt").asFile
+        file.parentFile.mkdirs()
+        file.writeText(
+            """
+            |package dev.wildware.agents.app.signin
+            |
+            |/** Where this build's "Log in" goes. Generated from `feed.accountUrl`; do not edit. Empty: no "Log in". */
+            |internal object HostedLoginBuild {
+            |    const val AccountService: String = "${value.replace("\\", "\\\\").replace("\"", "\\\"").replace("$", "\\$")}"
+            |}
+            |""".trimMargin(),
+        )
+    }
+}
+
 kotlin {
     jvmToolchain(21)
 
@@ -113,6 +145,7 @@ kotlin {
     sourceSets {
         commonMain {
             kotlin.srcDir(generateCrashReportingBuild)
+            kotlin.srcDir(generateHostedLoginBuild)
         }
         commonMain.dependencies {
             implementation(project(":shared"))

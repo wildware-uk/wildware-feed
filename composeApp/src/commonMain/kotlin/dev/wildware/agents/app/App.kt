@@ -53,7 +53,6 @@ import dev.wildware.agents.app.signin.ConnectState
 import dev.wildware.agents.app.signin.JoinFromLinkDialog
 import dev.wildware.agents.app.signin.SignInChoice
 import dev.wildware.agents.app.signin.SignInScreen
-import dev.wildware.agents.app.signin.defaultSignInChoice
 import kotlinx.coroutines.flow.filterNotNull
 import dev.wildware.agents.HostCheck
 import dev.wildware.agents.SignInMethod
@@ -150,7 +149,9 @@ fun AgentsApp(
                         connect = connect,
                         hostFixed = home != null,
                         startInvite = joinWith?.link,
-                        startWith = if (joinWith != null) SignInChoice.Host else defaultSignInChoice(model.canHostLocally),
+                        startWith = if (joinWith != null) SignInChoice.Host else null,
+                        hosted = model.hostedLogin,
+                        joinHosted = model::joinHostedTeam,
                     )
                 }
                 is AppScreen.Signed -> {
