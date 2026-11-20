@@ -224,9 +224,9 @@ email exists). With `--password-stdin` it sets the password; otherwise it prints
 link valid 24 hours. A hosting service runs it once after provisioning (on Heroku:
 `heroku run feed-server create-owner …`). Also `reset-password --email`, `list-users`.
 
-**Admin token.** `ADMIN_API_TOKEN` (at least 32 chars). Unset means every `/admin/*` route answers
-404. Checked in constant time; its own rate limit (60 a minute); never accepted on owner or agent
-routes, and no other credential is accepted here.
+**Admin key (changed).** Requests are signed with a key from `ADMIN_API_KEYS`, not sent with a
+bearer token; HOSTING.md §7 has the exact rules. Unset means every `/admin/*` route answers 404;
+its own rate limit; never accepted on owner or agent routes, and no other credential is accepted here.
 
 **`GET /admin/usage`** (read-only):
 

@@ -326,7 +326,7 @@ What changes, piece by piece:
   is not itself a feed. A team's address answers as in TEAMS.md §8, with `"team": true`.
 - **An unknown subdomain** answers every path with `404 {"error":"no_such_team"}`. A team that is
   being deleted answers the same.
-- **New public routes** (`/api/account/sign-in`, `/api/devices/ticket`, `/join/…`) join the guard's
+- **New public routes** (`/api/account/sign-in`, `/api/devices/ticket`, `/auth/ticket`, `/join/…`) join the guard's
   public list (`http/Guard.kt`). `/admin` has its own token check and is public to the guard.
 - **Today's live server** becomes the home team at its current address: `PUBLIC_BASE_URL` stays the
   home team's address, and nothing about it moves to a subdomain. Hosted customers' teams get
@@ -380,6 +380,12 @@ database as the teams, so the sign-in grants of TEAMS.md §7 are not needed):
 
 The founding owner of a migrated server has no email (TEAMS.md §2) until they set one in the app;
 account sign-in can't find them before that, and the app asks for one at their next sign-in.
+
+**Hosted "Log in" through the control plane.** The app can also sign in with no password at all:
+the control plane emails a code to prove the email, asks the admin API which teams that email is in
+(`POST /admin/memberships/lookup`) and for a ticket to the chosen one
+(`POST /admin/teams/{id}/sign-in-tickets`, section 7), and hands the ticket to the app, which
+redeems it at step 3 above. The server makes and checks the ticket either way.
 
 Sign-in on the team's own address ("Connect to a host" → `acme.feed.wildware.dev` → email and
 password) also works and goes straight to step 3's result. Same rate limits as today's sign-in, by
@@ -446,20 +452,99 @@ Stored on the `teams` row, set by the control plane, enforced by the server:
 
 ### The admin API the control plane calls
 
-On the bare address in multi-team mode; on a self-hosted server, on its own address with the one
-team called `home`, so a self-hoster can use it too. Behind `ADMIN_API_TOKEN` (as TEAMS.md §7: unset means 404; constant-time
-check; its own rate limit; no other credential accepted). It knows teams and numbers, never prices.
+This is a fixed contract (version 1): the control plane is built against exactly this, so slice 4
+builds exactly this. It knows teams, people and numbers, never prices or plans.
 
-| Call | What it does |
-|---|---|
-| `POST /admin/teams` `{slug, name, owner: {email, name}, limits}` | Creates a team and its owner. Links an existing account by email, or makes one and returns a one-time password link. Takes an `Idempotency-Key` header, so a retried signup doesn't make two teams. |
-| `GET /admin/teams/{id}/usage` | Seats, pending invites, agents, devices, projects, storage bytes, an estimate of database bytes, last activity, suspended. |
-| `GET /admin/usage?since=` | The same for every team changed since a time, for billing runs. |
-| `PUT /admin/teams/{id}/limits` | Seats and storage bytes. |
-| `PUT /admin/teams/{id}/suspended` `{suspended, reason}` | Read-only on and off. |
-| `PUT /admin/teams/{id}/slug` | Rename the address; the old one stays an alias (section 4). |
-| `DELETE /admin/teams/{id}` | Marks the team for deletion. A job removes its rows in batches and its bucket prefix. A deleted team's slug can't be reused for 30 days. |
-| `POST /admin/teams/{id}/export` | Starts an export: the existing `feed-server export` (Postgres to SQLite, `Export.kt`) gains `--team`, producing a file any self-hosted server can open. It rewrites `team_id` to `home` and copies the team's media from `t/<team id>/…` to the root layout a self-hosted server expects. A hosted team can always leave. |
+**Where.** Under `/admin/` on any address that is not a team's (the bare address in multi-team mode;
+on a self-hosted server, its own address, with the one team called `home`, so a self-hoster can use
+it too). Unset keys mean every `/admin/*` route answers `404`. JSON in and out; times ISO 8601 UTC
+with milliseconds. Errors are `{"error": "<code>", "message": "<words>"}`. Clients ignore fields they
+don't know, so answers may grow.
+
+**Signed requests, not a bearer token.** `ADMIN_API_KEYS` holds one or two keys (comma-separated, so
+a key can be rotated), each at least 32 random bytes in base64url. The key never travels. Each request
+carries `Feed-Admin-Timestamp: <unix seconds>` and `Feed-Admin-Signature: v1=<hex>`, where the hex is
+`HMAC-SHA256(key, message)`, the key is the key string's UTF-8 bytes, and the message is five lines
+joined by `\n` with no trailing newline:
+
+```
+v1
+<timestamp>
+<METHOD>
+<path and query exactly as sent>
+<hex SHA-256 of the raw body; for no body e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855>
+```
+
+A timestamp more than 300 s off is `401 stale_request`. No key matching (compared in constant time),
+or a missing header, is `401 bad_signature`. No other credential works on `/admin/*`, and the signature
+works nowhere else. Its own rate limit: 600 a minute, then `429` with `Retry-After`. Admin calls should
+be audit-logged (call, team, time; never bodies).
+
+**Idempotency.** `POST /admin/teams` and `POST /admin/teams/{id}/invites` require an
+`Idempotency-Key` header (1 to 255 printable ASCII). The server keeps it 24 hours with a fingerprint
+(method, path, SHA-256 of the body). Same key and request: the first status and body again, with
+`Idempotent-Replayed: true`, and nothing made twice; any one-time link in the answer (`setupUrl`,
+invite `url`) is freshly made and the earlier one revoked, so no secret is ever stored for replay.
+Same key, different request: `422 idempotency_key_reused`. Same key still running:
+`409 idempotency_in_progress`. Other writes are idempotent by nature (`PUT` sets; `DELETE` repeats
+`202`).
+
+**The team object:**
+
+```json
+{"id": "01JD…", "slug": "acme", "name": "Acme", "address": "https://acme.feed.wildware.dev",
+ "externalRef": "tm_01JD…", "limits": {"seats": 5, "storageBytes": 26843545600},
+ "suspended": false, "suspendedReason": null, "state": "active",
+ "createdAt": "2026-11-20T09:00:00.000Z"}
+```
+
+`state` is `active` or `deleting`; once the purge is done the team is `404 no_such_team`.
+`externalRef` is the control plane's own id (up to 64 characters), stored and echoed, never
+interpreted.
+
+| Call | Body | Answer | Errors |
+|---|---|---|---|
+| `POST /admin/teams` | `{slug, name, owner: {email, name}, limits: {seats, storageBytes}, externalRef}` | `201 {team, owner: {accountId, membershipId, email, newAccount, setupUrl, setupExpiresAt}}`. Links an existing account by email (lower-cased) or makes one with no password. `setupUrl` is a one-time password link, 24 h, `null` if the account has a password. | `400 invalid_request`, `422 invalid_slug` (3–30 of `a-z0-9-`, starts with a letter, no trailing `-`, no `--`), `409 slug_taken` (team or alias), `409 slug_reserved` (reserved, or a team deleted in the last 30 days) |
+| `GET /admin/teams/{id}` | – | `200 {team}` | `404 no_such_team` |
+| `GET /admin/teams?externalRef=` | – | `200 {teams: […]}` (empty if none) | – |
+| `GET /admin/teams/{id}/usage` | – | `200 {teamId, seats: {used, pendingInvites, limit}, storage: {bytes, limit}, agents, devices, projects: {active, archived}, databaseBytes, lastActivityAt, suspended}` | `404 no_such_team` |
+| `GET /admin/usage?since=&cursor=&limit=` | – | `200 {usage: […], nextCursor}`, teams changed since `since`, oldest first, `limit` 1–500 (100) | – |
+| `PUT /admin/teams/{id}/limits` | `{seats?, storageBytes?}` | `200 {team}`. A limit below use is accepted; new seats or uploads are refused until under it. | `404` |
+| `PUT /admin/teams/{id}/suspended` | `{suspended, reason?, message?}` (`reason` a code ≤ 64; `message` ≤ 280, shown to the team) | `200 {team}`; setting the current state is fine | `404` |
+| `DELETE /admin/teams/{id}` | – | `202 {team}` with `state: "deleting"`; the address answers `404 no_such_team` at once; a job removes rows and the bucket prefix; repeats answer `202` until done, then `404`. Slug blocked 30 days. | – |
+| `POST /admin/teams/{id}/invites` | `{email, role}` (`owner`, `admin`, `member`) | `201 {inviteId, url, expiresAt}`: the TEAMS.md §5 invite | `409 seat_limit`, `409 already_member`, `404` |
+| `POST /admin/teams/{id}/setup-links` | `{email}` | `201 {url, expiresAt}` for a member with no password yet; earlier setup links revoked | `404 no_such_member`, `409 already_set_up` |
+| `POST /admin/memberships/lookup` | `{email}` (a `POST`, so the email stays out of URLs and logs) | `200 {memberships: [{membershipId, role, team: {id, slug, name, address, suspended}}]}`: active memberships in teams not being deleted | – |
+| `POST /admin/teams/{id}/sign-in-tickets` | `{email}` | `201 {ticket, expiresAt, address, membershipId}` | `404 no_such_member`, `404 no_such_team` |
+
+**Sign-in tickets** let the control plane sign a person in to their team after it has checked their
+email itself (by an emailed code), without ever seeing a password. A ticket is 32 random bytes
+(43 base64url characters), stored only hashed in `auth_codes`, valid **60 seconds**, **single use**
+(deleted in the same transaction that checks it), bound to one membership, and taken only on that
+team's address. It works while the team is suspended. Not idempotent on purpose: a retry makes a new
+ticket. Redeemed, with no admin key, on the team's address:
+
+- **App:** `POST /api/devices/ticket {ticket, deviceName, platform}` answers exactly what a password
+  sign-in does. A used, expired, unknown or other team's ticket: `401 invalid_ticket`, all alike.
+  Rate limited like sign-in.
+- **Browser:** `POST /auth/ticket` with form body `ticket=…` sets the web app's cookie and answers
+  `303` to `/`; a bad ticket goes to the sign-in page with an error. The form is posted from the
+  control plane's page, so this route checks the ticket, not the `Origin`.
+
+The control plane uses these as follows: sign-up sends `POST /admin/teams` with
+`Idempotency-Key: create-<its team id>` and `externalRef` set to that id; a lapsed team is suspended,
+a paid one resumed, extra logins become `PUT …/limits`; 30 days after lapsing it sends `DELETE` and
+reads until `404`; the app's hosted "Log in" is `memberships/lookup` then `sign-in-tickets`.
+
+Error codes in one place: `400 invalid_request`; `401 bad_signature`, `stale_request`,
+`invalid_ticket`; `403 suspended` (team routes only); `404 no_such_team`, `no_such_member`;
+`409 slug_taken`, `slug_reserved`, `seat_limit`, `already_member`, `already_set_up`,
+`idempotency_in_progress`; `422 invalid_slug`, `idempotency_key_reused`; `429 rate_limited`.
+
+Still to come, not used by the control plane yet: `PUT /admin/teams/{id}/slug` (rename; the old
+address stays an alias, section 4) and `POST /admin/teams/{id}/export` (the existing
+`feed-server export` gains `--team`, rewriting `team_id` to `home` and copying the team's media from
+`t/<team id>/…` to the root layout, so a hosted team can always leave).
 
 ## 8. Cost
 
