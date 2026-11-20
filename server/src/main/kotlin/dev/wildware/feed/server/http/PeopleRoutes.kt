@@ -126,7 +126,7 @@ fun Route.peopleRoutes(app: App) {
         "/api/invite/peek",
         HttpMethod.Post to {
             if (throttled()) return@to
-            val invite = app.people.peek(tokenOf(call.jsonObjectBody()))
+            val invite = app.people.peek(tokenOf(call.jsonObjectBody(BodyLimits.PUBLIC)))
             if (invite == null) {
                 call.respondOwner(404, Wire.error("invalid_invite", "That invite has expired, was used already, or isn't right. Ask for a new one."))
             } else {
@@ -146,7 +146,7 @@ fun Route.peopleRoutes(app: App) {
         "/api/invite/accept",
         HttpMethod.Post to {
             if (throttled()) return@to
-            val body = call.jsonObjectBody()
+            val body = call.jsonObjectBody(BodyLimits.PUBLIC)
             fun text(key: String) = body[key].jsString ?: throw invalid("$key must be a string")
             val deviceName = requiredText(text("deviceName"), "deviceName", 100)
             val person = app.people.accept(tokenOf(body), text("name"), text("email"), text("password"))

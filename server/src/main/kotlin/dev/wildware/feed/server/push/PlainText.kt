@@ -28,10 +28,14 @@ import org.commonmark.parser.Parser
 object PlainText {
     private val parser = Parser.builder().extensions(listOf(TablesExtension.create(), StrikethroughExtension.create())).build()
 
+    /**
+     * Every walk here keeps its own stack rather than recursing, so a body nested thousands deep
+     * (blockquotes, lists, links) can't run the thread out of stack.
+     */
     fun of(markdown: String): String {
         val lines = mutableListOf<String>()
         var bullet = ""
-        fun visit(node: Node) {
+        preOrder(parser.parse(markdown)) { node ->
             when (node) {
                 is ListItem -> {
                     val list = node.parent
@@ -44,51 +48,72 @@ object PlainText {
                     } else {
                         "• "
                     }
-                    children(node).forEach(::visit)
+                    true
                 }
                 is Paragraph, is Heading, is TableCell -> {
                     lines += bullet + inline(node)
                     bullet = ""
+                    false
                 }
-                is FencedCodeBlock -> lines += node.literal.trimEnd()
-                is IndentedCodeBlock -> lines += node.literal.trimEnd()
+                is FencedCodeBlock -> { lines += node.literal.trimEnd(); false }
+                is IndentedCodeBlock -> { lines += node.literal.trimEnd(); false }
                 is HtmlBlock -> {
                     lines += bullet + node.literal.trimEnd()
                     bullet = ""
+                    false
                 }
-                else -> children(node).forEach(::visit)
+                else -> true
             }
         }
-        visit(parser.parse(markdown))
         return lines.map { it.trim() }.filter { it.isNotEmpty() }.joinToString("\n")
     }
 
-    private fun children(node: Node) = generateSequence(node.firstChild) { it.next }.toList()
-
-    private fun inline(node: Node): String = buildString {
-        fun walk(n: Node) {
-            when (n) {
-                is Text -> append(n.literal)
-                is Code -> append(n.literal)
-                is HtmlInline -> append(n.literal)
-                is SoftLineBreak, is HardLineBreak -> append('\n')
-                is Image -> append(altText(n).ifEmpty { "image" })
-                else -> children(n).forEach(::walk)
-            }
+    /**
+     * Visit [root] and what is under it in document order, without recursion. [visit] answers
+     * whether to go on into a node's children.
+     */
+    private inline fun preOrder(root: Node, visit: (Node) -> Boolean) {
+        val stack = ArrayDeque<Node>()
+        stack.addLast(root)
+        while (stack.isNotEmpty()) {
+            val node = stack.removeLast()
+            if (!visit(node)) continue
+            var child = node.lastChild
+            while (child != null) { stack.addLast(child); child = child.previous }
         }
-        children(node).forEach(::walk)
     }
 
-    private fun altText(image: Image): String = buildString {
-        fun walk(n: Node) {
-            when (n) {
-                is Text -> append(n.literal)
-                is Code -> append(n.literal)
-                is SoftLineBreak, is HardLineBreak -> append('\n')
-                else -> children(n).forEach(::walk)
-            }
+    /** The text under [node], [node] itself left out. */
+    private inline fun textUnder(node: Node, crossinline leaf: StringBuilder.(Node) -> Boolean): String = buildString {
+        var child = node.lastChild
+        val stack = ArrayDeque<Node>()
+        while (child != null) { stack.addLast(child); child = child.previous }
+        while (stack.isNotEmpty()) {
+            val n = stack.removeLast()
+            if (leaf(n)) continue
+            var c = n.lastChild
+            while (c != null) { stack.addLast(c); c = c.previous }
         }
-        children(image).forEach(::walk)
+    }
+
+    private fun inline(node: Node): String = textUnder(node) { n ->
+        when (n) {
+            is Text -> { append(n.literal); true }
+            is Code -> { append(n.literal); true }
+            is HtmlInline -> { append(n.literal); true }
+            is SoftLineBreak, is HardLineBreak -> { append('\n'); true }
+            is Image -> { append(altText(n).ifEmpty { "image" }); true }
+            else -> false
+        }
+    }
+
+    private fun altText(image: Image): String = textUnder(image) { n ->
+        when (n) {
+            is Text -> { append(n.literal); true }
+            is Code -> { append(n.literal); true }
+            is SoftLineBreak, is HardLineBreak -> { append('\n'); true }
+            else -> false
+        }
     }
 
     /** `notificationText`: plain text, runs of spaces and tabs as one, cut to 140 UTF-16 units with an ellipsis. */

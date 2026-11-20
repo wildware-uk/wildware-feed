@@ -13,9 +13,7 @@ import io.ktor.http.HttpMethod
 import io.ktor.http.Parameters
 import io.ktor.http.parseQueryString
 import io.ktor.server.application.ApplicationCall
-import io.ktor.server.request.receiveChannel
 import io.ktor.server.routing.Route
-import io.ktor.utils.io.readAvailable
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
@@ -483,24 +481,12 @@ private suspend fun ApplicationCall.formBody(): Parameters? {
 
 /** The body as text, at most [max] bytes, or null with a 413 sent. */
 private suspend fun ApplicationCall.smallBody(max: Int): String? {
-    val declared = request.headers["Content-Length"]?.toLongOrNull()
-    if (declared != null && declared > max) {
+    val bytes = receiveAtMost(max)
+    if (bytes == null) {
         oauthError(413, "invalid_request", "the body is at most $max bytes")
         return null
     }
-    val channel = receiveChannel()
-    val buffer = ByteArray(max + 1)
-    var read = 0
-    while (read < buffer.size) {
-        val n = channel.readAvailable(buffer, read, buffer.size - read)
-        if (n < 0) break
-        read += n
-    }
-    if (read > max) {
-        oauthError(413, "invalid_request", "the body is at most $max bytes")
-        return null
-    }
-    return String(buffer, 0, read, Charsets.UTF_8)
+    return bytes.toString(Charsets.UTF_8)
 }
 
 /**

@@ -12,11 +12,9 @@ import dev.wildware.feed.server.domain.Teams
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.request.httpMethod
 import io.ktor.server.request.path
-import io.ktor.server.request.receiveChannel
 import io.ktor.server.request.uri
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.route
-import io.ktor.utils.io.readAvailable
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
@@ -153,16 +151,7 @@ private suspend fun ApplicationCall.readBody(): ByteArray {
     if (declared != null && declared > AdminApi.BODY_MAX) throw AdminError(413, "invalid_request", "The body is at most ${AdminApi.BODY_MAX} bytes.")
     // A request with neither a length nor chunks has no body (a DELETE, a GET): don't wait for one.
     if ((declared == null || declared == 0L) && request.headers["Transfer-Encoding"] == null) return ByteArray(0)
-    val channel = receiveChannel()
-    val out = java.io.ByteArrayOutputStream()
-    val buffer = ByteArray(8192)
-    while (true) {
-        val n = channel.readAvailable(buffer, 0, buffer.size)
-        if (n < 0) break
-        out.write(buffer, 0, n)
-        if (out.size() > AdminApi.BODY_MAX) throw AdminError(413, "invalid_request", "The body is at most ${AdminApi.BODY_MAX} bytes.")
-    }
-    return out.toByteArray()
+    return receiveAtMost(AdminApi.BODY_MAX) ?: throw AdminError(413, "invalid_request", "The body is at most ${AdminApi.BODY_MAX} bytes.")
 }
 
 /** The contract's signature check: a known key, a fresh time, over exactly what was sent. */

@@ -6,9 +6,7 @@ import dev.wildware.feed.server.domain.invalid
 import dev.wildware.feed.server.domain.jsString
 import io.ktor.http.HttpMethod
 import io.ktor.server.application.ApplicationCall
-import io.ktor.server.request.receiveChannel
 import io.ktor.server.routing.Route
-import io.ktor.utils.io.readAvailable
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
@@ -106,24 +104,12 @@ private suspend fun ApplicationCall.allowed(limiter: dev.wildware.feed.server.au
 /** A JSON object body of at most [PAIR_BODY_MAX] bytes, or null with the refusal already sent. */
 private suspend fun ApplicationCall.smallObjectBody(): JsonObject? {
     if (request.headers["Content-Type"] == null) throw invalid("body must be JSON: {\"name\": \"…\"}")
-    val declared = request.headers["Content-Length"]?.toLongOrNull()
-    if (declared != null && declared > PAIR_BODY_MAX) {
+    val bytes = receiveAtMost(PAIR_BODY_MAX)
+    if (bytes == null) {
         respondJson(413, Wire.error("too_large", "a pairing request is at most $PAIR_BODY_MAX bytes"), Wire.JSON_UTF8)
         return null
     }
-    val channel = receiveChannel()
-    val buffer = ByteArray(PAIR_BODY_MAX + 1)
-    var read = 0
-    while (read < buffer.size) {
-        val n = channel.readAvailable(buffer, read, buffer.size - read)
-        if (n < 0) break
-        read += n
-    }
-    if (read > PAIR_BODY_MAX) {
-        respondJson(413, Wire.error("too_large", "a pairing request is at most $PAIR_BODY_MAX bytes"), Wire.JSON_UTF8)
-        return null
-    }
-    val parsed = Wire.parseStrict(String(buffer, 0, read, Charsets.UTF_8)) ?: throw invalid("body must be JSON")
+    val parsed = Wire.parseStrict(bytes.toString(Charsets.UTF_8)) ?: throw invalid("body must be JSON")
     return parsed as? JsonObject ?: throw invalid("body must be a JSON object")
 }
 

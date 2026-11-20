@@ -33,7 +33,7 @@ fun Route.deviceRoutes(app: App) {
     endpoint(
         "/api/devices/sign-in",
         HttpMethod.Post to {
-            val body = call.jsonObjectBody()
+            val body = call.jsonObjectBody(BodyLimits.PUBLIC)
             val name = nameOf(body)
             dev.wildware.feed.server.domain.requiredText(name, "name", 100)
             val password = (body["password"] as? JsonPrimitive)?.takeIf { it.isString }?.content

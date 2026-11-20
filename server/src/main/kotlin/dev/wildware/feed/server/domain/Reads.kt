@@ -612,7 +612,7 @@ class Reads(private val db: Database, private val clock: () -> Long = System::cu
             Row(rs.getString("kind"), rs.getString("id"), rs.longOrNull("status_at"), rs.getLong("created_at"), rs.getString("title"), rs.getString("body"), rs.getString("author"))
         }
         fun agentOf(author: String?) = author?.takeIf { it.startsWith("agent:") }?.removePrefix("agent:")
-        return rows.map { row ->
+        return rows.mapNotNull { row -> oneCardOrNull(row.id) {
             var agentId = agentOf(row.author)
             if (agentId == null && row.kind == "message") {
                 agentId = db.query(
@@ -627,7 +627,18 @@ class Reads(private val db: Database, private val clock: () -> Long = System::cu
                 put("task", cut(title.ifEmpty { firstLine(row.body) }, TASK_MAX))
                 put("since", Math.floorDiv(row.statusAt ?: row.createdAt, 1000L))
             }
-        }
+        } }
+    }
+
+    /** One card's part of the summary, or null with the failure logged: one bad card never breaks the page. */
+    private inline fun <T> oneCardOrNull(id: String, part: () -> T): T? = try {
+        part()
+    } catch (e: Exception) {
+        System.err.println("summary: card $id left out: $e")
+        null
+    } catch (e: StackOverflowError) {
+        System.err.println("summary: card $id left out: nested too deep")
+        null
     }
 
     private fun workCounts(projectIds: List<String>): Map<String, Long> {

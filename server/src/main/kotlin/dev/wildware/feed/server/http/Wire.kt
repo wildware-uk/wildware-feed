@@ -10,7 +10,7 @@ import io.ktor.http.content.OutgoingContent
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.request.receiveChannel
 import io.ktor.server.response.respond
-import io.ktor.utils.io.toByteArray
+import io.ktor.utils.io.readAvailable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -89,22 +89,58 @@ suspend fun ApplicationCall.respondDomainError(e: DomainError) =
 suspend fun ApplicationCall.respondRedirect303(location: String, vararg headers: Pair<String, String>) =
     respondRaw(303, "", null, "Location" to location, *headers)
 
-/** The request body as text, or null when there is none (adapter-node gives no body without a Content-Type). */
-suspend fun ApplicationCall.bodyText(): String? {
+/** How big a request body may be. Bodies are read only up to their cap, so a big one never fills memory. */
+object BodyLimits {
+    /** Routes anyone can call before signing in: a name, a password, a code. */
+    const val PUBLIC = 64 * 1024
+    /** Any other JSON or form body: the largest owner write (a 100,000-character body) fits with room to spare. */
+    const val DEFAULT = 1024 * 1024
+    /** `/mcp`: a post with its body, 8 blocks of up to 100,000 characters each, apps and their data. */
+    const val MCP = 8 * 1024 * 1024
+}
+
+/** Thrown when a body is over its cap: answered 413 `payload_too_large`. */
+fun payloadTooLarge(max: Int) = DomainError("payload_too_large", "the body is at most $max bytes", 413)
+
+/**
+ * At most [max] bytes of the request body, counted as they arrive, or null once it is longer. A
+ * declared `Content-Length` over [max] is refused before anything is read.
+ */
+suspend fun ApplicationCall.receiveAtMost(max: Int): ByteArray? {
+    val declared = request.headers["Content-Length"]?.trim()?.toLongOrNull()
+    if (declared != null && declared > max) return null
+    val channel = receiveChannel()
+    val out = java.io.ByteArrayOutputStream()
+    val buffer = ByteArray(8192)
+    while (true) {
+        val n = channel.readAvailable(buffer, 0, buffer.size)
+        if (n < 0) break
+        if (out.size() + n > max) return null
+        out.write(buffer, 0, n)
+    }
+    return out.toByteArray()
+}
+
+/**
+ * The request body as text, at most [max] bytes (else 413), or null when there is none
+ * (adapter-node gives no body without a Content-Type).
+ */
+suspend fun ApplicationCall.bodyText(max: Int = BodyLimits.DEFAULT): String? {
     if (request.headers["Content-Type"] == null) return null
-    return receiveChannel().toByteArray().toString(Charsets.UTF_8)
+    val bytes = receiveAtMost(max) ?: throw payloadTooLarge(max)
+    return bytes.toString(Charsets.UTF_8)
 }
 
 /** A JSON object body, strictly: "body must be JSON" / "body must be a JSON object". */
-suspend fun ApplicationCall.jsonObjectBody(): JsonObject {
-    val text = bodyText() ?: throw invalid("body must be JSON")
+suspend fun ApplicationCall.jsonObjectBody(max: Int = BodyLimits.DEFAULT): JsonObject {
+    val text = bodyText(max) ?: throw invalid("body must be JSON")
     val parsed = Wire.parseStrict(text) ?: throw invalid("body must be JSON")
     return parsed as? JsonObject ?: throw invalid("body must be a JSON object")
 }
 
 /** A JSON object body, leniently: anything unreadable is `{}` (the TS card and tag routes do this). */
-suspend fun ApplicationCall.lenientObjectBody(): JsonObject =
-    bodyText()?.let { Wire.parseStrict(it) as? JsonObject } ?: JsonObject(emptyMap())
+suspend fun ApplicationCall.lenientObjectBody(max: Int = BodyLimits.DEFAULT): JsonObject =
+    bodyText(max)?.let { Wire.parseStrict(it) as? JsonObject } ?: JsonObject(emptyMap())
 
 fun JsonElement?.jsValue(): Any? = when (this) {
     null, is kotlinx.serialization.json.JsonNull -> null

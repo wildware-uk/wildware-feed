@@ -26,7 +26,7 @@ fun Route.ticketRoutes(app: App) {
     endpoint(
         "/api/devices/ticket",
         HttpMethod.Post to {
-            val body = call.jsonObjectBody()
+            val body = call.jsonObjectBody(BodyLimits.PUBLIC)
             val ticket = (body["ticket"] as? JsonPrimitive)?.takeIf { it.isString }?.content ?: throw invalid("ticket must be a string")
             val name = (body["deviceName"] as? JsonPrimitive)?.takeIf { it.isString }?.content ?: throw invalid("deviceName must be a string")
             requiredText(name, "deviceName", 100)
@@ -56,7 +56,7 @@ fun Route.ticketRoutes(app: App) {
             if (call.request.headers["Origin"] != allowed) {
                 return@to call.respondRaw(403, "This sign-in must come from the sign-in page.", "text/plain;charset=utf-8", "Cache-Control" to "no-store")
             }
-            val form = parseQueryString(call.bodyText().orEmpty())
+            val form = parseQueryString(call.bodyText(BodyLimits.PUBLIC).orEmpty())
             val person = call.redeemTicket(app, form["ticket"].orEmpty())
             if (person == null) return@to call.movePage("/?error=invalid_ticket")
             val (_, token) = app.devices.mint("Browser", person.id)
@@ -73,7 +73,7 @@ fun Route.ticketRoutes(app: App) {
         HttpMethod.Post to {
             val code = call.parameters["code"].orEmpty()
             if (call.pageOrigin(app.config) == false) return@to call.setupPage(403, SetupPage.gone())
-            val form = parseQueryString(call.bodyText().orEmpty())
+            val form = parseQueryString(call.bodyText(BodyLimits.PUBLIC).orEmpty())
             val password = form["password"].orEmpty()
             if (password != form["again"].orEmpty()) return@to call.setupPage(400, SetupPage.form("The two passwords aren't the same."))
             if (password.length < 8) return@to call.setupPage(400, SetupPage.form("A password needs at least 8 characters."))

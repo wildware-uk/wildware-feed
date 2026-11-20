@@ -9,10 +9,8 @@ import dev.wildware.feed.server.domain.jsString
 import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.ApplicationCall
-import io.ktor.server.request.receiveChannel
 import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
-import io.ktor.utils.io.readAvailable
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
@@ -179,19 +177,9 @@ private fun ApplicationCall.whoFetched(app: App): String {
 
 /** The raw body, whatever its Content-Type (so `curl -T file` works), at most [max] bytes. */
 private suspend fun ApplicationCall.boundedBody(max: Int): ByteArray {
-    val declared = request.headers["Content-Length"]?.trim()?.toLongOrNull()
-    if (declared != null && declared > max) throw DomainError("too_large", "a secret is at most $max bytes", 413)
-    val channel = receiveChannel()
-    val buffer = ByteArray(max + 1)
-    var read = 0
-    while (read < buffer.size) {
-        val n = channel.readAvailable(buffer, read, buffer.size - read)
-        if (n < 0) break
-        read += n
-    }
-    if (read > max) throw DomainError("too_large", "a secret is at most $max bytes", 413)
-    if (read == 0) throw invalid("the body was empty: send the secret's bytes, e.g. curl -fsS -T <file> <url>")
-    return buffer.copyOf(read)
+    val bytes = receiveAtMost(max) ?: throw DomainError("too_large", "a secret is at most $max bytes", 413)
+    if (bytes.isEmpty()) throw invalid("the body was empty: send the secret's bytes, e.g. curl -fsS -T <file> <url>")
+    return bytes
 }
 
 /** Who on the owner's side did it: the device whose key signed this request. */
