@@ -6,10 +6,20 @@ package dev.wildware.agents
  * one line, list items keep a bullet, and real emphasis goes while a lone `*` or `_` stays.
  */
 object PlainText {
-    fun fromMarkdown(markdown: String): String {
+    fun fromMarkdown(markdown: String): String =
+        // Posted text is anyone's, so nothing in it may stop a card being drawn: should the
+        // conversion still fail somehow, the card shows its words as written.
+        try {
+            convert(markdown)
+        } catch (e: Throwable) {
+            markdown.replace("\u0000", "").trim()
+        }
+
+    private fun convert(markdown: String): String {
         val lines = mutableListOf<String>()
         var fence: String? = null
-        for (raw in markdown.replace("\r\n", "\n").split('\n')) {
+        // U+0000 marks the text set aside in [inline], so posted text may not hold it.
+        for (raw in markdown.replace("\u0000", "").replace("\r\n", "\n").split('\n')) {
             val trimmed = raw.trim()
             val open = fence
             if (open != null) {
@@ -21,8 +31,11 @@ object PlainText {
                 fence = start.value
                 continue
             }
-            if (trimmed.isEmpty() || rule.matches(trimmed) || tableDivider.matches(trimmed)) continue
-            lines += inline(block(trimmed))
+            if (trimmed.isEmpty() || isRule(trimmed) || isTableDivider(trimmed)) continue
+            val line = block(trimmed)
+            // The inline patterns can rescan a line from each place they start, so a long line
+            // is left as written: its cost stays in step with its length, and no word is lost.
+            lines += if (line.length <= INLINE_MAX) inline(line) else line
         }
         return lines.map { it.trim() }.filter { it.isNotEmpty() }.joinToString("\n")
     }
@@ -59,8 +72,8 @@ object PlainText {
 
     private fun block(line: String): String {
         var text = line
-        text = text.replace(quote, "")
-        text = text.replace(heading, "").replace(closingHashes, "")
+        text = withoutQuoteMarks(text)
+        text = withoutClosingHashes(text.replace(heading, ""))
         bullet.find(text)?.let { return "• " + text.substring(it.range.last + 1) }
         numbered.find(text)?.let { return "${it.groupValues[1]}. " + text.substring(it.range.last + 1) }
         if (text.startsWith("|")) {
@@ -83,15 +96,57 @@ object PlainText {
         text = link.replace(text) { it.groupValues[1] }
         text = autolink.replace(text) { it.groupValues[1] }
         for (pattern in emphasis) text = pattern.replace(text) { it.groupValues[1] }
-        return placeholder.replace(text) { kept[it.groupValues[1].toInt()] }
+        return placeholder.replace(text) { kept.getOrNull(it.groupValues[1].toIntOrNull() ?: -1).orEmpty() }
+    }
+
+    // The rule, quote and divider checks are loops: a regex repeating a group once per mark
+    // recurses once per mark on some engines, and a long line ran out of stack.
+
+    /** Three or more of one of `-`, `*` or `_`, with spaces between them allowed: `---`, `* * *`. */
+    private fun isRule(line: String): Boolean {
+        val mark = line.first()
+        if (mark != '-' && mark != '*' && mark != '_') return false
+        var count = 0
+        for (c in line) {
+            when (c) {
+                mark -> count++
+                ' ' -> {}
+                else -> return false
+            }
+        }
+        return count >= 3
+    }
+
+    /** A table's header divider: cells of two or more dashes, each with an optional `:` either side. */
+    private fun isTableDivider(line: String): Boolean {
+        var body = line.removePrefix("|")
+        if (body.endsWith('|')) body = body.dropLast(1)
+        if (body.isEmpty()) return false
+        return body.split('|').all { cell ->
+            val c = cell.trim(' ', '\t').removePrefix(":").removeSuffix(":")
+            c.length >= 2 && c.all { it == '-' }
+        }
+    }
+
+    /** The line after any run of `>` quote marks, each with the one space that may follow it. */
+    private fun withoutQuoteMarks(line: String): String {
+        var i = 0
+        while (i < line.length && line[i] == '>') {
+            i++
+            if (i < line.length && line[i].isWhitespace()) i++
+        }
+        return line.substring(i)
+    }
+
+    /** A heading's closing `#`s and the space before them: `Title ##` is `Title`; `C#` stays. */
+    private fun withoutClosingHashes(line: String): String {
+        val hashes = line.trimEnd('#')
+        if (hashes.length == line.length || hashes.isEmpty() || !hashes.last().isWhitespace()) return line
+        return hashes.trimEnd()
     }
 
     private val fenceStart = Regex("^(`{3,}|~{3,})")
-    private val rule = Regex("^([-*_])( *\\1){2,}$")
-    private val tableDivider = Regex("^\\|?\\s*:?-{2,}:?\\s*(\\|\\s*:?-{2,}:?\\s*)*\\|?$")
-    private val quote = Regex("^(>\\s?)+")
     private val heading = Regex("^#{1,6}\\s+")
-    private val closingHashes = Regex("\\s+#+$")
     private val bullet = Regex("^[-*+]\\s+(\\[[ xX]]\\s+)?")
     private val numbered = Regex("^(\\d{1,9})[.)]\\s+")
     private val codeSpan = Regex("(`+)(.+?)\\1")
@@ -108,4 +163,7 @@ object PlainText {
     )
     private val placeholder = Regex("\u0000(\\d+)\u0000")
     private val sentenceEnd = Regex("(?<=[.!?…])\\s+")
+
+    /** Longest line the inline patterns run on. */
+    private const val INLINE_MAX = 500
 }

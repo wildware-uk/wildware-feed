@@ -151,11 +151,12 @@ class Database private constructor(
         if (dialect == Dialect.SQLITE) text else UNTYPED_NULL_TEST.replace(text) { "CAST(? AS TEXT) IS ${it.groupValues[1]}NULL" }
 
     /**
-     * Postgres can't hold U+0000 in text; SQLite can. On Postgres such a write is refused as a bad
-     * argument (400) before it reaches the database, rather than failing as a server error.
+     * Postgres can't hold U+0000 in text; SQLite can, but refuses it too, so both servers store the
+     * same text and none reaches the apps (their plain-text conversion keeps U+0000 for itself).
+     * Refused as a bad argument (400) before it reaches the database, rather than as a server error.
      */
     private fun checkText(args: Array<out Any?>) {
-        if (dialect == Dialect.POSTGRES && args.any { it is String && it.indexOf('\u0000') >= 0 }) {
+        if (args.any { it is String && it.indexOf('\u0000') >= 0 }) {
             throw dev.wildware.feed.server.domain.invalid("Text can't contain the NUL character (U+0000).")
         }
     }

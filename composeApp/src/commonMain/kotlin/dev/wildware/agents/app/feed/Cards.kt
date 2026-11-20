@@ -243,7 +243,7 @@ private fun rememberFold(id: String, noun: String, name: String, inThread: Boole
 @Composable
 private fun FoldedSummary(body: String, replies: Int, nothingSaid: String? = "No words on this card.") {
     val colors = AgentTheme.colors
-    val line = dev.wildware.agents.PlainText.fromMarkdown(body).lineSequence().map { it.trim() }.firstOrNull { it.isNotEmpty() }
+    val line = remember(body) { dev.wildware.agents.PlainText.fromMarkdown(body).lineSequence().map { it.trim() }.firstOrNull { it.isNotEmpty() } }
     (line ?: nothingSaid)?.let {
         Text(
             it,
@@ -1075,7 +1075,8 @@ fun PostCard(item: FeedItem.Post, modifier: Modifier = Modifier, density: Densit
     val tags = ui?.tagsFor(item.id, item.tags) ?: item.tags
     val reactions = ui?.reactionsFor(item.id, item.reactions) ?: item.reactions
     val chooseStatus = { ui?.emit(FeedEvent.ChooseStatus(item.id, item.status)); Unit }
-    val fold = rememberFold(item.id, "post", dev.wildware.agents.PlainText.clip(dev.wildware.agents.PlainText.fromMarkdown(item.body), 60), inThread)
+    val foldLabel = remember(item.body) { dev.wildware.agents.PlainText.clip(dev.wildware.agents.PlainText.fromMarkdown(item.body), 60) }
+    val fold = rememberFold(item.id, "post", foldLabel, inThread)
     WithMenu(target, modifier.alpha(if (item.sending) SendingAlpha else 1f)) { gestures ->
     CardFrame(gestures, density = density, mine = item.author is Author.Owner, bumpId = item.id) {
         Column {

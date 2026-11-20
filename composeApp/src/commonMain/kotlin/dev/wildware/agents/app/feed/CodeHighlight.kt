@@ -41,6 +41,11 @@ import kotlin.concurrent.atomics.ExperimentalAtomicApi
 object CodeHighlights {
     private const val Capacity = 300
 
+    /** Most punctuation marks a coloured block may hold: about 10,000 characters of real code, coloured in well under a second. */
+    private const val MaxPunctuation = 2_500
+
+    private fun isPunctuation(c: Char) = !c.isLetterOrDigit() && !c.isWhitespace()
+
     /** Copied on write, as [MarkdownCache] is: a reader never waits for a highlight elsewhere. */
     private val held = AtomicReference<Map<Key, List<CodeHighlight>>>(emptyMap())
 
@@ -61,7 +66,13 @@ object CodeHighlights {
     private fun highlight(code: String, language: String?): List<CodeHighlight> {
         onHighlight?.invoke(code)
         val lang = language?.let { SyntaxLanguage.getByName(it) } ?: SyntaxLanguage.DEFAULT
-        val found = Highlights.Builder().code(code).language(lang).theme(KindTheme).build().getHighlights()
+        // The highlighter's time grows with the square of a block's punctuation, so a block with a
+        // lot of it is drawn as plain monospace text rather than holding up the feed for seconds.
+        val found = if (code.count(::isPunctuation) > MaxPunctuation) {
+            emptyList()
+        } else {
+            Highlights.Builder().code(code).language(lang).theme(KindTheme).build().getHighlights()
+        }
         while (true) {
             val before = held.load()
             val next = LinkedHashMap<Key, List<CodeHighlight>>(before.size + 1)

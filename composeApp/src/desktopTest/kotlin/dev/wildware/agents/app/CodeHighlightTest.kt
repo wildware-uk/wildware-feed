@@ -96,4 +96,18 @@ class CodeHighlightTest {
         println("Code block: highlighting costs ${median(highlight)} us, now off the UI thread; drawing the body then costs ${median(draw)} us")
         assertTrue(draw.isNotEmpty())
     }
+
+    @Test
+    fun aBlockPackedWithPunctuationIsLeftPlainAndQuick() {
+        for (code in listOf("x.y(".repeat(25_000), "x.y(".repeat(20).let { line -> List(1_250) { line }.joinToString("\n") })) {
+            val body = "```kotlin\n$code\n```"
+            val started = System.nanoTime()
+            MarkdownCache.warm(listOf(body))
+            val tookMs = (System.nanoTime() - started) / 1_000_000
+            assertTrue(tookMs < 1_000, "warming took $tookMs ms")
+            assertEquals(emptyList(), CodeHighlights.get(code, "kotlin"))
+        }
+        // Ordinary code is still coloured.
+        assertTrue(CodeHighlights.get("val answer = 42 // done", "kotlin").isNotEmpty())
+    }
 }
