@@ -84,9 +84,26 @@ class AppModel(
         else null
 
     init {
-        platform.sessions.load()?.let { saved ->
-            if (saved.local && platform.localServer != null) scope.launch { openLocal(saved) } else open(saved)
+        val saved = platform.sessions.load()
+        val home = platform.homeServer
+        when {
+            saved != null -> if (saved.local && platform.localServer != null) scope.launch { openLocal(saved) } else open(saved)
+            home != null -> scope.launch { adoptCookie(home) }
         }
+    }
+
+    /**
+     * The web app with nothing saved may still be signed in: the account site's "Open" signs a
+     * browser in with a ticket, which sets only the cookie. If the server knows this browser, its
+     * feed opens; if not, the sign-in form stays.
+     */
+    private suspend fun adoptCookie(home: String) {
+        if (!SignIn.cookieSignedIn(home, platform.httpEngine())) return
+        // Signed in by hand while asking: that session stands.
+        if (mutableScreen.value !is AppScreen.SigningIn || platform.sessions.load() != null) return
+        val saved = SavedSession(SignIn.normalise(home), SignIn.CookieSession, platform.deviceName)
+        platform.sessions.save(saved)
+        open(saved)
     }
 
     /**

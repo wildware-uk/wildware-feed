@@ -117,6 +117,23 @@ class ConnectState(address: String = "", host: HostCheck.Feed? = null, problem: 
 
     /** Why the address didn't check out, shown under it. */
     var problem: String? by mutableStateOf(problem)
+
+    /**
+     * The web app starts at step 2 with the password alone, since its host is the one that served
+     * it. This asks that host how it signs people in, so a team's server adds the Email box for its
+     * members. If the host can't say, the password alone stays.
+     */
+    suspend fun learnSignIn(check: suspend (String) -> HostCheck) {
+        val server = host?.server ?: return
+        val found = try {
+            check(server)
+        } catch (cancelled: kotlin.coroutines.cancellation.CancellationException) {
+            throw cancelled
+        } catch (failed: Throwable) {
+            return
+        }
+        if (found is HostCheck.Feed && host?.server == server) host = found
+    }
 }
 
 /** What step 1 says about an address that didn't check out. */

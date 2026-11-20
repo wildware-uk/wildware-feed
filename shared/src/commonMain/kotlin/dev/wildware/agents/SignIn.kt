@@ -2,6 +2,7 @@ package dev.wildware.agents
 
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.HttpClientEngine
+import io.ktor.client.request.get
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
@@ -204,6 +205,25 @@ object SignIn {
                 status >= 500 -> SignInException(SignInFailure.Unreachable, "The dashboard had a problem ($status). Try again soon.", status)
                 else -> SignInException(SignInFailure.Refused, error?.message ?: "The dashboard refused the sign-in ($status).", status)
             }
+        } finally {
+            http.close()
+        }
+    }
+
+    /**
+     * Whether the web app's cookie already signs this browser in to [server]: `GET /api/me`
+     * answers 200. The account site's "Open" signs a browser in with a ticket, which sets the
+     * cookie and nothing the page keeps. False for no cookie, a revoked one, or no answer.
+     */
+    @Throws(CancellationException::class)
+    suspend fun cookieSignedIn(server: String, engine: HttpClientEngine): Boolean {
+        val http = HttpClient(engine) { expectSuccess = false }
+        return try {
+            http.get("${normalise(server)}/api/me").status.value == 200
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (unreachable: Throwable) {
+            false
         } finally {
             http.close()
         }

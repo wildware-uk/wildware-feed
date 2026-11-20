@@ -138,6 +138,8 @@ fun AgentsApp(
                     val connect = remember(home) {
                         if (home == null) ConnectState() else ConnectState(home, HostCheck.Feed(home, listOf(SignInMethod.Password)))
                     }
+                    // The password box shows at once; a team's server then adds the Email box.
+                    LaunchedEffect(connect) { if (home != null) connect.learnSignIn(model::checkHost) }
                     SignInScreen(
                         deviceName = model.deviceName,
                         notice = screen.notice,
