@@ -6,7 +6,8 @@ name: notary-status
 #     submission_id only            prints Apple's status and, once decided, its report.
 #     + run_id and artifact         once accepted, also checks Apple's report is for that exact .dmg.
 #     + tag                         once accepted, puts that .dmg on the release. Not decided yet:
-#                                   leaves it to notary-sweep, which asks every 15 minutes.
+#                                   starts notary-sweep, which asks again (every 15 minutes
+#                                   after that) until Apple decides.
 #   From desktop-release: straight after a release goes out without its Mac file.
 #
 # All of it is .github/scripts/notary-finish.sh. The .dmg goes up unstapled: stapling needs a Mac
@@ -69,7 +70,7 @@ jobs:
     permissions:
       # To put the .dmg on the release.
       contents: write
-      # To read the run's artifact, and turn notary-sweep on.
+      # To read the run's artifact, and start notary-sweep.
       actions: write
     env:
       SUBMISSION_ID: ${{ inputs.submission_id }}
@@ -94,6 +95,7 @@ jobs:
         with:
           sparse-checkout: .github/scripts
       - name: Ask Apple once, and finish it if it's accepted
+        id: ask
         timeout-minutes: 6
         env:
           GH_TOKEN: ${{ github.token }}
@@ -108,3 +110,23 @@ jobs:
           printf '%s' "$ASC_KEY_P8" | base64 --decode > "$ASC_KEY_PATH"
           chmod 600 "$ASC_KEY_PATH"
           bash .github/scripts/notary-finish.sh "$SUBMISSION_ID" "$RUN_ID" "$ARTIFACT" "$TAG"
+      # Still waiting: start a sweep now rather than trust GitHub's 15-minute timer alone (it is
+      # best-effort, and once never fired for hours). The sweep checks every waiting release, so
+      # this also catches up any older release a missed timer left behind. It asks Apple and
+      # stops; nothing waits. The sweep stays on for good, but anything that turned it off (an
+      # older version of it did, and GitHub does after 60 days with no activity) is undone here.
+      - name: Start a sweep now
+        if: steps.ask.outputs.status == 'pending' && env.TAG != ''
+        timeout-minutes: 2
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          state="$(gh api "repos/$GH_REPO/actions/workflows/notary-sweep.yml" --jq .state)"
+          if [ "$state" != active ]; then
+            echo "notary-sweep was $state; turning it back on."
+            gh workflow enable notary-sweep.yml
+          fi
+          gh workflow run notary-sweep.yml
+          echo "Started notary-sweep."

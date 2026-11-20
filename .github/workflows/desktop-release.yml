@@ -565,8 +565,9 @@ jobs:
         run: gh release create "$GITHUB_REF_NAME" dist/* --title "Wildware Feed $VERSION" --notes-file notes.md --verify-tag
 
   # Asks Apple once, on Linux, and puts the .dmg on the release (already out by now) if Apple has
-  # accepted it; if not, notary-sweep asks every 15 minutes until it does. Nothing waits. A run by
-  # hand has no release: notary-status just reports Apple's verdict; run it again later by hand.
+  # accepted it; if not, it starts notary-sweep, which asks again (then every 15 minutes) until it
+  # does, and catches up any older release still waiting. Nothing waits. A run by hand has no
+  # release: notary-status just reports Apple's verdict; run it again later by hand.
   # (A job that calls a workflow can't take timeout-minutes; the job inside notary-status has one.)
   notary-status:
     needs: [version, mac, release]

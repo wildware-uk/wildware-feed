@@ -4,8 +4,9 @@
 #   accepted  With a run and artifact: checks Apple's report is for that exact .dmg. With a tag
 #             too: puts it on the release (SHA256SUMS.txt first, then the .dmg), fixes the notes,
 #             and clears the release's notary-pending.json.
-#   pending   With a tag: writes notary-pending.json on the release and turns notary-sweep on,
-#             which asks again every 15 minutes until Apple decides.
+#   pending   With a tag: writes notary-pending.json on the release, so notary-sweep asks again
+#             until Apple decides. (notary-status starts that sweep; this script never does,
+#             since the sweep runs it too.)
 #   rejected  Apple's report is printed, notary-pending.json is cleared, and it fails.
 #
 #   notary-finish.sh SUBMISSION_ID [RUN_ID ARTIFACT [TAG]]
@@ -51,8 +52,7 @@ path, submission, run_id, artifact = sys.argv[1:]
 json.dump({"submission_id": submission, "run_id": run_id, "artifact": artifact}, open(path, "w"))
 PY
     gh release upload "$tag" "$work/$pending_asset" --clobber
-    gh workflow enable notary-sweep.yml
-    echo "::notice::$tag waits for Apple. notary-sweep asks again every 15 minutes and adds the .dmg once it's accepted."
+    echo "::notice::$tag waits for Apple. notary-sweep asks again and adds the .dmg once it's accepted."
     exit 0
     ;;
   accepted) ;;

@@ -1,12 +1,27 @@
 name: notary-sweep
 
-# Every 15 minutes while a release waits for its Mac file: asks Apple once about each one (seconds,
-# no waiting), and finishes the ones Apple has accepted. A release that waits carries a
-# notary-pending.json, written by notary-status, which also turns this workflow on. When nothing
-# waits any more, it turns itself off, so it costs nothing between releases.
+# Finishes each release that waits for its Mac file: asks Apple once about each one (seconds, no
+# waiting), and puts the .dmg on the release once Apple has accepted it. A release that waits
+# carries a notary-pending.json, written by notary-status.
 #
-# Run it by hand to sweep now. Apple refusing one fails the run, with Apple's report in the log.
-# (The pull request trigger only lets GitHub know of it before it is merged; it does nothing.)
+# What starts a sweep, so a release never stalls:
+#   - notary-status, the moment it leaves a release waiting (every desktop release goes through
+#     it). That sweep sweeps every waiting release, so a new release also catches up old ones.
+#   - The 15-minute timer, while Apple is still deciding.
+#   - By hand, to sweep now: `gh workflow run notary-sweep.yml`.
+# The workflow stays on all the time. With nothing waiting, a run reads one list and stops in
+# seconds, before it even checks out the code. It used to turn itself off between releases and
+# be turned on again, and GitHub's timer never once fired for it after that, so releases sat
+# waiting for hours. GitHub runs timers on a best-effort basis anyway, which is why notary-status
+# starts the first sweep itself rather than trusting the timer.
+#
+# A sweep never starts the next sweep itself. GitHub has no way to start a run "in 15 minutes"
+# without a runner sitting and waiting (a wait timer is the same thing), so a sweep that started
+# another straight away would just spin, asking Apple every few seconds for hours.
+#
+# Apple refusing one fails the run, with Apple's report in the log. No job makes or revokes any
+# Apple certificate. (The pull request trigger only lets GitHub know of it before it is merged;
+# it does nothing.)
 on:
   schedule:
     - cron: '*/15 * * * *'
@@ -30,40 +45,46 @@ jobs:
     permissions:
       # To put each .dmg on its release.
       contents: write
-      # To read the runs' artifacts, and turn this workflow off.
-      actions: write
+      # To read the runs' artifacts.
+      actions: read
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
     steps:
+      - name: Which releases wait for Apple?
+        id: waiting
+        timeout-minutes: 2
+        run: |
+          set -euo pipefail
+          tags="$(gh api "repos/$GH_REPO/releases?per_page=30" \
+            --jq '[.[] | select(any(.assets[]; .name == "notary-pending.json")) | .tag_name] | join(" ")')"
+          if [ -z "$tags" ]; then
+            echo "Nothing waits for Apple."
+          else
+            echo "Waiting for Apple: $tags"
+          fi
+          echo "tags=$tags" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v4
+        if: steps.waiting.outputs.tags != ''
         timeout-minutes: 3
         with:
           sparse-checkout: .github/scripts
       - name: Finish each release that waits for its Mac file
+        if: steps.waiting.outputs.tags != ''
         timeout-minutes: 10
         env:
+          TAGS: ${{ steps.waiting.outputs.tags }}
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
           ASC_KEY_P8: ${{ secrets.ASC_KEY_P8_BASE64 }}
         run: |
           set -euo pipefail
-          waiting() {
-            gh api "repos/$GH_REPO/releases?per_page=30" \
-              --jq '.[] | select(any(.assets[]; .name == "notary-pending.json")) | .tag_name'
-          }
-          tags="$(waiting)"
-          if [ -z "$tags" ]; then
-            echo "Nothing waits for Apple. Turning the sweep off until notary-status turns it on again."
-            gh workflow disable notary-sweep.yml
-            exit 0
-          fi
           export ASC_KEY_PATH="$RUNNER_TEMP/asc-key.p8"
           trap 'rm -f "$ASC_KEY_PATH"' EXIT
           printf '%s' "$ASC_KEY_P8" | base64 --decode > "$ASC_KEY_PATH"
           chmod 600 "$ASC_KEY_PATH"
           failed=0
-          for tag in $tags; do
+          for tag in $TAGS; do
             echo "::group::$tag"
             if ! echo "$tag" | grep -Eq '^v[1-9][0-9]*\.[0-9]+\.[0-9]+$'; then
               echo "::error::Release $tag has a notary-pending.json but isn't a version tag; skipped."
@@ -83,8 +104,4 @@ jobs:
             bash .github/scripts/notary-finish.sh "$submission" "$run_id" "$artifact" "$tag" || failed=1
             echo "::endgroup::"
           done
-          if [ -z "$(waiting)" ]; then
-            echo "Nothing waits for Apple any more. Turning the sweep off."
-            gh workflow disable notary-sweep.yml
-          fi
           exit "$failed"

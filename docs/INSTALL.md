@@ -128,11 +128,12 @@ Apple usually notarises a Mac app in a few minutes, but sometimes takes hours. S
    follows within the hour. Until then the app on a Mac doesn't offer the update (copies from
    before this change may offer it, then say there's no file for this computer yet).
 3. Then `notary-status` asks Apple once (a few seconds, on Linux). If Apple hasn't decided yet,
-   it leaves a `notary-pending.json` on the release and turns on `notary-sweep`, which asks again
-   every 15 minutes. Each check takes seconds: no runner, Mac or Linux, sits waiting for Apple.
+   it leaves a `notary-pending.json` on the release and starts `notary-sweep`, which asks again
+   then and every 15 minutes after. Each sweep also checks any older release still waiting. Each
+   check takes seconds: no runner, Mac or Linux, sits waiting for Apple.
 4. Once Apple says yes, and its report has this exact file's checksum, the `.dmg` goes on the
-   release with its checksum, and the "follows" line comes out. With nothing left waiting,
-   `notary-sweep` turns itself off.
+   release with its checksum, and the "follows" line comes out. With nothing left waiting, a
+   `notary-sweep` run stops in seconds.
 
 The `.dmg` goes up unstapled, since stapling needs a Mac. That's fine: the first time a Mac opens
 it, it asks Apple online and gets the same yes. Only a first open with no internet would be
@@ -146,7 +147,7 @@ stops waiting.
 job's log says "Submitted … to Apple: submission …") it prints Apple's verdict and report. Add
 `run_id` and `artifact` (the run and artifact holding the signed `.dmg`, e.g.
 `mac-submitted-1.2.3`) and, once accepted, it checks the report is for that file. Add `tag` and it
-puts the file on that release once accepted, or leaves it for `notary-sweep` if not yet.
+puts the file on that release once accepted, or starts `notary-sweep` if not yet.
 
 ### Making the Mac certificate
 
