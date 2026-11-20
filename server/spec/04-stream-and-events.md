@@ -349,7 +349,8 @@ task_id, body` (message body, whitespace runs → one space, trimmed, first 160 
 1. `retry: 2000\n\n: connected\n\n` in one chunk — `agent.ts:650` (`AGENT_RETRY_MS`, `:229`).
 2. One `work` frame with current counts, always — `agent.ts:663-664`.
 3. If `unread_messages > 0`: one `message` frame of what this client has not been
-   handed (may be empty → nothing written) — `agent.ts:665`.
+   handed, less what another session of the agent already had (§4.6, backlog
+   across sessions; may be empty → nothing written) — `agent.ts:665`.
 4. Subscribe to the bus — `agent.ts:667`.
 5. Heartbeat `: heartbeat <ISO>\n\n` every 15 000 ms (`AGENT_HEARTBEAT_MS`, `:226`) — `:707-714`.
 
@@ -386,6 +387,20 @@ connection already sent it (in-memory set). Sent ones are recorded as delivery
 rows **before** the frame is written, which publishes `message.delivered` for
 each new row — `src/domain/messages.ts:534-564`, `src/db/deliveries.ts:52-129`.
 Delivery never marks a message read.
+
+Backlog across sessions (Kotlin server): a restarted session's bridge connects
+with a new client id, and many agents never call `get_messages`, so their
+unread lines would come back on every restart. So a line written **before this
+stream opened** is also skipped when any session of the same agent (any client
+id, or none) was handed it more than 2 minutes ago (`HANDOVER_MS`,
+`http/AgentStream.kt`). A line handed over in the last 2 minutes still comes,
+so a bridge that dropped and reconnected catches what it may have missed; a
+line no session was ever handed always comes (real catch-up). Nothing handed
+over more than a day ago is ever replayed, since that is well past 2 minutes.
+Lines written after the stream opened are live: only this connection's own
+de-dupe applies, so every session sharing one token hears each new line. The
+filter is in the unread query, so the 5-line limit is spent on lines the agent
+has not had. Unread counts and `get_messages` (read cursors) are unchanged.
 
 ### 4.7 Close, presence
 

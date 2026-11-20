@@ -24,7 +24,8 @@ import kotlinx.serialization.json.jsonPrimitive
 /**
  * `GET /api/agent/stream`, what the channel bridge listens to (spec/04-stream-and-events.md §4,
  * TS `src/http/stream/agent.ts`): `work` counts whenever they change, the newest unread `message`s
- * (each handed to a client once), the `answer` to one of the agent's requests, and the owner's
+ * (each handed to a client once; a new connection's backlog leaves out what another session of the
+ * agent was handed over [HANDOVER_MS] ago), the `answer` to one of the agent's requests, and the owner's
  * `reaction` on its lines, and a person's tick or vote on its `block`s (migration 057). Frames carry no ids; there is no replay. Ends within about five seconds
  * of the token being revoked (decided fix 11).
  *
@@ -45,9 +46,12 @@ internal suspend fun ApplicationCall.agentStream(app: App, agent: Agents.Agent, 
     val within = bridgeChannels(app)
     val work = app.work
     val sent = HashSet<String>()
+    // Lines written before this moment are backlog: one another session of this agent was handed
+    // more than [HANDOVER_MS] ago is not sent again (a restarted session comes with a new client id).
+    val openedAt = app.clock()
 
     fun messageFrame(): String {
-        val unread = work.unread(agent.id, MESSAGE_LIMIT, within)
+        val unread = work.unread(agent.id, MESSAGE_LIMIT, within, AgentWork.Backlog(openedAt, app.clock() - HANDOVER_MS))
         if (unread.isEmpty()) return ""
         val delivered = work.alreadyDelivered(agent.id, clientId, unread.map { it.id })
         val fresh = unread.filter { it.id !in delivered && it.id !in sent }
@@ -196,6 +200,13 @@ private const val SETTLE_MS = 100L
 private const val GAP_MS = 1_000L
 
 private const val MESSAGE_LIMIT = 5
+
+/**
+ * How long after a line was handed to one of the agent's sessions a new connection still gets it
+ * in its backlog: long enough for a bridge that dropped to reconnect and catch what it may have
+ * missed, short enough that a restarted session never hears yesterday again.
+ */
+internal const val HANDOVER_MS = 2 * 60_000L
 private const val CLIENT_ID_MAX = 200
 private val WATCHED = setOf(
     "message.created", "message.deleted", "messages.read", "update.updated", "message.updated",

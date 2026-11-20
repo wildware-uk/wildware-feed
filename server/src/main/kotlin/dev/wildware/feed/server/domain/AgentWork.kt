@@ -74,10 +74,31 @@ class AgentWork(private val db: Database, private val bus: Bus, private val cloc
         return db.one("SELECT count(*) $where", *args.toTypedArray()) { it.getInt(1) } ?: 0
     }
 
-    /** The newest [limit] unread lines in scope (narrowed to [within] when a bridge named channels), oldest first. */
-    fun unread(agentId: String, limit: Int, within: List<String>? = null): List<Line> {
+    /**
+     * The agent stream's rule for what a new connection catches up on (spec/04-stream-and-events.md
+     * §4.4): a line written before [openedAt] that some session of the agent was handed before
+     * [handedBefore] is not handed over again, whichever client it went to. Lines written since the
+     * stream opened are live, and only the stream's own record of what it sent keeps them from repeating.
+     */
+    data class Backlog(val openedAt: Long, val handedBefore: Long)
+
+    /**
+     * The newest [limit] unread lines in scope (narrowed to [within] when a bridge named channels),
+     * oldest first. With [backlog], those the agent already has are left out ([Backlog]), so the
+     * limit is spent on what it has not seen.
+     */
+    fun unread(agentId: String, limit: Int, within: List<String>? = null, backlog: Backlog? = null): List<Line> {
         val args = mutableListOf<Any?>()
-        val where = unreadWhere(agentId, Subscriptions.Reach(within), args)
+        var where = unreadWhere(agentId, Subscriptions.Reach(within), args)
+        if (backlog != null) {
+            where += """
+              AND NOT (m.created_at < ? AND EXISTS (
+                SELECT 1 FROM message_deliveries AS d
+                WHERE d.team_id = m.team_id AND d.message_id = m.id AND d.agent_id = ? AND d.delivered_at < ?))"""
+            args += backlog.openedAt
+            args += agentId
+            args += backlog.handedBefore
+        }
         args += limit
         return db.query("SELECT ${LINE.joinToString(", ") { "m.$it" }} $where ORDER BY m.seq DESC LIMIT ?", *args.toTypedArray()) { line(it) }.reversed()
     }
