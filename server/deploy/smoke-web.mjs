@@ -48,6 +48,22 @@ async function signIn(page) {
     await page.waitForTimeout(2500);
 }
 
+// A click on the canvas now and then gets no answer (seen once in CI: the file dialog never
+// opened, though the screenshot just before shows the button in place). Click again after a
+// short wait rather than wait longer for a click the app never saw.
+async function clickUntil(page, x, y, expect, tries = 3) {
+    for (let i = 1; ; i++) {
+        const answer = expect(5_000);
+        await page.mouse.click(x, y);
+        try {
+            return await answer;
+        } catch (e) {
+            if (e.name !== 'TimeoutError' || i >= tries) throw e;
+            step(`nothing answered the click at ${x},${y}; clicking again`);
+        }
+    }
+}
+
 // Desktop, light.
 {
     const { context, page } = await open({ viewport: { width: 1280, height: 800 }, colorScheme: 'light' });
@@ -63,9 +79,8 @@ async function signIn(page) {
     step('signed in; the feed drew; the key is only in an HttpOnly cookie');
 
     // A reply from the composer at the bottom, with a video attached.
-    const chooser = page.waitForEvent('filechooser');
-    await page.mouse.click(305, 756);
-    await (await chooser).setFiles([clip]);
+    const chooser = await clickUntil(page, 305, 756, (timeout) => page.waitForEvent('filechooser', { timeout }));
+    await chooser.setFiles([clip]);
     await page.mouse.click(600, 756);
     await page.waitForTimeout(300);
     await page.keyboard.type('Carrots first, from the web app', { delay: 15 });
@@ -91,9 +106,8 @@ async function signIn(page) {
     step('the video played, and Escape closed it');
 
     // Signing out revokes this browser and clears the cookie.
-    const out = page.waitForResponse((r) => r.url().endsWith('/api/devices/sign-out'), { timeout: 15_000 });
-    await page.mouse.click(200, 768);
-    if ((await out).status() !== 200) throw new Error('sign-out failed');
+    const out = await clickUntil(page, 200, 768, (timeout) => page.waitForResponse((r) => r.url().endsWith('/api/devices/sign-out'), { timeout }));
+    if (out.status() !== 200) throw new Error('sign-out failed');
     await page.waitForTimeout(500);
     if ((await context.cookies()).some((c) => c.name === 'feed_device')) throw new Error('the cookie outlived sign-out');
     step('signed out');

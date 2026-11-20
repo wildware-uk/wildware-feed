@@ -1,0 +1,45 @@
+name: Set up ffmpeg
+description: >
+  Puts a pinned static ffmpeg and ffprobe on PATH. The binaries are cached between runs; on a
+  cache miss the build is downloaded from a fixed release URL and checked against its SHA-256.
+  No apt, so slow Ubuntu mirrors can't hold a job up.
+inputs:
+  url:
+    description: The release tarball. Month-end BtbN autobuilds are kept long-term.
+    default: https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-10-31-12-59/ffmpeg-n8.1.3-27-g8dca1586f4-linux64-gpl-8.1.tar.xz
+  sha256:
+    description: SHA-256 of that tarball. Change it together with the URL.
+    default: 41e9c565594c390622cf968d82fa4135d9e9a11d06c1515644288cbc844e3380
+runs:
+  using: composite
+  steps:
+    - id: cache
+      uses: actions/cache/restore@v4
+      with:
+        path: ~/.ffmpeg-bin
+        key: ffmpeg-${{ inputs.sha256 }}-${{ runner.os }}-${{ runner.arch }}
+    - if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        URL: ${{ inputs.url }}
+        SHA256: ${{ inputs.sha256 }}
+      run: |
+        set -euo pipefail
+        tarball="$RUNNER_TEMP/ffmpeg.tar.xz"
+        # Short tries, several of them: a stalled connection is dropped and tried again.
+        curl -fsSL --retry 5 --retry-all-errors --retry-delay 5 --connect-timeout 15 --max-time 180 -o "$tarball" "$URL"
+        echo "$SHA256  $tarball" | sha256sum -c -
+        mkdir -p ~/.ffmpeg-bin
+        tar -xJf "$tarball" -C ~/.ffmpeg-bin --strip-components=2 --wildcards '*/bin/ffmpeg' '*/bin/ffprobe'
+        rm "$tarball"
+    # Saved straight away, so a job that fails later still warms the cache.
+    - if: steps.cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: ~/.ffmpeg-bin
+        key: ${{ steps.cache.outputs.cache-primary-key }}
+    - shell: bash
+      run: |
+        echo "$HOME/.ffmpeg-bin" >> "$GITHUB_PATH"
+        "$HOME/.ffmpeg-bin/ffmpeg" -hide_banner -version | head -1
+        "$HOME/.ffmpeg-bin/ffprobe" -hide_banner -version | head -1
