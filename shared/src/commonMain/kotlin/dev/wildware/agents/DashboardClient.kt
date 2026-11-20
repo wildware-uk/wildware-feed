@@ -778,8 +778,9 @@ class DashboardClient(
     @Throws(Exception::class)
     suspend fun deliver(item: OutboxItem, attachments: List<Attachment>): DeliveryResult = deliverQueued(item, attachments)
 
-    internal suspend fun postToProject(projectSlug: String, text: String): String =
-        postMessage(mapOf("project" to projectSlug, "body" to text), mediaIds = emptyList()).id
+    /** [sendKey] names this post for every try, so one sent twice is stored once ([sendMessage]). */
+    internal suspend fun postToProject(projectSlug: String, text: String, sendKey: String? = null): String =
+        postMessage(mapOf("project" to projectSlug, "body" to text), mediaIds = emptyList(), sendKey).id
 
     internal suspend fun markAsWork(messageId: String) = setCardStatus(CardRef(CardKinds.Message, messageId), "todo")
 
@@ -814,6 +815,12 @@ class DashboardClient(
         thread: Map<String, String>,
         text: String?,
         attachments: List<Attachment>,
+        /**
+         * The same on every try of one send. When an answer is lost on the way back (a dropped
+         * connection, a timeout) and the send goes again, the dashboard hands back the first message
+         * instead of storing a copy.
+         */
+        sendKey: String? = null,
         /** How many bytes of all the files together have gone up so far. */
         sent: ((Long) -> Unit)? = null,
     ): Posted {
@@ -826,19 +833,20 @@ class DashboardClient(
                 sent?.invoke(done)
             }
         }
-        return postMessage(thread + ("body" to body), mediaIds)
+        return postMessage(thread + ("body" to body), mediaIds, sendKey)
     }
 
     fun close() = http.close()
 
     private suspend fun upload(attachment: Attachment): String = uploadMedia(attachment).id
 
-    private suspend fun postMessage(fields: Map<String, String>, mediaIds: List<String>): Posted {
+    private suspend fun postMessage(fields: Map<String, String>, mediaIds: List<String>, sendKey: String? = null): Posted {
         val body = http.post("api/messages") {
             authorise()
             jsonBody(JsonObject(buildMap {
                 fields.forEach { (key, value) -> put(key, JsonPrimitive(value)) }
                 if (mediaIds.isNotEmpty()) put("mediaIds", JsonArray(mediaIds.map(::JsonPrimitive)))
+                if (sendKey != null) put("sendKey", JsonPrimitive(sendKey))
             }))
         }.decoded<PostedBody>()
         // Only the id has to be there. A message this version can't read in full is still sent:

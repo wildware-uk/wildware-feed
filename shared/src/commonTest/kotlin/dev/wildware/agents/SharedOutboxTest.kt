@@ -33,7 +33,7 @@ class SharedOutboxTest {
         queue.reload()
         runCurrent()
 
-        assertEquals(listOf("""{"project":"mega","body":"From the share sheet"}"""), server.writes.map { it.second })
+        assertEquals(listOf("""{"project":"mega","body":"From the share sheet","sendKey":"s1"}"""), server.writes.map { it.second })
         assertTrue(queue.items.value.isEmpty())
         assertTrue(Outbox.decode(storage.load()).isEmpty())
     }

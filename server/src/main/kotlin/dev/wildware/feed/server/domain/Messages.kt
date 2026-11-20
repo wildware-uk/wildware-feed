@@ -32,6 +32,17 @@ class Messages(private val feed: Feed) {
         val refs: List<CardRef>? = null,
         /** Blocks drawn on the message (migration 057); only an agent's. */
         val blocks: List<kotlinx.serialization.json.JsonElement>? = null,
+        /**
+         * The app's own name for this send, the same on every try (migration 061). A second post with
+         * it, by the same person, gets the first message back instead of making a copy.
+         */
+        val sendKey: String? = null,
+        /**
+         * Treat the same words from the same person in the same thread, within [REPEAT_WINDOW_MS], as one
+         * send tried again, when the earlier copy came with no key (apps from before send keys). Only the
+         * owner's own HTTP posts ask for it.
+         */
+        val guardRepeats: Boolean = false,
     )
 
     class Page(val messages: List<MessageRow>, val cursor: String, val unread: Long, val markedRead: Boolean)
@@ -53,6 +64,10 @@ class Messages(private val feed: Feed) {
         val body = requiredText(input.body, "body", BODY_MAX)
         checkAuthor(input.author)
         val author = input.author
+        val person = if (author == HUMAN) input.userId ?: People.FOUNDER else null
+        val sendKey = input.sendKey?.takeIf { person != null }
+        // A send tried again (its answer was lost on the way back): the first message, not a copy.
+        sentAlready(person, sendKey)?.let { return@op it }
 
         val answered = if (!input.answers.isNullOrEmpty()) find(input.answers) else null
         if (!input.answers.isNullOrEmpty() && (answered == null || answered.deletedAt != null)) {
@@ -109,13 +124,22 @@ class Messages(private val feed: Feed) {
         }
         val answersId = answered?.id ?: if (inThread) target?.id else null
 
+        if (input.guardRepeats && person != null) {
+            repeatOf(person, body, projectId, updateId, if (request) null else anchor, requestId)?.let { first ->
+                // Give the old copy this send's key, so the next try of it is caught by the key alone.
+                if (sendKey != null) db.update("UPDATE messages SET send_key = ? WHERE team_id = :team AND id = ? AND send_key IS NULL", sendKey, first.id)
+                return@op first
+            }
+        }
+
         val id = Ulid.next()
-        val person = if (author == HUMAN) input.userId ?: People.FOUNDER else null
-        db.update(
-            "INSERT INTO messages (team_id, id, project_id, update_id, task_id, author, body, created_at, reply_to, answers, request_id, user_id) " +
-                "VALUES (:team, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?)",
-            id, projectId, updateId, author, body, feed.now(), if (request) null else anchor, answersId, requestId, person,
+        val inserted = db.update(
+            "INSERT INTO messages (team_id, id, project_id, update_id, task_id, author, body, created_at, reply_to, answers, request_id, user_id, send_key) " +
+                "VALUES (:team, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
+            id, projectId, updateId, author, body, feed.now(), if (request) null else anchor, answersId, requestId, person, sendKey,
         )
+        // Two tries of one send arrived together and the other got there first.
+        if (inserted == 0) return@op sentAlready(person, sendKey) ?: throw IllegalStateException("message $id was not stored")
         val message = find(id)!!
         followed(subscriptions.afterPost(message, Mentions.record(db, message.id, message.body, message.author, feed.now()), Mentions.mentionedPeople(db, message.body)))
 
@@ -135,6 +159,30 @@ class Messages(private val feed: Feed) {
         })
         message
     }
+
+    /**
+     * The message [person] already sent under [sendKey], or null when there is none. It comes back as it
+     * is now, edited or unsent: the retry is the same send, so it never undoes what happened since.
+     */
+    private fun sentAlready(person: String?, sendKey: String?): MessageRow? {
+        if (person == null || sendKey == null) return null
+        return db.one(
+            "SELECT ${Rows.MESSAGE} FROM messages WHERE team_id = :team AND user_id = ? AND send_key = ?", person, sendKey,
+        ) { MessageRow(Rows.message(it)) }
+    }
+
+    /**
+     * The same words [person] sent into this thread a moment ago with no send key: an app from before
+     * send keys trying again after its answer was lost. Unsent copies count, so a send the owner already
+     * took back doesn't come back.
+     */
+    private fun repeatOf(person: String, body: String, projectId: String?, updateId: String?, replyTo: String?, requestId: String?): MessageRow? =
+        db.one(
+            "SELECT ${Rows.MESSAGE} FROM messages WHERE team_id = :team AND user_id = ? AND author = ? AND send_key IS NULL AND body = ? " +
+                "AND created_at >= ? AND coalesce(project_id, '') = ? AND coalesce(update_id, '') = ? AND coalesce(reply_to, '') = ? " +
+                "AND coalesce(request_id, '') = ? ORDER BY seq DESC LIMIT 1",
+            person, HUMAN, body, feed.now() - REPEAT_WINDOW_MS, projectId.orEmpty(), updateId.orEmpty(), replyTo.orEmpty(), requestId.orEmpty(),
+        ) { MessageRow(Rows.message(it)) }
 
     /** `subscriptions.updated` for each person who now follows a thread, so their apps catch up. */
     private fun followed(people: List<String>) {
@@ -362,6 +410,9 @@ class Messages(private val feed: Feed) {
 
     companion object {
         const val BODY_MAX = 10_000
+
+        /** How long a keyless repeat counts as a retry ([Post.guardRepeats]). Copies seen live came up to 11 min apart. */
+        const val REPEAT_WINDOW_MS = 15 * 60 * 1000L
         const val PAGE = 50
         const val QUOTED_MAX = 240
         const val HUMAN = "human"

@@ -418,5 +418,12 @@
   "file": "060-owner-chosen-agents.sql",
   "rebuildsTables": false,
   "checksum": "aa1a2b9faf314c9a30e1c9031f7ed7d6f782588d7d281904b69c9b698acbe6ab"
+ },
+ {
+  "version": 61,
+  "name": "message-send-keys",
+  "file": "061-message-send-keys.sql",
+  "rebuildsTables": false,
+  "checksum": "4d8cd1eac14b87cd680dcf1fb871fdf072b87b052a74bd90ce9f1cd26883e5a2"
  }
 ]

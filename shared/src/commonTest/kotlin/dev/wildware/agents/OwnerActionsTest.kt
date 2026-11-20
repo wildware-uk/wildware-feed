@@ -32,7 +32,7 @@ class OwnerActionsTest {
         runCurrent()
 
         assertEquals(listOf("POST /api/media", "POST /api/messages"), server.writes.map { it.first })
-        assertEquals("""{"project":"mega","body":"Look","mediaIds":["md1"]}""", server.writes[1].second)
+        assertEquals("""{"project":"mega","body":"Look","mediaIds":["md1"],"sendKey":"id1"}""", server.writes[1].second)
         assertTrue(queue.items.value.isEmpty())
     }
 
@@ -50,7 +50,7 @@ class OwnerActionsTest {
 
         assertEquals(
             listOf(
-                "POST /api/messages" to """{"project":"mega","body":"Ship it"}""",
+                "POST /api/messages" to """{"project":"mega","body":"Ship it","sendKey":"id1"}""",
                 "POST /api/cards/message/m-new/tags" to """{"tag":"t1","on":true}""",
                 "POST /api/cards/message/m-new/tags" to """{"tag":"needs review","on":true,"create":true}""",
             ),
@@ -71,9 +71,9 @@ class OwnerActionsTest {
 
         assertEquals(
             listOf(
-                """{"update":"u1","answers":"m7","body":"Yes, go"}""",
-                """{"replyTo":"post1","body":"Under a post"}""",
-                """{"request":"r1","body":"Why?"}""",
+                """{"update":"u1","answers":"m7","body":"Yes, go","sendKey":"id1"}""",
+                """{"replyTo":"post1","body":"Under a post","sendKey":"id2"}""",
+                """{"request":"r1","body":"Why?","sendKey":"id3"}""",
             ),
             server.writes.map { it.second },
         )
@@ -250,6 +250,44 @@ class OwnerActionsTest {
         runCurrent()
 
         assertEquals(listOf("first", "second"), server.writes.map { it.second.substringAfter("\"body\":\"").substringBefore("\"") })
+        assertTrue(queue.items.value.isEmpty())
+    }
+
+    @Test
+    fun `a send whose answer was lost goes again with the same send key`() = runTest {
+        var tries = 0
+        val server = FakeDashboard(testScheduler).apply {
+            // The dashboard took it, but the connection dropped before its answer came back.
+            onWrite = { _, _ -> if (++tries == 1) throw IllegalStateException("Connection reset") else null }
+        }
+        val (queue, actions) = setUp(server)
+
+        val id = actions.reply(CardRef(CardKinds.Message, "m1"), "You need to get it working")
+        runCurrent()
+        advanceTimeBy(10_001)
+        runCurrent()
+
+        assertEquals(2, server.writes.size)
+        val keys = server.writes.map { it.second.substringAfter("\"sendKey\":\"").substringBefore("\"") }
+        assertEquals(listOf(id, id), keys, "every try names the same send")
+        assertTrue(queue.items.value.isEmpty())
+    }
+
+    @Test
+    fun `a ticket tried again posts with the same send key`() = runTest {
+        var tries = 0
+        val server = FakeDashboard(testScheduler).apply {
+            onWrite = { request, _ -> if (request.url.encodedPath == "/api/messages" && ++tries == 1) throw IllegalStateException("timeout") else null }
+        }
+        val (queue, actions) = setUp(server)
+
+        val id = actions.ticket(ProjectRef("mega", "Mega"), "Fix the login")
+        runCurrent()
+        advanceTimeBy(10_001)
+        runCurrent()
+
+        val posts = server.writes.filter { it.first == "POST /api/messages" }
+        assertEquals(listOf(id, id), posts.map { it.second.substringAfter("\"sendKey\":\"").substringBefore("\"") })
         assertTrue(queue.items.value.isEmpty())
     }
 

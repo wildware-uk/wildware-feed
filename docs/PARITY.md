@@ -174,7 +174,7 @@ It doesn't, beyond oldest first.
 | **Platform extras (app only)** |||||||
 | 118 | iOS widgets, Live Activity, Watch app + complication, Siri intents, Spotlight, voice notes, Focus filter | App only | — | Yes (`iosApp/**`) | — | App only | — |
 | 119 | Desktop tray: waiting count, Mark all read, keep running, start at login, DnD, updates | App only | — | — | Yes; tray updates in PR #6 | App only | — |
-| 120 | Offline outbox with retry/drop | App only | — | Yes | Yes | App only | — |
+| 120 | Offline outbox with retry/drop; a retried send is stored once (send key) | App only | — | Yes | Yes | App only | — |
 | 121 | Live after sleep (revive) | Done | Wake repair after 30 s hidden (`stream.ts:728-735`) | Yes: The stream revives after sleep | Yes | — | P0 |
 
 ## What is left

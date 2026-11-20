@@ -201,6 +201,13 @@ class Requests(
     /** A person answers (`POST /api/requests/:id/answer`); [by] is their membership. The first answer wins. */
     fun answer(requestId: String, value: JsonElement, by: String = People.FOUNDER): OwnerRequest {
         val request = expireIfDue(mustFind(requestId))
+        // The same person giving the same answer again is an app trying again after the reply was lost:
+        // it already worked, so it says so rather than "already answered".
+        if (request.state == "answered" && request.answeredBy == by && request.kind != "secret" &&
+            runCatching { validateAnswer(request, value) }.getOrNull() == request.answer
+        ) {
+            return request
+        }
         if (request.state != "pending") throw settledAlready(request)
         if (request.kind == "secret") {
             throw invalid("a secret request is answered with POST /api/requests/${request.id}/secret, so its value never sits on the request")

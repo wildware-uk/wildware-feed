@@ -82,5 +82,11 @@
   "name": "owner-chosen-agents",
   "file": "060-owner-chosen-agents.sql",
   "checksum": "c6b347c2938afb1771879f06fd870dc0d90c2bad6896d3aa7a2602813e74959a"
+ },
+ {
+  "version": 61,
+  "name": "message-send-keys",
+  "file": "061-message-send-keys.sql",
+  "checksum": "177ce0a4f2b3b0a4c4e2147145c88c528a2201907746ca9fa110a4e0c4ce2f5c"
  }
 ]

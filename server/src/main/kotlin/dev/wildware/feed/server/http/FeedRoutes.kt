@@ -115,6 +115,11 @@ fun Route.feedRoutes(app: App) {
             val project = optional("project")
             val answers = optional("answers")
             val requestId = optional("request")
+            val sendKey = optional("sendKey")?.also {
+                if (it.isEmpty() || it.length > SEND_KEY_MAX || it.any { c -> c < ' ' || c > '~' }) {
+                    throw invalid("sendKey must be 1 to $SEND_KEY_MAX printable ASCII characters")
+                }
+            }
             val mediaIds = if ("mediaIds" in body) {
                 val list = body["mediaIds"] as? JsonArray ?: throw invalid("mediaIds must be a list")
                 list.mapIndexed { i, id -> text(id, "mediaIds[$i]") }
@@ -124,7 +129,8 @@ fun Route.feedRoutes(app: App) {
             val message = app.feed.messages.post(
                 Messages.Post(
                     author = Messages.HUMAN, body = text, project = project, updateId = updateId, replyTo = replyTo,
-                    answers = answers, requestId = requestId, mediaIds = mediaIds, userId = call.person.id,
+                    answers = answers, requestId = requestId, mediaIds = mediaIds, userId = call.person.id, sendKey = sendKey,
+                    guardRepeats = true,
                 ),
             )
             call.respondOwner(201, buildJsonObject { put("message", message.json) })
@@ -500,3 +506,6 @@ private fun themePatch(value: JsonElement): Projects.ThemeInput? {
         },
     )
 }
+
+/** The longest send key an app may give a message: room for a UUID and then some. */
+private const val SEND_KEY_MAX = 200

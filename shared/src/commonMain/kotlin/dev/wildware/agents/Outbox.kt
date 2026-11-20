@@ -321,7 +321,8 @@ internal suspend fun DashboardClient.deliverQueued(
     return try {
         when (item.kind) {
             OutboxKind.Message -> {
-                val posted = sendMessage(item.thread + listOfNotNull(item.answers?.let { "answers" to it }), item.text, attachments, uploaded).message
+                // The item's id is its send key: every try of it is the same send, so the dashboard keeps one.
+                val posted = sendMessage(item.thread + listOfNotNull(item.answers?.let { "answers" to it }), item.text, attachments, sendKey = item.id, sent = uploaded).message
                 sent = posted
                 // As on the website, a tag that won't go on doesn't undo the post: the words matter more.
                 val card = posted?.let { CardRef(CardKinds.Message, it.id) }
@@ -336,7 +337,7 @@ internal suspend fun DashboardClient.deliverQueued(
             }
             OutboxKind.Ticket -> {
                 val slug = item.thread["project"] ?: return DeliveryResult(DeliveryOutcome.GiveUp, message = "It has no project.")
-                ticketMessageId = ticketMessageId ?: postToProject(slug, item.text.orEmpty())
+                ticketMessageId = ticketMessageId ?: postToProject(slug, item.text.orEmpty(), sendKey = item.id)
                 markAsWork(ticketMessageId)
             }
             OutboxKind.Answer -> {
