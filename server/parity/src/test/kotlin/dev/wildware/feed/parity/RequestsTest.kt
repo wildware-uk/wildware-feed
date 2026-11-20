@@ -77,7 +77,14 @@ class RequestsTest : ParityTest() {
             assertTrue(!result.isError, result.raw.toString())
             assertEquals("answered", result.structured["state"].s)
 
-            answer(id, true).expectError(409, "conflict", "request $id has already been answered")
+            if (Parity.kotlin) {
+                // The Kotlin server: the same person giving the same answer again is an app retrying
+                // after the reply was lost, so it is done, not refused. A different answer still is.
+                assertEquals(200, answer(id, true).status.value)
+                answer(id, false).expectError(409, "conflict", "request $id has already been answered")
+            } else {
+                answer(id, true).expectError(409, "conflict", "request $id has already been answered")
+            }
         }
         answer("01ZZZZZZZZZZZZZZZZZZZZZZZZ", true).expectError(404, "not_found", "no such request: 01ZZZZZZZZZZZZZZZZZZZZZZZZ")
     }
