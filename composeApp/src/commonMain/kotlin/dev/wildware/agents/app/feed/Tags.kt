@@ -1,5 +1,8 @@
 package dev.wildware.agents.app.feed
 
+import androidx.compose.ui.state.ToggleableState
+import androidx.compose.ui.semantics.toggleableState
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -195,6 +198,7 @@ private fun TagRow(tag: CardTag, on: Boolean, onClick: () -> Unit) {
         Modifier
             .fillMaxWidth()
             .clip(shape)
+            .semantics { toggleableState = ToggleableState(on) }
             .pressable("${tag.name}, ${if (on) "on" else "off"}", shape, role = Role.Checkbox, onClick = onClick)
             .padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically,

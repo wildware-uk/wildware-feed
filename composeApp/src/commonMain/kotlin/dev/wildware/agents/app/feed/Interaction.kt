@@ -444,8 +444,11 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
     /** A message box has the cursor (on a phone, the keyboard is up). Back closes it first. */
     var composerOpen by mutableStateOf(false)
 
-    /** The touch that last went down on a message box, so the feed around it doesn't take it as a tap to close it. */
-    var composerTouch: androidx.compose.ui.input.pointer.PointerId? = null
+    /**
+     * The touch that last went down on a message box (its pointer and when: pointer ids repeat from
+     * one touch to the next), so the feed around the box doesn't take it as a tap to close it.
+     */
+    var composerTouch: Pair<androidx.compose.ui.input.pointer.PointerId, Long>? = null
 
     /** Asks the open message box to close; each ask counts up, so asking twice closes twice. */
     var closeRequests by mutableIntStateOf(0)

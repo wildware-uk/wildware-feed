@@ -656,7 +656,7 @@ fun Composer(
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
                     // A touch on the box itself is not a touch on the feed: it must not close it.
-                    ui?.composerTouch = down.id
+                    ui?.composerTouch = down.id to down.uptimeMillis
                     while (true) {
                         val change = awaitPointerEvent(PointerEventPass.Initial).changes.firstOrNull { it.id == down.id } ?: break
                         val dy = change.position.y - down.position.y
@@ -759,7 +759,7 @@ fun Modifier.closesComposer(ui: FeedUi): Modifier = pointerInput(ui) {
         // The Main pass reaches this after every box inside has seen the touch (Initial), so a
         // touch in a message box inside the feed (a thread's reply box) is known for what it is.
         val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Main)
-        if (ui.composerOpen && ui.composerTouch != down.id) ui.closeComposer()
+        if (ui.composerOpen && ui.composerTouch != (down.id to down.uptimeMillis)) ui.closeComposer()
     }
 }
 
