@@ -318,6 +318,8 @@ private fun teamJson(app: App, t: Teams.Team): JsonObject = buildJsonObject {
     put("suspended", t.suspended)
     put("suspendedReason", t.suspendedReason?.let(::JsonPrimitive) ?: JsonNull)
     put("state", t.state.wire)
+    // Whether the team's first owner has a password: their setup link is used, or wasn't needed. Read only, no link made.
+    put("ownerSetupDone", Tenant.with(t.id) { app.people.firstOwner()?.hasPassword ?: false })
     put("createdAt", Wire.isoOf(t.createdAt))
 }
 

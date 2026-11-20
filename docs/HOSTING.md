@@ -519,13 +519,15 @@ Same key, different request: `422 idempotency_key_reused`. Same key still runnin
 ```json
 {"id": "01JD…", "slug": "acme", "name": "Acme", "address": "https://acme.feed.wildware.dev",
  "externalRef": "tm_01JD…", "limits": {"seats": 5, "storageBytes": 26843545600},
- "suspended": false, "suspendedReason": null, "state": "active",
+ "suspended": false, "suspendedReason": null, "state": "active", "ownerSetupDone": false,
  "createdAt": "2026-11-20T09:00:00.000Z"}
 ```
 
 `state` is `active` or `deleting`; once the purge is done the team is `404 no_such_team`.
 `externalRef` is the control plane's own id (up to 64 characters), stored and echoed, never
-interpreted.
+interpreted. `ownerSetupDone` says whether the team's first owner has a password: `true` once their
+setup link is used (or when they had a password already), `false` while it is waiting. Reading it
+makes no new link.
 
 | Call | Body | Answer | Errors |
 |---|---|---|---|

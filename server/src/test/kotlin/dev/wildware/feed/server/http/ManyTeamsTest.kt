@@ -366,6 +366,20 @@ class ManyTeamsTest {
     }
 
     @Test
+    fun `the team view says whether the owner has used their setup link, without making a new one`() = withApp { _ ->
+        val made = admin("POST", "/admin/teams", acme, "Idempotency-Key" to "create-tm_1").obj()
+        val id = made.o("team").s("id")
+        assertEquals("false", made.o("team").s("ownerSetupDone"))
+        val link = made.o("owner").s("setupUrl").removePrefix("https://acme.feed.test")
+        assertEquals("false", admin("GET", "/admin/teams/$id").obj().o("team").s("ownerSetupDone"))
+        assertEquals("false", admin("GET", "/admin/teams?externalRef=tm_1").obj()["teams"]!!.jsonArray.single().jsonObject.s("ownerSetupDone"))
+        // Reading it left the link as it was.
+        val set = send("acme.feed.test", "POST", link, "password=a+long+password&again=a+long+password", "application/x-www-form-urlencoded", "Origin" to "https://acme.feed.test")
+        assertEquals(200, set.status.value, set.bodyAsText())
+        assertEquals("true", admin("GET", "/admin/teams/$id").obj().o("team").s("ownerSetupDone"))
+    }
+
+    @Test
     fun `a setup link minted for one email doesn't prove another`() = withApp { app ->
         val made = admin("POST", "/admin/teams", acme, "Idempotency-Key" to "create-tm_1").obj()
         val link = made.o("owner").s("setupUrl").removePrefix("https://acme.feed.test")
