@@ -425,5 +425,12 @@
   "file": "061-message-send-keys.sql",
   "rebuildsTables": false,
   "checksum": "4d8cd1eac14b87cd680dcf1fb871fdf072b87b052a74bd90ce9f1cd26883e5a2"
+ },
+ {
+  "version": 62,
+  "name": "codes-know-their-email",
+  "file": "062-codes-know-their-email.sql",
+  "rebuildsTables": false,
+  "checksum": "0e6860a85ab0287a010b8c47664d8cf0bdbf9342f4de174ed5a4487a0a41841a"
  }
 ]

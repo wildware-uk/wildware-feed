@@ -310,6 +310,12 @@ class People(
             if (taken != null && taken != me.accountId) throw conflict("$clean belongs to another account")
             // A new email is only typed in, not proved (docs/HOSTING.md §5).
             db.update("UPDATE users SET email = ?, email_verified_at = NULL WHERE id = ?", clean, me.accountId)
+            // The setup links and sign-in tickets already out went to the old email: none of them stands for the new one.
+            if (clean != me.email) {
+                Tenant.allTeams {
+                    db.update("DELETE FROM auth_codes WHERE membership_id IN (SELECT id FROM memberships WHERE user_id = ?)", me.accountId)
+                }
+            }
         }
         if (hashed != null) db.update("UPDATE users SET password_hash = ? WHERE id = ?", hashed, me.accountId)
         return find(me.id)!!
@@ -386,11 +392,20 @@ class People(
         return db.one(sql, clean, row = ::person)
     }
 
-    /** Set [person]'s own password from a one-time setup link, which the control plane sent to their email: that proves it too. */
-    fun setOwnPassword(person: Person, password: String): Person {
+    /**
+     * Set [person]'s own password from a one-time setup link, which the control plane sent to [sentTo]: that proves
+     * it too. Null, and nothing changed, unless the account's email is still [sentTo]: a link proves only the email
+     * it went to.
+     */
+    fun setOwnPassword(person: Person, password: String, sentTo: String?): Person? {
         checkNewPassword(password)
-        db.update("UPDATE users SET password_hash = ?, email_verified_at = coalesce(email_verified_at, ?) WHERE id = ?", Passwords.hash(password), clock(), person.accountId)
-        return find(person.id)!!
+        if (sentTo == null) return null
+        val hashed = Passwords.hash(password)
+        val changed = db.update(
+            "UPDATE users SET password_hash = ?, email_verified_at = coalesce(email_verified_at, ?) WHERE id = ? AND email = ?",
+            hashed, clock(), person.accountId, sentTo,
+        )
+        return if (changed == 1) find(person.id)!! else null
     }
 
     /** The team's first owner still in it: who the admin API's invites are from. */

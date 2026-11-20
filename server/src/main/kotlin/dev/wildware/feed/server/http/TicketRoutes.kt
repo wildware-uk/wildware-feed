@@ -77,9 +77,10 @@ fun Route.ticketRoutes(app: App) {
             val password = form["password"].orEmpty()
             if (password != form["again"].orEmpty()) return@to call.setupPage(400, SetupPage.form("The two passwords aren't the same."))
             if (password.length < 8) return@to call.setupPage(400, SetupPage.form("A password needs at least 8 characters."))
-            val person = app.teams.redeemCode("setup", code)?.let { app.people.find(it) }?.takeIf { it.active }
+            val redeemed = app.teams.redeemCode("setup", code) ?: return@to call.setupPage(404, SetupPage.gone())
+            val person = app.people.find(redeemed.membershipId)?.takeIf { it.active }
+                ?.let { app.people.setOwnPassword(it, password, redeemed.email) }
                 ?: return@to call.setupPage(404, SetupPage.gone())
-            app.people.setOwnPassword(person, password)
             call.setupPage(200, SetupPage.done(person.email.orEmpty(), app.teams.address()))
         },
     )
@@ -89,7 +90,9 @@ fun Route.ticketRoutes(app: App) {
 private fun ApplicationCall.redeemTicket(app: App, ticket: String): dev.wildware.feed.server.domain.People.Person? {
     val address = runCatching { clientAddress(app.config) }.getOrElse { "unknown" }
     if (!app.loginLimiter.check(address).allowed) return null
-    val person = app.teams.redeemCode("ticket", ticket.trim())?.let { app.people.find(it) }?.takeIf { it.active }
+    val redeemed = app.teams.redeemCode("ticket", ticket.trim())
+    // Only while the account still has the email the ticket was made for.
+    val person = redeemed?.let { app.people.find(it.membershipId) }?.takeIf { it.active && it.email != null && it.email == redeemed.email }
     if (person == null) app.loginLimiter.record(address)
     return person
 }

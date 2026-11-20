@@ -340,6 +340,45 @@ class ManyTeamsTest {
     }
 
     @Test
+    fun `a setup link only proves the email it was sent to, and a new email cancels the links already out`() = withApp { app ->
+        // Eve signs up twice before choosing a password, so she holds a link for each team.
+        fun team(slug: String) = acme.replace("\"acme\"", "\"$slug\"").replace("Ann@Acme.test", "eve@evil.test")
+        val first = admin("POST", "/admin/teams", team("evil"), "Idempotency-Key" to "evil").obj().o("owner").s("setupUrl").removePrefix("https://evil.feed.test")
+        val second = admin("POST", "/admin/teams", team("evil2"), "Idempotency-Key" to "evil2").obj().o("owner").s("setupUrl").removePrefix("https://evil2.feed.test")
+        val form = "password=eve+password+1&again=eve+password+1"
+        val type = "application/x-www-form-urlencoded"
+        assertEquals(200, send("evil.feed.test", "POST", first, form, type, "Origin" to "https://evil.feed.test").status.value)
+        val eve = send("evil.feed.test", "POST", "/api/devices/sign-in", """{"email":"eve@evil.test","password":"eve password 1","name":"x"}""").obj().s("token")
+        val claim = send("evil.feed.test", "PATCH", "/api/me", """{"email":"vic@corp.test","currentPassword":"eve password 1"}""", "application/json", "Authorization" to "Bearer $eve")
+        assertEquals(200, claim.status.value, claim.bodyAsText())
+        // The link sent to her old email no longer works, in any of her teams.
+        assertEquals(404, send("evil2.feed.test", "GET", second).status.value, "a new email cancels the links already out")
+        assertEquals(404, send("evil2.feed.test", "POST", second, form, type, "Origin" to "https://evil2.feed.test").status.value)
+        Tenant.allTeams {
+            assertEquals(null, app.db.one("SELECT email_verified_at FROM users WHERE email = 'vic@corp.test'") { it.getObject(1) }, "nothing proved Vic's email")
+        }
+        assertEquals(0, admin("POST", "/admin/memberships/lookup", """{"email":"vic@corp.test"}""").obj()["memberships"]!!.jsonArray.size)
+        // Vic signs up: a new account, and Eve can't get into his team.
+        val vic = admin("POST", "/admin/teams", acme.replace("\"acme\"", "\"corp\"").replace("Ann@Acme.test", "vic@corp.test"), "Idempotency-Key" to "corp").obj()
+        assertEquals("true", vic.o("owner").s("newAccount"))
+        assertEquals(400, send("corp.feed.test", "POST", "/api/devices/sign-in", """{"email":"vic@corp.test","password":"eve password 1","name":"x"}""").status.value)
+        assertEquals(401, send("corp.feed.test", "GET", "/api/summary", null, "application/json", "Authorization" to "Bearer $eve").status.value)
+    }
+
+    @Test
+    fun `a setup link minted for one email doesn't prove another`() = withApp { app ->
+        val made = admin("POST", "/admin/teams", acme, "Idempotency-Key" to "create-tm_1").obj()
+        val link = made.o("owner").s("setupUrl").removePrefix("https://acme.feed.test")
+        // The account's email moves without going through the API (an older server, a hand edit).
+        Tenant.allTeams { app.db.update("UPDATE users SET email = 'vic@corp.test', email_verified_at = NULL WHERE email = 'ann@acme.test'") }
+        val set = send("acme.feed.test", "POST", link, "password=a+long+password&again=a+long+password", "application/x-www-form-urlencoded", "Origin" to "https://acme.feed.test")
+        assertEquals(404, set.status.value, "the link was for another email")
+        Tenant.allTeams {
+            assertEquals(null, app.db.one("SELECT email_verified_at FROM users WHERE email = 'vic@corp.test'") { it.getObject(1) })
+        }
+    }
+
+    @Test
     fun `a signed write is taken once, and a stranger learns only that a team is read-only`() = withApp { _ ->
         val ts = (now / 1000).toString()
         val body = """{"email":"nobody@acme.test"}"""

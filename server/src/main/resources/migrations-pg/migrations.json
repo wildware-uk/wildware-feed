@@ -88,5 +88,11 @@
   "name": "message-send-keys",
   "file": "061-message-send-keys.sql",
   "checksum": "177ce0a4f2b3b0a4c4e2147145c88c528a2201907746ca9fa110a4e0c4ce2f5c"
+ },
+ {
+  "version": 62,
+  "name": "codes-know-their-email",
+  "file": "062-codes-know-their-email.sql",
+  "checksum": "45963013333c7cfba4fce089285213c22874198eb8d6b5346ac481ddbc615d40"
  }
 ]

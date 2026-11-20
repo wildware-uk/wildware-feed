@@ -257,7 +257,10 @@ class Teams(
 
     // ---- one-time codes -----------------------------------------------------------------------------
 
-    /** A one-time code of [kind] for [membershipId] in this team, valid [ttlMs]; earlier ones of that kind go. Shown once. */
+    /**
+     * A one-time code of [kind] for [membershipId] in this team, valid [ttlMs]; earlier ones of that kind go. Shown once.
+     * It remembers the email the person has now, the one it is sent to: it is good only while they still have it.
+     */
     fun mintCode(kind: String, membershipId: String, ttlMs: Long, replaceEarlier: Boolean = true): Pair<String, Long> {
         val now = clock()
         val code = Tokens.random()
@@ -265,20 +268,24 @@ class Teams(
         db.transaction { _ ->
             if (replaceEarlier) db.update("DELETE FROM auth_codes WHERE team_id = :team AND membership_id = ? AND kind = ?", membershipId, kind)
             db.update(
-                "INSERT INTO auth_codes (team_id, id, kind, code_hash, membership_id, created_at, expires_at) VALUES (:team, ?, ?, ?, ?, ?, ?)",
-                Ulid.next(now), kind, codeHash(code), membershipId, now, expires,
+                "INSERT INTO auth_codes (team_id, id, kind, code_hash, membership_id, created_at, expires_at, email) " +
+                    "SELECT :team, ?, ?, ?, m.id, ?, ?, u.email FROM memberships AS m JOIN users AS u ON u.id = m.user_id WHERE m.team_id = :team AND m.id = ?",
+                Ulid.next(now), kind, codeHash(code), now, expires, membershipId,
             )
         }
         return code to expires
     }
 
+    /** A used-up code: the membership it was for, and the email it was sent to (null for none). */
+    data class Redeemed(val membershipId: String, val email: String?)
+
     /** The membership a code of [kind] in this team was for, used up now; null for any other code. */
-    fun redeemCode(kind: String, code: String): String? {
+    fun redeemCode(kind: String, code: String): Redeemed? {
         if (!Tokens.wellFormed(code)) return null
         return db.one(
-            "DELETE FROM auth_codes WHERE team_id = :team AND kind = ? AND code_hash = ? AND expires_at > ? RETURNING membership_id",
+            "DELETE FROM auth_codes WHERE team_id = :team AND kind = ? AND code_hash = ? AND expires_at > ? RETURNING membership_id, email",
             kind, codeHash(code), clock(),
-        ) { it.getString(1) }
+        ) { Redeemed(it.getString(1), it.getString(2)) }
     }
 
     /** Whether a code of [kind] in this team is still good, without using it. */
