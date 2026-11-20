@@ -112,7 +112,7 @@ internal suspend fun ApplicationCall.agentStream(app: App, agent: Agents.Agent, 
                     ) {
                         sink.send(Frames.retry(Frames.RETRY_MS) + Frames.comment("connected"))
                     }
-                    val worker = launch(Dispatchers.IO + Tenant.element(team)) {
+                    val worker = launch(STREAM_WORK + Tenant.element(team)) {
                         runCatching { handle(sink, emptyList()) }.onFailure { System.err.println("agent stream: opening failed: $it") }
                         inBatches(events, SETTLE_MS, GAP_MS) { batch ->
                             runCatching { handle(sink, batch) }.onFailure { System.err.println("agent stream: batch failed: $it") }
@@ -168,6 +168,12 @@ private fun newMessageReaches(work: AgentWork, agentId: String, payload: JsonObj
     val id = (payload["messageId"] as? JsonPrimitive)?.takeIf { it.isString }?.content ?: return true
     return runCatching { work.reaches(agentId, id) }.getOrDefault(true)
 }
+
+/**
+ * Where every agent stream does its database work: two threads at most, shared. There is one
+ * database connection, so more would only wait on it, holding threads that requests need.
+ */
+private val STREAM_WORK = Dispatchers.IO.limitedParallelism(2)
 
 /** A burst of events is gathered this long before the stream works them out. */
 private const val SETTLE_MS = 100L

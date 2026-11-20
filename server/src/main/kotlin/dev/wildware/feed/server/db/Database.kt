@@ -8,6 +8,7 @@ import java.sql.Connection
 import java.sql.DriverManager
 import java.sql.PreparedStatement
 import java.sql.ResultSet
+import java.sql.SQLException
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 
@@ -47,15 +48,48 @@ class Database private constructor(
     /** Whether this thread is inside [withConnection] or [transaction] right now. */
     val heldByCurrentThread: Boolean get() = lock.isHeldByCurrentThread
 
-    /** The connection, opened again first if the server dropped it (Postgres only). */
+    /** When the connection was last handed out ([System.nanoTime]), and whether a statement on it failed since. */
+    private var lastUsed = System.nanoTime()
+    private var suspect = false
+
+    /**
+     * The connection, opened again first if the server dropped it (Postgres only). It is checked
+     * (a round trip) only after a statement failed or after [IDLE_CHECK_MS] unused, not before
+     * every statement: with one connection, that round trip was paid by every request.
+     */
     private fun live(): Connection {
         val again = reconnect ?: return connection
-        if (connection.autoCommit && (connection.isClosed || !connection.isValid(5))) {
+        val idle = (System.nanoTime() - lastUsed) / 1_000_000 >= IDLE_CHECK_MS
+        if (connection.autoCommit && (connection.isClosed || ((suspect || idle) && !connection.isValid(5)))) {
             runCatching { connection.close() }
             connection = again()
             teamOnConnection = null
         }
+        suspect = false
+        lastUsed = System.nanoTime()
         return connection
+    }
+
+    /**
+     * Hold the one connection's lock for [block]. A wait of [SLOW_WAIT_MS] or more is logged: every
+     * request queues here, so a long wait means something held the connection too long.
+     */
+    private inline fun <T> locked(block: () -> T): T {
+        if (lock.isHeldByCurrentThread) return lock.withLock(block)
+        val start = System.nanoTime()
+        lock.lock()
+        try {
+            val waited = (System.nanoTime() - start) / 1_000_000
+            if (waited >= SLOW_WAIT_MS) System.err.println("database: waited $waited ms for the connection")
+            return try {
+                block()
+            } catch (e: SQLException) {
+                suspect = true
+                throw e
+            }
+        } finally {
+            lock.unlock()
+        }
     }
 
     /** Before a statement: tell Postgres whose rows it may touch, when that changed. */
@@ -71,17 +105,17 @@ class Database private constructor(
     }
 
     /** Run [block] with the connection, alone. */
-    fun <T> withConnection(block: (Connection) -> T): T = lock.withLock { live().let { c -> setTeam(c); block(c) } }
+    fun <T> withConnection(block: (Connection) -> T): T = locked { live().let { c -> setTeam(c); block(c) } }
 
     /** How deep this thread is in [transaction]: an inner one joins the outer. */
     private var depth = 0
 
     /** Run [block] in one transaction: all of it or none. Inside another, it is part of that one. */
-    fun <T> transaction(block: (Connection) -> T): T = lock.withLock {
+    fun <T> transaction(block: (Connection) -> T): T = locked {
         if (depth > 0) {
             depth++
             try {
-                return@withLock block(connection)
+                return@locked block(connection)
             } finally {
                 depth--
             }
@@ -131,9 +165,22 @@ class Database private constructor(
         val (text, bound) = TeamTables.expand(sql, args)
         checkText(bound)
         setTeam(c)
-        c.prepareStatement(sql(text)).use { st ->
-            st.bind(bound)
-            st.executeQuery().use { rs -> buildList { while (rs.next()) add(row(rs)) } }
+        timed(text) {
+            c.prepareStatement(sql(text)).use { st ->
+                st.bind(bound)
+                st.executeQuery().use { rs -> buildList { while (rs.next()) add(row(rs)) } }
+            }
+        }
+    }
+
+    /** Run one statement, logging its first words (never its values) when it takes [SLOW_WAIT_MS] or more. */
+    private inline fun <T> timed(text: String, block: () -> T): T {
+        val start = System.nanoTime()
+        try {
+            return block()
+        } finally {
+            val ms = (System.nanoTime() - start) / 1_000_000
+            if (ms >= SLOW_WAIT_MS) System.err.println("database: a statement took $ms ms: ${text.replace(Regex("\\s+"), " ").take(120)}")
         }
     }
 
@@ -144,7 +191,7 @@ class Database private constructor(
         val (text, bound) = TeamTables.expand(sql, args)
         checkText(bound)
         setTeam(c)
-        c.prepareStatement(sql(text)).use { st -> st.bind(bound); st.executeUpdate() }
+        timed(text) { c.prepareStatement(sql(text)).use { st -> st.bind(bound); st.executeUpdate() } }
     }
 
     /** SQLite's two-argument `max(a, b)`. */
@@ -169,6 +216,12 @@ class Database private constructor(
     }
 
     companion object {
+        /** A connection unused this long is checked before it is used again. */
+        private const val IDLE_CHECK_MS = 30_000L
+
+        /** A wait for the connection, or a statement, this long is logged. */
+        private const val SLOW_WAIT_MS = 1_000L
+
         const val FILE_NAME = "agent-dashboard.db"
         const val MIGRATIONS_TABLE = "schema_migrations"
         private val UNTYPED_NULL_TEST = Regex("""\?\s+IS\s+(NOT\s+)?NULL""", RegexOption.IGNORE_CASE)
