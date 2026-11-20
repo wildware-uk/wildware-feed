@@ -655,6 +655,8 @@ fun Composer(
                 // never taken from it, so dragging to select still works.
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                    // A touch on the box itself is not a touch on the feed: it must not close it.
+                    ui?.composerTouch = down.id
                     while (true) {
                         val change = awaitPointerEvent(PointerEventPass.Initial).changes.firstOrNull { it.id == down.id } ?: break
                         val dy = change.position.y - down.position.y
@@ -720,7 +722,18 @@ fun Composer(
                 onSubmit = send,
             )
             if (!compact) {
-                IconAction(Icons.At, "Mention an agent") { text.edit { append("@") } }
+                IconAction(Icons.At, "Mention an agent") {
+                    // The "@" goes at the end with the cursor after it, and the cursor goes back
+                    // in the box, so the list of agents opens and typing narrows it.
+                    text.edit {
+                        // After a word, a space first: "hi@" would read as an address, not a mention.
+                        val last = if (length > 0) asCharSequence()[length - 1] else ' '
+                        append(if (last.isWhitespace()) "@" else " @")
+                        selection = TextRange(length)
+                    }
+                    mentionClosedAt = null
+                    runCatching { fieldFocus.requestFocus() }
+                }
                 MetaText("⌘↵", Modifier.padding(horizontal = 6.dp))
             }
             // An empty box offers the mic; once there is something to send, the send button.
@@ -743,8 +756,10 @@ private val SwipeToClose = 48.dp
  */
 fun Modifier.closesComposer(ui: FeedUi): Modifier = pointerInput(ui) {
     awaitEachGesture {
-        awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
-        if (ui.composerOpen) ui.closeComposer()
+        // The Main pass reaches this after every box inside has seen the touch (Initial), so a
+        // touch in a message box inside the feed (a thread's reply box) is known for what it is.
+        val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Main)
+        if (ui.composerOpen && ui.composerTouch != down.id) ui.closeComposer()
     }
 }
 

@@ -24,4 +24,32 @@ fun main() {
     }
     // The page shows a plain "Loading" until the app draws; take it away now.
     document.getElementById("loading")?.remove()
+    keysReachTheApp()
 }
+
+/**
+ * Keys reach the app only through its canvas, and a page that has just loaded has the focus on
+ * nothing (the body), so Ctrl+K and the other shortcuts did nothing until the first click. This
+ * gives the canvas the focus once it is there, and again whenever the page comes back with the
+ * focus on nothing, never taking it from a box that has it.
+ */
+private fun keysReachTheApp(): Unit = js(
+    """{
+    const idle = () => !document.activeElement || document.activeElement === document.body;
+    const canvas = () => {
+        for (const el of document.body.querySelectorAll('*')) {
+            const c = el.shadowRoot && el.shadowRoot.querySelector('canvas');
+            if (c) return c;
+        }
+        return null;
+    };
+    const focus = (tries) => {
+        if (!idle()) return;
+        const c = canvas();
+        if (c) c.focus({ preventScroll: true });
+        else if (tries > 0) requestAnimationFrame(() => focus(tries - 1));
+    };
+    focus(120);
+    window.addEventListener('focus', () => focus(0));
+}"""
+)

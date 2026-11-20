@@ -247,6 +247,8 @@ fun ToolRegistry.registerFeedTools(app: App) {
     register("get_messages") { call ->
         val messages = app.feed.messages
         val page = messages.read(call.agent.id, call.text("since"), call.channel(), call.args["mark_read"].jsBoolean)
+        // Read is handed over: the owner's app shows a line nobody was handed as "Not delivered".
+        app.work.markDelivered(call.agent.id, null, page.messages.map { it.id })
         val count = page.messages.size
         val attachments = Attachments.forMessages(app, page.messages.map { it.id })
         val refs = CardRefs(app.db, app.clock).summaries("message", page.messages.map { it.id }, reader = call.author)
