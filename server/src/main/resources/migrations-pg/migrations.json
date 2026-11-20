@@ -100,5 +100,11 @@
   "name": "find-a-repeat-send-fast",
   "file": "063-find-a-repeat-send-fast.sql",
   "checksum": "07ecc5ba2aa9e3263d9bde1497bf1ee1f577d8ad9797696dedd307eeabddd976"
+ },
+ {
+  "version": 64,
+  "name": "a-team-takes-over-home",
+  "file": "064-a-team-takes-over-home.sql",
+  "checksum": "b9113146cd4a1681e54fcc9e1f09125eb91e9b9ba476eb7e726aebbfb9bea045"
  }
 ]

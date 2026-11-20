@@ -39,6 +39,8 @@ class Teams(
         val createdAt: Long,
         val deletedAt: Long?,
         val updatedAt: Long,
+        /** This team took over the server's home team (`feed-server move-home`): see [homeHeir]. */
+        val tookOverHome: Boolean = false,
     ) {
         val suspended: Boolean get() = suspendedAt != null
         val open: Boolean get() = state == State.ACTIVE
@@ -57,6 +59,22 @@ class Teams(
 
     /** This work's team ([Tenant.id]). */
     fun current(): Team? = find(Tenant.id)
+
+    @Volatile private var heirRead: Pair<Long, String?>? = null
+
+    /**
+     * The team that took over the home team (`feed-server move-home`), while it is open, or null. It
+     * answers at the server's own address in the home team's place, and its media files stay at the
+     * root of the store, where the home team's always were. Read again every few seconds, so a move
+     * made by another process is seen without a restart.
+     */
+    fun homeHeir(): String? {
+        val now = clock()
+        heirRead?.let { (at, id) -> if (now - at in 0 until HEIR_CACHE_MS) return id }
+        val id = db.one("SELECT id FROM teams WHERE took_over_home = 1 AND state = 'active'") { it.getString(1) }
+        heirRead = now to id
+        return id
+    }
 
     /**
      * A team's own address, where its links point: `PUBLIC_BASE_URL` for the home team, and
@@ -80,12 +98,15 @@ class Teams(
 
     // ---- making and changing teams ------------------------------------------------------------------
 
-    /** Why [slug] can't be a new team's, or null when it can. */
-    fun slugProblem(slug: String): DomainError? {
+    /**
+     * Why [slug] can't be a new team's, or null when it can. With [allowReserved] (the operator's own
+     * call, never a customer's choice) a reserved name is fine, except `home`.
+     */
+    fun slugProblem(slug: String, allowReserved: Boolean = false): DomainError? {
         if (!SLUG.matches(slug) || "--" in slug) {
             return DomainError("invalid_slug", "A team's address is 3 to 30 of a-z, 0-9 and -, starting with a letter, with no -- and no - at the end.", 422)
         }
-        if (slug in RESERVED_SLUGS) return DomainError("slug_reserved", "That address is reserved.", 409)
+        if (slug in RESERVED_SLUGS && (!allowReserved || slug == Tenant.HOME)) return DomainError("slug_reserved", "That address is reserved.", 409)
         val held = db.one("SELECT state, deleted_at FROM teams WHERE slug = ?", slug) { it.getString(1) to it.longOrNull("deleted_at") }
             ?: return null
         return if (held.first == State.DELETED.wire) {
@@ -96,8 +117,8 @@ class Teams(
     }
 
     /** A new, empty team with the built-in apps and embed types every team has. */
-    fun create(slug: String, name: String, externalRef: String?, seats: Long?, storageBytes: Long?): Team {
-        slugProblem(slug)?.let { throw it }
+    fun create(slug: String, name: String, externalRef: String?, seats: Long?, storageBytes: Long?, allowReserved: Boolean = false): Team {
+        slugProblem(slug, allowReserved)?.let { throw it }
         val now = clock()
         val id = Ulid.next(now)
         db.update(
@@ -199,6 +220,15 @@ class Teams(
 
     /** One pass over a team's rows and files; false when its files could not all be removed yet. */
     private fun removeEverything(id: String): Boolean {
+        // A team whose files sit at the root of the store (it took over the home team) can't be
+        // deleted by prefix: the root prefix is every team's. Its own folders go one by one, listed
+        // before its rows go.
+        val folders = if (find(id)?.tookOverHome == true) {
+            Tenant.allTeams { db.query("SELECT id FROM media WHERE team_id = ? ORDER BY seq", id) { it.getString(1) } }
+                .map { "${it.substring(0, 2)}/$it/" }
+        } else {
+            null
+        }
         Tenant.allTeams {
             db.transaction { c ->
                 // Links are checked once, at the end, when every row of the team has gone.
@@ -211,8 +241,13 @@ class Teams(
             }
         }
         val p = paths ?: return true
-        return runCatching { p.store.deletePrefix(p.teamPrefix(id)) }
-            .onFailure { System.err.println("team purge: files not removed yet, trying again later: $it") }.isSuccess
+        return runCatching {
+            if (folders == null) {
+                p.store.deletePrefix(p.teamPrefix(id).also { require(it.isNotEmpty()) { "a team's own prefix is never the root" } })
+            } else {
+                for (folder in folders) p.store.deletePrefix(folder.also { require(it.isNotEmpty()) })
+            }
+        }.onFailure { System.err.println("team purge: files not removed yet, trying again later: $it") }.isSuccess
     }
 
     /** The team tables, each after every table that points at it, so deletes never break a link. */
@@ -324,14 +359,15 @@ class Teams(
         externalRef = rs.getString("external_ref"), seatLimit = rs.longOrNull("seat_limit"), storageLimit = rs.longOrNull("storage_limit"),
         suspendedAt = rs.longOrNull("suspended_at"), suspendedReason = rs.getString("suspended_reason"), suspendedMessage = rs.getString("suspended_message"),
         state = State.entries.first { it.wire == rs.getString("state") }, createdAt = rs.getLong("created_at"),
-        deletedAt = rs.longOrNull("deleted_at"), updatedAt = rs.getLong("updated_at"),
+        deletedAt = rs.longOrNull("deleted_at"), updatedAt = rs.getLong("updated_at"), tookOverHome = rs.getLong("took_over_home") == 1L,
     )
 
     companion object {
         private const val COLUMNS =
-            "id, slug, name, external_ref, seat_limit, storage_limit, suspended_at, suspended_reason, suspended_message, state, created_at, deleted_at, updated_at"
+            "id, slug, name, external_ref, seat_limit, storage_limit, suspended_at, suspended_reason, suspended_message, state, created_at, deleted_at, updated_at, took_over_home"
         private val SLUG = Regex("^[a-z][a-z0-9-]{1,28}[a-z0-9]$")
         const val SLUG_HOLD_DAYS = 30L
+        const val HEIR_CACHE_MS = 5_000L
 
         /** How long after its first pass a deleted team is swept again: longer than any request or job runs. */
         const val RESWEEP_MS = 60 * 60_000L

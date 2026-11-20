@@ -41,8 +41,11 @@ class MediaPaths(dataDir: String, store: MediaStore? = null) {
     /** Where the bytes live: [root] on disk unless a bucket is configured. */
     val store: MediaStore = store ?: LocalMediaStore(root)
 
-    /** Where this team's keys start: nothing for the home team, `t/<team id>/` for any other. */
-    fun teamPrefix(team: String = Tenant.id): String = if (team == Tenant.HOME) "" else "t/$team/"
+    /** The team that took over the home team, whose files stay at the root ([dev.wildware.feed.server.domain.Teams.homeHeir]). */
+    @Volatile var homeHeir: () -> String? = { null }
+
+    /** Where this team's keys start: nothing for the home team (or the team that took it over), `t/<team id>/` for any other. */
+    fun teamPrefix(team: String = Tenant.id): String = if (team == Tenant.HOME || team == homeHeir()) "" else "t/$team/"
 
     fun originalKey(id: String, mime: String) = relative(id, "original.${Mime.extensionOf(mime)}")
     fun folder(id: String) = "${teamPrefix()}${id.substring(0, 2)}/$id/"

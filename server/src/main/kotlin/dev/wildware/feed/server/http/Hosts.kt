@@ -15,7 +15,8 @@ import io.ktor.util.AttributeKey
  *
  * - `<slug>.<TEAM_DOMAIN>` is that team's, while it is open;
  * - `<TEAM_DOMAIN>` itself is the directory: the admin API and `/api/server`, nothing else;
- * - any other address (the home team's own, `localhost`) is the home team's.
+ * - any other address (the home team's own, `localhost`) is the home team's, or, once a team has
+ *   taken it over (`feed-server move-home`), that team's.
  */
 sealed interface Place {
     data class Team(val id: String) : Place
@@ -26,10 +27,10 @@ sealed interface Place {
 object Hosts {
     /** Where [call] was sent, by its Host header. */
     fun placeOf(app: App, call: ApplicationCall): Place {
-        val domain = app.config.teamDomain ?: return Place.Team(Tenant.HOME)
-        val host = call.request.headers["Host"]?.substringBefore(':')?.trim()?.lowercase()?.trimEnd('.') ?: return Place.Team(Tenant.HOME)
+        val domain = app.config.teamDomain ?: return home(app)
+        val host = call.request.headers["Host"]?.substringBefore(':')?.trim()?.lowercase()?.trimEnd('.') ?: return home(app)
         if (host == domain || host == app.config.adminHost) return Place.Directory
-        if (!host.endsWith(".$domain")) return Place.Team(Tenant.HOME)
+        if (!host.endsWith(".$domain")) return home(app)
         val slug = host.removeSuffix(".$domain")
         if ('.' in slug) return Place.Nowhere
         // The home team keeps its own address; it is never also at home.<domain>.
@@ -37,6 +38,9 @@ object Hosts {
         return Place.Team(team.id)
     }
 }
+
+/** The server's own address: the home team's, or the team's that took it over, so its keys and tokens keep working there. */
+private fun home(app: App): Place = Place.Team(app.teams.homeHeir() ?: Tenant.HOME)
 
 /** The team a request is for, set before anything else runs (absent on the directory). */
 internal val TeamKey = AttributeKey<Teams.Team>("Team")

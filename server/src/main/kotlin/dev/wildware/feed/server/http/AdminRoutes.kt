@@ -341,13 +341,20 @@ private fun createTeam(app: App, c: AdminCall): Outcome {
     val seats = limits?.let { c.count(it, "seats") }
     val storage = limits?.let { c.count(it, "storageBytes") }
     val ref = c.string(body, "externalRef", Teams.EXTERNAL_REF_MAX, required = false)
-    app.teams.slugProblem(slug)?.let { throw it }
+    // The operator's own call may give a reserved name (never `home`); customers' sign-ups never ask.
+    val allowReserved = when (val v = body["allowReserved"]) {
+        null, is JsonNull -> false
+        else -> (v as? JsonPrimitive)?.takeIf { !it.isString }?.content?.toBooleanStrictOrNull() ?: throw bad("allowReserved must be true or false.")
+    }
+    app.teams.slugProblem(slug, allowReserved)?.let { throw it }
     // The team and its owner together, or neither: a failure leaves no ownerless team holding the slug.
-    return app.db.transaction { _ -> createTeamAndOwner(app, slug, name, ref, seats, storage, email, ownerName) }
+    return app.db.transaction { _ -> createTeamAndOwner(app, slug, name, ref, seats, storage, email, ownerName, allowReserved) }
 }
 
-private fun createTeamAndOwner(app: App, slug: String, name: String, ref: String?, seats: Long?, storage: Long?, email: String, ownerName: String): Outcome {
-    val team = app.teams.create(slug, name, ref, seats, storage)
+private fun createTeamAndOwner(
+    app: App, slug: String, name: String, ref: String?, seats: Long?, storage: Long?, email: String, ownerName: String, allowReserved: Boolean,
+): Outcome {
+    val team = app.teams.create(slug, name, ref, seats, storage, allowReserved)
     return Tenant.with(team.id) {
         val (person, newAccount) = app.people.addOwner(email, ownerName)
         val setup = if (!person.hasPassword) app.teams.mintCode("setup", person.id, Teams.SETUP_TTL_MS) else null

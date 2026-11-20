@@ -344,6 +344,15 @@ What changes, piece by piece:
 - **Today's live server** becomes the home team at its current address: `PUBLIC_BASE_URL` stays the
   home team's address, and nothing about it moves to a subdomain. Hosted customers' teams get
   subdomains.
+- **Moving the home team into a hosted team.** `feed-server move-home --to <team id> [--dry-run]`
+  hands the home team's rows to a fresh team (made for its owner through the admin API) in one
+  transaction: every team table's `team_id` changes, nothing is copied. The target's own owner
+  membership and built-in apps go, and the home team's founding membership becomes that owner's, so
+  their account owns the old work and the founder's devices stay signed in. The team is marked
+  `took_over_home` (migration 064, at most one): `PUBLIC_BASE_URL` answers as it, so every agent token,
+  device key and share link keeps working there, and its media keys stay at the bucket root. Deleting
+  such a team removes its own media folders one by one, never by prefix, because its prefix is the
+  root. Restart the server after a move, so open streams reconnect to the team.
 - **Renaming a team's address** keeps the old one as a permanent alias of the same team, not a
   redirect: device keys, agent configs, MCP URLs, OAuth tokens and open streams keep working on it.
   The new one is used for new links. A slug can't be taken by another team while it is an alias.
@@ -531,7 +540,7 @@ makes no new link.
 
 | Call | Body | Answer | Errors |
 |---|---|---|---|
-| `POST /admin/teams` | `{slug, name, owner: {email, name}, limits: {seats, storageBytes}, externalRef}` | `201 {team, owner: {accountId, membershipId, email, newAccount, setupUrl, setupExpiresAt}}`. Links an existing account by email (lower-cased) or makes one with no password. `setupUrl` is a one-time password link, 24 h, `null` if the account has a password. | `400 invalid_request`, `422 invalid_slug` (3–30 of `a-z0-9-`, starts with a letter, no trailing `-`, no `--`), `409 slug_taken` (team or alias), `409 slug_reserved` (reserved, or a team deleted in the last 30 days) |
+| `POST /admin/teams` | `{slug, name, owner: {email, name}, limits: {seats, storageBytes}, externalRef, allowReserved?}` (`allowReserved: true` lets the operator give a reserved name, never `home`) | `201 {team, owner: {accountId, membershipId, email, newAccount, setupUrl, setupExpiresAt}}`. Links an existing account by email (lower-cased) or makes one with no password. `setupUrl` is a one-time password link, 24 h, `null` if the account has a password. | `400 invalid_request`, `422 invalid_slug` (3–30 of `a-z0-9-`, starts with a letter, no trailing `-`, no `--`), `409 slug_taken` (team or alias), `409 slug_reserved` (reserved, or a team deleted in the last 30 days) |
 | `GET /admin/teams/{id}` | – | `200 {team}` | `404 no_such_team` |
 | `GET /admin/teams?externalRef=` | – | `200 {teams: […]}` (empty if none) | – |
 | `GET /admin/teams/{id}/usage` | – | `200 {teamId, seats: {used, pendingInvites, limit}, storage: {bytes, limit}, agents, devices, projects: {active, archived}, databaseBytes, lastActivityAt, suspended}` | `404 no_such_team` |

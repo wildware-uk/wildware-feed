@@ -47,6 +47,7 @@ class Cli(private val env: Map<String, String>, private val out: (String) -> Uni
         |  create-owner --email <e> --name <n> Add an owner (or make that account one again). Reads the password from stdin.
         |  reset-password --email <e>          Set an account's password. Reads it from stdin.
         |  reset-password --founder            Set the founding owner's password (no email needed). Reads it from stdin.
+        |  move-home --to <team id> [--dry-run] Make the home team's everything a fresh hosted team's, in one go. Keys and tokens keep working.
         |  help                                Print this usage.
         |
         |Configuration is read from the environment; see .env.example.
@@ -125,6 +126,16 @@ class Cli(private val env: Map<String, String>, private val out: (String) -> Uni
                     val id = rest.firstOrNull()
                     if (id.isNullOrEmpty()) return usageError("revoke-token needs an agent id (see list-tokens)")
                     out(if (agents { it.revoke(id) }) "revoked $id" else "$id was already revoked")
+                    0
+                }
+                "move-home" -> {
+                    val to = option(rest, "--to")
+                    if (to.isNullOrEmpty()) return usageError("move-home needs --to <team id>: a fresh team made for the home team's owner")
+                    val dry = "--dry-run" in rest
+                    val config = Config.load(env)
+                    val report = Database.open(config).use { db -> dev.wildware.feed.server.domain.HomeMove(db).run(to, dryRun = dry) }
+                    for ((table, n) in report.moved) out("$table  $n")
+                    out(if (dry) "dry run: nothing changed. Run again without --dry-run to move." else "moved the home team into ${report.target}. Restart the server so every stream reconnects.")
                     0
                 }
                 "list-users" -> {

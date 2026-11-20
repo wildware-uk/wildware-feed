@@ -119,7 +119,10 @@ class App(val config: Config, val db: Database, val clock: () -> Long = System::
     )
 
     /** The teams, their addresses and limits (docs/HOSTING.md §4, §7). */
-    val teams = dev.wildware.feed.server.domain.Teams(db, config, mediaPaths, clock).also { teams -> people.checkSeat = { teams.checkSeat() } }
+    val teams = dev.wildware.feed.server.domain.Teams(db, config, mediaPaths, clock).also { teams ->
+        people.checkSeat = { teams.checkSeat() }
+        mediaPaths.homeHeir = { teams.homeHeir() }
+    }
 
     /** The admin API's own state: idempotency and its rate limit (docs/HOSTING.md §7). */
     val admin = dev.wildware.feed.server.http.AdminApi(this)
