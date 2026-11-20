@@ -210,12 +210,16 @@ class StreamTest : ParityTest() {
         })
         assertEquals("malformed_token", call(HttpMethod.Get, "/api/agent/stream") { bearer("short") }.obj()["error"].s)
 
-        val notFound = call(HttpMethod.Get, "/api/agent/stream?project=nope-zz") { bearer(alpha.token) }
-        assertEquals(404, notFound.status.value)
-        assertEquals("""{"error":"not_found","message":"no such project: nope-zz"}""", notFound.bodyAsText())
-        val mixed = call(HttpMethod.Get, "/api/agent/stream?project=*,a") { bearer(alpha.token) }
-        assertEquals(400, mixed.status.value)
-        assertEquals("invalid_argument", mixed.obj()["error"].s)
+        // The Kotlin server decides what an agent hears on its own and ignores a ?project= list, so it
+        // refuses none (migration 060: the owner adds and removes agents, live).
+        if (!Parity.kotlin) {
+            val notFound = call(HttpMethod.Get, "/api/agent/stream?project=nope-zz") { bearer(alpha.token) }
+            assertEquals(404, notFound.status.value)
+            assertEquals("""{"error":"not_found","message":"no such project: nope-zz"}""", notFound.bodyAsText())
+            val mixed = call(HttpMethod.Get, "/api/agent/stream?project=*,a") { bearer(alpha.token) }
+            assertEquals(400, mixed.status.value)
+            assertEquals("invalid_argument", mixed.obj()["error"].s)
+        }
     }
 
     @Test
@@ -268,6 +272,8 @@ class StreamTest : ParityTest() {
         val agent = Parity.mintAgent(uniq("scoped"))
         val mine = Fixtures.project(agent)
         val other = Fixtures.project(beta)
+        // The Kotlin server ignores the ?project= list: the agent says what it follows instead.
+        if (Parity.kotlin) agent.ok("subscribe", obj("channel" to mine.slug))
         withStream("/api/agent/stream?project=${mine.slug}", agentStream(agent)) { stream ->
             stream.awaitEvent("work")
             owner.post("/api/messages", obj("project" to other.slug, "body" to "not for you"))

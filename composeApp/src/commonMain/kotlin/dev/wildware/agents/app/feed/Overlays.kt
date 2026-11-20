@@ -558,27 +558,7 @@ fun ProjectsDrawer(ui: FeedUi, progress: EdgeProgress, widthPx: Float, safeArea:
             NewGroupRow(ui)
             ArchivedProjects(ui)
             Spacer(Modifier.height(20.dp))
-            SectionLabel("Agents", Modifier.padding(horizontal = 10.dp))
-            Spacer(Modifier.height(6.dp))
-            ui.state.agents.forEach { a ->
-                val shape = AgentTheme.shapes.medium
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .clip(shape)
-                        .pressable(agentSpoken(a), shape) { ui.agentOpen = a.id }
-                        .padding(horizontal = 10.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.Top,
-                ) {
-                    Avatar(Author.AgentAuthor(a), 26.dp, showPresence = true)
-                    Column(Modifier.padding(start = 10.dp).clearAndSetSemantics { }) {
-                        val sessions = a.details?.sessions ?: 1
-                        Text(a.name + if (sessions > 1) "  ·  $sessions sessions" else "", color = colors.text, style = AgentTheme.type.label)
-                        val details = a.details
-                        if (details == null) MetaText(a.doing ?: a.presence.label) else AgentFacts(details)
-                    }
-                }
-            }
+            MembersList(ui, inset = 10.dp)
             Spacer(Modifier.height(20.dp))
             Box(Modifier.fillMaxWidth().height(1.dp).background(colors.border))
             LocalOpenSettings.current?.let { open ->

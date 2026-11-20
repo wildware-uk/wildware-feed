@@ -624,6 +624,8 @@ data class FeedState(
     val devices: DeviceList = DeviceList(),
     /** The open agent's OAuth connections, read when its dialog opens. */
     val connections: ConnectionList = ConnectionList(),
+    /** Which agents hear each channel or project read so far, by [memberTarget]. */
+    val members: Map<String, MemberList> = emptyMap(),
     /** The dashboard's secrets, without values, read when the Secrets sheet opens. */
     val secrets: SecretList = SecretList(),
     /** Agents asking to join, oldest first: each waits on the owner to allow or deny it. */
@@ -699,6 +701,26 @@ data class ConnectionList(
     val removing: String? = null,
     val problem: String? = null,
 )
+
+/**
+ * Which agents hear a channel or a project (a group of channels), as its settings list them. The
+ * owner adds or removes each one; a removed agent hears it only when someone @mentions it.
+ */
+data class MemberList(
+    /** Whose these are, as [memberTarget] spells it: the dialog shows them only for that one. */
+    val target: String? = null,
+    val members: List<MemberRow> = emptyList(),
+    val loaded: Boolean = false,
+    /** The agent being added or removed, while the dashboard is asked. */
+    val busy: String? = null,
+    val problem: String? = null,
+)
+
+/** One agent in a [MemberList]. [note] says why it hears, or that it was removed. */
+data class MemberRow(val agentId: String, val name: String, val hears: Boolean, val note: String)
+
+/** The key a [MemberList] is for: a channel's or a project's slug. */
+fun memberTarget(slug: String, group: Boolean): String = (if (group) "group:" else "channel:") + slug
 
 /** One connection, as the agent dialog lists it. */
 @Immutable
@@ -863,6 +885,8 @@ data class PersonRow(
     val you: Boolean = false,
     val removed: Boolean = false,
     val founder: Boolean = false,
+    /** Used the app in the last five minutes. */
+    val online: Boolean = false,
 )
 
 @Immutable

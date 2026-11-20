@@ -32,6 +32,8 @@ object Access {
         "GET /api/agents" to M,
         "GET /api/settings/media-retention" to M,
         "GET /api/cards/{kind}/{id}/blocks" to M,
+        "GET /api/projects/{reference}/agents" to M,
+        "GET /api/groups/{reference}/agents" to M,
 
         // Taking part: posting, reacting, answering, tagging, pins, work states, app state.
         "POST /api/messages" to M,
@@ -86,6 +88,8 @@ object Access {
         "POST /api/groups" to A,
         "PATCH /api/groups/{reference}" to A,
         "DELETE /api/groups/{reference}" to A,
+        "PUT /api/projects/{reference}/agents/{agentId}" to A, // which agents hear a channel
+        "PUT /api/groups/{reference}/agents/{agentId}" to A,
         "PATCH /api/tags/{id}" to A,
         "DELETE /api/tags/{id}" to A,
         "DELETE /api/updates/{id}" to A,

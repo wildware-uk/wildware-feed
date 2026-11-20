@@ -220,7 +220,7 @@ class Messages(private val feed: Feed) {
     // ---- reading (get_messages) ------------------------------------------------------------------
 
     /** The projects an agent follows (migration 052). Null means it has never followed one, so all. */
-    fun projectsForAgent(agentId: String): List<String>? = subscriptions.followedProjects(agentId)
+    fun projectsForAgent(agentId: String): List<String>? = subscriptions.workChannels(agentId)
 
     /** Who reads ([reader], or nobody in particular) and what reaches them. */
     private class Scope(val reach: Subscriptions.Reach, val reader: String?)
@@ -288,7 +288,7 @@ class Messages(private val feed: Feed) {
         val limit = PAGE
         val projectId = if (!project.isNullOrEmpty()) feed.projects.resolve(project).id else null
         val sinceSeq = decodeCursor(since)
-        val reach = if (projectId == null) subscriptions.resolve(agentId, Subscriptions.Reach.Followed) else Subscriptions.Reach.Projects(listOf(projectId), widened = false)
+        val reach = if (projectId == null) subscriptions.resolve(agentId, Subscriptions.Reach.Followed) else Subscriptions.Reach.Projects(listOf(projectId))
         val scope = Scope(reach, agentId)
 
         val messages = if (sinceSeq != null && sinceSeq != 0L) {

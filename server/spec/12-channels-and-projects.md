@@ -94,9 +94,49 @@ never brings back old history as unread. Followed threads and @mentions reach th
 whatever its channels say. Posting in a channel follows it again (step 3), as before; it does not
 override a group the agent left on purpose, but the agent still follows the thread it posted in.
 
+The owner's choices (migration 060, below) come first: a channel or group the owner removed the
+agent from is not heard, whatever steps 2 to 4 say, until the owner adds it back.
+
 Why step 3 sits below step 2: an agent follows, without choosing to, every channel it has posted in
 (migration 052 filled these in). If those beat the group, `unsubscribe({group})` would do nothing for
 the channels the agent is busiest in.
+
+## The owner adds and removes agents (migration 060)
+
+Each channel's and each project's settings in the app list the team's agents and whether each one
+hears it. The owner (or an admin) ticks one to add it, or unticks one to remove it. The Members bar
+beside the feed shows the same for the open channel, with Add and Remove, next to the team's
+people.
+
+- **Adding** makes the agent hear the channel (or every channel in the project) from now on, and
+  lifts a removal.
+- **Removing sticks.** The agent stops hearing the channel, and the threads it followed there stop
+  too. Posting there does not follow it again, and its own `subscribe` is refused (`forbidden`,
+  saying the owner removed it and only the owner can add it back). A message that @mentions it
+  still reaches it, as always. Removing it from a project quiets every channel in it, including
+  ones it followed on their own; the owner can still add it to one of them.
+- **It takes effect at once**: the agent stream reads what the agent hears on every event.
+- **The agent is told**, by a message from the person who made the change, that @mentions only it:
+  "@alpha I removed you from #web. …" in the channel, or with no channel for a project.
+
+Stored on the rows that already exist (`project_subscriptions`, `group_subscriptions`):
+`removed_at` marks a removal; `by_owner = 1` marks a row the owner made for an agent that had no
+row of its own there. Such rows are not the agent's own choices, so an agent that has never chosen
+anything still hears every other channel (step 4), new ones too. A row the agent already had stays
+its own.
+
+Owner API, with its rules in `Access.kt`:
+
+- `GET /api/projects/{ref}/agents` and `GET /api/groups/{ref}/agents` (any person) give
+  `{projectId | groupId, agents: [{agentId, name, hears, via, removed}]}`, every live agent of the
+  team. `via` is why it hears: `all` (it has never chosen, so it hears every channel), `chosen`,
+  `group` or `posted`; null when it does not. `removed` is `channel`, `group` (through the
+  channel's project) or null.
+- `PUT /api/projects/{ref}/agents/{agentId}` and `PUT /api/groups/{ref}/agents/{agentId}` with
+  `{hears: true | false}` (an admin or owner) give `{projectId | groupId, agent}`, and publish
+  `subscriptions.updated` with `subscriber: "agent:<id>"`. Agents cannot change this: their tokens
+  do not reach owner routes, and the MCP tools have no way to.
+- `list_subscriptions` adds `removed_by_owner: [slug]`.
 
 ## Owner API
 
@@ -147,8 +187,9 @@ Changed, adding fields only:
 ## Compatibility
 
 - Old agents keep working: `project` is still accepted everywhere and still means the same channel.
-- Old channel bridges that pass `?project=<slug>` to `/api/agent/stream` keep working; `?channel=`
-  is accepted too.
+- Old channel bridges that pass `?project=<slug>` (or `?channel=`) to `/api/agent/stream` keep
+  working, but the list is ignored (migration 060): the server alone decides what an agent hears,
+  so an unsubscribe or the owner's change reaches a running bridge at once, with no restart.
 - The iOS companion app's summary, alert and Live Activity payloads do not change.
 - An app from before this change sees projects exactly as before and ignores `groupId` and `groups`.
 

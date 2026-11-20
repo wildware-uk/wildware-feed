@@ -13,6 +13,10 @@ import dev.wildware.feed.server.db.Ulid
  * - Being @mentioned in a thread follows it (`@here` and `@everyone` for the agents they reached).
  * - An agent that has never followed a project hears every project, as a new agent always has.
  * - Only `unsubscribe` stops following. Posting there again follows it again.
+ * - The owner can add an agent to a channel or a group, or remove it (migration 060). A removal
+ *   sticks: posting there does not follow it again, and its own `subscribe` is refused, until the
+ *   owner adds it back. An @mention still reaches it. Rows the owner made are not the agent's own
+ *   choices, so an agent with only those still hears every other channel.
  *
  * For each person it decides which alerts (phone push and the bell) are worth raising; each phone's
  * own alert preferences still decide whether that phone rings, see [hears]:
@@ -55,8 +59,8 @@ class Subscriptions(private val db: Database, private val clock: () -> Long = Sy
         /** What the agent follows, plus mentions of it. */
         data object Followed : Reach
 
-        /** These projects; with [widened], also the threads the agent follows and mentions of it anywhere. */
-        data class Projects(val ids: List<String>, val widened: Boolean = true) : Reach
+        /** These channels only: get_messages reading one channel it names. */
+        data class Projects(val ids: List<String>) : Reach
     }
 
     // ---- agents: what reaches them ----------------------------------------------------------------
@@ -68,13 +72,13 @@ class Subscriptions(private val db: Database, private val clock: () -> Long = Sy
      */
     fun followedProjects(agentId: String): List<String>? {
         val me = agent(agentId)
+        if (!hasChosenAnything(me)) return null
         val channels = db.query(
             "SELECT project_id, unsubscribed_at IS NULL, chosen FROM project_subscriptions WHERE team_id = :team AND subscriber = ? ORDER BY seq", me,
         ) { it.getString(1) to Choice(it.getBoolean(2), ALL, it.getInt(3) == 1) }
         val groups = db.query("SELECT group_id, unsubscribed_at IS NULL FROM group_subscriptions WHERE team_id = :team AND subscriber = ?", me) {
             it.getString(1) to it.getBoolean(2)
         }.toMap()
-        if (channels.isEmpty() && groups.isEmpty()) return null
         val own = channels.toMap()
         val all = db.query("SELECT id, group_id FROM projects WHERE team_id = :team ORDER BY seq") { it.getString(1) to it.getString(2) }
         val heard = all.filter { (id, groupId) ->
@@ -89,6 +93,63 @@ class Subscriptions(private val db: Database, private val clock: () -> Long = Sy
         return channels.map { it.first }.filter { it in heard } + all.map { it.first }.filter { it in heard && it !in own }
     }
 
+    /**
+     * The channels an agent that has never chosen anything of its own still does not hear: the
+     * owner removed it (or it then left one the owner added it to), directly or through the
+     * channel's group, unless the channel itself was added back. Empty for any other agent.
+     */
+    fun leftWhileHearingAll(agentId: String): Set<String> {
+        val me = agent(agentId)
+        val channels = db.query("SELECT project_id, unsubscribed_at IS NULL, chosen FROM project_subscriptions WHERE team_id = :team AND subscriber = ?", me) {
+            it.getString(1) to (it.getBoolean(2) to (it.getInt(3) == 1))
+        }.toMap()
+        val groups = db.query("SELECT group_id FROM group_subscriptions WHERE team_id = :team AND subscriber = ? AND unsubscribed_at IS NOT NULL", me) { it.getString(1) }.toSet()
+        if (channels.isEmpty() && groups.isEmpty()) return emptySet()
+        return db.query("SELECT id, group_id FROM projects WHERE team_id = :team ORDER BY seq") { it.getString(1) to it.getString(2) }.filter { (id, groupId) ->
+            val own = channels[id]
+            when {
+                own != null && own.second -> !own.first
+                else -> groupId != null && groupId in groups
+            }
+        }.map { it.first }.toSet()
+    }
+
+    /** Every channel the agent hears now, by id: [followedProjects], or every channel but [leftWhileHearingAll]. */
+    fun heardChannels(agentId: String): List<String> = followedProjects(agentId) ?: run {
+        val left = leftWhileHearingAll(agentId)
+        db.query("SELECT id FROM projects WHERE team_id = :team ORDER BY seq") { it.getString(1) }.filter { it !in left }
+    }
+
+    /**
+     * Why the owner keeps [agentId] out of a channel, or null when nothing does: `channel` (removed
+     * from it) or `group` (removed from its group, and not added back to the channel itself).
+     */
+    fun removedFrom(agentId: String, projectId: String): String? {
+        val me = agent(agentId)
+        val own = db.one(
+            "SELECT removed_at IS NOT NULL, chosen = 1 AND unsubscribed_at IS NULL FROM project_subscriptions WHERE team_id = :team AND subscriber = ? AND project_id = ?", me, projectId,
+        ) { it.getBoolean(1) to it.getBoolean(2) }
+        if (own?.first == true) return "channel"
+        if (own?.second == true) return null
+        val inRemovedGroup = db.one(
+            "SELECT 1 FROM group_subscriptions AS gs JOIN projects AS p ON p.group_id = gs.group_id " +
+                "WHERE gs.team_id = :team AND gs.subscriber = ? AND p.id = ? AND gs.removed_at IS NOT NULL", me, projectId,
+        ) { true } == true
+        return if (inRemovedGroup) "group" else null
+    }
+
+    /** True when the owner removed [agentId] from the group. */
+    fun removedFromGroup(agentId: String, groupId: String): Boolean = db.one(
+        "SELECT 1 FROM group_subscriptions WHERE team_id = :team AND subscriber = ? AND group_id = ? AND removed_at IS NOT NULL", agent(agentId), groupId,
+    ) { true } == true
+
+    /**
+     * The channels whose work counts for the agent: [heardChannels], or null for every channel when
+     * it hears them all (none removed), so channels made later count too.
+     */
+    fun workChannels(agentId: String): List<String>? =
+        followedProjects(agentId) ?: if (leftWhileHearingAll(agentId).isEmpty()) null else heardChannels(agentId)
+
     /** [Reach.Followed] made concrete: [Reach.All] for an agent that has never followed a project. */
     fun resolve(agentId: String, reach: Reach): Reach =
         if (reach == Reach.Followed && followedProjects(agentId) == null) Reach.All else reach
@@ -98,7 +159,18 @@ class Subscriptions(private val db: Database, private val clock: () -> Long = Sy
      * for every message. Appends its parameters to [args]. The @mention audience rule is the caller's.
      */
     fun reachSql(agentId: String, reach: Reach, args: MutableList<Any?>): String = when (val r = resolve(agentId, reach)) {
-        Reach.All -> ""
+        Reach.All -> {
+            // Hearing every channel, but for those the owner took it out of: there only what names it
+            // or a thread it follows. A new agent has none, so this is usually nothing.
+            val left = leftWhileHearingAll(agentId)
+            if (left.isEmpty()) {
+                ""
+            } else {
+                args.addAll(left)
+                args += agent(agentId); args += agentId
+                " AND (m.project_id IS NULL OR m.project_id NOT IN (${left.joinToString(", ") { "?" }}) OR $FOLLOWS_THREAD OR $NAMES_READER)"
+            }
+        }
         Reach.Followed -> {
             repeat(5) { args += agent(agentId) }
             args += agent(agentId); args += agentId
@@ -107,12 +179,7 @@ class Subscriptions(private val db: Database, private val clock: () -> Long = Sy
         is Reach.Projects -> {
             val inProjects = if (r.ids.isEmpty()) "0 = 1" else "m.project_id IN (${r.ids.joinToString(", ") { "?" }})"
             args.addAll(r.ids)
-            if (r.widened) {
-                args += agent(agentId); args += agentId
-                " AND ($inProjects OR $FOLLOWS_THREAD OR $NAMES_READER)"
-            } else {
-                " AND $inProjects"
-            }
+            " AND $inProjects"
         }
     }
 
@@ -127,6 +194,8 @@ class Subscriptions(private val db: Database, private val clock: () -> Long = Sy
      * [chosen]: on purpose (`subscribe`), so it beats the channel's group; posting there is not.
      */
     fun followProject(who: String, projectId: String, afterSeq: Long = now(), chosen: Boolean = false) {
+        // The owner keeps it out: posting there does not bring it back (`subscribe` is refused first).
+        if (who.startsWith(AGENT) && removedFrom(who.removePrefix(AGENT), projectId) != null) return
         // Choosing a channel the agent was not hearing (it left the group) starts it from now too.
         val restart = chosen && who.startsWith(AGENT) && followedProjects(who.removePrefix(AGENT))?.contains(projectId) == false
         db.update(
@@ -136,19 +205,20 @@ class Subscriptions(private val db: Database, private val clock: () -> Long = Sy
                 "after_seq = CASE WHEN project_subscriptions.unsubscribed_at IS NULL AND ${if (restart) "1 = 0" else "1 = 1"} " +
                 "THEN project_subscriptions.after_seq ELSE ? END, " +
                 "created_at = CASE WHEN project_subscriptions.unsubscribed_at IS NULL THEN project_subscriptions.created_at ELSE excluded.created_at END, " +
-                "unsubscribed_at = NULL",
+                "unsubscribed_at = NULL, by_owner = 0",
             Ulid.next(clock()), who, projectId, afterSeq, clock(), if (chosen) 1 else 0, maxOf(afterSeq, now()),
         )
     }
 
     /** [who] follows a group, so every channel in it, as [followProject] does a channel. */
     fun followGroup(who: String, groupId: String, afterSeq: Long = now()) {
+        if (who.startsWith(AGENT) && removedFromGroup(who.removePrefix(AGENT), groupId)) return
         db.update(
             "INSERT INTO group_subscriptions (team_id, id, subscriber, group_id, level, after_seq, created_at) VALUES (:team, ?, ?, ?, 'all', ?, ?) " +
                 "ON CONFLICT (subscriber, group_id) DO UPDATE SET " +
                 "after_seq = CASE WHEN group_subscriptions.unsubscribed_at IS NULL THEN group_subscriptions.after_seq ELSE ? END, " +
                 "created_at = CASE WHEN group_subscriptions.unsubscribed_at IS NULL THEN group_subscriptions.created_at ELSE excluded.created_at END, " +
-                "unsubscribed_at = NULL",
+                "unsubscribed_at = NULL, by_owner = 0",
             Ulid.next(clock()), who, groupId, afterSeq, clock(), maxOf(afterSeq, now()),
         )
     }
@@ -172,9 +242,15 @@ class Subscriptions(private val db: Database, private val clock: () -> Long = Sy
         return true
     }
 
-    /** Whether [who] has any channel or group row; an agent with none hears every channel. */
-    fun hasChosenAnything(who: String): Boolean =
-        db.one("SELECT 1 FROM project_subscriptions WHERE team_id = :team AND subscriber = ? UNION ALL SELECT 1 FROM group_subscriptions WHERE team_id = :team AND subscriber = ?", who, who) { true } == true
+    /**
+     * Whether [who] has a channel or group row of its own; an agent with none hears every channel
+     * (but those the owner removed it from). Rows the owner made for it do not count.
+     */
+    fun hasChosenAnything(who: String): Boolean = db.one(
+        "SELECT 1 FROM project_subscriptions WHERE team_id = :team AND subscriber = ? AND by_owner = 0 " +
+            "UNION ALL SELECT 1 FROM group_subscriptions WHERE team_id = :team AND subscriber = ? AND by_owner = 0",
+        who, who,
+    ) { true } == true
 
     /** True when [who] follows the group, false when it left it, null when it never chose. */
     fun groupState(who: String, groupId: String): Boolean? =
@@ -285,6 +361,94 @@ class Subscriptions(private val db: Database, private val clock: () -> Long = Sy
             for (id in mentionedPeople) if (id != person && followThread(People.subscriber(id), thread, message.projectId, message.seq)) followed += id
         }
         return followed.distinct()
+    }
+
+    // ---- the owner adds and removes agents (migration 060) -----------------------------------------
+
+    /** Whether [agentId] hears the group: it follows it, or hears every channel and was not removed from it. */
+    fun hearsGroup(agentId: String, groupId: String): Boolean {
+        val state = groupState(agent(agentId), groupId)
+        return state ?: (followedProjects(agentId) == null)
+    }
+
+    /**
+     * The owner adds [agentId] to a channel: it hears it from now, and a removal is lifted. A row the
+     * agent had stays its own; a new one is the owner's. False when it already heard the channel.
+     */
+    fun ownerAddChannel(agentId: String, projectId: String): Boolean {
+        if (projectId in heardChannels(agentId)) return false
+        db.update(
+            "INSERT INTO project_subscriptions (team_id, id, subscriber, project_id, level, after_seq, created_at, chosen, by_owner) VALUES (:team, ?, ?, ?, 'all', ?, ?, 1, 1) " +
+                "ON CONFLICT (subscriber, project_id) DO UPDATE SET chosen = 1, unsubscribed_at = NULL, removed_at = NULL, " +
+                "after_seq = excluded.after_seq, created_at = excluded.created_at",
+            Ulid.next(clock()), agent(agentId), projectId, now(), clock(),
+        )
+        return true
+    }
+
+    /**
+     * The owner removes [agentId] from a channel, and it sticks (see [removedFrom]). Threads it
+     * followed there stop too, so from now on only what names it reaches it. False when it was removed already.
+     */
+    fun ownerRemoveChannel(agentId: String, projectId: String): Boolean {
+        if (removedFrom(agentId, projectId) == "channel") return false
+        val me = agent(agentId)
+        db.transaction {
+            db.update(
+                "INSERT INTO project_subscriptions (team_id, id, subscriber, project_id, level, after_seq, created_at, unsubscribed_at, chosen, by_owner, removed_at) " +
+                    "VALUES (:team, ?, ?, ?, 'all', ?, ?, ?, 1, 1, ?) " +
+                    "ON CONFLICT (subscriber, project_id) DO UPDATE SET chosen = 1, unsubscribed_at = excluded.unsubscribed_at, removed_at = excluded.removed_at",
+                Ulid.next(clock()), me, projectId, now(), clock(), clock(), clock(),
+            )
+            db.update(
+                "UPDATE thread_subscriptions SET unsubscribed_at = ? WHERE team_id = :team AND subscriber = ? AND project_id = ? AND unsubscribed_at IS NULL",
+                clock(), me, projectId,
+            )
+        }
+        return true
+    }
+
+    /** The owner adds [agentId] to a group: it hears its channels (but any it was removed from on their own). False when it already did. */
+    fun ownerAddGroup(agentId: String, groupId: String): Boolean {
+        val me = agent(agentId)
+        val removed = removedFromGroup(agentId, groupId)
+        if (!removed && hearsGroup(agentId, groupId)) return false
+        db.update(
+            "INSERT INTO group_subscriptions (team_id, id, subscriber, group_id, level, after_seq, created_at, by_owner) VALUES (:team, ?, ?, ?, 'all', ?, ?, 1) " +
+                "ON CONFLICT (subscriber, group_id) DO UPDATE SET unsubscribed_at = NULL, removed_at = NULL, after_seq = excluded.after_seq, created_at = excluded.created_at",
+            Ulid.next(clock()), me, groupId, now(), clock(),
+        )
+        return true
+    }
+
+    /**
+     * The owner removes [agentId] from a group, and it sticks: every channel in it goes quiet for the
+     * agent, including ones it followed on their own, and the threads it followed there. The owner
+     * can still add it to one channel of it. False when it was removed already.
+     */
+    fun ownerRemoveGroup(agentId: String, groupId: String): Boolean {
+        if (removedFromGroup(agentId, groupId)) return false
+        val me = agent(agentId)
+        val inGroup = "SELECT id FROM projects WHERE team_id = :team AND group_id = ?"
+        db.transaction {
+            db.update(
+                "INSERT INTO group_subscriptions (team_id, id, subscriber, group_id, level, after_seq, created_at, unsubscribed_at, by_owner, removed_at) " +
+                    "VALUES (:team, ?, ?, ?, 'all', ?, ?, ?, 1, ?) " +
+                    "ON CONFLICT (subscriber, group_id) DO UPDATE SET unsubscribed_at = excluded.unsubscribed_at, removed_at = excluded.removed_at",
+                Ulid.next(clock()), me, groupId, now(), clock(), clock(), clock(),
+            )
+            // Its own follows in the group give way to the group again (chosen = 0), so adding the group back brings them all.
+            db.update(
+                "UPDATE project_subscriptions SET unsubscribed_at = ?, chosen = 0 WHERE team_id = :team AND subscriber = ? AND removed_at IS NULL " +
+                    "AND unsubscribed_at IS NULL AND project_id IN ($inGroup)",
+                clock(), me, groupId,
+            )
+            db.update(
+                "UPDATE thread_subscriptions SET unsubscribed_at = ? WHERE team_id = :team AND subscriber = ? AND unsubscribed_at IS NULL AND project_id IN ($inGroup)",
+                clock(), me, groupId,
+            )
+        }
+        return true
     }
 
     // ---- people -----------------------------------------------------------------------------------

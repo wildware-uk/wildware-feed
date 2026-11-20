@@ -87,9 +87,12 @@ fun AgentColors.status(status: WorkStatus): Color = when (status) {
     WorkStatus.Cancelled -> textFaint
 }
 
-/** A round badge with the agent's initial on its identity colour. */
+/**
+ * A round badge with the agent's initial on its identity colour. [presence], when given, puts that
+ * dot on any author: a person's, say.
+ */
 @Composable
-fun Avatar(author: Author, size: Dp, modifier: Modifier = Modifier, showPresence: Boolean = false) {
+fun Avatar(author: Author, size: Dp, modifier: Modifier = Modifier, showPresence: Boolean = false, presence: Presence? = null) {
     val colors = AgentTheme.colors
     val hue = when (author) {
         is Author.AgentAuthor -> colors.agent(author.agent.hue)
@@ -122,9 +125,10 @@ fun Avatar(author: Author, size: Dp, modifier: Modifier = Modifier, showPresence
                 ),
             )
         }
-        if (showPresence && author is Author.AgentAuthor) {
+        val dot = presence ?: (author as? Author.AgentAuthor)?.agent?.presence?.takeIf { showPresence }
+        if (dot != null) {
             PresenceDot(
-                author.agent.presence,
+                dot,
                 Modifier.align(Alignment.BottomEnd).padding(0.dp),
                 ring = colors.surface,
                 size = (size * 0.32f).coerceAtLeast(9.dp),

@@ -4,6 +4,7 @@ import dev.wildware.feed.server.App
 import dev.wildware.feed.server.domain.Cards
 import dev.wildware.feed.server.domain.Subscriptions
 import dev.wildware.feed.server.domain.feed
+import dev.wildware.feed.server.domain.forbidden
 import dev.wildware.feed.server.domain.groups
 import dev.wildware.feed.server.domain.invalid
 import dev.wildware.feed.server.domain.jsString
@@ -23,6 +24,9 @@ import kotlinx.serialization.json.buildJsonObject
  * reaches the agent even in a channel it does not follow.
  *
  * `project` is the older name for `channel` here as in every tool, never the group.
+ *
+ * The owner can add an agent to a channel or project, or remove it (migration 060). An agent cannot
+ * change that here: `subscribe` is refused where the owner removed it, until the owner adds it back.
  */
 fun ToolRegistry.registerSubscriptionTools(app: App) {
     val subs = Subscriptions(app.db, app.clock)
@@ -73,7 +77,7 @@ fun ToolRegistry.registerSubscriptionTools(app: App) {
 
     fun following(agentId: String, t: Target): Boolean = when (t.kind) {
         "group" -> subs.groupState(Subscriptions.agent(agentId), t.id) == true
-        "channel" -> subs.followedProjects(agentId)?.contains(t.id) ?: true
+        "channel" -> t.id in subs.heardChannels(agentId)
         else -> subs.threadState(Subscriptions.agent(agentId), t.thread!!) == true
     }
 
@@ -83,8 +87,24 @@ fun ToolRegistry.registerSubscriptionTools(app: App) {
         else -> "that thread"
     }
 
+    /** Refuse following what the owner removed the agent from: only the owner can add it back. */
+    fun refuseRemoved(agentId: String, t: Target) {
+        val ask = "Only your owner can add you back, in the app; ask them if you need it. Messages there that @mention you still reach you."
+        when (t.kind) {
+            "group" -> if (subs.removedFromGroup(agentId, t.id)) throw forbidden("Your owner removed you from project ${t.slug}. $ask")
+            "channel" -> when (subs.removedFrom(agentId, t.id)) {
+                "channel" -> throw forbidden("Your owner removed you from channel ${t.slug}. $ask")
+                "group" -> {
+                    val group = app.db.one("SELECT g.slug FROM projects AS p JOIN project_groups AS g ON g.id = p.group_id WHERE p.team_id = :team AND p.id = ?", t.id) { it.getString(1) }
+                    throw forbidden("Your owner removed you from project $group, which channel ${t.slug} is in. $ask")
+                }
+            }
+        }
+    }
+
     register("subscribe") { call ->
         val t = target(call)
+        refuseRemoved(call.agent.id, t)
         val me = Subscriptions.agent(call.agent.id)
         val everything = subs.followedProjects(call.agent.id) == null
         val already = when (t.kind) {
@@ -144,6 +164,8 @@ fun ToolRegistry.registerSubscriptionTools(app: App) {
         val threads = subs.threads(me, Subscriptions.LIST_LIMIT)
         val threadCount = subs.countThreads(me)
         val followedGroups = groups.map { it.groupId }.toSet()
+        val removed = app.db.query("SELECT id, slug FROM projects WHERE team_id = :team ORDER BY seq") { it.getString(1) to it.getString(2) }
+            .filter { subs.removedFrom(call.agent.id, it.first) != null }
         val channels = heard.orEmpty().mapNotNull { id ->
             app.db.one("SELECT p.slug, p.name, p.group_id, g.slug FROM projects AS p LEFT JOIN project_groups AS g ON g.id = p.group_id WHERE p.team_id = :team AND p.id = ?", id) {
                 Channel(id, it.getString(1), it.getString(2), it.getString(4), own[id], it.getString(3) in followedGroups)
@@ -157,7 +179,11 @@ fun ToolRegistry.registerSubscriptionTools(app: App) {
                 if (channels.isNotEmpty()) append(": ${channels.joinToString(", ") { it.slug }}")
                 if (groups.isNotEmpty()) append(", through ${groups.size} project${plural(groups.size)} (${groups.joinToString(", ") { it.slug }}) and your own choices")
             }
+            if (all && removed.isNotEmpty()) append(" but ${removed.joinToString(", ") { it.second }}")
             append(", and $threadCount thread${plural(threadCount)}.")
+            if (removed.isNotEmpty()) {
+                append(" Your owner removed you from ${removed.joinToString(", ") { it.second }}: only messages that @mention you reach you from there.")
+            }
         }
         ToolResult.ok(summary, buildJsonObject {
             put("all_projects", JsonPrimitive(all))
@@ -199,6 +225,8 @@ fun ToolRegistry.registerSubscriptionTools(app: App) {
                 }
             }))
             put("thread_count", JsonPrimitive(threadCount))
+            // Channels the owner keeps the agent out of (migration 060); only the owner can add it back.
+            put("removed_by_owner", JsonArray(removed.map { JsonPrimitive(it.second) }))
         })
     }
 }

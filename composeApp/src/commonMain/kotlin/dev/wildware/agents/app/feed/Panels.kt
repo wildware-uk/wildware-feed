@@ -222,13 +222,7 @@ fun Sidebar(
             ArchivedProjects(ui)
             if (showAgents) {
                 Spacer(Modifier.height(22.dp))
-                Row(Modifier.padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    SectionLabel("Agents", Modifier.weight(1f))
-                    MetaText("${state.agents.count { it.presence == Presence.Online }} online")
-                }
-                Spacer(Modifier.height(8.dp))
-                state.agents.forEach { a -> AgentRow(a) { ui.agentOpen = a.id } }
-                if (state.agents.isEmpty()) MetaText("No agents online right now", Modifier.padding(horizontal = 10.dp))
+                MembersList(ui, inset = 10.dp)
             }
             Spacer(Modifier.height(18.dp))
         }
@@ -320,26 +314,6 @@ private fun ProjectGlyph(p: Project) {
     // A pinned project wears a pin in the accent where the others have a hash, as on the website.
     if (p.pinned) Icon(Icons.Pin, null, tint = colors.accent, modifier = Modifier.size(15.dp))
     else Icon(Icons.Hash, null, tint = colors.textFaint, modifier = Modifier.size(15.dp))
-}
-
-@Composable
-private fun AgentRow(agent: Agent, onOpen: () -> Unit) {
-    val colors = AgentTheme.colors
-    val shape = AgentTheme.shapes.small
-    Row(
-        Modifier.fillMaxWidth().clip(shape).pressable(agentSpoken(agent), shape, onClick = onOpen).padding(horizontal = 10.dp, vertical = 5.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Avatar(Author.AgentAuthor(agent), 26.dp, showPresence = true)
-        Column(Modifier.padding(start = 10.dp).weight(1f)) {
-            Text(
-                agent.name,
-                color = if (agent.presence == Presence.Offline) colors.textFaint else colors.text,
-                style = AgentTheme.type.label,
-            )
-            MetaText(agent.doing ?: agent.presence.label)
-        }
-    }
 }
 
 @Composable

@@ -270,6 +270,7 @@ All refusals: JSON `{"error":<code>,"message":<text>}`, `content-type: applicati
 3. `?project=` subscription (§4.2) → `404 not_found` `no such project: <ref>`
    or `400 invalid_argument`
    `* means every project, so it cannot be listed beside others` — `agent.ts:598-610`.
+   The Kotlin server ignores the list instead (migration 060), so it refuses none.
    The rate unit and `last_seen_at` stamp are already spent by then.
 
 ### 4.2 Query parameters
@@ -420,12 +421,16 @@ bridge need not be told its projects) and the owner (which alerts are raised).
 - **Reach.** A message reaches an agent when it passes the @mention audience rule and:
   it is in a followed project, or in a followed thread, or names the agent. An agent with
   no `project_subscriptions` rows at all (never followed a project) hears every project;
-  unsubscribing from every project does **not** bring that back. `?project=` lists still
-  hear followed threads and mentions anywhere; `?project=*` hears everything. The same
+  unsubscribing from every project does **not** bring that back. The Kotlin server ignores
+  `?project=` lists (migration 060; the TS server used them, still hearing followed threads
+  and mentions anywhere, and `?project=*` everything). Channels the owner removed the agent
+  from are not heard (spec/12, migration 060). The same
   reach drives `get_messages` (without `project`), heartbeat counts, `open_tasks`
   (followed projects) and `list_work`.
 - **Live.** The stream reads the subscriptions again on every watched event, so a new
-  subscription takes effect without reconnecting.
+  subscription, an unsubscribe, or the owner adding or removing the agent takes effect without
+  reconnecting. On `message.created` it looks for new messages even when the unread count did
+  not move (one left the agent's reach as another arrived).
 - **MCP.** `subscribe` / `unsubscribe` take exactly one of `project`, `update_id`,
   `message_id` (its thread), `request_id`; `list_subscriptions` lists them.
 - **Owner: what raises an alert.** Each project has a level: `all` (no row: the default),

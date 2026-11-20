@@ -14,6 +14,7 @@ import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.put
 
 /**
@@ -44,8 +45,20 @@ fun Route.peopleRoutes(app: App) {
         HttpMethod.Get to {
             // Everyone sees who is in the team; emails are for owners and admins.
             val admin = call.person.role.rank >= People.Role.ADMIN.rank
+            // When each person last used the app (any of their devices), and whether that is
+            // within the window that shows an agent as online.
+            val seen = app.db.query("SELECT user_id, max(last_seen_at) FROM owner_devices WHERE team_id = :team AND last_seen_at IS NOT NULL GROUP BY user_id") {
+                it.getString(1) to it.getLong(2)
+            }.toMap()
+            val now = app.clock()
             call.respondOwner(200, buildJsonObject {
-                put("people", JsonArray(app.people.list().map { personView(it, email = admin || it.id == call.person.id) }))
+                put("people", JsonArray(app.people.list().map { p ->
+                    val last = seen[p.id]
+                    JsonObject(personView(p, email = admin || p.id == call.person.id).jsonObject + buildJsonObject {
+                        put("lastSeenAt", last?.let { JsonPrimitive(Wire.isoOf(it)) } ?: JsonNull)
+                        put("online", p.removedAt == null && last != null && now - last <= dev.wildware.feed.server.domain.Sessions.PRESENCE_WINDOW_MS)
+                    })
+                }))
             })
         },
     )

@@ -144,15 +144,6 @@ class SubscriptionsTest {
         assertEquals(emptyList(), unread("N"))
     }
 
-    @Test
-    fun `the stream's named projects still hear followed threads`() {
-        val update = twoAgents()
-        say("agent:A", "@beta look", updateId = update.id)
-        say("human", "reply", updateId = update.id)
-        val q = feed.projects.resolve("q").id
-        val lines = work.unread("B", AgentWork.Subscription.Projects(listOf(q)), 10).map { it.body }
-        assertEquals(listOf("@beta look", "reply"), lines)
-    }
 }
 
 class SubscriptionSeedTest {

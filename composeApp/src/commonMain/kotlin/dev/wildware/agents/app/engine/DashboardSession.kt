@@ -118,6 +118,15 @@ class DashboardSession(
     /** The open agent's OAuth connections. */
     private val mutableConnections = MutableStateFlow(dev.wildware.agents.app.feed.ConnectionList())
 
+    /** Which agents hear the open channel or project. */
+    private val mutableMembers = MutableStateFlow<Map<String, dev.wildware.agents.app.feed.MemberList>>(emptyMap())
+
+    private fun members(target: String) = mutableMembers.value[target] ?: dev.wildware.agents.app.feed.MemberList(target)
+
+    private fun putMembers(target: String, list: dev.wildware.agents.app.feed.MemberList) {
+        mutableMembers.value = mutableMembers.value + (target to list)
+    }
+
     /**
      * Every agent the dashboard knows, removed ones too. Offline agents join the agent list from here,
      * so any agent can be opened (to rename or remove it), and removed ones are kept out of the lists
@@ -157,6 +166,7 @@ class DashboardSession(
         val mentionable: List<dev.wildware.agents.app.feed.Mentionable>,
         val joining: List<dev.wildware.agents.app.feed.JoinRequest>,
         val connections: dev.wildware.agents.app.feed.ConnectionList,
+        val members: Map<String, dev.wildware.agents.app.feed.MemberList>,
     )
 
     private val selected = MutableStateFlow<String?>(null)
@@ -200,7 +210,7 @@ class DashboardSession(
         dashboard.projects,
         dashboard.notifications,
         // What the owner follows rides with the projects (groups) whose levels it reads.
-        combine(combine(mutableAlerts, mutableRetention, mentionables, joining, mutableConnections, ::Extras), lastProject, combine(mutableDevices, mutableSecrets, ::Pair), knownAgents,
+        combine(combine(mutableAlerts, mutableRetention, mentionables, joining, combine(mutableConnections, mutableMembers, ::Pair)) { a, r, m, j, (c, mm) -> Extras(a, r, m, j, c, mm) }, lastProject, combine(mutableDevices, mutableSecrets, ::Pair), knownAgents,
             combine(dashboard.followed, dashboard.groups, ::Pair), ::Side),
     ) { shown, everything, projects, notifications, (extras, postTarget, devicesAndSecrets, known, followsAndGroups) ->
         val (devices, secrets) = devicesAndSecrets
@@ -212,7 +222,7 @@ class DashboardSession(
         val all = if (shown.current.slug == null) shown else mapper.map(everything, projects, emptyList(), emptyList(), null)
         // Parse what the feed will draw before handing it over, here off the UI thread, so a card
         // that scrolls into view (or arrives) finds its markdown ready instead of parsing mid-frame.
-        shown.copy(searchIndex = searchEntriesOf(all.sections), bell = mapper.bell(notifications), alerts = alerts, retention = retention, mentionable = mentionable, postTarget = postTarget, devices = devices, secrets = secrets, joining = extras.joining, connections = extras.connections,
+        shown.copy(searchIndex = searchEntriesOf(all.sections), bell = mapper.bell(notifications), alerts = alerts, retention = retention, mentionable = mentionable, postTarget = postTarget, devices = devices, secrets = secrets, joining = extras.joining, connections = extras.connections, members = extras.members,
             agents = withOffline(shown.agents, known), follows = follows,
             groups = groups.map { ProjectGroup(it.id, it.slug, it.name, accent = it.theme?.accent, archived = it.isArchived) }).also { MarkdownCache.warm(markdownIn(it).asIterable()) }
     }.stateIn(scope, SharingStarted.Eagerly, mapper.map(feed.state.value, emptyList(), emptyList(), emptyList(), null))
@@ -253,7 +263,7 @@ class DashboardSession(
             val people = client.people().map { p ->
                 dev.wildware.agents.app.feed.PersonRow(
                     id = p.id, name = p.name, handle = p.handle, role = p.role, email = p.email,
-                    you = p.id == me.person.id, removed = p.removed, founder = p.founder,
+                    you = p.id == me.person.id, removed = p.removed, founder = p.founder, online = p.online,
                 )
             }
             val manages = me.person.role == "owner" || me.person.role == "admin"
@@ -353,6 +363,52 @@ class DashboardSession(
         }
         // The owner may have opened another agent meanwhile.
         if (mutableConnections.value.agentId == agentId) mutableConnections.value = read
+    }
+
+    /** Reads which agents hear a channel or project; the list is for that one only. */
+    private suspend fun loadMembers(slug: String, group: Boolean) {
+        val target = dev.wildware.agents.app.feed.memberTarget(slug, group)
+        val read = try {
+            val rows = client.agentMembers(slug, group).map { m ->
+                dev.wildware.agents.app.feed.MemberRow(m.agentId, m.name, m.hears, memberNote(m, group))
+            }
+            members(target).copy(members = rows, loaded = true, problem = null)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (refused: DashboardException) {
+            members(target).copy(problem = "Couldn't read its agents. ${refused.message}")
+        } catch (failed: Throwable) {
+            members(target).copy(problem = "Couldn't read its agents. Check the connection and try again.")
+        }
+        putMembers(target, read)
+    }
+
+    /** Adds an agent to a channel or project, or removes it, then reads the list again. */
+    private fun setMember(slug: String, group: Boolean, agentId: String, hears: Boolean) {
+        val target = dev.wildware.agents.app.feed.memberTarget(slug, group)
+        val before = members(target)
+        if (before.busy != null) return
+        // Shown at once; the dashboard's answer replaces it.
+        putMembers(target, before.copy(busy = agentId, problem = null, members = before.members.map { if (it.agentId == agentId) it.copy(hears = hears) else it }))
+        scope.launch {
+            val problem = try {
+                client.setAgentMember(slug, group, agentId, hears)
+                null
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (refused: DashboardException) {
+                "Couldn't change it. ${refused.message}"
+            } catch (failed: Throwable) {
+                "Couldn't change it. Check the connection and try again."
+            }
+            loadMembers(slug, group)
+            putMembers(target, members(target).copy(busy = null, problem = problem ?: members(target).problem))
+            // The channel's list and its project's can both change.
+            mutableMembers.value.keys.filter { it != target }.forEach { other ->
+                val (kind, otherSlug) = other.split(":", limit = 2)
+                loadMembers(otherSlug, kind == "group")
+            }
+        }
     }
 
     /** Signs one client out of an agent, then reads the list again. */
@@ -641,6 +697,24 @@ class DashboardSession(
         scope.launch { loadAlerts() }
         scope.launch { loadRetention() }
         scope.launch { loadTeam() }
+        // The open channel's agents, for the members list: read whenever another channel opens.
+        scope.launch { selected.collect { slug -> if (slug != null) loadMembers(slug, group = false) } }
+        // Who of the team is online, for the members list: read again now and then.
+        scope.launch {
+            while (true) {
+                kotlinx.coroutines.delay(PEOPLE_POLL_MS)
+                val known = mutableTeam.value
+                if (!known.supported || !known.loaded || !known.team) continue
+                val fresh = try {
+                    client.people().associateBy { it.id }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (failed: Throwable) {
+                    continue
+                }
+                mutableTeam.value = mutableTeam.value.copy(people = mutableTeam.value.people.map { p -> fresh[p.id]?.let { p.copy(online = it.online) } ?: p })
+            }
+        }
         // Someone new wrote something (the first teammate, or a later one): read the team again, so
         // their words carry their name rather than showing as yours.
         scope.launch {
@@ -769,6 +843,8 @@ class DashboardSession(
             is FeedEvent.SetRole, is FeedEvent.RemovePerson, is FeedEvent.Rename -> handleTeam(event)
             is FeedEvent.RevokeDevice -> revokeDevice(event.deviceId)
             is FeedEvent.ReadConnections -> scope.launch { loadConnections(event.agentId) }
+            is FeedEvent.ReadMembers -> scope.launch { loadMembers(event.slug, event.group) }
+            is FeedEvent.SetMember -> setMember(event.slug, event.group, event.agentId, event.hears)
             is FeedEvent.RevokeConnection -> revokeConnection(event.agentId, event.connectionId)
             is FeedEvent.SetMediaRetention -> saveRetention(event.setting)
             is FeedEvent.SelectProject -> select(event.slug)
@@ -956,3 +1032,17 @@ internal fun withOffline(live: List<dev.wildware.agents.app.feed.Agent>, known: 
         .map { dev.wildware.agents.app.feed.Agent(it.id, it.name, "Agent", dev.wildware.agents.app.feed.Presence.Offline, hue(it.id)) }
     return shown + offline
 }
+
+/** Why an agent hears a channel or project, or that the owner removed it, in a few words. */
+internal fun memberNote(m: dev.wildware.agents.AgentMember, group: Boolean): String = when {
+    m.removed == "group" && !group -> "Removed with its project. Hears it only when @mentioned."
+    m.removed != null -> "Removed. Hears it only when @mentioned."
+    !m.hears -> "Not following it. Hears it only when @mentioned."
+    m.via == "all" -> "Hears every channel"
+    m.via == "group" -> "Through its project"
+    m.via == "posted" -> "Posted here"
+    else -> "Following it"
+}
+
+/** How often the members list reads who of the team is online. */
+private const val PEOPLE_POLL_MS = 60_000L

@@ -90,6 +90,23 @@ class DemoServer(private val now: () -> Long = { Clock.System.now().toEpochMilli
     /** Agents the owner renamed in the demo, by id. */
     private var renamed = mapOf<String, String>()
 
+    /** Agents the owner removed, by ("channel:slug" or "group:slug", agent id). Every other agent hears everything. */
+    private var removedAgents = setOf<Pair<String, String>>()
+
+    /** Which agents hear a channel or project, as `GET /api/{projects|groups}/{slug}/agents` answers. */
+    private fun members(kind: String, slug: String): List<dev.wildware.agents.AgentMember> {
+        val target = (if (kind == "groups") "group:" else "channel:") + slug
+        val groupSlug = if (kind == "projects") projects.firstOrNull { it.slug == slug }?.groupId?.let { id -> groups.firstOrNull { it.id == id }?.slug } else null
+        return (data.agentNames + renamed).entries.sortedBy { it.value.lowercase() }.map { (id, name) ->
+            val removed = when {
+                (target to id) in removedAgents -> if (kind == "groups") "group" else "channel"
+                groupSlug != null && ("group:$groupSlug" to id) in removedAgents -> "group"
+                else -> null
+            }
+            dev.wildware.agents.AgentMember(id, name, hears = removed == null, via = if (removed == null) "all" else null, removed = removed)
+        }
+    }
+
     /** A network engine that never leaves the device. Each session asks for its own. */
     fun engine(): HttpClientEngine = MockEngine { request -> route(request) }
 
@@ -97,6 +114,13 @@ class DemoServer(private val now: () -> Long = { Clock.System.now().toEpochMilli
     fun close() {
         streams.forEach { it.cancel(null) }
         streams.clear()
+    }
+
+    /** `api/projects/{slug}/agents` or `api/groups/{slug}/agents`, as (projects|groups, slug). */
+    private fun agentsPath(path: String): Pair<String, String>? {
+        val parts = path.split('/')
+        if (parts.size != 4 || parts[0] != "api" || parts[3] != "agents" || (parts[1] != "projects" && parts[1] != "groups")) return null
+        return parts[1] to parts[2]
     }
 
     private suspend fun MockRequestHandleScope.route(request: HttpRequestData): HttpResponseData {
@@ -157,7 +181,9 @@ class DemoServer(private val now: () -> Long = { Clock.System.now().toEpochMilli
                 ),
             )
             "api/devices/current/alert-prefs" -> ok("""{"prefs":$alertPrefs}""")
-            else -> ok("""{"error":"not_found","message":"The demo has no $path."}""", HttpStatusCode.NotFound)
+            else -> agentsPath(path)?.let { (kind, slug) ->
+                ok("""{"agents":${json.encodeToString(members(kind, slug))}}""")
+            } ?: ok("""{"error":"not_found","message":"The demo has no $path."}""", HttpStatusCode.NotFound)
         }
     }
 
@@ -199,6 +225,14 @@ class DemoServer(private val now: () -> Long = { Clock.System.now().toEpochMilli
                 val level = input.text("level")
                 levels = if (level == null) levels - project.id else levels + (project.id to level)
                 ok("{}")
+            }
+            parts.size == 5 && parts[0] == "api" && (parts[1] == "projects" || parts[1] == "groups") && parts[3] == "agents" && method == HttpMethod.Put -> {
+                val (kind, slug, id) = Triple(parts[1], parts[2], parts[4])
+                val hears = input["hears"]?.jsonPrimitive?.booleanOrNull ?: return bad("hears must be true or false")
+                val key = (if (kind == "groups") "group:" else "channel:") + slug
+                removedAgents = if (hears) removedAgents - (key to id) else removedAgents + (key to id)
+                val member = members(kind, slug).firstOrNull { it.agentId == id } ?: return bad("No such agent.")
+                ok("""{"agent":${json.encodeToString(member)}}""")
             }
             path.startsWith("api/groups/") && path.endsWith("/subscription") && method == HttpMethod.Put -> {
                 val group = groups.firstOrNull { it.slug == parts[2] || it.id == parts[2] } ?: return bad("No such project.")

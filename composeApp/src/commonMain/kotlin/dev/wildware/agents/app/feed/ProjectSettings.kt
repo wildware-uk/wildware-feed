@@ -24,6 +24,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -135,6 +136,8 @@ fun ProjectDialogView(ui: FeedUi, dialog: ProjectDialog) {
                     GroupPicker(ui, project, slug)
                     Spacer(Modifier.height(18.dp))
                     NotifyPicker(ui, project, slug)
+                    Spacer(Modifier.height(18.dp))
+                    AgentsPicker(ui, slug, group = false)
                     Spacer(Modifier.height(18.dp))
                     AppButton(
                         if (project.pinned) "Unpin channel" else "Pin channel",
@@ -321,6 +324,8 @@ private fun GroupDialogView(ui: FeedUi, dialog: ProjectDialog) {
                     Spacer(Modifier.height(18.dp))
                     GroupNotifyPicker(ui, group)
                     Spacer(Modifier.height(18.dp))
+                    AgentsPicker(ui, group.slug, group = true)
+                    Spacer(Modifier.height(18.dp))
                     AppButton(
                         if (group.archived) "Unarchive project" else "Archive project",
                         ButtonTone.Secondary,
@@ -386,6 +391,45 @@ private fun GroupNotifyPicker(ui: FeedUi, group: ProjectGroup) {
         }
         Text(
             notifyHint(level) + " A channel with its own setting keeps it.",
+            Modifier.padding(top = 2.dp),
+            color = colors.textFaint,
+            style = AgentTheme.type.meta,
+        )
+    }
+}
+
+/**
+ * Which agents hear this channel or project. Ticked ones hear everything posted there; unticking
+ * one removes it, and it stays removed (posting there does not bring it back) until it is ticked
+ * again. A removed agent still hears a message that @mentions it. It is told either way. Only an
+ * owner or admin of the team can change it; everyone sees it.
+ */
+@Composable
+private fun AgentsPicker(ui: FeedUi, slug: String, group: Boolean) {
+    val colors = AgentTheme.colors
+    val target = memberTarget(slug, group)
+    LaunchedEffect(target) { ui.emit(FeedEvent.ReadMembers(slug, group)) }
+    val list = ui.state.members[target]
+    val canChange = ui.state.team.me?.role?.let { it != "member" } ?: true
+    Column {
+        Text("Agents", color = colors.text, style = AgentTheme.type.label)
+        Spacer(Modifier.height(4.dp))
+        when {
+            list == null || (!list.loaded && list.problem == null) -> MetaText("Reading…")
+            list.members.isEmpty() && list.loaded -> MetaText("No agents yet.")
+            else -> for (m in list.members) {
+                CheckRow(m.name, m.hears, enabled = canChange && list.busy == null, detail = m.note) {
+                    ui.emit(FeedEvent.SetMember(slug, group, m.agentId, !m.hears))
+                }
+            }
+        }
+        list?.problem?.let { Text(it, Modifier.padding(top = 6.dp), color = colors.error, style = AgentTheme.type.label) }
+        Text(
+            (if (group) {
+                "Ticked agents hear every channel in it. Untick one to remove it: it then hears these channels only when someone @mentions it, until you tick it again."
+            } else {
+                "Ticked agents hear everything posted here. Untick one to remove it: it then hears this channel only when someone @mentions it, until you tick it again."
+            }) + if (canChange) "" else " Only an owner or admin can change this.",
             Modifier.padding(top = 2.dp),
             color = colors.textFaint,
             style = AgentTheme.type.meta,

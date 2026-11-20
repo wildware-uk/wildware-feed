@@ -351,6 +351,25 @@ class DashboardClient(
         return response.decoded<ConnectionsBody>().connections
     }
 
+    /**
+     * Which agents hear a channel ([group] false) or a project, a group of channels ([group] true),
+     * by slug: every agent of the team, each with whether it hears it.
+     */
+    @Throws(Exception::class)
+    suspend fun agentMembers(slug: String, group: Boolean): List<AgentMember> =
+        http.get("api/${if (group) "groups" else "projects"}/${slug.encodeURLPathPart()}/agents") { authorise() }.decoded<AgentMembersBody>().agents
+
+    /**
+     * Adds an agent to a channel or project ([hears] true), or removes it. A removal sticks until it
+     * is added back: posting there does not bring it back. The agent is told either way.
+     */
+    @Throws(Exception::class)
+    suspend fun setAgentMember(slug: String, group: Boolean, agentId: String, hears: Boolean): AgentMember =
+        http.put("api/${if (group) "groups" else "projects"}/${slug.encodeURLPathPart()}/agents/${agentId.encodeURLPathPart()}") {
+            authorise()
+            jsonBody(buildJsonObject { put("hears", hears) })
+        }.decoded<AgentMemberBody>().agent
+
     /** Every agent, removed ones too (marked by [AgentRecord.revokedAt]): old cards still name them. */
     @Throws(Exception::class)
     suspend fun agents(): List<AgentRecord> = http.get("api/agents") { authorise() }.decoded<AgentsBody>().agents
@@ -914,6 +933,20 @@ data class AgentConnection(
     val lastUsedAt: String? = null,
 )
 
+/**
+ * One agent of the team, for one channel or project: whether it hears it, and why (`all`: it has
+ * never chosen, so it hears every channel; `chosen`, `group` or `posted`). [removed] is where the
+ * owner took it out (`channel`, or `group` through the channel's project), or null.
+ */
+@Serializable
+data class AgentMember(
+    val agentId: String,
+    val name: String,
+    val hears: Boolean,
+    val via: String? = null,
+    val removed: String? = null,
+)
+
 /** An agent as the owner's list has it. */
 @Serializable
 data class AgentRecord(
@@ -927,6 +960,12 @@ data class AgentRecord(
 
 @kotlinx.serialization.Serializable
 internal data class AgentsBody(val agents: List<AgentRecord> = emptyList())
+
+@kotlinx.serialization.Serializable
+internal data class AgentMembersBody(val agents: List<AgentMember> = emptyList())
+
+@kotlinx.serialization.Serializable
+internal data class AgentMemberBody(val agent: AgentMember)
 
 @kotlinx.serialization.Serializable
 internal data class ConnectionsBody(val connections: List<AgentConnection> = emptyList())
@@ -951,6 +990,10 @@ data class Person(
     val email: String? = null,
     val createdAt: String = "",
     val removedAt: String? = null,
+    /** When they last used the app on any device; the people list only. */
+    val lastSeenAt: String? = null,
+    /** They used it within the last five minutes, as an agent counts as online. */
+    val online: Boolean = false,
 ) {
     val removed: Boolean get() = removedAt != null
 }

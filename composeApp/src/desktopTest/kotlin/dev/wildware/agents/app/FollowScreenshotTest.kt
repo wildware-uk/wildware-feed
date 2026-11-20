@@ -53,7 +53,7 @@ class FollowScreenshotTest {
 
     private fun ComposeUiTest.show(scale: Float, dark: Boolean, safeArea: SafeArea, preview: ScreenPreview = ScreenPreview()) = setContent {
         CompositionLocalProvider(LocalDensity provides Density(scale)) {
-            AgentTheme(dark = dark) { Box(Modifier.fillMaxSize()) { FeedScreen(state, safeArea, preview = preview, onEvent = { events += it }) } }
+            AgentTheme(dark = dark) { Box(Modifier.fillMaxSize()) { FeedScreen(state, safeArea, preview = preview, onEvent = { if (it !is FeedEvent.ReadMembers) events += it }) } }
         }
     }
 
@@ -85,7 +85,7 @@ class FollowScreenshotTest {
     fun theBellUnfollowsAFollowedThreadAndTheMenuSaysSo() = runComposeUiTest {
         setContent {
             AgentTheme(dark = true) {
-                Box(Modifier.size(390.dp, 844.dp)) { FeedScreen(state, preview = ScreenPreview(threadOpen = true), onEvent = { events += it }) }
+                Box(Modifier.size(390.dp, 844.dp)) { FeedScreen(state, preview = ScreenPreview(threadOpen = true), onEvent = { if (it !is FeedEvent.ReadMembers) events += it }) }
             }
         }
         val open = state.openThread!!.id
@@ -103,7 +103,7 @@ class FollowScreenshotTest {
     @Test
     fun pickingALevelSetsItForTheProject() = runComposeUiTest {
         setContent {
-            AgentTheme(dark = false) { Box(Modifier.size(390.dp, 844.dp)) { FeedScreen(state, onEvent = { events += it }) } }
+            AgentTheme(dark = false) { Box(Modifier.size(390.dp, 844.dp)) { FeedScreen(state, onEvent = { if (it !is FeedEvent.ReadMembers) events += it }) } }
         }
         onNode(hasContentDescription("Channel settings")).performClick()
         waitForIdle()

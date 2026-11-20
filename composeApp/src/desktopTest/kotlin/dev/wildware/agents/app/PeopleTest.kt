@@ -80,7 +80,8 @@ class PeopleTest {
     @Test
     fun itListsThePeopleYouFirstAndReadsThemWhenOpened() = runDesktopComposeUiTest(width = 1440, height = 900) {
         sheet()
-        onNodeWithText("Alex Morgan").assertExists()
+        // The sheet, and the members list beside the feed.
+        assertEquals(2, onAllNodesWithText("Alex Morgan").fetchSemanticsNodes().size)
         onNodeWithText("Admin · @alex-morgan · alex@example.com").assertExists()
         onNodeWithText("You", substring = true).assertExists()
         // Someone who left isn't listed (what they wrote still names them).

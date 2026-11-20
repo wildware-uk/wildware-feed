@@ -48,6 +48,17 @@ class DemoServerTest {
     }
 
     @Test
+    fun theOwnerRemovesAnAgentFromAChannelAndAddsItBack() = runTest {
+        assertTrue(client.agentMembers("harbor-app", group = false).all { it.hears })
+        val removed = client.setAgentMember("harbor-app", group = false, agentId = "rover", hears = false)
+        assertEquals(false, removed.hears)
+        assertEquals("channel", removed.removed)
+        assertEquals(listOf("lumen", "pixel"), client.agentMembers("harbor-app", group = false).filter { it.hears }.map { it.agentId })
+        client.setAgentMember("harbor-app", group = false, agentId = "rover", hears = true)
+        assertTrue(client.agentMembers("harbor-app", group = false).all { it.hears })
+    }
+
+    @Test
     fun alertSettingsAreKeptAndThereAreNoNotifications() = runTest {
         val prefs = AlertPrefs(types = listOf(AlertPrefs.Request))
         client.setAlertPrefs(prefs)

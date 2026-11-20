@@ -179,6 +179,12 @@ sealed interface FeedEvent {
     data class RemoveAgent(val agentId: String, val done: (String?) -> Unit = {}) : FeedEvent
     /** Read the MCP clients signed in as this agent over OAuth, for its dialog. */
     data class ReadConnections(val agentId: String) : FeedEvent
+
+    /** Reads which agents hear a channel ([group] false) or a project, by slug. */
+    data class ReadMembers(val slug: String, val group: Boolean) : FeedEvent
+
+    /** Adds an agent to a channel or project ([hears] true) or removes it; the agent is told. */
+    data class SetMember(val slug: String, val group: Boolean, val agentId: String, val hears: Boolean) : FeedEvent
     /** Sign one of those clients out. The dialog has already asked. */
     data class RevokeConnection(val agentId: String, val connectionId: String) : FeedEvent
     /** Save how long the dashboard keeps media. The screen has already asked when it deletes more. */

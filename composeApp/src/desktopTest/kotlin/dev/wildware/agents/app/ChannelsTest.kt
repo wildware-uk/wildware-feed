@@ -103,7 +103,7 @@ class ChannelsTest {
 
     private fun ComposeUiTest.show(folds: CardFolds = CardFolds(MemoryTextStore()), preview: ScreenPreview = ScreenPreview()) = setContent {
         CompositionLocalProvider(LocalCardFolds provides folds) {
-            AgentTheme(dark = false) { Box(Modifier.size(1280.dp, 820.dp)) { FeedScreen(state, preview = preview, onEvent = { events += it }) } }
+            AgentTheme(dark = false) { Box(Modifier.size(1280.dp, 820.dp)) { FeedScreen(state, preview = preview, onEvent = { if (it !is FeedEvent.ReadMembers) events += it }) } }
         }
     }
 
@@ -165,7 +165,7 @@ class ChannelsTest {
 
     private fun ComposeUiTest.shot(scale: Float, dark: Boolean, safeArea: SafeArea, preview: ScreenPreview = ScreenPreview()) = setContent {
         CompositionLocalProvider(LocalDensity provides Density(scale)) {
-            AgentTheme(dark = dark) { Box(Modifier.fillMaxSize()) { FeedScreen(state, safeArea, preview = preview, onEvent = { events += it }) } }
+            AgentTheme(dark = dark) { Box(Modifier.fillMaxSize()) { FeedScreen(state, safeArea, preview = preview, onEvent = { if (it !is FeedEvent.ReadMembers) events += it }) } }
         }
     }
 

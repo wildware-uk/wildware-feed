@@ -12,10 +12,9 @@ import kotlinx.serialization.json.buildJsonObject
  * messages over on the agent stream (TS `src/domain/messages.ts`, `cards.ts`, `requests.ts`,
  * spec/04-stream-and-events.md §4.4-4.6).
  *
- * A stream's [Subscription] is [Subscription.Derived] (what the agent follows on the server, see
- * [Subscriptions]; everything when it has never followed a project), [Subscription.Everything], or a
- * list of projects named by an older bridge, which still hears the threads the agent follows and
- * mentions of it anywhere.
+ * What reaches the agent is only what it follows on the server ([Subscriptions]; everything when
+ * it has never followed a channel, but those the owner removed it from). No client names its
+ * channels any more (migration 060).
  */
 class AgentWork(private val db: Database, private val bus: Bus, private val clock: () -> Long = System::currentTimeMillis) {
     data class Counts(val unreadMessages: Int, val openTasks: Int, val pendingApprovals: Int)
@@ -32,33 +31,13 @@ class AgentWork(private val db: Database, private val bus: Bus, private val cloc
     private val subscriptions = Subscriptions(db, clock)
 
     /** The projects the agent follows, or null (everything) when it has never followed one. */
-    fun projectsForAgent(agentId: String): List<String>? = subscriptions.followedProjects(agentId)
+    fun projectsForAgent(agentId: String): List<String>? = subscriptions.workChannels(agentId)
 
-    private fun reach(subscribed: Subscription): Subscriptions.Reach = when (subscribed) {
-        Subscription.Derived -> Subscriptions.Reach.Followed
-        Subscription.Everything -> Subscriptions.Reach.All
-        is Subscription.Projects -> Subscriptions.Reach.Projects(subscribed.ids)
-    }
-
-    /** The projects whose open work counts: those followed or named, or null for every project. */
-    private fun workProjects(agentId: String, subscribed: Subscription): List<String>? = when (subscribed) {
-        Subscription.Derived -> projectsForAgent(agentId)
-        Subscription.Everything -> null
-        is Subscription.Projects -> subscribed.ids
-    }
-
-    /** The heartbeat's counts: unread and open work in what the agent follows, pending requests everywhere. */
+    /** The heartbeat's and the agent stream's counts: unread and open work in what the agent follows, pending requests everywhere. */
     fun countWork(agentId: String) = Counts(
         unreadMessages = countUnread(agentId, Subscriptions.Reach.Followed),
         openTasks = countOpenWork(projectsForAgent(agentId)),
         pendingApprovals = countPending(agentId, null),
-    )
-
-    /** The agent stream's counts for one subscription. */
-    fun countScoped(agentId: String, subscribed: Subscription): Counts = Counts(
-        unreadMessages = countUnread(agentId, reach(subscribed)),
-        openTasks = countOpenWork(workProjects(agentId, subscribed)),
-        pendingApprovals = if (subscribed is Subscription.Projects) countPending(agentId, subscribed.ids) else countPending(agentId, null),
     )
 
     private fun unreadWhere(agentId: String, reach: Subscriptions.Reach, args: MutableList<Any?>): String {
@@ -85,9 +64,9 @@ class AgentWork(private val db: Database, private val bus: Bus, private val cloc
     }
 
     /** The newest [limit] unread lines in scope, oldest first. */
-    fun unread(agentId: String, subscribed: Subscription, limit: Int): List<Line> {
+    fun unread(agentId: String, limit: Int): List<Line> {
         val args = mutableListOf<Any?>()
-        val where = unreadWhere(agentId, reach(subscribed), args)
+        val where = unreadWhere(agentId, Subscriptions.Reach.Followed, args)
         args += limit
         return db.query("SELECT ${LINE.joinToString(", ") { "m.$it" }} $where ORDER BY m.seq DESC LIMIT ?", *args.toTypedArray()) { line(it) }.reversed()
     }
@@ -199,12 +178,6 @@ class AgentWork(private val db: Database, private val bus: Bus, private val cloc
         createdAt = rs.getLong("created_at"), deletedAt = rs.getLong("deleted_at").let { if (rs.wasNull()) null else it },
         userId = rs.getString("user_id") ?: People.FOUNDER.takeIf { rs.getString("author") == "human" },
     )
-
-    sealed interface Subscription {
-        data object Derived : Subscription
-        data object Everything : Subscription
-        data class Projects(val ids: List<String>) : Subscription
-    }
 
     companion object {
         val OPEN = listOf("todo", "in_progress", "blocked")

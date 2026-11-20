@@ -262,9 +262,9 @@ private fun Group(title: String, choices: List<AlertChoice>, prefs: AlertPrefs?,
     }
 }
 
-/** One setting that is on or off, with a tick box. */
+/** One setting that is on or off, with a tick box; [detail], when given, is a quieter line under it. */
 @Composable
-internal fun CheckRow(label: String, on: Boolean, enabled: Boolean, onToggle: () -> Unit) {
+internal fun CheckRow(label: String, on: Boolean, enabled: Boolean, detail: String? = null, onToggle: () -> Unit) {
     val colors = AgentTheme.colors
     Row(
         Modifier
@@ -286,7 +286,14 @@ internal fun CheckRow(label: String, on: Boolean, enabled: Boolean, onToggle: ()
             if (on) Icon(Icons.Check, null, tint = colors.onAccent, modifier = Modifier.size(14.dp))
         }
         Spacer(Modifier.width(12.dp))
-        Text(label, color = colors.text, style = AgentTheme.type.body)
+        if (detail == null) {
+            Text(label, color = colors.text, style = AgentTheme.type.body)
+        } else {
+            Column {
+                Text(label, color = colors.text, style = AgentTheme.type.body)
+                Text(detail, color = colors.textFaint, style = AgentTheme.type.meta)
+            }
+        }
     }
 }
 

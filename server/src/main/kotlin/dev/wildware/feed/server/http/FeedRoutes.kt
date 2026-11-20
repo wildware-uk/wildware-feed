@@ -11,6 +11,7 @@ import dev.wildware.feed.server.domain.Messages
 import dev.wildware.feed.server.domain.Projects
 import dev.wildware.feed.server.domain.Subscriptions
 import dev.wildware.feed.server.domain.feed
+import dev.wildware.feed.server.domain.agentMembers
 import dev.wildware.feed.server.domain.invalid
 import dev.wildware.feed.server.domain.jsBoolean
 import dev.wildware.feed.server.domain.jsString
@@ -369,6 +370,51 @@ fun Route.feedRoutes(app: App) {
                 changed()
             }
             call.respondOwner(200, buildJsonObject { put("groupId", group.id); put("level", subs.groupLevel(who(), group.id)) })
+        },
+    )
+
+    // Which agents hear a channel or a project, and the owner adding or removing one (migration 060).
+    suspend fun RoutingContext.hears(): Boolean = flag(call.jsonObjectBody()["hears"], "hears")
+
+    endpoint(
+        "/api/projects/{reference}/agents",
+        HttpMethod.Get to {
+            val project = app.feed.projects.resolve(param("reference"))
+            call.respondOwner(200, buildJsonObject {
+                put("projectId", project.id)
+                put("agents", JsonArray(app.feed.agentMembers.ofChannel(project.id).map { it.json }))
+            })
+        },
+    )
+
+    endpoint(
+        "/api/projects/{reference}/agents/{agentId}",
+        HttpMethod.Put to {
+            val hears = hears()
+            val project = app.feed.projects.resolve(param("reference"))
+            val member = app.feed.agentMembers.setChannel(project, param("agentId"), hears, call.person.id)
+            call.respondOwner(200, buildJsonObject { put("projectId", project.id); put("agent", member.json) })
+        },
+    )
+
+    endpoint(
+        "/api/groups/{reference}/agents",
+        HttpMethod.Get to {
+            val group = app.feed.groups.resolve(param("reference"))
+            call.respondOwner(200, buildJsonObject {
+                put("groupId", group.id)
+                put("agents", JsonArray(app.feed.agentMembers.ofGroup(group.id).map { it.json }))
+            })
+        },
+    )
+
+    endpoint(
+        "/api/groups/{reference}/agents/{agentId}",
+        HttpMethod.Put to {
+            val hears = hears()
+            val group = app.feed.groups.resolve(param("reference"))
+            val member = app.feed.agentMembers.setGroup(group, param("agentId"), hears, call.person.id)
+            call.respondOwner(200, buildJsonObject { put("groupId", group.id); put("agent", member.json) })
         },
     )
 

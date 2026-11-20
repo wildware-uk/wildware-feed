@@ -411,5 +411,12 @@
   "file": "059-many-teams.sql",
   "rebuildsTables": false,
   "checksum": "b050c969fc731bf94b88a56d1017db9c790b9795e0b69ffeb432254512a983f5"
+ },
+ {
+  "version": 60,
+  "name": "owner-chosen-agents",
+  "file": "060-owner-chosen-agents.sql",
+  "rebuildsTables": false,
+  "checksum": "aa1a2b9faf314c9a30e1c9031f7ed7d6f782588d7d281904b69c9b698acbe6ab"
  }
 ]

@@ -137,7 +137,7 @@ class MentionTest {
         onAllNodes(hasScrollToNodeAction()).onFirst().performScrollToNode(reply)
         onAllNodes(reply).onFirst().performTextInput("thanks @rel")
         assertTrue(onAllNodes(row("relay")).fetchSemanticsNodes().isNotEmpty())
-        assertTrue(onAllNodes(hasText("relay")).fetchSemanticsNodes().isNotEmpty())
+        assertTrue(onAllNodes(hasText("@relay")).fetchSemanticsNodes().isNotEmpty())
     }
 
     @Test

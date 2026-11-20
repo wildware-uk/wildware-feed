@@ -2,12 +2,8 @@ package dev.wildware.feed.server.http
 
 import dev.wildware.feed.server.App
 import dev.wildware.feed.server.domain.AgentWork
-import dev.wildware.feed.server.domain.AgentWork.Subscription
 import dev.wildware.feed.server.domain.Agents
-import dev.wildware.feed.server.domain.DomainError
 import dev.wildware.feed.server.domain.Subscriptions
-import dev.wildware.feed.server.domain.invalid
-import dev.wildware.feed.server.domain.notFound
 import dev.wildware.feed.server.events.AppEvent
 import io.ktor.server.application.ApplicationCall
 import kotlinx.serialization.json.JsonArray
@@ -25,22 +21,18 @@ import kotlinx.serialization.json.jsonPrimitive
  * `reaction` on its lines, and a person's tick or vote on its `block`s (migration 057). Frames carry no ids; there is no replay. Ends within about five seconds
  * of the token being revoked (decided fix 11).
  *
- * With no `?project=` it hears what the agent follows on the server ([Subscriptions]), read afresh
- * on every event, so a new subscription takes effect without reconnecting. `?project=` (older
- * bridges) names the projects instead, and still hears followed threads and mentions anywhere.
+ * It hears what the agent follows on the server ([Subscriptions]), read afresh on every event, so
+ * a subscription, an unsubscribe, or the owner adding or removing the agent takes effect without
+ * reconnecting. The server alone decides: a `?project=` or `?channel=` list (older bridges send one
+ * from their settings) is ignored, not refused, so it can no longer pin a bridge to a fixed set.
  */
 internal suspend fun ApplicationCall.agentStream(app: App, agent: Agents.Agent, token: String) {
-    val subscribed = try {
-        subscription(app)
-    } catch (e: DomainError) {
-        return respondJson(if (e.code == "invalid_argument") 400 else 404, Wire.error(e.code, e.message))
-    }
     val clientId = request.queryParameters["client"]?.trim()?.take(CLIENT_ID_MAX)?.ifEmpty { null }
     val work = app.work
     val sent = HashSet<String>()
 
     fun messageFrame(): String {
-        val unread = work.unread(agent.id, subscribed, MESSAGE_LIMIT)
+        val unread = work.unread(agent.id, MESSAGE_LIMIT)
         if (unread.isEmpty()) return ""
         val delivered = work.alreadyDelivered(agent.id, clientId, unread.map { it.id })
         val fresh = unread.filter { it.id !in delivered && it.id !in sent }
@@ -69,19 +61,22 @@ internal suspend fun ApplicationCall.agentStream(app: App, agent: Agents.Agent, 
                 since = null,
                 listener = listener@{ event: AppEvent ->
                     if (event.type !in WATCHED) return@listener
-                    val next = runCatching { work.countScoped(agent.id, subscribed) }.getOrNull() ?: return@listener
-                    if (event.type == "request.answered") answerFrame(app, agent.id, subscribed, event.payload)?.let(sink::send)
-                    if (event.type == "reaction.updated") reactionFrame(app, agent.id, subscribed, event.payload)?.let(sink::send)
-                    if (event.type == "block.updated") blockFrame(app, agent.id, subscribed, event.payload)?.let(sink::send)
-                    if (next == last) return@listener
+                    val next = runCatching { work.countWork(agent.id) }.getOrNull() ?: return@listener
+                    if (event.type == "request.answered") answerFrame(app, agent.id, event.payload)?.let(sink::send)
+                    if (event.type == "reaction.updated") reactionFrame(app, agent.id, event.payload)?.let(sink::send)
+                    if (event.type == "block.updated") blockFrame(app, agent.id, event.payload)?.let(sink::send)
                     val rose = next.unreadMessages > (last?.unreadMessages ?: 0)
+                    // A new message can leave the count where it was (the owner removed the agent
+                    // from a channel and told it so in one go), so a new one is looked for either way.
+                    val fresh = if (rose || event.type == "message.created") messageFrame() else ""
+                    if (next == last && fresh.isEmpty()) return@listener
                     last = next
                     sink.send(workFrame(next))
-                    if (rose) messageFrame().takeIf { it.isNotEmpty() }?.let(sink::send)
+                    if (fresh.isNotEmpty()) sink.send(fresh)
                 },
             ) {
                 sink.send(Frames.retry(Frames.RETRY_MS) + Frames.comment("connected"))
-                val first = work.countScoped(agent.id, subscribed)
+                val first = work.countWork(agent.id)
                 last = first
                 sink.send(workFrame(first))
                 if (first.unreadMessages > 0) messageFrame().takeIf { it.isNotEmpty() }?.let(sink::send)
@@ -98,21 +93,6 @@ private val WATCHED = setOf(
     "message.created", "message.deleted", "messages.read", "update.updated", "message.updated",
     "reaction.updated", "request.created", "request.answered", "subscriptions.updated", "block.updated",
 )
-
-private fun ApplicationCall.subscription(app: App): Subscription {
-    // `?channel=` is the newer name for `?project=` (migration 053); old bridges send `?project=`.
-    val wanted = (request.queryParameters.getAll("project").orEmpty() + request.queryParameters.getAll("channel").orEmpty())
-        .flatMap { it.split(',') }.map { it.trim() }.filter { it.isNotEmpty() }
-    if (wanted.isEmpty()) return Subscription.Derived
-    if ("*" in wanted) {
-        if (wanted.size > 1) throw invalid("* means every project, so it cannot be listed beside others")
-        return Subscription.Everything
-    }
-    return Subscription.Projects(wanted.map { ref -> app.reads.findProject(ref)?.id ?: throw notFound("no such project: $ref") })
-}
-
-private fun inScope(projectId: String?, subscribed: Subscription) =
-    subscribed !is Subscription.Projects || projectId == null || projectId in subscribed.ids
 
 private fun projectNames(app: App, projectId: String?): Pair<JsonElement, JsonElement> {
     val p = projectId?.let { id -> app.db.one("SELECT slug, name FROM projects WHERE team_id = :team AND id = ?", id) { it.getString(1) to it.getString(2) } }
@@ -157,14 +137,14 @@ private fun messageItem(app: App, m: AgentWork.Line): JsonObject {
     }
 }
 
-private fun answerFrame(app: App, agentId: String, subscribed: Subscription, payload: JsonObject): String? {
+private fun answerFrame(app: App, agentId: String, payload: JsonObject): String? {
     val requestId = payload["requestId"]?.jsonPrimitive?.content ?: return null
     data class Req(val agentId: String, val projectId: String?, val updateId: String?, val state: String, val kind: String, val question: String, val answer: String?, val decidedAt: Long?)
     val r = app.db.one("SELECT agent_id, project_id, update_id, state, kind, question, answer, decided_at FROM approvals WHERE team_id = :team AND id = ?", requestId) {
         Req(it.getString(1), it.getString(2), it.getString(3), it.getString(4), it.getString(5), it.getString(6), it.getString(7),
             it.getLong(8).let { v -> if (it.wasNull()) null else v })
     } ?: return null
-    if (r.agentId != agentId || !inScope(r.projectId, subscribed)) return null
+    if (r.agentId != agentId) return null
     val state = when (r.state) { "approved", "rejected" -> "answered"; else -> r.state }
     if (state == "withdrawn") return null
     val value: JsonElement = r.answer?.let { (Wire.json.parseToJsonElement(it) as? JsonObject)?.get("value") }
@@ -188,7 +168,7 @@ private fun answerFrame(app: App, agentId: String, subscribed: Subscription, pay
     })
 }
 
-private fun reactionFrame(app: App, agentId: String, subscribed: Subscription, payload: JsonObject): String? {
+private fun reactionFrame(app: App, agentId: String, payload: JsonObject): String? {
     if (payload["actor"]?.jsonPrimitive?.content != "human") return null
     val messageId = (payload["messageId"] as? JsonPrimitive)?.takeIf { it.isString }?.content ?: return null
     val m = app.work.find(messageId) ?: return null
@@ -197,7 +177,7 @@ private fun reactionFrame(app: App, agentId: String, subscribed: Subscription, p
     val concerns = m.author == mine ||
         (m.updateId != null && app.db.one("SELECT agent_id FROM updates WHERE team_id = :team AND id = ?", m.updateId) { it.getString(1) } == agentId) ||
         app.work.threadOf(m).any { it.author == mine }
-    if (!concerns || !inScope(m.projectId, subscribed)) return null
+    if (!concerns) return null
     val (slug, name) = projectNames(app, m.projectId)
     return Frames.named("reaction", buildJsonObject {
         put("type", JsonPrimitive("reaction"))
@@ -221,7 +201,7 @@ private fun reactionFrame(app: App, agentId: String, subscribed: Subscription, p
  * A person ticked a line or voted on one of this agent's blocks (migration 057): it hears what, on
  * which block and card, and who. Its own changes, and anything on another agent's card, it does not.
  */
-private fun blockFrame(app: App, agentId: String, subscribed: Subscription, payload: JsonObject): String? {
+private fun blockFrame(app: App, agentId: String, payload: JsonObject): String? {
     if (payload["actor"]?.jsonPrimitive?.content != "human") return null
     val action = payload["action"]?.jsonPrimitive?.content ?: return null
     if (action != "check" && action != "vote") return null
@@ -235,7 +215,6 @@ private fun blockFrame(app: App, agentId: String, subscribed: Subscription, payl
     }
     if (author != "agent:$agentId") return null
     val projectId = (payload["projectId"] as? JsonPrimitive)?.takeIf { it.isString }?.content
-    if (!inScope(projectId, subscribed)) return null
     val (slug, name) = projectNames(app, projectId)
     val by = (payload["userId"] as? JsonPrimitive)?.content ?: dev.wildware.feed.server.domain.People.FOUNDER
     return Frames.named("block", buildJsonObject {

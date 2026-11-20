@@ -505,7 +505,7 @@ class EngineWiringTest {
 
         waitForNode(hasContentDescription("Mega,", substring = true)).performClick()
         waitForNode(hasContentDescription("Channel settings")).performClick()
-        waitForNode(hasText("Archive channel")).performClick()
+        waitForNode(hasText("Archive channel")).performScrollTo().performClick()
         assertEquals("""{"status":"archived"}""", waitForWrite("PATCH", "/api/projects/mega"))
     }
 

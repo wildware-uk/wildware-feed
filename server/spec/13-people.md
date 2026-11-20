@@ -28,7 +28,7 @@ the home team. Today's owner is its founding member, `founder`.
 |---|---|---|
 | `GET /api/me` | member | `{person, team}` |
 | `PATCH /api/me` | member | `{name?, email?, password?, currentPassword}`; email and password need `currentPassword` |
-| `GET /api/people` | member | everyone, removed people too; emails for admins and yourself |
+| `GET /api/people` | member | everyone, removed people too; emails for admins and yourself; `lastSeenAt` (any of their devices) and `online` (within the 5 minutes that make an agent online) |
 | `PATCH /api/people/{id}` | owner | `{role}` |
 | `DELETE /api/people/{id}` | member | leave (your own id); remove others by role |
 | `GET /api/invites` | admin | waiting invites |
