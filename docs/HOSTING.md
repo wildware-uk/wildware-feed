@@ -534,7 +534,10 @@ ticket. Redeemed, with no admin key, on the team's address:
   Rate limited like sign-in.
 - **Browser:** `POST /auth/ticket` with form body `ticket=…` sets the web app's cookie and answers
   `303` to `/`; a bad ticket goes to the sign-in page with an error. The form is posted from the
-  control plane's page, so this route checks the ticket, not the `Origin`.
+  control plane's page, so `Origin` must equal the control plane's origin exactly (setting
+  `CONTROL_PLANE_ORIGIN`; unset means this route answers `404`); any other or missing `Origin` is
+  `403`. Otherwise any website could post the attacker's own ticket and sign a visitor in to the
+  attacker's team.
 
 The control plane uses these as follows: sign-up sends `POST /admin/teams` with
 `Idempotency-Key: create-<its team id>` and `externalRef` set to that id; a lapsed team is suspended,
