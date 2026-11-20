@@ -97,6 +97,12 @@ fun Route.requestRoutes(app: App) {
     endpoint(
         "/apps/{view}",
         HttpMethod.Get to {
+            // Only ever drawn in a card's frame: opened as a page of its own, on the dashboard's
+            // address, it could pass itself off as the dashboard (a "sign in again" box).
+            if (call.request.headers["Sec-Fetch-Dest"] == "document") {
+                call.respondRaw(403, "An app opens on its card, not as a page of its own.", "text/plain;charset=utf-8", "Cache-Control" to "no-store")
+                return@to
+            }
             val document = app.feed.apps.document(call.parameters["view"] ?: "")
             if (document == null) {
                 call.respondRaw(404, """{"error":"not_found"}""", Wire.JSON, "Cache-Control" to "no-store")

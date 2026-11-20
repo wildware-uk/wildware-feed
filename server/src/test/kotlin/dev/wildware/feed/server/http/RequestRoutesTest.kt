@@ -4,6 +4,7 @@ import dev.wildware.feed.server.App
 import dev.wildware.feed.server.Config
 import dev.wildware.feed.server.db.Database
 import io.ktor.client.request.delete
+import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.patch
 import io.ktor.client.request.post
@@ -49,6 +50,7 @@ class RequestRoutesTest {
             }
         }
         return when (method) {
+            "GET" -> c.get(path, build)
             "POST" -> c.post(path, build)
             "PATCH" -> c.patch(path, build)
             else -> c.delete(path, build)
@@ -151,6 +153,16 @@ class RequestRoutesTest {
         app.db.update("INSERT INTO updates (id, project_id, agent_id, body, created_at) VALUES ('U1', 'P1', 'A1', 'b', 1)")
         app.db.update("INSERT INTO apps (id, uri, name, agent_id, html, csp, created_at, updated_at) VALUES ('AP', 'ui://b', 'B', 'A1', '<p>', '{}', 1, 1)")
         app.db.update("INSERT INTO app_views (id, app_id, update_id, agent_id, author, data, created_at, updated_at) VALUES ('V1', 'AP', 'U1', 'A1', 'agent:A1', '{}', 1, 1)")
+        // The page itself is sandboxed however it is opened: its script runs with no origin, so it has
+        // no cookie, no storage and no reach into the dashboard, even opened in a tab of its own.
+        val page = send(key, "GET", "/apps/V1")
+        assertEquals(200, page.status.value)
+        // Never as a page of its own, where it could pass itself off as the dashboard.
+        assertEquals(403, client.get("/apps/V1") { header("Authorization", "Bearer $key"); header("Sec-Fetch-Dest", "document") }.status.value)
+        assertEquals(200, client.get("/apps/V1") { header("Authorization", "Bearer $key"); header("Sec-Fetch-Dest", "iframe") }.status.value)
+        val csp = page.headers["Content-Security-Policy"]!!
+        assertTrue(csp.endsWith("; sandbox allow-scripts"), csp)
+        assertTrue("allow-same-origin" !in csp && "allow-top-navigation" !in csp && "allow-forms" !in csp && "allow-popups" !in csp, csp)
         assertEquals("""{"view_id":"V1","state":{"tab":2}}""", send(key, "POST", "/api/apps/V1/state", """{"state":{"tab":2}}""").bodyAsText())
         assertEquals("""{"view_id":"V1","state":null}""", send(key, "POST", "/api/apps/V1/state", """{"state":null}""").bodyAsText())
         assertEquals(

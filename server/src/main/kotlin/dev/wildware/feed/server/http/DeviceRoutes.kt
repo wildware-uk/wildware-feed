@@ -71,7 +71,8 @@ fun Route.deviceRoutes(app: App) {
             val device = key?.let { app.devices.authenticate(it) }
             val allowed = !call.keyIsCookie() || call.cookieRequestAllowed(app.config)
             val removed = device != null && allowed && app.devices.remove(device.id)
-            call.response.headers.append("Set-Cookie", OwnerCookie.clear(app.config, call))
+            // Cleared only when the request is the web app's own: another site can't sign the owner out.
+            if (allowed) call.response.headers.append("Set-Cookie", OwnerCookie.clear(app.config, call))
             call.respondOwner(200, buildJsonObject { put("signedOut", JsonPrimitive(removed)) })
         },
     )

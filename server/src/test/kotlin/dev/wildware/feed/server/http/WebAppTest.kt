@@ -147,6 +147,22 @@ class WebAppTest {
         assertEquals("Chrome on Mac", app.devices.authenticate(key)?.name)
 
         assertEquals(200, send("/api/summary", headers = arrayOf("Cookie" to pair)).statusCode())
+        assertEquals(200, send("/api/summary", headers = arrayOf("Cookie" to pair, "Sec-Fetch-Site" to "same-origin")).statusCode())
+        assertEquals(200, send("/api/summary", headers = arrayOf("Cookie" to pair, "Sec-Fetch-Site" to "none")).statusCode(), "typed into the address bar")
+        // A read from anywhere but the app's own page isn't the owner's, cookie or not: another site, a
+        // sibling subdomain, or a page with no origin (an agent's sandboxed app page, opened in its own tab).
+        assertEquals(403, send("/api/summary", headers = arrayOf("Cookie" to pair, "Sec-Fetch-Site" to "cross-site")).statusCode())
+        assertEquals(403, send("/api/summary", headers = arrayOf("Cookie" to pair, "Sec-Fetch-Site" to "same-site")).statusCode())
+        assertEquals(403, send("/api/summary", headers = arrayOf("Cookie" to pair, "Origin" to "null")).statusCode())
+        assertEquals(403, send("/api/summary", headers = arrayOf("Cookie" to pair, "Origin" to "https://evil.example")).statusCode())
+        assertEquals(403, send("/api/summary", "HEAD", headers = arrayOf("Cookie" to pair, "Sec-Fetch-Site" to "cross-site")).statusCode())
+        assertEquals(403, send("/media/01ABC/original", headers = arrayOf("Cookie" to pair, "Sec-Fetch-Site" to "cross-site")).statusCode())
+        assertEquals(403, send("/apps/01ABC", headers = arrayOf("Cookie" to pair, "Origin" to "null")).statusCode(), "an app page can't fetch another")
+        assertEquals(404, send("/apps/01ABC", headers = arrayOf("Cookie" to pair, "Sec-Fetch-Site" to "same-origin", "Sec-Fetch-Dest" to "iframe")).statusCode())
+        // Another site can't sign the owner out either: no cookie cleared.
+        val forced = send("/api/devices/sign-out", "POST", headers = arrayOf("Cookie" to pair, "Sec-Fetch-Site" to "cross-site"))
+        assertEquals(null, forced.header("set-cookie"))
+        assertTrue(forced.body().contains(""""signedOut":false"""))
         // A change from the app's own page goes through; from anywhere else, or saying nothing, it doesn't.
         val body = """{"project":"none","body":"hi"}"""
         assertEquals(403, send("/api/messages", "POST", body, "Cookie" to pair, "Sec-Fetch-Site" to "cross-site").statusCode())

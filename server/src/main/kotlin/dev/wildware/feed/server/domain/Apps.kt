@@ -206,6 +206,12 @@ class Apps(private val feed: Feed) {
             }
         }
 
+        /** This dashboard's own origins: an app may not name them in its csp (set by the app at start). */
+        @Volatile var ownOrigins: Set<String> = emptySet()
+
+        /** With many teams, the domain every team's address is under (TEAM_DOMAIN): no app may name it either. */
+        @Volatile var ownDomain: String? = null
+
         private fun parseOrigin(raw: JsonElement, field: String): String {
             val text = raw.jsString ?: throw invalid("$field must be an https origin")
             val url = WebUrl.parse(text.jsTrim())
@@ -216,6 +222,11 @@ class Apps(private val feed: Feed) {
             if (url.hasCredentials) throw invalid("$field must not carry credentials")
             if (url.path != "/" || !url.query.isNullOrEmpty() || !url.fragment.isNullOrEmpty()) {
                 throw invalid("$field must be an origin — a host, with no path")
+            }
+            val host = url.host?.lowercase()?.trimEnd('.')
+            val domain = ownDomain
+            if (url.origin in ownOrigins || (domain != null && host != null && (host == domain || host.endsWith(".$domain")))) {
+                throw invalid("$field can't be this dashboard's own address")
             }
             return url.origin
         }
@@ -238,6 +249,10 @@ class Apps(private val feed: Feed) {
                 "form-action 'none'",
                 "base-uri 'none'",
                 "frame-ancestors 'self'",
+                // The page runs as nobody, opened in its own tab as much as in the card's frame: no
+                // cookies, no storage, no reach into the dashboard (sandbox="allow-scripts", no
+                // allow-same-origin, as the tool's description promises the agent).
+                "sandbox allow-scripts",
             ).joinToString("; ")
         }
     }

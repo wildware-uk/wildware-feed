@@ -33,6 +33,10 @@ class App(val config: Config, val db: Database, val clock: () -> Long = System::
         // With many teams, work that forgot to say its team fails, rather than landing in the home
         // team. (Config.load refuses many teams without Postgres.)
         if (config.multiTeam) dev.wildware.feed.server.db.Tenant.strict = true
+        // An app's csp may name none of this server's own addresses: the home team's, or any team's.
+        dev.wildware.feed.server.domain.Apps.ownOrigins = listOf(config.origin, config.publicBaseUrl)
+            .mapNotNull { dev.wildware.feed.server.domain.WebUrl.parse(it)?.origin }.toSet()
+        dev.wildware.feed.server.domain.Apps.ownDomain = config.teamDomain
     }
 
     val agents = Agents(db, config.tokenSecret, clock)

@@ -65,12 +65,20 @@ fun ApplicationCall.keyIsCookie(): Boolean =
     request.headers["Authorization"] == null && !request.cookies[OwnerCookie.name].isNullOrEmpty()
 
 /**
- * A cookie request is the web app's own when it reads, or when the browser says it came from this
- * site's page ([pageOrigin]). A change the browser says nothing about is refused.
+ * A cookie request is the web app's own when the browser says it came from this site's page
+ * ([pageOrigin]), or for a read, when it says nothing against that. A change the browser says
+ * nothing about is refused.
+ *
+ * A read is refused too when the browser says it came from somewhere else: another site, a sibling
+ * subdomain (`same-site`, which a browser still sends a SameSite=Strict cookie to), or a page with
+ * no origin of its own (`Origin: null`: a sandboxed app page, a file). So an agent's app page can't
+ * read the feed with the owner's cookie even if a browser sent it.
  */
 fun ApplicationCall.cookieRequestAllowed(config: Config): Boolean {
     val method = request.httpMethod
-    if (method == HttpMethod.Get || method == HttpMethod.Head || method == HttpMethod.Options) return true
+    if (method == HttpMethod.Get || method == HttpMethod.Head || method == HttpMethod.Options) {
+        return request.headers["Sec-Fetch-Site"] == "none" || pageOrigin(config) != false
+    }
     return pageOrigin(config) ?: false
 }
 

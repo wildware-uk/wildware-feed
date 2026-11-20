@@ -156,6 +156,19 @@ class EmbedAppsTest {
         fails("csp.connect must be a list of https origins") { register(csp = json("""{"connect":"https://a.example.com"}""")) }
         fails("csp.frame may name at most 10 origins") { register(csp = json("""{"frame":[${(1..11).joinToString(",") { "\"https://a$it.example.com\"" }}]}""")) }
         fails("csp.connect[0] must be an https origin") { register(csp = json("""{"connect":[1]}""")) }
+        // The dashboard's own address is never the app's to reach.
+        val before = Apps.ownOrigins
+        try {
+            Apps.ownOrigins = setOf("https://feed.example.com")
+            fails("csp.connect[0] can't be this dashboard's own address") { register(csp = json("""{"connect":["https://feed.example.com"]}""")) }
+            // With many teams, nor any team's.
+            Apps.ownDomain = "teams.example.com"
+            fails("csp.frame[0] can't be this dashboard's own address") { register(csp = json("""{"frame":["https://acme.teams.example.com"]}""")) }
+            fails("csp.resource[0] can't be this dashboard's own address") { register(csp = json("""{"resource":["https://teams.example.com"]}""")) }
+        } finally {
+            Apps.ownOrigins = before
+            Apps.ownDomain = null
+        }
         fails("csp.connect[0] must be an https origin, e.g. \"https://api.example.com\"") { register(csp = json("""{"connect":["nope"]}""")) }
         fails("csp.resource[1] must use https") { register(csp = json("""{"resource":["https://a.example.com","http://b.example.com"]}""")) }
         fails("csp.connect[0] must not carry credentials") { register(csp = json("""{"connect":["https://u@a.example.com"]}""")) }
@@ -263,14 +276,14 @@ class EmbedAppsTest {
     fun `an app's document is served under a policy built from its declared origins`() {
         assertEquals(
             "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; " +
-                "media-src data: blob:; connect-src 'none'; frame-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors 'self'",
+                "media-src data: blob:; connect-src 'none'; frame-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors 'self'; sandbox allow-scripts",
             Apps.policyFor(json("""{"connect":[],"resource":[],"frame":[]}""") as JsonObject),
         )
         assertEquals(
             "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline' https://r.example.com https://s.example.com; " +
                 "img-src data: blob: https://r.example.com https://s.example.com; font-src data: https://r.example.com https://s.example.com; " +
                 "media-src data: blob: https://r.example.com https://s.example.com; connect-src https://c.example.com; " +
-                "frame-src https://f.example.com; form-action 'none'; base-uri 'none'; frame-ancestors 'self'",
+                "frame-src https://f.example.com; form-action 'none'; base-uri 'none'; frame-ancestors 'self'; sandbox allow-scripts",
             Apps.policyFor(json("""{"connect":["https://c.example.com"],"resource":["https://r.example.com","https://s.example.com"],"frame":["https://f.example.com"]}""") as JsonObject),
         )
         val (_, view) = postWithApp()
