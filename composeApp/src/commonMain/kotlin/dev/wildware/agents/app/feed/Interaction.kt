@@ -543,6 +543,27 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
     }
     var isPhone = false
 
+    /** Where the owner has been, for Back and Forward: channels and threads (History.kt). */
+    internal val history = dev.wildware.agents.NavHistory(Place(initial.current.slug, null))
+
+    /** Whether there is somewhere to go Back or Forward to; kept up with [history]. */
+    var canGoBack by mutableStateOf(false)
+        internal set
+    var canGoForward by mutableStateOf(false)
+        internal set
+
+    /** The channel last asked for, until the engine shows it: the place the owner is going. */
+    internal var askedProject by mutableStateOf<AskedProject?>(null)
+
+    /** In a browser tab, its own history, which Back and Forward then go through; elsewhere null. */
+    internal var browser: BrowserHistory? = null
+
+    /** The "Keyboard shortcuts" sheet. */
+    var shortcutsOpen by mutableStateOf(false)
+
+    /** The card the keyboard is on (J and K move it), drawn ringed; null for none. */
+    var cursor by mutableStateOf<String?>(null)
+
     /**
      * The sections as the chips narrow them, empty sections dropped. Worked out once per new state
      * or filter rather than on every read: the list, the header and the search all ask for it.
@@ -851,7 +872,11 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
             is FeedEvent.ChooseStatus -> statusPick = StatusPick(event.targetId, event.current)
             is FeedEvent.SetStatus -> statusPick = null
             is FeedEvent.Pin -> pinnedHere[event.targetId] = event.pinned
-            is FeedEvent.SelectProject -> threadId = null
+            is FeedEvent.SelectProject -> {
+                threadId = null
+                cursor = null
+                askedProject = AskedProject(event.slug)
+            }
             else -> Unit
         }
         menu = null

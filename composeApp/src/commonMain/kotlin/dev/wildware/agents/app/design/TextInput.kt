@@ -15,6 +15,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -30,6 +31,20 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import dev.wildware.agents.app.design.gesture.LocalSwipeGuard
 import dev.wildware.agents.app.design.gesture.guardsSwipes
+
+/**
+ * Whether a text box has the cursor. Single-key shortcuts (J, K, N, /…) stand aside while it has,
+ * so the owner's typing always reaches the box.
+ */
+object Typing {
+    private val boxes = mutableSetOf<Any>()
+
+    val active: Boolean get() = boxes.isNotEmpty()
+
+    fun focus(box: Any, focused: Boolean) {
+        if (focused) boxes += box else boxes -= box
+    }
+}
 
 /**
  * A bare text input in the theme's type and colours, for the app's own boxes to wrap. [label] is
@@ -66,8 +81,10 @@ fun TextInput(
     val guard = LocalSwipeGuard.current
     val input = remember { Any() }
     if (guard != null) DisposableEffect(guard) { onDispose { guard.focus(input, false) } }
+    DisposableEffect(input) { onDispose { Typing.focus(input, false) } }
     val decorated = modifier
         .then(if (guard != null) Modifier.guardsSwipes(guard, input) else Modifier)
+        .onFocusChanged { Typing.focus(input, it.isFocused) }
         .defaultMinSize(minHeight = MinTouchTarget)
         .then(keys)
         .semantics { contentDescription = label }

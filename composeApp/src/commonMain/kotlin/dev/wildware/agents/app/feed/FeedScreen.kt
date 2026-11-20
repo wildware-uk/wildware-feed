@@ -63,6 +63,9 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.State
 import androidx.compose.runtime.rememberUpdatedState
@@ -103,6 +106,13 @@ import androidx.compose.ui.layout.layout
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.constrainHeight
 import androidx.compose.ui.unit.offset
+
+/** Where the keyboard is: on the feed itself, or anywhere in it. */
+@Stable
+private class RootFocus {
+    var itself by mutableStateOf(false)
+    var within by mutableStateOf(false)
+}
 
 /** Below this width the app uses the phone layout. */
 val PhoneBreakpoint = 700.dp
@@ -221,7 +231,7 @@ private fun FeedScreenBody(
     scope: kotlinx.coroutines.CoroutineScope,
 ) {
     val colors = AgentTheme.colors
-    BoxWithConstraints(Modifier.fillMaxSize().windowBackground(colors)) {
+    BoxWithConstraints(Modifier.fillMaxSize().windowBackground(colors).mouseBackForward(ui)) {
         val phone = maxWidth < PhoneBreakpoint
         ui.isPhone = phone
         val widthPx = constraints.maxWidth.toFloat()
@@ -244,6 +254,7 @@ private fun FeedScreenBody(
             Toast(ui, if (phone) safeArea else SafeArea())
             if (ui.bellOpen) NotificationPanel(ui, if (phone) safeArea else SafeArea()) { path -> scope.launch { ui.goTo(OpenCard.fromPath(path)) } }
             ui.statusPick?.let { StatusPicker(ui, it, if (phone) safeArea else SafeArea()) }
+            if (ui.shortcutsOpen) ShortcutsSheet(ui, if (phone) safeArea else SafeArea())
             ui.deleting?.let { DeleteConfirm(ui, it) }
             if (ui.alertsOpen) AlertSettingsSheet(ui, if (phone) safeArea else SafeArea())
             if (ui.retentionOpen) RetentionSettingsSheet(ui, if (phone) safeArea else SafeArea())
@@ -257,6 +268,8 @@ private fun FeedScreenBody(
             JoinPrompt(ui, if (phone) safeArea else SafeArea())
         }
         FollowNavigation(ui, navigator)
+        FollowHistory(ui)
+        FollowBrowserHistory(ui)
         FollowSystemBack(ui, widthPx)
     }
 }
@@ -292,19 +305,27 @@ private fun DesktopColumns(ui: FeedUi, showRail: Boolean, startAt: String?) {
     // The window listens for shortcuts from the start, before anything is clicked.
     val rootFocus = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { rootFocus.requestFocus() } }
+    val focus = remember { RootFocus() }
+    // The keyboard comes back here when a message box is put away or a sheet closes and leaves it
+    // nowhere, so the shortcuts keep working. Never taken from anything that has it.
+    LaunchedEffect(ui) {
+        snapshotFlow { ui.composerOpen || ui.overlayOpen }.collect { busy ->
+            if (!busy && !focus.within) runCatching { rootFocus.requestFocus() }
+        }
+    }
+    val keys = remember(ui) { FeedKeys(ui) }
+    keys.refresh = refresh
+    keys.toTop = toTop
+    keys.feedFocused = { focus.itself }
+    keys.firstVisible = { list.layoutInfo.visibleItemsInfo.firstNotNullOfOrNull { (it.key as? String)?.takeIf { key -> ui.state.item(key) != null } } }
     Row(
-        Modifier.fillMaxSize().focusRequester(rootFocus).focusable().onPreviewKeyEvent { e ->
-            // Cmd/Ctrl+K opens search and commands; F5 or Cmd/Ctrl+R refreshes; Home jumps to the newest item.
-            if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
-            when {
-                e.key == Key.K && (e.isMetaPressed || e.isCtrlPressed) -> { ui.commandOpen = true; true }
-                e.key == Key.F5 || (e.key == Key.R && (e.isMetaPressed || e.isCtrlPressed)) -> { refresh(); true }
-                else -> false
-            }
-        }.onKeyEvent { e ->
-            // Home only when nothing else took it, so it still moves the cursor in a text box.
-            if (e.type == KeyEventType.KeyDown && e.key == Key.MoveHome) { toTop(); true } else false
-        },
+        Modifier.fillMaxSize()
+            .onFocusChanged { focus.itself = it.isFocused; focus.within = it.hasFocus }
+            .focusRequester(rootFocus)
+            .focusable()
+            .onPreviewKeyEvent(keys::preview)
+            // Single keys only when nothing else took them, so they never reach past a text box.
+            .onKeyEvent(keys::bubble),
     ) {
         Sidebar(ui, Modifier.width(SidebarWidth), showAgents = !showRail)
         VerticalRule()
@@ -695,7 +716,8 @@ private fun LazyListScope.feedItems(ui: FeedUi, density: Density, list: LazyList
             // By kind, so a card scrolling in takes over the layout of one of its kind that scrolled out.
             item(key = item.id, contentType = item::class) {
                 // Only the card a link opened changes when the ring comes and goes.
-                val lit by remember(item.id) { derivedStateOf { ui.highlighted == item.id } }
+                // The keyboard's card (J and K) wears the same ring while it is on it.
+                val lit by remember(item.id) { derivedStateOf { ui.highlighted == item.id || ui.cursor == item.id } }
                 Box(Modifier.feedItemMotion(this).widthIn(max = FeedMaxWidth).fillMaxWidth()) {
                     CompositionLocalProvider(LocalLit provides lit) { FeedRow(
                         item,

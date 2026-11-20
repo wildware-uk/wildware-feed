@@ -119,6 +119,37 @@ class SystemBackTest {
     }
 
     @Test
+    fun onAndroidBackWithNothingOpenGoesBackToTheChannelBefore() = runComposeUiTest {
+        val system = FakeSystemBack(ownsLeftEdge = false)
+        val navigator = dev.wildware.agents.app.feed.AppNavigator()
+        val picked = mutableListOf<String?>()
+        val state = androidx.compose.runtime.mutableStateOf(FakeFeed.state.copy(openThread = null))
+        setContent {
+            CompositionLocalProvider(LocalSystemBack provides system) {
+                AgentTheme(dark = true) {
+                    Box(Modifier.size(390.dp, 844.dp)) {
+                        FeedScreen(state, navigator = navigator, onEvent = { e ->
+                            if (e is dev.wildware.agents.app.feed.FeedEvent.SelectProject) {
+                                picked += e.slug
+                                state.value.projects.firstOrNull { it.slug == e.slug }?.let { state.value = state.value.copy(current = it) }
+                            }
+                        })
+                    }
+                }
+            }
+        }
+        waitForIdle()
+        assertFalse(system.enabled, "with nowhere to go back to, back leaves the app")
+        navigator.open("ios-companion", null)
+        waitForIdle()
+        assertTrue(system.enabled, "another channel was opened: back goes to the one before")
+        system.back()
+        waitForIdle()
+        assertEquals(listOf<String?>("ios-companion", "agent-dashboard"), picked)
+        assertFalse(system.enabled)
+    }
+
+    @Test
     fun onAndroidTheSystemGivesItsOwnFeelSoTheAppAddsNone() = runComposeUiTest {
         val system = FakeSystemBack(ownsLeftEdge = false)
         phone(system, ScreenPreview(threadOpen = true))

@@ -171,6 +171,8 @@ It doesn't, beyond oldest first.
 | 115 | Escape closes drawers/menus/lightbox | Done | Yes | Drawer/thread/viewer Esc | Menus, viewer, command bar | Parity | — |
 | 116 | Cmd/Ctrl+Enter sends | Done | Composer + reply | — | Yes | — | — |
 | 117 | Cmd/Ctrl+K, F5, Home, Y/N/1-5 on questions | Done | — | — | Yes | App only | — |
+| 123 | Back and Forward: mouse side buttons, Alt+←/→ (⌘[ ⌘] on a Mac), the browser's own Back (each channel and thread is a history entry); Android system back uses the same history | Done | — | Android system back | Yes; web through the tab's history | App only | — |
+| 124 | Keyboard shortcuts sheet (? or Ctrl/⌘+/, also in the command bar): Ctrl/⌘+F or / search, Alt+↑/↓ channels (with Shift: unread ones), Ctrl/⌘+1–9, G then H/W/S, J/K cards, Enter or O open, R reply, N new post, Esc close; single keys never fire while typing | Done | — | — | Yes | App only | — |
 | **Platform extras (app only)** |||||||
 | 118 | iOS widgets, Live Activity, Watch app + complication, Siri intents, Spotlight, voice notes, Focus filter | App only | — | Yes (`iosApp/**`) | — | App only | — |
 | 119 | Desktop tray: waiting count, Mark all read, keep running, start at login, DnD, updates | App only | — | — | Yes; tray updates in PR #6 | App only | — |

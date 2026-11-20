@@ -543,16 +543,20 @@ fun QuestionCard(
             .onKeyEvent { e ->
                 // Not while writing in a box on the card: its keys reach here too (the box takes the
                 // letter, not the key going up), and N would dismiss mid-word.
-                if (e.type != KeyEventType.KeyUp || folded || swipeGuard?.typing == true) return@onKeyEvent false
+                if (folded || swipeGuard?.typing == true) return@onKeyEvent false
                 val number = listOf(Key.One, Key.Two, Key.Three, Key.Four, Key.Five).indexOf(e.key)
-                when {
-                    gathers && (e.key == Key.Enter || e.key == Key.Y) -> { send(); true }
-                    e.key == Key.Y && primary != null -> { answer(primary); true }
-                    e.key == Key.N && decline != null && !gathers -> { answer(decline); true }
-                    e.key == Key.N -> { dismiss(); true }
-                    number in item.choices.indices -> { pick(item.choices[number]); true }
-                    else -> false
+                val act: (() -> Unit)? = when {
+                    gathers && (e.key == Key.Enter || e.key == Key.Y) -> send
+                    e.key == Key.Y && primary != null -> { { answer(primary) } }
+                    e.key == Key.N && decline != null && !gathers -> { { answer(decline) } }
+                    e.key == Key.N -> dismiss
+                    number in item.choices.indices -> { { pick(item.choices[number]) } }
+                    else -> null
                 }
+                // Done as the key goes up; going down it is the card's too, so the feed's own
+                // shortcut for that key (N, a new post) never fires as well.
+                if (act != null && e.type == KeyEventType.KeyUp) act()
+                act != null && (e.type == KeyEventType.KeyUp || e.type == KeyEventType.KeyDown)
             }
             .focusable()
             .padding(pad),

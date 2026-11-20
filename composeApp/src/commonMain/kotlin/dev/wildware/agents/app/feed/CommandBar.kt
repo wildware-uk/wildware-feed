@@ -70,6 +70,8 @@ private class Command(
     val detail: String,
     val icon: ImageVector,
     val run: () -> Unit,
+    /** The shortcut that does it too, shown at the end of the line. */
+    val keys: String = "",
 )
 
 /**
@@ -163,7 +165,7 @@ private fun CommandRow(command: Command, highlighted: Boolean) {
             .padding(horizontal = 6.dp)
             .clip(shape)
             .background(if (highlighted) colors.text.copy(alpha = if (colors.isDark) 0.08f else 0.06f) else Color.Transparent)
-            .pressable("${command.title}. ${command.detail}", shape, role = Role.Button, onClick = command.run)
+            .pressable(listOf(command.title, command.detail, command.keys.takeIf { it.isNotEmpty() }?.let { "Shortcut $it" }).filter { !it.isNullOrEmpty() }.joinToString(". "), shape, role = Role.Button, onClick = command.run)
             .semantics { selected = highlighted }
             .padding(horizontal = 10.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -175,7 +177,7 @@ private fun CommandRow(command: Command, highlighted: Boolean) {
                 MetaText(command.detail, color = colors.textMuted)
             }
         }
-        if (highlighted) MetaText("↵")
+        if (highlighted) MetaText("↵") else if (command.keys.isNotEmpty()) Kbd(command.keys)
     }
 }
 
@@ -195,7 +197,11 @@ private fun commandsFor(
     val q = query.lowercase()
     fun wanted(vararg words: String) = q.isEmpty() || words.any { it.lowercase().contains(q) }
     val state = ui.state
+    val cmd = if (shortcutsUseCommand) "⌘" else "Ctrl+"
     val actions = buildList {
+        if (wanted("Keyboard shortcuts", "keys", "hotkeys", "help")) add(Command("Actions", "Keyboard shortcuts", "Every shortcut, for getting around faster", Icons.Search, done { ui.shortcutsOpen = true }, keys = "?"))
+        if (ui.canGoBack && wanted("Go back", "back", "history")) add(Command("Actions", "Go back", "Where you were before", Icons.Back, done { ui.goBack() }, keys = if (shortcutsUseCommand) "⌘[" else "Alt+←"))
+        if (ui.canGoForward && wanted("Go forward", "forward", "history")) add(Command("Actions", "Go forward", "Where you went next", Icons.ChevronRight, done { ui.goForward() }, keys = if (shortcutsUseCommand) "⌘]" else "Alt+→"))
         if (wanted("Mark all read")) add(Command("Actions", "Mark all read", "Clear every unread badge", Icons.Check, done { ui.emit(FeedEvent.MarkAllRead) }))
         if (wanted("New channel", "create channel")) {
             add(Command("Actions", "New channel", "Make a channel to post and work in", Icons.Plus, done { ui.projectDialog = ProjectDialog.New }))
@@ -212,10 +218,10 @@ private fun commandsFor(
         }
         val postTarget = if (state.current.slug == null) ui.postProject else state.current
         if (postTarget != null && wanted("New post", "write")) {
-            add(Command("Actions", "New post", "Write to everyone in ${postTarget.name}", Icons.Plus, done { ui.focusComposer() }))
+            add(Command("Actions", "New post", "Write to everyone in ${postTarget.name}", Icons.Plus, done { ui.focusComposer() }, keys = "N"))
         }
-        if (wanted("Refresh", "reload")) add(Command("Actions", "Refresh", "Read everything again", Icons.Refresh, done { ui.emit(FeedEvent.Refresh) }))
-        if (wanted("Alerts on this device", "notifications", "settings")) add(Command("Actions", "Alerts on this device", "Which alerts this device gets", Icons.Sliders, done { ui.alertsOpen = true }))
+        if (wanted("Refresh", "reload")) add(Command("Actions", "Refresh", "Read everything again", Icons.Refresh, done { ui.emit(FeedEvent.Refresh) }, keys = "F5"))
+        if (wanted("Alerts on this device", "notifications", "settings")) add(Command("Actions", "Alerts on this device", "Which alerts this device gets", Icons.Sliders, done { ui.alertsOpen = true }, keys = "G S"))
         if (wanted("Devices", "devices", "phones", "sign out", "revoke", "lost", "settings")) {
             add(Command("Actions", "Devices", "Every device signed in to this dashboard; revoke a lost one", Icons.Phone, done { ui.devicesOpen = true }))
             add(Command("Actions", "People", "Who is in the team; invite someone, change roles", Icons.People, done { ui.peopleOpen = true }))
@@ -250,12 +256,13 @@ private fun commandsFor(
         if (wanted("Sign out")) add(Command("Actions", "Sign out", "Forget this device's key", Icons.SignOut, done { ui.emit(FeedEvent.SignOut) }))
     }
     val projects = buildList {
-        if (wanted("All channels")) add(Command("Channels", "All channels", "Every channel's feed", Icons.Inbox, done { ui.emit(FeedEvent.SelectProject(null)) }))
+        if (wanted("All channels")) add(Command("Channels", "All channels", "Every channel's feed", Icons.Inbox, done { ui.emit(FeedEvent.SelectProject(null)) }, keys = "G H"))
         val groupNames = state.groups.associate { it.id to it.name }
+        val numbered = ui.channelOrder.take(9).mapIndexed { i, p -> p.id to "$cmd${i + 1}" }.toMap()
         state.projects.filter { !it.archived && wanted(it.name, it.groupId?.let(groupNames::get).orEmpty()) }.forEach { p ->
             val where = p.groupId?.let(groupNames::get)
             val detail = listOfNotNull(where, if (p.unread > 0) "${p.unread} unread" else null).joinToString(" · ")
-            add(Command("Channels", p.name, detail, Icons.Hash, done { ui.emit(FeedEvent.SelectProject(p.slug)) }))
+            add(Command("Channels", p.name, detail, Icons.Hash, done { ui.emit(FeedEvent.SelectProject(p.slug)) }, keys = numbered[p.id].orEmpty()))
         }
     }
     val found = if (q.isEmpty()) emptyList() else ui.searchEntries.filter { it.matches(q) }.take(25).map { hit ->

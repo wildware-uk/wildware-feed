@@ -87,7 +87,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.ui.layout.ContentScale
 
 @Composable
-private fun Kbd(text: String, light: Boolean = false) {
+internal fun Kbd(text: String, light: Boolean = false) {
     val colors = AgentTheme.colors
     Text(
         text,
