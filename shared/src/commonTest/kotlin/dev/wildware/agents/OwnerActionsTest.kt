@@ -80,7 +80,7 @@ class OwnerActionsTest {
     }
 
     @Test
-    fun `answers go as typed JSON values, for the question as it was shown`() = runTest {
+    fun `answers go as typed JSON values for the question as it was shown`() = runTest {
         val server = FakeDashboard(testScheduler)
         val (_, actions) = setUp(server)
         val request = FakeDashboard.request("r1", 1)
