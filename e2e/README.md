@@ -16,6 +16,7 @@ deletes it at the end, so files run side by side and a staging server stays clea
 | `cards` | Updates, pin, status, checklists and polls |
 | `requests` | An agent's questions: choice buttons, forms, text; Waiting on you |
 | `agents` | Pairing: Allow, Deny; a removed agent's token stops working |
+| `connect` | Connect an agent: copy the prompt, an agent asks to join at the address it names, Allow; nothing secret in it |
 | `settings` | Alerts on this device, sounds, dark mode |
 | `isolation` | Nothing of team B in team A's browser; no key, cookie, token, password or invite crossing teams |
 
