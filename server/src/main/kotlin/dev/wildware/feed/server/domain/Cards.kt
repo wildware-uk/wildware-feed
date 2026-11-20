@@ -135,8 +135,11 @@ class Cards(private val feed: Feed) {
         ack
     }
 
-    /** `listWorkInScope`: [projectIds] null is every project. */
-    fun listWork(projectIds: List<String>?, statuses: List<String>?, limit: Int): List<WorkItem> {
+    /**
+     * `listWorkInScope`: [projectIds] null is every project. An agent [reader] (`agent:<id>`) is not
+     * shown a message that @names other agents, as get_messages does not show it one.
+     */
+    fun listWork(projectIds: List<String>?, statuses: List<String>?, limit: Int, reader: String = Messages.HUMAN): List<WorkItem> {
         for (status in statuses.orEmpty()) if (status !in STATUSES) throw invalid("${JsText.quote(status)} is not a work state")
         if (projectIds != null && projectIds.isEmpty()) return emptyList()
         val states = statuses ?: STATUSES
@@ -144,13 +147,20 @@ class Cards(private val feed: Feed) {
         val marks = states.joinToString(", ") { "?" }
         val scope = projectIds?.let { ids -> "AND project_id IN (${ids.joinToString(", ") { "?" }})" } ?: ""
         val params = states + projectIds.orEmpty()
+        val (audience, heard) = if (reader == Messages.HUMAN) {
+            "" to emptyList()
+        } else {
+            " AND (author = ? OR id NOT IN (SELECT mm.message_id FROM message_mentions AS mm WHERE mm.team_id = :team) " +
+                "OR id IN (SELECT mm.message_id FROM message_mentions AS mm WHERE mm.team_id = :team AND mm.agent_id = ?))" to
+                listOf(reader, reader.removePrefix("agent:"))
+        }
         return db.query(
             "SELECT 'update' AS kind, id, project_id, status, status_at, created_at, title, body, 'agent:' || agent_id AS author, " +
                 "COALESCE(status_at, created_at) AS moved_at FROM updates WHERE team_id = :team AND status IN ($marks) AND deleted_at IS NULL $scope " +
                 "UNION ALL SELECT 'message' AS kind, id, project_id, status, status_at, created_at, NULL AS title, body, author, " +
-                "COALESCE(status_at, created_at) AS moved_at FROM messages WHERE team_id = :team AND status IN ($marks) AND deleted_at IS NULL $scope " +
+                "COALESCE(status_at, created_at) AS moved_at FROM messages WHERE team_id = :team AND status IN ($marks) AND deleted_at IS NULL $scope$audience " +
                 "ORDER BY moved_at DESC, id DESC LIMIT ?",
-            *(params + params).toTypedArray(), limit,
+            *(params + params + heard).toTypedArray(), limit,
         ) {
             val words = it.getString("body").jsTrim()
             WorkItem(

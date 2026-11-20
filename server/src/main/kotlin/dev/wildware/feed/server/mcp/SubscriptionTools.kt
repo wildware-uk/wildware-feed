@@ -60,7 +60,7 @@ fun ToolRegistry.registerSubscriptionTools(app: App) {
         app.db.one("SELECT slug FROM projects WHERE team_id = :team AND id = ?", id) { JsonPrimitive(it.getString(1)) }
     }
 
-    fun view(t: Target): JsonObject = buildJsonObject {
+    fun view(t: Target, reader: String): JsonObject = buildJsonObject {
         put("kind", JsonPrimitive(t.kind))
         put("id", JsonPrimitive(t.id))
         if (t.kind == "group") {
@@ -69,7 +69,7 @@ fun ToolRegistry.registerSubscriptionTools(app: App) {
             put("channel", slug(t.projectId) ?: JsonNull)
             put("project", slug(t.projectId) ?: JsonNull)
         }
-        t.thread?.let { put("title", subs.title(it)?.let(::JsonPrimitive) ?: JsonNull) }
+        t.thread?.let { put("title", subs.title(it, reader)?.let(::JsonPrimitive) ?: JsonNull) }
     }
 
     fun changed(agentId: String) =
@@ -125,7 +125,7 @@ fun ToolRegistry.registerSubscriptionTools(app: App) {
                 if (skipped.isNotEmpty()) append(" Except ${skipped.joinToString(", ")}, which you unsubscribed from; subscribe to them to hear them again.")
             }
         }
-        ToolResult.ok(summary, buildJsonObject { put("subscribed", view(t)); put("already", JsonPrimitive(already)) })
+        ToolResult.ok(summary, buildJsonObject { put("subscribed", view(t, call.author)); put("already", JsonPrimitive(already)) })
     }
 
     register("unsubscribe") { call ->
@@ -145,7 +145,7 @@ fun ToolRegistry.registerSubscriptionTools(app: App) {
             was -> "Stopped following it. Only messages that @mention you, and threads you follow, reach you from there now."
             else -> "You were not following it, so nothing changed."
         }
-        ToolResult.ok(summary, buildJsonObject { put("unsubscribed", view(t)); put("was_subscribed", JsonPrimitive(was)) })
+        ToolResult.ok(summary, buildJsonObject { put("unsubscribed", view(t, call.author)); put("was_subscribed", JsonPrimitive(was)) })
     }
 
     register("list_subscriptions") { call ->
@@ -209,7 +209,7 @@ fun ToolRegistry.registerSubscriptionTools(app: App) {
                     put("id", JsonPrimitive(f.thread.id))
                     put("channel", slug(f.projectId) ?: JsonNull)
                     put("project", slug(f.projectId) ?: JsonNull)
-                    put("title", subs.title(f.thread)?.let(::JsonPrimitive) ?: JsonNull)
+                    put("title", subs.title(f.thread, call.author)?.let(::JsonPrimitive) ?: JsonNull)
                     put("since", JsonPrimitive(Wire.isoOf(f.since)))
                 }
             }))

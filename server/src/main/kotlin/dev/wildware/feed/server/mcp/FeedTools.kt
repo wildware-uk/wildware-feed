@@ -152,7 +152,7 @@ fun ToolRegistry.registerFeedTools(app: App) {
         val projectIds = if (!project.isNullOrEmpty()) listOf(app.feed.projects.resolve(project).id) else app.feed.messages.projectsForAgent(call.agent.id)
         val statuses = call.texts("status")
         // The statuses are checked first, as `listWorkInScope` does; the enum schema makes that moot.
-        val work = app.feed.cards.listWork(projectIds, statuses, call.args["limit"].jsNumber?.toInt() ?: 50)
+        val work = app.feed.cards.listWork(projectIds, statuses, call.args["limit"].jsNumber?.toInt() ?: 50, reader = call.author)
         val counts = LinkedHashMap<String, Int>()
         for (item in work) counts[item.status] = (counts[item.status] ?: 0) + 1
         val summary = if (work.isEmpty()) {
@@ -256,7 +256,7 @@ fun ToolRegistry.registerFeedTools(app: App) {
         val summary = if (count == 0 || attachments.notes.isEmpty()) read else read + "\n" + attachments.notes.joinToString("\n")
         ToolResult.ok(summary, buildJsonObject {
             put("messages", JsonArray(page.messages.map { message ->
-                val parent = messages.quoted(message)
+                val parent = messages.quoted(message, call.author)
                 val name = messages.authorName(message.author, message.userId)
                 buildJsonObject {
                     FeedViews.message(message).forEach { (k, v) -> put(k, v) }

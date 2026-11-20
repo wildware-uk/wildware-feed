@@ -256,10 +256,12 @@ class Messages(private val feed: Feed) {
     }
 
     /** `answeredMessage`: the live line this one answers or replies to, quoted to 240 characters. */
-    fun quoted(message: MessageRow): Quoted? {
+    fun quoted(message: MessageRow, reader: String = HUMAN): Quoted? {
         val parentId = (message.answers ?: message.replyTo)?.takeIf { it.isNotEmpty() } ?: return null
         val parent = find(parentId) ?: return null
         if (parent.deletedAt != null) return null
+        // A parent that @named other agents is theirs to read: [reader] gets the reply, not its quote.
+        if (!Mentions.readable(db, parent.id, parent.author, reader)) return null
         val full = parent.body
         val truncated = full.length > QUOTED_MAX
         return Quoted(parent.id, parent.author, if (truncated) JsText.trimEnd(full.substring(0, QUOTED_MAX)) + "…" else full, truncated, parent.userId)

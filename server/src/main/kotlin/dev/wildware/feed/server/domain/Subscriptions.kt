@@ -578,11 +578,14 @@ class Subscriptions(private val db: Database, private val clock: () -> Long = Sy
     }
 
     /** A line to recognise a thread by: the update's title (or text), the question, or the post. */
-    fun title(thread: Thread): String? {
+    fun title(thread: Thread, reader: String = HUMAN): String? {
         val text = when (thread.kind) {
             "update" -> db.one("SELECT coalesce(title, body) FROM updates WHERE team_id = :team AND id = ?", thread.id) { it.getString(1) }
             "request" -> db.one("SELECT question FROM approvals WHERE team_id = :team AND id = ?", thread.id) { it.getString(1) }
-            else -> db.one("SELECT body FROM messages WHERE team_id = :team AND id = ?", thread.id) { it.getString(1) }
+            else -> db.one("SELECT body, author FROM messages WHERE team_id = :team AND id = ?", thread.id) {
+                // A message that @named other agents is theirs to read: [reader] gets no title from it.
+                it.getString(1).takeIf { _ -> Mentions.readable(db, thread.id, it.getString(2), reader) }
+            }
         } ?: return null
         val line = text.replace(Regex("\\s+"), " ").trim()
         return if (line.length > TITLE_MAX) line.take(TITLE_MAX).trimEnd() + "…" else line

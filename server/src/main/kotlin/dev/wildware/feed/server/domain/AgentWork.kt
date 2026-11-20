@@ -162,9 +162,11 @@ class AgentWork(private val db: Database, private val bus: Bus, private val cloc
     }
 
     /** The line a message answers or replies to, quoted (240 characters at most), or null. */
-    fun quoted(m: Line): Triple<Line, String, Boolean>? {
+    fun quoted(m: Line, reader: String): Triple<Line, String, Boolean>? {
         val parent = (m.answers ?: m.replyTo)?.let(::find) ?: return null
         if (parent.deletedAt != null) return null
+        // A parent that @named other agents is theirs to read: [reader] gets the reply, not its quote.
+        if (!Mentions.readable(db, parent.id, parent.author, reader)) return null
         val truncated = parent.body.length > 240
         val body = if (truncated) parent.body.substring(0, 240).trimEnd() + "…" else parent.body
         return Triple(parent, body, truncated)

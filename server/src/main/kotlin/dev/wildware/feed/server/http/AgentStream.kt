@@ -56,7 +56,7 @@ internal suspend fun ApplicationCall.agentStream(app: App, agent: Agents.Agent, 
         work.markDelivered(agent.id, clientId, fresh.map { it.id })
         return Frames.named("message", buildJsonObject {
             put("type", JsonPrimitive("message"))
-            put("messages", JsonArray(fresh.map { m -> messageItem(app, m) }))
+            put("messages", JsonArray(fresh.map { m -> messageItem(app, m, agent.id) }))
         })
     }
 
@@ -224,9 +224,9 @@ private fun projectNames(app: App, projectId: String?): Pair<JsonElement, JsonEl
 
 private fun str(v: String?): JsonElement = v?.let(::JsonPrimitive) ?: JsonNull
 
-private fun messageItem(app: App, m: AgentWork.Line): JsonObject {
+private fun messageItem(app: App, m: AgentWork.Line, agentId: String): JsonObject {
     val (slug, name) = projectNames(app, m.projectId)
-    val quoted = app.work.quoted(m)
+    val quoted = app.work.quoted(m, "agent:$agentId")
     val media = app.db.query("SELECT id, kind FROM media WHERE team_id = :team AND message_id = ? ORDER BY seq", m.id) {
         buildJsonObject { put("id", JsonPrimitive(it.getString(1))); put("kind", JsonPrimitive(it.getString(2))) }
     }
@@ -301,6 +301,8 @@ private fun reactionFrame(app: App, agentId: String, within: List<String>?, payl
         (m.updateId != null && app.db.one("SELECT agent_id FROM updates WHERE team_id = :team AND id = ?", m.updateId) { it.getString(1) } == agentId) ||
         app.work.threadOf(m).any { it.author == mine }
     if (!concerns || !inScope(m.projectId, within)) return null
+    // The frame quotes the message: one that @named other agents is theirs to read.
+    if (!dev.wildware.feed.server.domain.Mentions.readable(app.db, m.id, m.author, mine)) return null
     val (slug, name) = projectNames(app, m.projectId)
     return Frames.named("reaction", buildJsonObject {
         put("type", JsonPrimitive("reaction"))

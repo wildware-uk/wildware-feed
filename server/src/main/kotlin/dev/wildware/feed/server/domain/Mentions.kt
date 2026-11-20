@@ -14,6 +14,17 @@ object Mentions {
     const val EVERYONE = "everyone"
     const val HERE = "here"
 
+    /**
+     * Whether [reader] (`human`, or `agent:<id>`) may read the words of a message [author] wrote: a
+     * message that @names agents reaches only them and its author, wherever its text would show
+     * (a reply's quote, a work summary, a thread's title); the owner reads everything.
+     */
+    fun readable(db: Database, messageId: String, author: String?, reader: String): Boolean {
+        if (reader == "human" || reader == author) return true
+        val named = db.query("SELECT agent_id FROM message_mentions WHERE team_id = :team AND message_id = ?", messageId) { it.getString(1) }
+        return named.isEmpty() || reader.removePrefix("agent:") in named
+    }
+
     /** JavaScript's `$` without the `m` flag is the very end, hence `\z`. */
     private val CODE = Regex("```[\\s\\S]*?(?:```|\\z)|~~~[\\s\\S]*?(?:~~~|\\z)|`[^`\\n]*`")
 

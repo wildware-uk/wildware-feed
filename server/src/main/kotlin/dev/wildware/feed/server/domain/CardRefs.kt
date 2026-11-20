@@ -141,9 +141,8 @@ class CardRefs(private val db: Database, private val clock: () -> Long) {
      * query, and a card in another team is simply not found.
      */
     private fun visible(by: String, target: Target): Boolean {
-        if (by == Messages.HUMAN || target.kind != "message" || target.author == by) return true
-        val named = db.query("SELECT agent_id FROM message_mentions WHERE team_id = :team AND message_id = ?", target.id) { it.getString(1) }
-        return named.isEmpty() || by.removePrefix(AGENT) in named
+        if (target.kind != "message") return true
+        return Mentions.readable(db, target.id, target.author, by)
     }
 
     private fun targets(refs: List<CardRef>): Map<CardRef, Target> {
