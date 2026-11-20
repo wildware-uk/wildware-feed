@@ -43,6 +43,12 @@ concurrency:
   group: desktop-release-${{ github.ref }}
   cancel-in-progress: false
 
+# Every job here: the Mac, Windows, Linux and Android builds.
+env:
+  # The hosted "Log in"'s account service (docs/TEAMS.md). From the repo variable FEED_ACCOUNT_URL;
+  # unset or empty, these builds have no "Log in" tab. Set it at go-live; no code change needed.
+  FEED_ACCOUNT_URL: ${{ vars.FEED_ACCOUNT_URL }}
+
 jobs:
   version:
     runs-on: ubuntu-latest

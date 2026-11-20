@@ -37,6 +37,9 @@ concurrency:
 
 env:
   BUNDLE_ID: dev.wildware.agents
+  # The hosted "Log in"'s account service (docs/TEAMS.md). From the repo variable FEED_ACCOUNT_URL;
+  # unset or empty, these builds have no "Log in" tab. Set it at go-live; no code change needed.
+  FEED_ACCOUNT_URL: ${{ vars.FEED_ACCOUNT_URL }}
 
 jobs:
   # On Linux, so a missing secret or a bad key fails in seconds, before any Mac time is spent.
