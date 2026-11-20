@@ -38,6 +38,12 @@ class FakeHosted {
     /** The address a ticket says to use; null is the team's own. */
     var ticketAddress: String? = null
 
+    /** The next ticket is one the team never heard of, as if it ran out on the way. */
+    var spoilNextTicket = false
+
+    /** Answer signed-in calls with a 401 that has no body. */
+    var bare401 = false
+
     private var wrongTries = 0
     private var loginUsed = false
     private val sessions = mutableSetOf<String>()
@@ -80,6 +86,7 @@ class FakeHosted {
                 return json("""{"token":"$token","expiresAt":"2027-02-18T10:00:00.000Z","email":"ada@example.com"}""")
             }
             val token = request.headers[HttpHeaders.Authorization]?.removePrefix("Bearer ")
+            if (bare401) return respond("", HttpStatusCode.Unauthorized)
             if (token == null || token !in sessions || expired) return json("""{"error":"unauthorized"}""", HttpStatusCode.Unauthorized)
             return when {
                 path == "/api/app/teams" && request.method == HttpMethod.Get ->
@@ -90,7 +97,7 @@ class FakeHosted {
                         ?: return json("""{"error":"no_such_team"}""", HttpStatusCode.NotFound)
                     val address = Regex("\"address\":\"([^\"]+)\"").find(team)!!.groupValues[1]
                     val ticket = "ticket-${++minted}"
-                    tickets[ticket] = address.removePrefix("https://")
+                    if (spoilNextTicket) spoilNextTicket = false else tickets[ticket] = address.removePrefix("https://")
                     issued += ticket
                     json("""{"address":"${ticketAddress ?: address}","ticket":"$ticket","expiresAt":"2026-11-20T09:01:00.000Z"}""")
                 }

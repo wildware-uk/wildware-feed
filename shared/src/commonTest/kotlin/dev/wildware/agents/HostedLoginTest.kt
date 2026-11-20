@@ -2,6 +2,10 @@ package dev.wildware.agents
 
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.http.HttpStatusCode
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.job
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -12,7 +16,11 @@ import kotlin.test.assertTrue
 /** The hosted "Log in": email, code, team, then an ordinary device key from the team's own server. */
 class HostedLoginTest {
     private val fake = FakeHosted()
-    private val flow = HostedLoginFlow(HostedAccount("https://account.test/", fake::engine), fake::engine)
+    private val background = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val flow = HostedLoginFlow(HostedAccount("https://account.test/", fake::engine), fake::engine, background)
+
+    /** Waits for the account sign-outs sent in the background. */
+    private suspend fun settled() = background.coroutineContext.job.children.toList().forEach { it.join() }
 
     private suspend fun signedInToAccount(): HostedTeams {
         flow.sendCode("ada@example.com")
@@ -32,6 +40,7 @@ class HostedLoginTest {
         assertFalse(teams.partial)
 
         val signed = flow.join(teams.teams[0], "Ada's iPhone")
+        settled()
         assertEquals("https://acme.feed.test", signed.server)
         assertEquals("device-key-acme.feed.test", signed.token)
         assertEquals("Ada's iPhone", signed.device.name)
@@ -74,7 +83,7 @@ class HostedLoginTest {
         repeat(4) { assertEquals(HostedFailure.WrongCode, assertFailsWith<HostedLoginException> { flow.verify("000000", "Phone") }.failure) }
         assertEquals(HostedFailure.Locked, assertFailsWith<HostedLoginException> { flow.verify("000000", "Phone") }.failure)
         assertFalse(flow.awaitingCode, "a locked code is dead")
-        assertFailsWith<HostedLoginException> { flow.verify("123456", "Phone") }
+        assertEquals(HostedFailure.CodeExpired, assertFailsWith<HostedLoginException> { flow.verify("123456", "Phone") }.failure)
         // A new code works.
         assertEquals(2, signedInToAccount().teams.size)
     }
@@ -85,6 +94,15 @@ class HostedLoginTest {
         // That login is used now; trying its code again is "expired".
         val account = HostedAccount("https://account.test", fake::engine)
         assertEquals(HostedFailure.CodeExpired, assertFailsWith<HostedLoginException> { account.verify("login-1", "123456", "Phone") }.failure)
+    }
+
+    @Test
+    fun `a refused request for a new code keeps the one already sent`() = runTest {
+        flow.sendCode("ada@example.com")
+        fake.refuseSignIn = HttpStatusCode.TooManyRequests to "rate_limited"
+        assertEquals(HostedFailure.TooManyTries, assertFailsWith<HostedLoginException> { flow.sendCode("ada@example.com") }.failure)
+        assertTrue(flow.awaitingCode)
+        assertEquals(2, flow.verify("123456", "Phone").teams.size)
     }
 
     @Test
@@ -125,17 +143,32 @@ class HostedLoginTest {
     @Test
     fun `a ticket the team turns down leaves the account signed in to pick again`() = runTest {
         val teams = signedInToAccount()
-        // The service names an address that isn't the ticket's team, so the team refuses it.
-        fake.ticketAddress = "https://globex.feed.test"
+        // The team has already forgotten the ticket (it ran out on the way, say).
+        fake.spoilNextTicket = true
         val refused = assertFailsWith<SignInException> { flow.join(teams.teams[0], "Phone") }
         assertEquals(SignInFailure.BadTicket, refused.failure)
         assertEquals(1, fake.openSessions.size)
 
-        fake.ticketAddress = null
         val signed = flow.join(teams.teams[0], "Phone")
+        settled()
         assertEquals("https://acme.feed.test", signed.server)
         assertEquals(listOf("ticket-1", "ticket-2"), fake.issued, "a new ticket, not the old one again")
         assertTrue(fake.openSessions.isEmpty())
+    }
+
+    @Test
+    fun `a ticket for another address than the team picked is never sent`() = runTest {
+        val teams = signedInToAccount()
+        fake.ticketAddress = "https://elsewhere.test"
+        assertEquals(HostedFailure.Refused, assertFailsWith<HostedLoginException> { flow.join(teams.teams[0], "Phone") }.failure)
+        assertTrue(fake.seen.none { it.host == "elsewhere.test" || it.host == "acme.feed.test" })
+    }
+
+    @Test
+    fun `a bare 401 on a signed-in call is signed out`() = runTest {
+        val teams = signedInToAccount()
+        fake.bare401 = true
+        assertEquals(HostedFailure.SignedOut, assertFailsWith<HostedLoginException> { flow.join(teams.teams[0], "Phone") }.failure)
     }
 
     @Test
@@ -166,6 +199,7 @@ class HostedLoginTest {
         signedInToAccount()
         assertEquals(1, fake.openSessions.size)
         flow.startOver()
+        settled()
         assertTrue(fake.openSessions.isEmpty())
         assertEquals(null, flow.email)
     }

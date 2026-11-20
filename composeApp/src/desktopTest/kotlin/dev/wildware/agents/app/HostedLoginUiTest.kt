@@ -80,7 +80,7 @@ class HostedLoginUiTest {
         assertEquals("https://dash.test", sessions.load()?.server)
         assertEquals("key-1", sessions.load()?.token)
         // Signed in to the team the ordinary way; the account's own sign-in is over.
-        assertTrue(account.open.isEmpty(), "the account sign-in ended")
+        waitUntil(timeoutMillis = 10_000) { account.open.isEmpty() }
         assertTrue(server.authorizations.isNotEmpty() && server.authorizations.all { it == "Bearer key-1" })
     }
 

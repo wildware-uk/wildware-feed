@@ -1,3 +1,4 @@
+import java.net.URI
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
 
@@ -84,7 +85,9 @@ val generateHostedLoginBuild by tasks.registering {
     outputs.dir(out)
     doLast {
         val value = url.get().trim().trimEnd('/')
-        require(value.isEmpty() || value.startsWith("https://") || value.startsWith("http://localhost") || value.startsWith("http://127.0.0.1")) {
+        val parsed = runCatching { URI(value) }.getOrNull()
+        val local = parsed?.scheme == "http" && parsed.host in setOf("localhost", "127.0.0.1")
+        require(value.isEmpty() || (parsed?.scheme == "https" && !parsed.host.isNullOrEmpty()) || local) {
             "feed.accountUrl must be https:// (or http://localhost for a test): $value"
         }
         val file = out.get().file("dev/wildware/agents/app/signin/HostedLoginBuild.kt").asFile

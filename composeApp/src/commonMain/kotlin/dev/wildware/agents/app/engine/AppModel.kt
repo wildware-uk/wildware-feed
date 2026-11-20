@@ -69,6 +69,14 @@ class AppModel(
         runCatching { platform.settings.write(next.name) }
     }
 
+    /**
+     * The hosted "Log in": email, code, team. Null in the web app, which a team's own server serves
+     * (the account site signs a browser in there itself), and in a build with no account service.
+     */
+    val hostedLogin: HostedLoginFlow? =
+        if (platform.homeServer == null && accountService.isNotBlank()) HostedLoginFlow(HostedAccount(accountService, platform.httpEngine), platform.httpEngine, scope)
+        else null
+
     init {
         platform.sessions.load()?.let { saved ->
             val host = platform.localServer
@@ -95,14 +103,6 @@ class AppModel(
 
     /** "Connect to a host", step 1: whether [address] is a Wildware Feed server, and how it signs in. */
     suspend fun checkHost(address: String): HostCheck = HostCheck.check(address, platform.httpEngine())
-
-    /**
-     * The hosted "Log in": email, code, team. Null in the web app, which a team's own server serves
-     * (the account site signs a browser in there itself), and in a build with no account service.
-     */
-    val hostedLogin: HostedLoginFlow? =
-        if (platform.homeServer == null && accountService.isNotBlank()) HostedLoginFlow(HostedAccount(accountService, platform.httpEngine), platform.httpEngine)
-        else null
 
     /**
      * The hosted "Log in"'s last step: signs this device in to [team] and opens its feed, saved and
@@ -153,6 +153,7 @@ class AppModel(
      * so the next launch is back at sign-in, and push, alerts and the watch never hear of it.
      */
     fun enterDemo() {
+        hostedLogin?.startOver()
         val server = DemoServer()
         demoServer = server
         val demo = AppPlatform(
@@ -192,6 +193,8 @@ class AppModel(
     }
 
     private fun open(saved: SavedSession) {
+        // Signed in, however it happened: a hosted "Log in" half done is over, and its account sign-in ends.
+        hostedLogin?.startOver()
         val session = DashboardSession(saved, platform, scope)
         session.start()
         mutableScreen.value = AppScreen.Signed(session)

@@ -260,6 +260,7 @@ class ScreenshotTest {
         val flow = dev.wildware.agents.HostedLoginFlow(
             dev.wildware.agents.HostedAccount("https://account.example", { error("no network here") }),
             { error("no network here") },
+            kotlinx.coroutines.MainScope(),
         )
         val teams = dev.wildware.agents.HostedTeams(
             listOf(

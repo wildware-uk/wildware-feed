@@ -176,7 +176,9 @@ class HostedAccount(baseUrl: String, private val engine: () -> HttpClientEngine)
                 error == "wrong_code" -> HostedLoginException(HostedFailure.WrongCode, "That code isn't right.", status)
                 error == "locked" -> HostedLoginException(HostedFailure.Locked, "Too many wrong codes.", status)
                 error == "expired" -> HostedLoginException(HostedFailure.CodeExpired, "That code has expired or was used already.", status)
-                error == "unauthorized" -> HostedLoginException(HostedFailure.SignedOut, "Your sign-in ended. Start again.", status)
+                // With a token sent, any 401 means the account sign-in has ended.
+                error == "unauthorized" || (status == 401 && token != null) ->
+                    HostedLoginException(HostedFailure.SignedOut, "Your sign-in ended. Start again.", status)
                 error == "no_such_team" -> HostedLoginException(HostedFailure.NoSuchTeam, "That team isn't there any more.", status)
                 error == "server_unavailable" || status >= 500 ->
                     HostedLoginException(HostedFailure.ServerUnavailable, "The team's server isn't answering. Try again soon.", status, retry)

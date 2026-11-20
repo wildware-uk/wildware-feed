@@ -27,6 +27,8 @@ import androidx.compose.ui.autofill.ContentType
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.disabled
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -45,6 +47,7 @@ import dev.wildware.agents.app.design.pressable
 import dev.wildware.agents.app.feed.AppButton
 import dev.wildware.agents.app.feed.ButtonTone
 import dev.wildware.agents.app.feed.MetaText
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 
 /** Where the hosted "Log in" is: the email, the code from it, or the teams that email is in. */
@@ -110,7 +113,7 @@ internal fun HostedLoginException.problem(): HostedProblem = when (failure) {
 
 private fun SignInException.hostedProblem(): HostedProblem = when (failure) {
     SignInFailure.BadTicket -> HostedProblem(HostedField.General, "That sign-in ran out before the team got it. Pick the team again.")
-    SignInFailure.TooManyAttempts -> HostedProblem(HostedField.General, "Too many tries. Wait a few minutes, then pick the team again.")
+    SignInFailure.TooManyAttempts -> HostedProblem(HostedField.General, "Too many tries. Wait ${minutesText(retryAfterSeconds)}, then pick the team again.")
     else -> HostedProblem(HostedField.General, message ?: "The team's server turned the sign-in down.")
 }
 
@@ -221,7 +224,7 @@ internal fun HostedLoginForm(
             state.code.clearText()
             state.teams = null
             state.step = HostedStep.Email
-            scope.launch { flow.startOver() }
+            flow.startOver()
         }
     }
 
@@ -264,7 +267,8 @@ internal fun HostedLoginForm(
         HostedStep.Code -> {
             // A pasted "123 456" or a whole sentence becomes the 6 digits, and the sixth one sends it.
             LaunchedEffect(state) {
-                snapshotFlow { state.code.text.toString() }.collect { typed ->
+                // Only what is typed from here on: coming back to this step doesn't send the code again.
+                snapshotFlow { state.code.text.toString() }.drop(1).collect { typed ->
                     val digits = codeDigits(typed)
                     if (digits != typed) state.code.edit { replace(0, length, digits) }
                     // Typing again clears what was wrong with the last code.
@@ -369,7 +373,7 @@ private fun TeamRow(team: HostedTeam, joining: Boolean, enabled: Boolean, onClic
     val shape = AgentTheme.shapes.medium
     val note = if (team.readOnly) "Read-only: the subscription has lapsed. You can still sign in and read." else null
     val label = buildString {
-        append(team.name)
+        append(team.name).append(", ").append(team.address.removePrefix("https://"))
         if (joining) append(", signing in")
         if (note != null) append(". ").append(note)
     }
@@ -381,6 +385,7 @@ private fun TeamRow(team: HostedTeam, joining: Boolean, enabled: Boolean, onClic
             .border(1.dp, if (joining) colors.accent else colors.border, shape)
             // Clicks while another team is signing in are dropped by the caller.
             .pressable(label, shape, role = Role.Button) { if (enabled) onClick() }
+            .semantics { if (!enabled) disabled() }
             .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
