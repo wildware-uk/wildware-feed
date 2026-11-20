@@ -80,6 +80,11 @@ data class Config(
     val behindCloudflare: Boolean = false,
     /** CLOUDFLARE_IPS: Cloudflare's address ranges (comma-separated CIDRs); unset: [CloudflareIps.DEFAULT]. */
     val cloudflareRanges: List<String> = CloudflareIps.DEFAULT,
+    /**
+     * CLOUDFLARE_ORIGIN_SECRET: the value our Cloudflare rule puts in the `Feed-Origin-Auth` header
+     * of every request it passes on. Required with [behindCloudflare]; [toString] leaves it out.
+     */
+    val cloudflareOriginSecret: String? = null,
 ) {
     /** Many teams ([teamDomain] set). */
     val multiTeam: Boolean get() = teamDomain != null
@@ -217,6 +222,8 @@ data class Config(
                 if (teamDomain == null) issues += "ADMIN_HOST: ADMIN_HOST needs TEAM_DOMAIN"
                 if (!Regex("^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$").matches(adminHost)) {
                     issues += "ADMIN_HOST: ADMIN_HOST must be a host name, such as admin.feed.example.com"
+                } else if (adminHost == Regex("^https?://([^/:]+)").find(base)?.groupValues?.get(1)?.lowercase()?.trimEnd('.')) {
+                    issues += "ADMIN_HOST: ADMIN_HOST can't be the home team's own address (PUBLIC_BASE_URL)"
                 } else if (teamDomain != null && adminHost.endsWith(".$teamDomain")) {
                     val label = adminHost.removeSuffix(".$teamDomain")
                     if ('.' in label || label !in dev.wildware.feed.server.domain.Teams.RESERVED_SLUGS) {
@@ -230,10 +237,13 @@ data class Config(
                 else -> { issues += "BEHIND_CLOUDFLARE: BEHIND_CLOUDFLARE must be on or off, not $raw"; false }
             }
             val cloudflareRanges = get("CLOUDFLARE_IPS")?.split(',')?.map { it.trim() }?.filter { it.isNotEmpty() } ?: CloudflareIps.DEFAULT
-            cloudflareRanges.filter { CloudflareIps.parse(it) == null }.forEach { issues += "CLOUDFLARE_IPS: $it is not a CIDR range" }
+            cloudflareRanges.filter { CloudflareIps.parse(it) == null }.forEach { issues += "CLOUDFLARE_IPS: $it is not a CIDR range, or wider than /8 (IPv4) or /16 (IPv6)" }
             if (behindCloudflare && get("ADDRESS_HEADER")?.lowercase() != "x-forwarded-for") {
                 issues += "BEHIND_CLOUDFLARE: needs ADDRESS_HEADER=X-Forwarded-For (the router's record of who connected)"
             }
+            val originSecret = get("CLOUDFLARE_ORIGIN_SECRET")
+            if (behindCloudflare && originSecret == null) issues += "BEHIND_CLOUDFLARE: needs CLOUDFLARE_ORIGIN_SECRET, the header our Cloudflare rule adds"
+            if (originSecret != null && originSecret.length < MIN_SECRET_LENGTH) issues += "CLOUDFLARE_ORIGIN_SECRET: CLOUDFLARE_ORIGIN_SECRET must be at least $MIN_SECRET_LENGTH characters"
             val controlPlane = get("CONTROL_PLANE_ORIGIN")?.trim()?.trimEnd('/')
             if (controlPlane != null && !Regex("^https?://[^/?#\\s]+$").matches(controlPlane)) {
                 issues += "CONTROL_PLANE_ORIGIN: CONTROL_PLANE_ORIGIN must be an origin, such as https://feed.example.com"
@@ -274,6 +284,7 @@ data class Config(
                 adminHost = adminHost,
                 behindCloudflare = behindCloudflare,
                 cloudflareRanges = cloudflareRanges,
+                cloudflareOriginSecret = originSecret,
             )
         }
 

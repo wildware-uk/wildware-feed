@@ -192,18 +192,52 @@ private suspend fun guardRefused(call: ApplicationCall, app: App): Boolean {
 /** The socket peer, or ADDRESS_HEADER per adapter-node's rules: the login limiter's key. */
 fun ApplicationCall.clientAddress(config: dev.wildware.feed.server.Config): String {
     val header = config.addressHeader ?: return request.origin.remoteAddress
-    val value = request.headers[header] ?: error("Address header was specified with ADDRESS_HEADER=$header but is absent from request")
-    if (header != "x-forwarded-for") return value
+    if (header != "x-forwarded-for") {
+        return request.headers[header] ?: error("Address header was specified with ADDRESS_HEADER=$header but is absent from request")
+    }
+    // Every X-Forwarded-For header, in order, as one list: the router's entry is the last.
+    val all = request.headers.getAll(header) ?: error("Address header was specified with ADDRESS_HEADER=$header but is absent from request")
     val depth = config.xffDepth
-    val addresses = value.split(',')
+    val addresses = all.joinToString(",").split(',')
     require(depth in 1..addresses.size) { "XFF_DEPTH must be between 1 and ${addresses.size}" }
     val peer = addresses[addresses.size - depth].trim()
-    // Through Cloudflare, the peer is Cloudflare's edge and the client is in CF-Connecting-IP; that
-    // header is believed only when the peer really is Cloudflare (BEHIND_CLOUDFLARE).
-    if (config.behindCloudflare && dev.wildware.feed.server.CloudflareIps.contains(config.cloudflareRanges, peer)) {
-        request.headers["CF-Connecting-IP"]?.trim()?.takeIf { it.isNotEmpty() }?.let { return it }
+    if (!config.behindCloudflare) return peer
+    return fromCloudflare(config, peer) ?: run {
+        if (request.headers["CF-Ray"] != null) CloudflareWatch.unknownEdge(peer)
+        dev.wildware.feed.server.CloudflareIps.limiterKey(peer) ?: peer
     }
-    return peer
+}
+
+/**
+ * The client Cloudflare names, when this request really came through our Cloudflare: the router saw
+ * one of Cloudflare's ranges connect, and the request carries the secret our Cloudflare rule adds
+ * (a range alone isn't proof: Cloudflare's own VPN leaves from it too). One CF-Connecting-IP, a
+ * real public address; else null, and the router's peer counts.
+ */
+private fun ApplicationCall.fromCloudflare(config: dev.wildware.feed.server.Config, peer: String): String? {
+    val secret = config.cloudflareOriginSecret ?: return null
+    if (!dev.wildware.feed.server.CloudflareIps.contains(config.cloudflareRanges, peer)) return null
+    val sent = request.headers.getAll(ORIGIN_AUTH)?.singleOrNull() ?: return null
+    if (!dev.wildware.feed.server.auth.Tokens.same(sent, secret)) return null
+    val claimed = request.headers.getAll("CF-Connecting-IP")?.singleOrNull()?.trim() ?: return null
+    val bytes = dev.wildware.feed.server.CloudflareIps.literal(claimed.removePrefix("[").removeSuffix("]")) ?: return null
+    if (dev.wildware.feed.server.CloudflareIps.isLocal(bytes)) return null
+    return dev.wildware.feed.server.CloudflareIps.limiterKey(claimed)
+}
+
+/** The header our Cloudflare rule sets on every request it passes to the server (BEHIND_CLOUDFLARE). */
+const val ORIGIN_AUTH = "Feed-Origin-Auth"
+
+/** Says, now and then, that Cloudflare connected from a range the server doesn't know: the list may be out of date. */
+internal object CloudflareWatch {
+    @Volatile private var lastWarned = 0L
+
+    fun unknownEdge(peer: String) {
+        val now = System.currentTimeMillis()
+        if (now - lastWarned < 10 * 60_000L) return
+        lastWarned = now
+        System.err.println("behind Cloudflare: a request with CF-Ray came from $peer, outside CLOUDFLARE_IPS; is the list out of date?")
+    }
 }
 
 /**

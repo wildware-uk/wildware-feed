@@ -85,10 +85,14 @@ Postgres and turns row security on by itself.
 If `TEAM_DOMAIN` itself is another site (a marketing page), `ADMIN_HOST` names one more address that
 serves the admin API, such as `admin.<TEAM_DOMAIN>` (under `TEAM_DOMAIN` it must be a name no team
 may take). With Cloudflare in front of some addresses and not others, set `BEHIND_CLOUDFLARE=on`
-(with `ADDRESS_HEADER=X-Forwarded-For`, `XFF_DEPTH=1`): a request the router saw arrive from
-Cloudflare counts as coming from Cloudflare's `CF-Connecting-IP`; any other, from whoever connected,
-so nobody can pick their own address for the sign-in lockout by sending that header themselves.
-`CLOUDFLARE_IPS` replaces the built-in list of Cloudflare's ranges if they change.
+(with `ADDRESS_HEADER=X-Forwarded-For`, `XFF_DEPTH=1`) and `CLOUDFLARE_ORIGIN_SECRET` (32 random
+characters or more), and add a Cloudflare request-header rule that sets `Feed-Origin-Auth` to that
+secret on the proxied addresses. A request counts as coming from Cloudflare's `CF-Connecting-IP` only
+when the router saw one of Cloudflare's ranges connect and the secret matches: a range alone isn't
+proof, as Cloudflare's own VPN leaves from it too. Any other request is from whoever connected, so
+nobody can pick their own address for the sign-in lockout. An IPv6 client counts by its /64.
+`CLOUDFLARE_IPS` replaces the built-in list of Cloudflare's ranges if they change; the server warns
+in its log when a request with `CF-Ray` arrives from outside the list.
 
 `TOKEN_SECRET` must be the old server's, or every agent token stops working. `PORT` is set by
 Heroku. The server prints `Database: Postgres` and `Media: bucket <name>` when it starts; check
