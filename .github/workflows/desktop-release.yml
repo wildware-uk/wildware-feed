@@ -85,8 +85,9 @@ jobs:
   mac:
     needs: version
     runs-on: macos-26
-    # Mac minutes are billed at ten times the Linux rate; notarising can take a while, but not hours.
-    timeout-minutes: 50
+    # Apple's first notarisations for a new Developer ID certificate can take hours, so the job may
+    # wait that long. Minutes on this public repo's hosted runners are free.
+    timeout-minutes: 330
     outputs:
       signed: ${{ steps.signing.outputs.signed }}
       notarized: ${{ steps.notarize.outputs.notarized }}
@@ -171,9 +172,19 @@ jobs:
         run: |
           codesign --force --timestamp --keychain "$KEYCHAIN" --sign "Developer ID Application: $IDENTITY" "dist/Wildware-Feed-$VERSION-mac-arm64.dmg"
 
+      # Kept before notarising, so a signed build survives a notarisation that runs out of time.
+      - name: Keep the signed .dmg
+        if: steps.signing.outputs.signed == 'true'
+        uses: actions/upload-artifact@v4
+        timeout-minutes: 5
+        with:
+          name: Wildware-Feed-${{ needs.version.outputs.version }}-mac-signed
+          path: dist/*.dmg
+          if-no-files-found: error
+
       - name: Notarise and staple
         id: notarize
-        timeout-minutes: 35
+        timeout-minutes: 300
         env:
           SIGNED: ${{ steps.signing.outputs.signed }}
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
@@ -189,7 +200,7 @@ jobs:
           key="$RUNNER_TEMP/asc-key.p8"
           printf '%s' "$ASC_KEY_P8" | base64 --decode > "$key"
           dmg="dist/Wildware-Feed-$VERSION-mac-arm64.dmg"
-          xcrun notarytool submit "$dmg" --key "$key" --key-id "$ASC_KEY_ID" --issuer "$ASC_ISSUER_ID" --wait --timeout 30m
+          xcrun notarytool submit "$dmg" --key "$key" --key-id "$ASC_KEY_ID" --issuer "$ASC_ISSUER_ID" --wait --timeout 290m
           rm -f "$key"
           xcrun stapler staple "$dmg"
           echo "notarized=true" >> "$GITHUB_OUTPUT"
