@@ -14,8 +14,11 @@ interface LocalServerHost {
     /** Starts it if needed and gives this app its own device key. No password: it is this computer. */
     suspend fun signInHere(deviceName: String): LocalSignIn
 
-    /** Starts it if needed (on launch, for a session that was signed in here). */
-    suspend fun ensureRunning()
+    /**
+     * Starts it if needed (on launch, for a session that was signed in here), and says the address
+     * this app reaches it at: a new one when another program had taken the port it last used.
+     */
+    suspend fun ensureRunning(): String
 
     /** Stops it; agents and phones reconnect when it is back. */
     suspend fun stop()

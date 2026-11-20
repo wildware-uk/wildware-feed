@@ -20,8 +20,9 @@ class FakeLocalServerHost(
         return LocalSignIn("http://127.0.0.1:4317", "device-key", "d1", deviceName)
     }
 
-    override suspend fun ensureRunning() {
+    override suspend fun ensureRunning(): String {
         failure?.let { throw it }
+        return state.value.localUrl ?: "http://127.0.0.1:4317"
     }
 
     override suspend fun stop() {

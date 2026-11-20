@@ -34,17 +34,30 @@ object ServerInfo {
         put("directory", true)
     }
 
-    fun json(emailSignIn: Boolean = false, team: Boolean = false): JsonObject = buildJsonObject {
+    fun json(emailSignIn: Boolean = false, team: Boolean = false, proof: String? = null): JsonObject = buildJsonObject {
         put("product", PRODUCT)
         put("version", version)
         put("signIn", JsonArray(listOfNotNull(JsonPrimitive("password"), JsonPrimitive("email-password").takeIf { emailSignIn })))
         put("team", team)
+        proof?.let { put("proof", it) }
     }
+
+    /** HMAC-SHA256 of [nonce] under [key], in hex: what the desktop app checks its own server with. */
+    fun proof(key: String, nonce: String): String {
+        val mac = javax.crypto.Mac.getInstance("HmacSHA256")
+        mac.init(javax.crypto.spec.SecretKeySpec(key.toByteArray(), "HmacSHA256"))
+        return mac.doFinal(nonce.toByteArray()).joinToString("") { "%02x".format(it) }
+    }
+
+    /** The longest nonce answered. */
+    const val MAX_NONCE = 128
 }
 
 fun Route.serverInfoRoute(app: App) {
     endpoint("/api/server", HttpMethod.Get to {
         if (call.attributes.contains(DirectoryKey)) return@to call.respondJson(200, ServerInfo.directory(), Wire.JSON, "Cache-Control" to "no-store")
-        call.respondJson(200, ServerInfo.json(app.people.anyEmail(), app.people.activeCount() > 1), Wire.JSON, "Cache-Control" to "no-store")
+        val nonce = call.request.queryParameters["proof"]?.takeIf { it.isNotEmpty() && it.length <= ServerInfo.MAX_NONCE }
+        val proof = app.config.localProofKey?.let { key -> nonce?.let { ServerInfo.proof(key, it) } }
+        call.respondJson(200, ServerInfo.json(app.people.anyEmail(), app.people.activeCount() > 1, proof), Wire.JSON, "Cache-Control" to "no-store")
     })
 }

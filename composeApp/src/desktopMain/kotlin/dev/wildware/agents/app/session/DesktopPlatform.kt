@@ -2,7 +2,6 @@ package dev.wildware.agents.app.session
 
 import dev.wildware.agents.OutboxStorage
 import dev.wildware.agents.TextStore
-import io.ktor.client.engine.okhttp.OkHttp
 import dev.wildware.agents.app.feed.AwtFilePicker
 import java.io.File
 import java.net.InetAddress
@@ -116,11 +115,12 @@ fun desktopPlatform(dir: File = desktopConfigDir(), quiet: () -> Boolean = { fal
     val feedCache = File(dir, "feed-cache.json")
     val cardFolds = File(dir, "folded-cards.json")
     val postTarget = File(dir, "post-target.txt")
+    val localServer = localServer(dir)
     return AppPlatform(
         sessions = FileSessionStore(File(dir, "session.json")),
         readMarks = FileTextStore(readMarks),
         outbox = outbox,
-        httpEngine = { OkHttp.create() },
+        httpEngine = { dev.wildware.agents.app.local.desktopHttpEngine(localServer) },
         deviceName = desktopDeviceName(),
         imageCacheDir = File(dir, "image-cache").absolutePath,
         clearLocalData = {
@@ -135,7 +135,7 @@ fun desktopPlatform(dir: File = desktopConfigDir(), quiet: () -> Boolean = { fal
         cardFolds = FileTextStore(cardFolds),
         postTarget = FileTextStore(postTarget),
         filePicker = AwtFilePicker { java.awt.Frame.getFrames().firstOrNull { it.isActive } },
-        localServer = localServer(dir),
+        localServer = localServer,
         crashReports = dev.wildware.agents.app.crash.CrashReporting.setting,
         // Java can't add a sound to the system's notifications, so the app plays its own beside them.
         sounds = dev.wildware.agents.app.sound.SoundBoard(dev.wildware.agents.app.sound.DesktopSoundPlayer(), FileTextStore(File(dir, "sounds.txt")), quiet),

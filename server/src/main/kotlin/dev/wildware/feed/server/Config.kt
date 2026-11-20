@@ -85,6 +85,12 @@ data class Config(
      * of every request it passes on. Required with [behindCloudflare]; [toString] leaves it out.
      */
     val cloudflareOriginSecret: String? = null,
+    /**
+     * Set only by the desktop app, fresh each time it starts its own server: `GET /api/server?proof=`
+     * answers with an HMAC of the nonce under it, so the app knows it reached the server it started
+     * before it sends that server a key. [toString] leaves it out.
+     */
+    val localProofKey: String? = null,
 ) {
     /** Many teams ([teamDomain] set). */
     val multiTeam: Boolean get() = teamDomain != null

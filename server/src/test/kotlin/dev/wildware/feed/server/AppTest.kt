@@ -47,4 +47,18 @@ class AppTest {
         assertEquals(listOf(400, 400, 400, 400, 400, 429, 429), attempts(false, "127.0.0.1"))
         assertEquals(listOf(400, 400, 400, 400, 400, 429, 429), attempts(true, "192.0.2.7"), "only loopback is exempt")
     }
+
+    @Test
+    fun `a desktop host limits wrong guesses from loopback on a budget of their own`() {
+        val hash = dev.wildware.feed.server.auth.Passwords.hash("right")
+        App(config.copy(adminPasswordHash = hash, trustLoopback = true), Database.memory()).use { app ->
+            fun status(password: String, address: String) = when (val r = app.checkPassword(password, address)) {
+                is dev.wildware.feed.server.http.PasswordCheck.Refused -> r.status
+                else -> 200
+            }
+            repeat(20) { assertEquals(400, status("wrong", "127.0.0.1")) }
+            assertEquals(429, status("right", "::1"), "every loopback client shares one budget")
+            assertEquals(200, status("right", "192.0.2.7"), "a phone on the network keeps its own")
+        }
+    }
 }

@@ -34,6 +34,12 @@ sealed interface AppScreen {
     /** Signed out. [notice] says why, when the app signed itself out. */
     data class SigningIn(val notice: String? = null) : AppScreen
 
+    /**
+     * Signed in to the server on this computer, but it couldn't start, so the feed isn't opened
+     * (nothing is sent to whatever holds its address). [problem] says why, fit to show.
+     */
+    data class LocalServerDown(val problem: String) : AppScreen
+
     /** The feed. [demo] when it runs on the built-in sample data rather than a dashboard. */
     data class Signed(val session: DashboardSession, val demo: Boolean = false) : AppScreen
 }
@@ -79,14 +85,32 @@ class AppModel(
 
     init {
         platform.sessions.load()?.let { saved ->
-            val host = platform.localServer
-            if (saved.local && host != null) scope.launch {
-                runCatching { host.ensureRunning() }
-                open(saved)
-            } else {
-                open(saved)
-            }
+            if (saved.local && platform.localServer != null) scope.launch { openLocal(saved) } else open(saved)
         }
+    }
+
+    /**
+     * Starts the server on this computer, then opens [saved] on it, at the address it is on now.
+     * When it can't start, the feed stays shut ([AppScreen.LocalServerDown]) until [retryLocal].
+     */
+    private suspend fun openLocal(saved: SavedSession) {
+        val host = platform.localServer ?: return open(saved)
+        val address = try {
+            host.ensureRunning()
+        } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            mutableScreen.value = AppScreen.LocalServerDown(e.message ?: "The server on this computer couldn't start.")
+            return
+        }
+        val current = if (address == saved.server) saved else saved.copy(server = address).also(platform.sessions::save)
+        open(current)
+    }
+
+    /** "Try again" after the server on this computer couldn't start. */
+    fun retryLocal() {
+        val saved = platform.sessions.load()?.takeIf { it.local } ?: return
+        scope.launch { openLocal(saved) }
     }
 
     /** Whether this app can run a server itself ("This computer"). */

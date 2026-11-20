@@ -174,6 +174,12 @@ the write script: an upload, and agent-side media fetch.
 - **First run:** generate `TOKEN_SECRET` and `SESSION_SECRET` (32 random bytes each, never
   regenerated), pick the port and save it, and set `PUBLIC_BASE_URL=http://127.0.0.1:<port>`.
   - Default port 4317; if it's taken, the next free one, saved so agents' config stays valid.
+  - Each start checks the saved port is still free. If another program has it, the server moves
+    to the next free port and the app's saved sign-in follows. If it can't start at all, the app
+    says so, with "Try again", and doesn't open the feed.
+  - The app only talks to its own local server: each start makes a fresh secret (`localProofKey`),
+    and before any request carrying a key goes to that address, the server must answer a nonce
+    with an HMAC under it (`GET /api/server?proof=`). Nothing else on the port can.
   - No owner password is needed while the server is loopback-only: the app mints its own device
     key in-process.
 - **Loopback only by default:** bind 127.0.0.1. Turning on "Let my phone connect":
@@ -184,7 +190,9 @@ the write script: an upload, and agent-side media fetch.
 - **The 127.0.0.1 lockout fix:** the sign-in limiter keys on the client address, and locally every
   client is 127.0.0.1, so one bad script would lock the owner out for 15 minutes.
   - Exempt loopback addresses (127.0.0.0/8, ::1) from the limiter when `Config.trustLoopback`
-    is set; the embedded host sets it.
+    is set; the embedded host sets it. They share a budget of their own instead (`loopbackLimiter`,
+    20 wrong passwords in 15 minutes), so local sign-in attempts are limited too.
+  - With phone access off, the phone password signs nothing in; it is kept for turning it on again.
   - A standalone server behind a proxy leaves it off, so nothing changes there and parity is
     unaffected.
   - Unit test: five wrong passwords from 127.0.0.1 don't lock 127.0.0.1 when it's set, and still

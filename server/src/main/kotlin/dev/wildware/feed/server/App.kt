@@ -63,6 +63,13 @@ class App(val config: Config, val db: Database, val clock: () -> Long = System::
     /** Shared by the login form and device sign-in: 5 wrong guesses in 15 minutes per address. */
     val loginLimiter = SlidingLimiter(limit = 5, windowMs = 900_000, clock = clock)
 
+    /**
+     * With [Config.trustLoopback] (the desktop app): every client on this computer shares one budget
+     * of 20 wrong passwords in 15 minutes, apart from [loginLimiter], so a bad script there can't
+     * lock out phones on the network, and nothing there can guess without end.
+     */
+    val loopbackLimiter = SlidingLimiter(limit = 20, windowMs = 900_000, clock = clock)
+
     /** Ten wrong passwords an hour per email, from anywhere (docs/TEAMS.md §10). */
     val emailLimiter = SlidingLimiter(limit = 10, windowMs = 3_600_000, clock = clock)
 

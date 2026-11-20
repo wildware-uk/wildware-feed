@@ -36,4 +36,27 @@ class ServerInfoTest {
             server.stop()
         }
     }
+
+    @Test
+    fun `the desktop app's own server proves itself with the key it was started with, and no other server does`() {
+        val key = "k".repeat(43)
+        val expected = javax.crypto.Mac.getInstance("HmacSHA256").run {
+            init(javax.crypto.spec.SecretKeySpec(key.toByteArray(), "HmacSHA256"))
+            doFinal("nonce-1".toByteArray()).joinToString("") { "%02x".format(it) }
+        }
+        val http = HttpClient.newHttpClient()
+        fun body(server: FeedServer, path: String) =
+            http.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:${server.port}$path")).build(), HttpResponse.BodyHandlers.ofString()).body()
+        val own = FeedServer(App(config.copy(localProofKey = key), Database.memory())).start()
+        val plain = FeedServer(App(config, Database.memory())).start()
+        try {
+            assertTrue(body(own, "/api/server?proof=nonce-1").endsWith(""","team":false,"proof":"$expected"}"""))
+            assertTrue(!body(own, "/api/server").contains("proof"), "no nonce, no proof")
+            assertTrue(!body(own, "/api/server?proof=" + "n".repeat(129)).contains("proof"), "an overlong nonce is not answered")
+            assertTrue(!body(plain, "/api/server?proof=nonce-1").contains("proof"), "a server without a key has nothing to prove")
+        } finally {
+            own.stop()
+            plain.stop()
+        }
+    }
 }

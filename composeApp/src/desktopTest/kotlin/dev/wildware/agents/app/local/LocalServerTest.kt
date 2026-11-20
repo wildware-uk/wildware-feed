@@ -97,4 +97,27 @@ class LocalServerTest {
         assertEquals(null, host.state.value.phoneUrl)
         host.stop()
     }
+
+    @Test
+    fun `wrong passwords from this computer are limited on a budget of their own`() = runBlocking {
+        val host = LocalServer(dir, port)
+        host.setPhoneAccess(true, "a good password")
+        host.ensureRunning()
+        val base = "http://127.0.0.1:$port"
+        repeat(20) { assertEquals(400, signIn(base, "wrong")) }
+        assertEquals(429, signIn(base, "a good password"))
+        host.stop()
+    }
+
+    @Test
+    fun `once phones are shut out again their password no longer signs in`() = runBlocking {
+        val host = LocalServer(dir, port)
+        host.setPhoneAccess(true, "a good password")
+        host.ensureRunning()
+        val base = "http://127.0.0.1:$port"
+        assertEquals(201, signIn(base, "a good password"))
+        host.setPhoneAccess(false, null)
+        assertEquals(400, signIn(base, "a good password"))
+        host.stop()
+    }
 }

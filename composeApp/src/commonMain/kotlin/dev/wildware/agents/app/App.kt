@@ -155,6 +155,9 @@ fun AgentsApp(
                         joinHosted = model::joinHostedTeam,
                     )
                 }
+                is AppScreen.LocalServerDown -> dev.wildware.agents.app.signin.LocalServerDownScreen(
+                    screen.problem, safeArea, onRetry = model::retryLocal, onSignOut = { model.signOut() },
+                )
                 is AppScreen.Signed -> {
                     val session = screen.session
                     val state = session.state.collectAsState()
