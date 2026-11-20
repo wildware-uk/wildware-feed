@@ -37,7 +37,7 @@ class ManyTeamsTest {
         sessionSecret = "s".repeat(32), tokenSecret = "t".repeat(32),
         publicBaseUrl = "https://agents.example.com", maxImageBytes = 1_000_000, maxVideoBytes = 1_000_000, maxFileBytes = 1_000_000, holdSeconds = 1,
         apns = null, port = 0, host = "127.0.0.1", origin = "https://agents.example.com",
-        teamDomain = "feed.test", adminApiKeys = keys, controlPlaneOrigin = "https://feed.test",
+        teamDomain = "feed.test", adminApiKeys = keys, controlPlaneOrigin = "https://feed.test", adminHost = "admin.feed.test",
     )
 
     private fun withApp(keys: List<String> = listOf(key), block: suspend ApplicationTestBuilder.(App) -> Unit) {
@@ -103,6 +103,12 @@ class ManyTeamsTest {
         val ts = (now / 1000).toString()
         val sig = AdminApi.sign(key, AdminApi.message(ts, "GET", "/admin/teams", ByteArray(0)))
         assertEquals(401, send("feed.test", "GET", "/admin/usage", null, "application/json", "Feed-Admin-Timestamp" to ts, "Feed-Admin-Signature" to sig).status.value)
+        // ADMIN_HOST is the directory too (when TEAM_DOMAIN itself is another site).
+        val ts2 = (now / 1000).toString()
+        val sig2 = AdminApi.sign(key, AdminApi.message(ts2, "GET", "/admin/teams", ByteArray(0)))
+        assertEquals(200, send("admin.feed.test", "GET", "/admin/teams", null, "application/json", "Feed-Admin-Timestamp" to ts2, "Feed-Admin-Signature" to sig2).status.value)
+        assertTrue(send("admin.feed.test", "GET", "/api/server").bodyAsText().contains("\"directory\":true"))
+        assertEquals("no_such_team", send("admin.feed.test", "GET", "/api/summary").obj().s("error"))
         // Not at a team's address, nor the home team's.
         assertEquals(404, send("agents.example.com", "GET", "/admin/teams").status.value)
     }

@@ -28,7 +28,7 @@ object Hosts {
     fun placeOf(app: App, call: ApplicationCall): Place {
         val domain = app.config.teamDomain ?: return Place.Team(Tenant.HOME)
         val host = call.request.headers["Host"]?.substringBefore(':')?.trim()?.lowercase()?.trimEnd('.') ?: return Place.Team(Tenant.HOME)
-        if (host == domain) return Place.Directory
+        if (host == domain || host == app.config.adminHost) return Place.Directory
         if (!host.endsWith(".$domain")) return Place.Team(Tenant.HOME)
         val slug = host.removeSuffix(".$domain")
         if ('.' in slug) return Place.Nowhere

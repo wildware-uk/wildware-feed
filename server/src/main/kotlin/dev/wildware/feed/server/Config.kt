@@ -65,6 +65,21 @@ data class Config(
      * page allowed to post a browser sign-in ticket to `/auth/ticket`. Unset: that route answers 404.
      */
     val controlPlaneOrigin: String? = null,
+    /**
+     * ADMIN_HOST: with many teams, one more address that is the directory (the admin API), for
+     * when TEAM_DOMAIN itself is another site's (a marketing page). Under TEAM_DOMAIN, its first
+     * label must be a name no team may take (`admin`).
+     */
+    val adminHost: String? = null,
+    /**
+     * BEHIND_CLOUDFLARE=on: some requests come through Cloudflare and some straight to the
+     * router. A request whose router-seen peer is one of [cloudflareRanges] is taken to be from
+     * the address in CF-Connecting-IP; any other request from that peer, as before. Without the
+     * check, a request sent straight to the server could name any address it liked.
+     */
+    val behindCloudflare: Boolean = false,
+    /** CLOUDFLARE_IPS: Cloudflare's address ranges (comma-separated CIDRs); unset: [CloudflareIps.DEFAULT]. */
+    val cloudflareRanges: List<String> = CloudflareIps.DEFAULT,
 ) {
     /** Many teams ([teamDomain] set). */
     val multiTeam: Boolean get() = teamDomain != null
@@ -197,6 +212,28 @@ data class Config(
             val adminKeys = get("ADMIN_API_KEYS")?.split(',')?.map { it.trim() }?.filter { it.isNotEmpty() }.orEmpty()
             if (adminKeys.any { it.length < MIN_SECRET_LENGTH }) issues += "ADMIN_API_KEYS: each key must be at least $MIN_SECRET_LENGTH characters"
             if (adminKeys.size > 2) issues += "ADMIN_API_KEYS: at most two keys (the current one and the one being retired)"
+            val adminHost = get("ADMIN_HOST")?.trim()?.lowercase()?.trimEnd('.')
+            if (adminHost != null) {
+                if (teamDomain == null) issues += "ADMIN_HOST: ADMIN_HOST needs TEAM_DOMAIN"
+                if (!Regex("^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$").matches(adminHost)) {
+                    issues += "ADMIN_HOST: ADMIN_HOST must be a host name, such as admin.feed.example.com"
+                } else if (teamDomain != null && adminHost.endsWith(".$teamDomain")) {
+                    val label = adminHost.removeSuffix(".$teamDomain")
+                    if ('.' in label || label !in dev.wildware.feed.server.domain.Teams.RESERVED_SLUGS) {
+                        issues += "ADMIN_HOST: under TEAM_DOMAIN, ADMIN_HOST must be a reserved name such as admin.$teamDomain"
+                    }
+                }
+            }
+            val behindCloudflare = when (val raw = get("BEHIND_CLOUDFLARE") ?: "off") {
+                "on" -> true
+                "off" -> false
+                else -> { issues += "BEHIND_CLOUDFLARE: BEHIND_CLOUDFLARE must be on or off, not $raw"; false }
+            }
+            val cloudflareRanges = get("CLOUDFLARE_IPS")?.split(',')?.map { it.trim() }?.filter { it.isNotEmpty() } ?: CloudflareIps.DEFAULT
+            cloudflareRanges.filter { CloudflareIps.parse(it) == null }.forEach { issues += "CLOUDFLARE_IPS: $it is not a CIDR range" }
+            if (behindCloudflare && get("ADDRESS_HEADER")?.lowercase() != "x-forwarded-for") {
+                issues += "BEHIND_CLOUDFLARE: needs ADDRESS_HEADER=X-Forwarded-For (the router's record of who connected)"
+            }
             val controlPlane = get("CONTROL_PLANE_ORIGIN")?.trim()?.trimEnd('/')
             if (controlPlane != null && !Regex("^https?://[^/?#\\s]+$").matches(controlPlane)) {
                 issues += "CONTROL_PLANE_ORIGIN: CONTROL_PLANE_ORIGIN must be an origin, such as https://feed.example.com"
@@ -234,6 +271,9 @@ data class Config(
                 teamDomain = teamDomain,
                 adminApiKeys = adminKeys,
                 controlPlaneOrigin = controlPlane,
+                adminHost = adminHost,
+                behindCloudflare = behindCloudflare,
+                cloudflareRanges = cloudflareRanges,
             )
         }
 

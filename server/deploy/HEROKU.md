@@ -82,6 +82,14 @@ comma-separated, while one is changed). `CONTROL_PLANE_ORIGIN` is the control pl
 the only page allowed to sign a browser in with a ticket. With `TEAM_DOMAIN` set the server needs
 Postgres and turns row security on by itself.
 
+If `TEAM_DOMAIN` itself is another site (a marketing page), `ADMIN_HOST` names one more address that
+serves the admin API, such as `admin.<TEAM_DOMAIN>` (under `TEAM_DOMAIN` it must be a name no team
+may take). With Cloudflare in front of some addresses and not others, set `BEHIND_CLOUDFLARE=on`
+(with `ADDRESS_HEADER=X-Forwarded-For`, `XFF_DEPTH=1`): a request the router saw arrive from
+Cloudflare counts as coming from Cloudflare's `CF-Connecting-IP`; any other, from whoever connected,
+so nobody can pick their own address for the sign-in lockout by sending that header themselves.
+`CLOUDFLARE_IPS` replaces the built-in list of Cloudflare's ranges if they change.
+
 `TOKEN_SECRET` must be the old server's, or every agent token stops working. `PORT` is set by
 Heroku. The server prints `Database: Postgres` and `Media: bucket <name>` when it starts; check
 the log for both.

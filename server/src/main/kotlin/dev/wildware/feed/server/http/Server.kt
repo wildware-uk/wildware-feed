@@ -197,7 +197,13 @@ fun ApplicationCall.clientAddress(config: dev.wildware.feed.server.Config): Stri
     val depth = config.xffDepth
     val addresses = value.split(',')
     require(depth in 1..addresses.size) { "XFF_DEPTH must be between 1 and ${addresses.size}" }
-    return addresses[addresses.size - depth].trim()
+    val peer = addresses[addresses.size - depth].trim()
+    // Through Cloudflare, the peer is Cloudflare's edge and the client is in CF-Connecting-IP; that
+    // header is believed only when the peer really is Cloudflare (BEHIND_CLOUDFLARE).
+    if (config.behindCloudflare && dev.wildware.feed.server.CloudflareIps.contains(config.cloudflareRanges, peer)) {
+        request.headers["CF-Connecting-IP"]?.trim()?.takeIf { it.isNotEmpty() }?.let { return it }
+    }
+    return peer
 }
 
 /**
