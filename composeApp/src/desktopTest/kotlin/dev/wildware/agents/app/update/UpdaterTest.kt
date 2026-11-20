@@ -63,6 +63,19 @@ class UpdaterTest {
     }
 
     @Test
+    fun aReleaseIsOfferedOnlyOnceItHasThisComputersFileAndItsChecksum() {
+        val mac = updater(FakeInstaller(), mutableListOf(), Installation.MacBundle("/Applications/Wildware Feed.app"))
+        val withoutMac = release("1.0.2", *allAssets("1.0.2").filter { it.kind != "mac-dmg" }.toTypedArray())
+        assertFalse(mac.offers(withoutMac), "the Mac file is still with Apple")
+        assertTrue(updater(FakeInstaller(), mutableListOf()).offers(withoutMac), "Linux has its file: offered")
+        val dmgNoSum = release("1.0.2", *withoutMac.assets.toTypedArray(), asset("Wildware-Feed-1.0.2-mac-arm64.dmg", "mac-dmg", sha256 = null))
+        assertFalse(mac.offers(dmgNoSum), "a file without its checksum yet isn't offered either")
+        assertTrue(mac.offers(release()), "once it's there, it is")
+        val fromSource = updater(FakeInstaller(), mutableListOf(), Installation.Unsupported("run from the source"))
+        assertTrue(fromSource.offers(withoutMac), "a copy that can't update itself hears of every release")
+    }
+
+    @Test
     fun aReleaseWithNoChecksumIsNotInstalled() = runTest {
         val installer = FakeInstaller()
         val up = updater(installer, mutableListOf())

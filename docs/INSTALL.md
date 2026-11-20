@@ -119,6 +119,24 @@ unsigned and the release notes say so.
 The Mac needs the first three to sign, and all six to notarise. Notarising is what stops the
 "could not verify" message for good.
 
+### Releases never wait for Apple
+
+Apple usually notarises a Mac app in a few minutes, but sometimes takes hours. So nothing waits:
+
+1. The Mac job signs the `.dmg`, hands it to Apple, and stops.
+2. The release goes out straight away with every other file. Its notes say the Mac version
+   follows within the hour. Until then the app on a Mac doesn't offer the update (copies from
+   before this change may offer it, then say there's no file for this computer yet).
+3. The `mac-notarize` workflow asks Apple every few minutes (on a free Linux runner). Once Apple
+   says yes, a short Mac job staples Apple's approval onto the `.dmg` and checks a Mac would open
+   it. Then it is added to the release, with its checksum, and the "follows" line comes out.
+
+If Apple refuses the app, `mac-notarize` fails and prints Apple's reasons. If it is still waiting
+after a day, it stops. To finish or retry one by hand, run `mac-notarize` from the Actions tab
+with the `desktop-release` run's id, the submission id (its Mac job log says "Submitted … to
+Apple: submission …"), the version and the tag. A run by hand of `desktop-release` has no release:
+its notarised `.dmg` is the `mac-notarised-<version>` artifact on that same run.
+
 ### Making the Mac certificate
 
 Apple lets only the team's **Account Holder** make a Developer ID certificate: an App Store Connect
@@ -143,8 +161,8 @@ base64 -w0 devid.p12 | gh secret set MACOS_CERT_P12_BASE64   # on a Mac: base64 
 gh secret set MACOS_CERT_PASSWORD                            # paste the .p12 password
 ```
 
-A run by hand of `desktop-release` then shows whether it worked: its Mac job fails if Gatekeeper
-would refuse the notarised `.dmg` or the app inside it.
+A run by hand of `desktop-release` then shows whether it worked: its `mac-notarize` part fails if
+Gatekeeper would refuse the notarised `.dmg` or the app inside it.
 
 ### Android release key
 

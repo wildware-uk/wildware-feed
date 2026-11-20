@@ -272,7 +272,7 @@ private fun updateController(
     }
     return UpdateController(
         AppVersion,
-        UpdateChecker(current, releases, automatic),
+        UpdateChecker(current, releases, automatic, offers = updater::offers),
         updater,
         releases,
         scope,

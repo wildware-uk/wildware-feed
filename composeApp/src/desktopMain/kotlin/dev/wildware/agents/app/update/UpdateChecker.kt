@@ -27,15 +27,20 @@ sealed interface CheckResult {
 
 /**
  * Asks [source] for the newest release at once, then every [interval], while [automatic] is on;
- * and whenever asked by hand. [available] holds a release newer than [current],
- * or null. A failed check (offline, GitHub rate-limiting) changes nothing and says
- * nothing: the next one will try again.
+ * and whenever asked by hand. [available] holds a release newer than [current] that [offers]
+ * says is for this copy, or null. A failed check (offline, GitHub rate-limiting) changes nothing
+ * and says nothing: the next one will try again.
  */
 class UpdateChecker(
     private val current: SemVer,
     private val source: StateFlow<ReleaseSource?>,
     private val automatic: StateFlow<Boolean>,
     private val interval: Duration = 6.hours,
+    /**
+     * Whether a release has this computer's file yet. A release can go out before one of its
+     * files (the Mac one waits for Apple's notarisation): until it's there, this copy is up to date.
+     */
+    private val offers: (Release) -> Boolean = { true },
 ) {
     private val mutableAvailable = MutableStateFlow<Release?>(null)
     val available: StateFlow<Release?> = mutableAvailable.asStateFlow()
@@ -66,7 +71,7 @@ class UpdateChecker(
         } catch (e: Exception) {
             return CheckResult.Failed(e.message ?: "Couldn't check for updates.")
         }
-        val newer = release?.takeIf { r -> r.semVer?.let { it > current } == true }
+        val newer = release?.takeIf { r -> r.semVer?.let { it > current } == true && offers(r) }
         mutableAvailable.value = newer
         if (newer != null) CheckResult.Newer(newer) else CheckResult.UpToDate
     }

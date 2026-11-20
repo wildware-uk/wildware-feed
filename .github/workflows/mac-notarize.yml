@@ -1,0 +1,229 @@
+name: mac-notarize
+
+# Finishes the Mac file of a desktop-release run once Apple has notarised it, so nothing else ever
+# waits on Apple. desktop-release submits the signed .dmg, publishes the rest, then calls this.
+#
+#   wait     Linux, free: asks Apple about the submission every half minute, then every three
+#            minutes. Still undecided after almost six hours, it starts a fresh run of this
+#            workflow to carry on (four runs at most: a day).
+#   staple   Mac, a few minutes: staples Apple's ticket onto the .dmg, then checks Gatekeeper
+#            accepts it and the app inside. Nothing is published as notarised before that passes.
+#   publish  Linux, version tags only: adds the .dmg to the release with its checksum, and takes
+#            the "Mac version follows" line out of the notes. A run by hand of desktop-release
+#            has no release: its notarised .dmg is the mac-notarised-<version> artifact here.
+#
+# Run it by hand from the Actions tab to finish or retry one. The submission id is in the
+# desktop-release run's Mac job log ("Submitted ... to Apple").
+on:
+  workflow_call:
+    inputs:
+      run_id:
+        description: 'The desktop-release run whose mac-submitted-<version> artifact holds the signed .dmg.'
+        type: string
+        required: true
+      submission_id:
+        description: "Apple's id for the notarisation submission."
+        type: string
+        required: true
+      version:
+        description: 'The version, e.g. 1.2.3.'
+        type: string
+        required: true
+      tag:
+        description: 'The release to add the .dmg to, e.g. v1.2.3. Empty: keep it as an artifact only.'
+        type: string
+        required: false
+        default: ''
+      attempt:
+        description: 'Which run of the wait this is (1 to 4).'
+        type: string
+        required: false
+        default: '1'
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: 'The desktop-release run whose mac-submitted-<version> artifact holds the signed .dmg.'
+        required: true
+      submission_id:
+        description: "Apple's id for the notarisation submission."
+        required: true
+      version:
+        description: 'The version, e.g. 1.2.3.'
+        required: true
+      tag:
+        description: 'The release to add the .dmg to, e.g. v1.2.3. Empty: keep it as an artifact only.'
+        required: false
+        default: ''
+      attempt:
+        description: 'Which run of the wait this is (1 to 4).'
+        required: false
+        default: '1'
+
+permissions:
+  contents: read
+
+env:
+  RUN_ID: ${{ inputs.run_id }}
+  SUBMISSION_ID: ${{ inputs.submission_id }}
+  VERSION: ${{ inputs.version }}
+  TAG: ${{ inputs.tag }}
+  ATTEMPT: ${{ inputs.attempt }}
+  DMG: Wildware-Feed-${{ inputs.version }}-mac-arm64.dmg
+
+jobs:
+  wait:
+    runs-on: ubuntu-latest
+    # The poll stops itself at 345 minutes; a job may run 360.
+    timeout-minutes: 358
+    permissions:
+      contents: read
+      # To start the next run when Apple takes more than one.
+      actions: write
+    outputs:
+      status: ${{ steps.wait.outputs.status }}
+    steps:
+      - name: Check the inputs
+        timeout-minutes: 1
+        run: |
+          set -euo pipefail
+          echo "$RUN_ID" | grep -Eq '^[0-9]+$' || { echo "::error::run_id must be a number."; exit 1; }
+          echo "$SUBMISSION_ID" | grep -Eq '^[0-9a-fA-F-]{36}$' || { echo "::error::submission_id must be Apple's id, like 2efe2717-52ef-43a5-96dc-0797e4ca1041."; exit 1; }
+          echo "$VERSION" | grep -Eq '^[1-9][0-9]*\.[0-9]+\.[0-9]+$' || { echo "::error::version must look like 1.2.3."; exit 1; }
+          echo "$ATTEMPT" | grep -Eq '^[1-4]$' || { echo "::error::attempt must be 1 to 4."; exit 1; }
+          if [ -n "$TAG" ] && [ "$TAG" != "v$VERSION" ]; then
+            echo "::error::tag $TAG doesn't match version $VERSION."
+            exit 1
+          fi
+          echo "Waiting for Apple to notarise $DMG (submission $SUBMISSION_ID), run $ATTEMPT of 4."
+      - uses: actions/checkout@v4
+        timeout-minutes: 3
+        with:
+          sparse-checkout: .github/scripts
+      - name: Ask Apple until it decides
+        id: wait
+        timeout-minutes: 350
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8_BASE64 }}
+        run: |
+          set -euo pipefail
+          export ASC_KEY_PATH="$RUNNER_TEMP/asc-key.p8"
+          trap 'rm -f "$ASC_KEY_PATH"' EXIT
+          printf '%s' "$ASC_KEY_P8" | base64 --decode > "$ASC_KEY_PATH"
+          chmod 600 "$ASC_KEY_PATH"
+          python3 .github/scripts/asc.py notary-wait "$SUBMISSION_ID" --name "$DMG" --budget-minutes 345
+      - name: Still checking, so carry on in a fresh run
+        if: steps.wait.outputs.status == 'pending'
+        timeout-minutes: 2
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if [ "$ATTEMPT" -ge 4 ]; then
+            echo "::error::Apple still hasn't decided after a day. Run mac-notarize by hand later with the same inputs to finish it."
+            exit 1
+          fi
+          gh workflow run mac-notarize.yml --ref "$GITHUB_REF_NAME" \
+            -f run_id="$RUN_ID" -f submission_id="$SUBMISSION_ID" -f version="$VERSION" -f tag="$TAG" -f attempt="$((ATTEMPT + 1))"
+          echo "::notice::Apple is still checking; run $((ATTEMPT + 1)) of mac-notarize carries on."
+
+  staple:
+    needs: wait
+    if: needs.wait.outputs.status == 'accepted'
+    runs-on: macos-26
+    # Mac minutes cost ten times Linux ones: this job only staples and checks.
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/download-artifact@v4
+        timeout-minutes: 5
+        with:
+          name: mac-submitted-${{ inputs.version }}
+          path: dist
+          run-id: ${{ inputs.run_id }}
+          github-token: ${{ github.token }}
+      - name: Staple Apple's ticket on
+        timeout-minutes: 5
+        run: |
+          set -euo pipefail
+          # Apple's ticket can take a minute to reach the servers stapler asks.
+          for try in 1 2 3 4 5; do
+            if xcrun stapler staple "dist/$DMG"; then exit 0; fi
+            echo "Not there yet (try $try of 5)."
+            sleep 30
+          done
+          echo "::error::Apple accepted $DMG but stapler couldn't fetch its ticket."
+          exit 1
+      # Gatekeeper's own verdict, as a Mac that downloaded the file would give it. Fails the run
+      # rather than publish a "signed and notarised" build that a Mac would still refuse.
+      - name: Check Gatekeeper accepts the .dmg and the app
+        timeout-minutes: 5
+        run: |
+          set -euo pipefail
+          dmg="dist/$DMG"
+          xcrun stapler validate "$dmg"
+          spctl -a -vv -t open --context context:primary-signature "$dmg"
+          spctl -a -vv -t install "$dmg" || echo "::notice::spctl -t install has no verdict for a .dmg on this macOS; the open check above is the one that counts."
+          mount="$(mktemp -d)"
+          hdiutil attach -nobrowse -readonly -mountpoint "$mount" "$dmg" >/dev/null
+          trap 'hdiutil detach "$mount" -quiet || true' EXIT
+          app="$(find "$mount" -maxdepth 1 -name '*.app' | head -1)"
+          codesign --verify --deep --strict --verbose=2 "$app"
+          spctl -a -vv -t exec "$app"
+      - uses: actions/upload-artifact@v4
+        timeout-minutes: 5
+        with:
+          name: mac-notarised-${{ inputs.version }}
+          path: dist/${{ env.DMG }}
+          if-no-files-found: error
+          overwrite: true
+
+  publish:
+    needs: staple
+    if: inputs.tag != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/download-artifact@v4
+        timeout-minutes: 5
+        with:
+          name: mac-notarised-${{ inputs.version }}
+          path: dist
+      # The app only offers a file it has a checksum for, so the new SHA256SUMS.txt goes up first
+      # and the .dmg after it: no moment where the release has a .dmg it can't check.
+      - name: Add the .dmg and its checksum to the release
+        timeout-minutes: 5
+        run: |
+          set -euo pipefail
+          mkdir -p old
+          gh release download "$TAG" --pattern SHA256SUMS.txt --dir old
+          # Every other file's line as it was, then this .dmg's (replacing any earlier one).
+          { awk -v f="$DMG" '$2 != f && $2 != "*" f' old/SHA256SUMS.txt; (cd dist && sha256sum "$DMG"); } > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+          gh release upload "$TAG" SHA256SUMS.txt --clobber
+          gh release upload "$TAG" "dist/$DMG" --clobber
+      - name: Take "Mac version follows" out of the notes
+        timeout-minutes: 2
+        run: |
+          set -euo pipefail
+          gh release view "$TAG" --json body --jq .body > notes.md
+          python3 - notes.md <<'PY'
+          import re, sys
+          path = sys.argv[1]
+          text = open(path, encoding="utf-8").read()
+          # The line docs/release-notes.sh writes while the Mac file is pending, and the blank after it.
+          text = re.sub(r"^> \*\*Mac version follows within the hour\*\*.*(\r?\n)*", "", text, flags=re.M)
+          open(path, "w", encoding="utf-8").write(text)
+          PY
+          gh release edit "$TAG" --notes-file notes.md
+          echo "::notice::$DMG is on the $TAG release, notarised and stapled."

@@ -69,6 +69,16 @@ class Updater(
     private val fetching = Mutex()
 
     /**
+     * Whether [release] has the file that updates this copy, with its checksum. Until then it isn't
+     * offered: a release can go out before its Mac file, which waits for Apple. A copy that can't
+     * update itself (run from the source) has no file to wait for, so it hears of every release.
+     */
+    fun offers(release: Release): Boolean {
+        val kind = installation.kind ?: return true
+        return release.assets.any { it.assetKind == kind && !it.sha256.isNullOrBlank() }
+    }
+
+    /**
      * Whether [release] can be downloaded and installed here without asking anything first: this
      * copy updates itself, the release has a file for this computer, and that file has a checksum.
      */

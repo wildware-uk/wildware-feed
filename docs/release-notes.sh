@@ -1,8 +1,18 @@
 #!/usr/bin/env bash
 # Writes a release's notes: what to download and how to install it, per computer.
 #   release-notes.sh <version> <mac signed> <mac notarized> <windows signed> [android signed]
+# <mac notarized> is true, false, or pending: Apple is still checking the Mac file, so the release
+# goes out without it and mac-notarize.yml adds it, then deletes the "Mac follows" line below
+# (it finds the line by its start, so keep the two in step).
 set -euo pipefail
 version="$1"; mac_signed="${2:-false}"; mac_notarized="${3:-false}"; windows_signed="${4:-false}"; android_signed="${5:-false}"
+
+if [ "$mac_notarized" = "pending" ]; then
+  cat <<NOTES
+> **Mac version follows within the hour**, once Apple has checked it. Everything else is here now.
+
+NOTES
+fi
 
 cat <<NOTES
 ## Download
@@ -30,7 +40,8 @@ cat <<NOTES
 **Mac**: open the .dmg and drag Wildware Feed into Applications, then open it.
 NOTES
 
-if [ "$mac_notarized" = "true" ]; then
+# Pending ends one way only: the .dmg goes up once it is notarised and Gatekeeper accepts it.
+if [ "$mac_notarized" = "true" ] || [ "$mac_notarized" = "pending" ]; then
   echo "This build is signed and notarised by Apple, so it opens straight away."
 elif [ "$mac_signed" = "true" ]; then
   echo "This build is signed but **not notarised**. The first time, open **System Settings › Privacy & Security** and click **Open Anyway** next to Wildware Feed."

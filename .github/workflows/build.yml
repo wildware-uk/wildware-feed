@@ -24,6 +24,10 @@ jobs:
       - name: Test names Kotlin/Native accepts
         timeout-minutes: 2
         run: python3 .github/scripts/check-native-test-names.py
+      # The App Store Connect helper the releases use: its token and its notarisation wait, offline.
+      - name: Release scripts' own tests
+        timeout-minutes: 2
+        run: python3 -m unittest discover -s .github/scripts -p 'test_*.py' -v
       - uses: gradle/actions/setup-gradle@v4
       - run: ./gradlew :shared:jvmTest
 

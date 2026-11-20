@@ -11,12 +11,14 @@ Reads the key from ASC_KEY_ID, ASC_ISSUER_ID and ASC_KEY_PATH (the .p8 file).
   asc.py cert-ids                               lists every certificate id (to prove none changed)
   asc.py create-cert CSR OUT                    makes one development certificate (run once, by hand)
   asc.py ensure-ids "ID=Name=CAP,CAP" ...       registers missing bundle ids and turns capabilities on
+  asc.py notary-wait ID --name FILE             waits for Apple to notarise one submission (mac-notarize.yml)
 """
 
 import argparse
 import base64
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -25,6 +27,7 @@ import urllib.parse
 import urllib.request
 
 API = "https://api.appstoreconnect.apple.com"
+NOTARY = "https://appstoreconnect.apple.com/notary/v2/submissions"
 
 
 def fail(message):
@@ -209,6 +212,98 @@ def ensure_ids(args):
         print(f"{identifier}: has {', '.join(sorted(have | set(wanted))) or 'no capabilities'}.")
 
 
+def notary_get(url, auth=True):
+    """One GET to the Notary API: (HTTP status, JSON body or None). No answer at all is status 0."""
+    request = urllib.request.Request(url)
+    if auth:
+        request.add_header("Authorization", f"Bearer {token()}")
+    try:
+        with urllib.request.urlopen(request, timeout=60) as response:
+            return response.status, json.loads(response.read() or b"null")
+    except urllib.error.HTTPError as error:
+        return error.code, None
+    except (urllib.error.URLError, OSError, ValueError):
+        return 0, None
+
+
+def print_notary_log(submission, get):
+    """Prints Apple's own report on a submission: which file it didn't like, and why."""
+    status, body = get(f"{NOTARY}/{submission}/logs")
+    try:
+        log_url = body["data"]["attributes"]["developerLogUrl"]
+    except (TypeError, KeyError):
+        print(f"Couldn't fetch Apple's report on it (HTTP {status}). `xcrun notarytool log {submission}` shows it.")
+        return
+    # A short-lived link that needs no key: fetched, never printed.
+    status, log = get(log_url, auth=False)
+    if status != 200 or log is None:
+        print(f"Couldn't fetch Apple's report on it (HTTP {status}). `xcrun notarytool log {submission}` shows it.")
+        return
+    print(json.dumps(log, indent=2))
+
+
+def write_output(name, value):
+    path = os.environ.get("GITHUB_OUTPUT")
+    if path:
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(f"{name}={value}\n")
+
+
+def notary_wait(submission, name, budget_minutes, get=notary_get, sleep=time.sleep, clock=time.monotonic):
+    """Asks Apple about one notarisation until it's decided or the budget runs out.
+
+    Accepted: prints so, sets the step output status=accepted, returns. Rejected or invalid:
+    prints Apple's report and fails. Still in progress when the budget runs out: sets
+    status=pending and returns, so the workflow can carry on in a fresh run. Every half minute
+    at first (most take a few minutes), then every three."""
+    start = clock()
+    troubles = 0
+    while True:
+        waited = clock() - start
+        status, body = get(f"{NOTARY}/{submission}")
+        if status == 200:
+            troubles = 0
+            try:
+                attributes = body["data"]["attributes"]
+                state = attributes["status"]
+            except (TypeError, KeyError):
+                state, attributes = None, {}
+            if attributes.get("name") not in (None, name):
+                fail(f"Submission {submission} is for {attributes.get('name')}, not {name}. Wrong submission id?")
+            if state == "Accepted":
+                print(f"Apple notarised {name} (submission {submission}) after about {int(waited // 60)} minutes.")
+                write_output("status", "accepted")
+                return
+            if state in ("Invalid", "Rejected"):
+                print(f"Apple refused {name} (submission {submission}: {state}). Its report:")
+                print_notary_log(submission, get)
+                fail(f"Apple refused to notarise {name} ({state}). The report above says why.")
+            print(f"{int(waited // 60)} min: Apple says {state or 'something unexpected'}.")
+        elif status == 401:
+            fail("Apple refused the key (401). Check that ASC_KEY_ID, ASC_ISSUER_ID and ASC_KEY_P8_BASE64 "
+                 "all come from the same key, and that the key hasn't been revoked.")
+        elif status == 403:
+            fail("Apple says this key may not see notarisations (403). The key needs the Developer role or higher.")
+        else:
+            # A 404 can mean the submission isn't visible yet; 0, 429 and 5xx are passing trouble.
+            troubles += 1
+            print(f"::warning::Apple didn't answer properly (HTTP {status}); asking again.")
+            if troubles >= 10:
+                fail(f"Apple answered HTTP {status} ten times running for submission {submission}.")
+        pause = 30 if waited < 20 * 60 else 180
+        if waited + pause > budget_minutes * 60:
+            print(f"::notice::Apple is still checking {name} after {int(waited // 60)} minutes.")
+            write_output("status", "pending")
+            return
+        sleep(pause)
+
+
+def notary_wait_command(args):
+    if not re.fullmatch(r"[0-9a-fA-F-]{36}", args.submission):
+        fail(f"'{args.submission}' doesn't look like a notarisation submission id.")
+    notary_wait(args.submission, args.name, args.budget_minutes)
+
+
 def main():
     for name in ("ASC_KEY_ID", "ASC_ISSUER_ID", "ASC_KEY_PATH"):
         if not os.environ.get(name):
@@ -235,6 +330,11 @@ def main():
     p = commands.add_parser("ensure-ids")
     p.add_argument("specs", nargs="+")
     p.set_defaults(run=ensure_ids)
+    p = commands.add_parser("notary-wait")
+    p.add_argument("submission")
+    p.add_argument("--name", required=True, help="the file submitted, to make sure the id is for it")
+    p.add_argument("--budget-minutes", type=int, default=345)
+    p.set_defaults(run=notary_wait_command)
     args = parser.parse_args()
     args.run(args)
 

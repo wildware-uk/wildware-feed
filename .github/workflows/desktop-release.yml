@@ -11,7 +11,9 @@ name: desktop-release
 #
 # Signing is optional and turns on by itself when its secrets exist (docs/INSTALL.md lists them):
 #   Mac:     MACOS_CERT_P12_BASE64, MACOS_CERT_PASSWORD, APPLE_TEAM_ID, then for notarising
-#            ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8_BASE64.
+#            ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8_BASE64. Nothing here waits for Apple: the Mac
+#            job hands the signed .dmg to Apple and stops, the release goes out without it, and
+#            mac-notarize.yml adds it once Apple has notarised it (usually minutes later).
 #   Windows: SignPath (free signing for open-source projects, docs/CODE_SIGNING.md): the secret
 #            SIGNPATH_API_TOKEN and the variables SIGNPATH_ORGANIZATION_ID, SIGNPATH_PROJECT_SLUG,
 #            SIGNPATH_SIGNING_POLICY_SLUG (SIGNPATH_ARTIFACT_CONFIGURATION_SLUG is optional).
@@ -85,11 +87,12 @@ jobs:
   mac:
     needs: version
     runs-on: macos-26
-    # Mac minutes are billed at ten times the Linux rate; notarising can take a while, but not hours.
-    timeout-minutes: 50
+    # Mac minutes are billed at ten times the Linux rate, so this job never waits for Apple.
+    timeout-minutes: 45
     outputs:
       signed: ${{ steps.signing.outputs.signed }}
-      notarized: ${{ steps.notarize.outputs.notarized }}
+      # Apple's id for the notarisation, or empty when the .dmg isn't being notarised.
+      notary_id: ${{ steps.notarize.outputs.id }}
     env:
       VERSION: ${{ needs.version.outputs.version }}
       # Crash reports (PRIVACY.md): written into the app at build time. Without the secret the
@@ -171,9 +174,25 @@ jobs:
         run: |
           codesign --force --timestamp --keychain "$KEYCHAIN" --sign "Developer ID Application: $IDENTITY" "dist/Wildware-Feed-$VERSION-mac-arm64.dmg"
 
-      - name: Notarise and staple
+      # Before Apple sees it: the app and the .dmg are both properly signed.
+      - name: Check the signatures
+        if: steps.signing.outputs.signed == 'true'
+        timeout-minutes: 3
+        run: |
+          set -euo pipefail
+          dmg="dist/Wildware-Feed-$VERSION-mac-arm64.dmg"
+          codesign --verify --strict --verbose=2 "$dmg"
+          mount="$(mktemp -d)"
+          hdiutil attach -nobrowse -readonly -mountpoint "$mount" "$dmg" >/dev/null
+          trap 'hdiutil detach "$mount" -quiet || true' EXIT
+          app="$(find "$mount" -maxdepth 1 -name '*.app' | head -1)"
+          codesign --verify --deep --strict --verbose=2 "$app"
+
+      # Hands the .dmg to Apple and stops: no waiting here. mac-notarize.yml waits on Linux,
+      # then staples it and checks Gatekeeper accepts it before it goes on the release.
+      - name: Send to Apple for notarising
         id: notarize
-        timeout-minutes: 35
+        timeout-minutes: 15
         env:
           SIGNED: ${{ steps.signing.outputs.signed }}
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
@@ -183,34 +202,20 @@ jobs:
           set -euo pipefail
           if [ "$SIGNED" != "true" ] || [ "$HAS_NOTARY" != "true" ]; then
             echo "Not notarising: needs both the signing and the App Store Connect key secrets."
-            echo "notarized=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           key="$RUNNER_TEMP/asc-key.p8"
+          trap 'rm -f "$key"' EXIT
           printf '%s' "$ASC_KEY_P8" | base64 --decode > "$key"
           dmg="dist/Wildware-Feed-$VERSION-mac-arm64.dmg"
-          xcrun notarytool submit "$dmg" --key "$key" --key-id "$ASC_KEY_ID" --issuer "$ASC_ISSUER_ID" --wait --timeout 30m
-          rm -f "$key"
-          xcrun stapler staple "$dmg"
-          echo "notarized=true" >> "$GITHUB_OUTPUT"
-
-      # Gatekeeper's own verdict, as a Mac that downloaded the files would give it. Fails the run
-      # rather than publish a "signed and notarised" build that a Mac would still refuse.
-      - name: Check Gatekeeper accepts the .dmg and the app
-        if: steps.notarize.outputs.notarized == 'true'
-        timeout-minutes: 5
-        run: |
-          set -euo pipefail
-          dmg="dist/Wildware-Feed-$VERSION-mac-arm64.dmg"
-          xcrun stapler validate "$dmg"
-          spctl -a -vv -t open --context context:primary-signature "$dmg"
-          spctl -a -vv -t install "$dmg" || echo "::notice::spctl -t install has no verdict for a .dmg on this macOS; the open check above is the one that counts."
-          mount="$(mktemp -d)"
-          hdiutil attach -nobrowse -readonly -mountpoint "$mount" "$dmg" >/dev/null
-          trap 'hdiutil detach "$mount" -quiet || true' EXIT
-          app="$(find "$mount" -maxdepth 1 -name '*.app' | head -1)"
-          codesign --verify --deep --strict --verbose=2 "$app"
-          spctl -a -vv -t exec "$app"
+          xcrun notarytool submit "$dmg" --key "$key" --key-id "$ASC_KEY_ID" --issuer "$ASC_ISSUER_ID" --no-wait --output-format json > "$RUNNER_TEMP/submitted.json"
+          id="$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["id"])' "$RUNNER_TEMP/submitted.json")"
+          if ! echo "$id" | grep -Eq '^[0-9a-fA-F-]{36}$'; then
+            echo "::error::notarytool gave no submission id."
+            exit 1
+          fi
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+          echo "Submitted $(basename "$dmg") to Apple: submission $id. mac-notarize finishes it."
 
       - name: Delete the signing keychain
         if: always()
@@ -219,10 +224,12 @@ jobs:
           rm -f "$RUNNER_TEMP/cert.p12" "$RUNNER_TEMP/asc-key.p8"
           if [ -f "$RUNNER_TEMP/agents-signing.keychain-db" ]; then security delete-keychain "$RUNNER_TEMP/agents-signing.keychain-db"; fi
 
+      # Sent to Apple: kept aside as mac-submitted-<version>, which mac-notarize staples. Not sent
+      # (unsigned, or no notary key): it goes on the release as it is, and the notes say so.
       - uses: actions/upload-artifact@v4
         timeout-minutes: 5
         with:
-          name: Wildware-Feed-${{ needs.version.outputs.version }}-mac
+          name: ${{ steps.notarize.outputs.id != '' && format('mac-submitted-{0}', env.VERSION) || format('Wildware-Feed-{0}-mac', env.VERSION) }}
           path: dist/*
           if-no-files-found: error
 
@@ -530,7 +537,8 @@ jobs:
     env:
       VERSION: ${{ needs.version.outputs.version }}
       MAC_SIGNED: ${{ needs.mac.outputs.signed }}
-      MAC_NOTARIZED: ${{ needs.mac.outputs.notarized }}
+      # Pending: Apple is checking it, and mac-notarize adds the .dmg when it's done.
+      MAC_NOTARIZED: ${{ needs.mac.outputs.notary_id != '' && 'pending' || 'false' }}
       WINDOWS_SIGNED: ${{ needs.windows-sign.outputs.signed == 'true' }}
       ANDROID_SIGNED: ${{ needs.android.outputs.signed }}
       GH_TOKEN: ${{ github.token }}
@@ -540,7 +548,8 @@ jobs:
         timeout-minutes: 5
         with:
           path: dist
-          # Only the finished files: not the unsigned Windows ones SignPath was given.
+          # Only the finished files: not the unsigned Windows ones SignPath was given, nor the Mac
+          # one Apple is still checking (mac-submitted-*).
           pattern: Wildware-Feed-${{ needs.version.outputs.version }}-*
           merge-multiple: true
       - name: Write the checksums and the release notes
@@ -553,3 +562,21 @@ jobs:
       - name: Publish the release
         timeout-minutes: 10
         run: gh release create "$GITHUB_REF_NAME" dist/* --title "Wildware Feed $VERSION" --notes-file notes.md --verify-tag
+
+  # Waits for Apple on Linux, staples and Gatekeeper-checks the .dmg on a short Mac job, then adds
+  # it to the release. The release is already out by now. A run by hand gets its notarised .dmg
+  # as this run's mac-notarised-<version> artifact instead.
+  # (A job that calls a workflow can't take timeout-minutes; every job inside mac-notarize has one.)
+  mac-notarize:
+    needs: [version, mac, release]
+    if: ${{ !cancelled() && needs.mac.result == 'success' && needs.mac.outputs.notary_id != '' && (needs.release.result == 'success' || (github.ref_type != 'tag' && needs.release.result == 'skipped')) }}
+    permissions:
+      contents: write
+      actions: write
+    uses: ./.github/workflows/mac-notarize.yml
+    with:
+      run_id: ${{ github.run_id }}
+      submission_id: ${{ needs.mac.outputs.notary_id }}
+      version: ${{ needs.version.outputs.version }}
+      tag: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+    secrets: inherit

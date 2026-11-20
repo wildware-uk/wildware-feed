@@ -96,6 +96,20 @@ class UpdateCheckerTest {
     }
 
     @Test
+    fun aReleaseWithoutThisComputersFileYetIsNotOffered() = runTest {
+        val withoutMac = release("1.0.2", *allAssets("1.0.2").filter { it.kind != "mac-dmg" }.toTypedArray())
+        val fake = FakeReleaseSource(latest = withoutMac)
+        val hasMacFile: (Release) -> Boolean = { r -> r.assets.any { it.kind == "mac-dmg" } }
+        val checker = UpdateChecker(current, MutableStateFlow(fake), MutableStateFlow(true), offers = hasMacFile)
+        assertEquals(CheckResult.UpToDate, checker.checkNow(), "the Mac file is still with Apple")
+        assertNull(checker.available.value)
+
+        fake.latest = release("1.0.2")
+        assertIs<CheckResult.Newer>(checker.checkNow(), "the next check finds it")
+        assertEquals("1.0.2", checker.available.value?.version)
+    }
+
+    @Test
     fun checkingWithNowhereToCheckSaysSo() = runTest {
         val checker = UpdateChecker(current, MutableStateFlow(null), MutableStateFlow(true))
         assertIs<CheckResult.Failed>(checker.checkNow())
