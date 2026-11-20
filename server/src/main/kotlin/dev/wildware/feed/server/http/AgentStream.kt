@@ -69,6 +69,7 @@ internal suspend fun ApplicationCall.agentStream(app: App, agent: Agents.Agent, 
     }
 
     var last: AgentWork.Counts? = null
+    val dropped = java.util.concurrent.atomic.AtomicBoolean(false)
 
     /**
      * One pass over a batch of events, off the bus: the frames they carry, then the counts and new
@@ -85,7 +86,9 @@ internal suspend fun ApplicationCall.agentStream(app: App, agent: Agents.Agent, 
             }.onFailure { System.err.println("agent stream: ${event.type} frame failed: $it") }
         }
         val opening = last == null
-        val reached = batch.any { it.type == "message.created" && newMessageReaches(work, agent.id, it.payload) }
+        // Events were dropped while the queue was full: anything may have changed, so look at it all.
+        val overflowed = dropped.getAndSet(false)
+        val reached = overflowed || batch.any { it.type == "message.created" && newMessageReaches(work, agent.id, it.payload) }
         if (!opening && !reached && batch.none { changesCounts(agent.id, it) }) return
         val next = runCatching { work.countWork(agent.id) }.getOrNull() ?: return
         val rose = next.unreadMessages > (last?.unreadMessages ?: 0)
@@ -105,10 +108,14 @@ internal suspend fun ApplicationCall.agentStream(app: App, agent: Agents.Agent, 
                 SseContent(stillAllowed = { app.agents.authenticate(token).first != null }, now = app.clock) { sink ->
                     // The bus hands events out under its lock, inside whoever published them, so the
                     // listener only queues them: the database work happens here, a batch at a time.
-                    val events = Channel<AppEvent>(Channel.UNLIMITED)
+                    // Bounded: when the worker can't keep up, further events are dropped and the next
+                    // batch counts afresh, which is all most of them would have caused anyway.
+                    val events = Channel<AppEvent>(EVENT_QUEUE_MAX)
                     val (_, stop) = app.bus.subscribeFrom(
                         since = null,
-                        listener = { event: AppEvent -> if (event.type in WATCHED) events.trySend(event) },
+                        listener = { event: AppEvent ->
+                            if (event.type in WATCHED && !events.trySend(event).isSuccess && !events.isClosedForSend) dropped.set(true)
+                        },
                     ) {
                         sink.send(Frames.retry(Frames.RETRY_MS) + Frames.comment("connected"))
                     }
@@ -174,6 +181,9 @@ private fun newMessageReaches(work: AgentWork, agentId: String, payload: JsonObj
  * database connection, so more would only wait on it, holding threads that requests need.
  */
 private val STREAM_WORK = Dispatchers.IO.limitedParallelism(2)
+
+/** Events waiting for a stream's worker, at most; past this, they are dropped and counted afresh. */
+private const val EVENT_QUEUE_MAX = 256
 
 /** A burst of events is gathered this long before the stream works them out. */
 private const val SETTLE_MS = 100L
