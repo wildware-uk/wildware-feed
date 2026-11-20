@@ -83,6 +83,7 @@ class Reads(private val db: Database, private val clock: () -> Long = System::cu
         val media = mediaForMany("update_id", ids)
         val embeds = embedsForMany("update_id", ids)
         val refs = refsFor("update", ids)
+        val blocks = blocksFor("update", ids)
         val items = updates.zip(ids).map { (update, id) ->
             val extra = mutableListOf<Pair<String, JsonElement>>(
                 "media" to JsonArray(media[id].orEmpty()),
@@ -90,6 +91,8 @@ class Reads(private val db: Database, private val clock: () -> Long = System::cu
                 "reactions" to JsonArray(reactions.filter { it["card"].str("id") == id }),
                 // Migration 056: the cards this one points at, after everything the TS server sent.
                 "refs" to JsonArray(refs[id].orEmpty()),
+                // Migration 057: the blocks drawn on it, last.
+                "blocks" to JsonArray(blocks[id].orEmpty()),
             )
             update.plus(*extra.toTypedArray())
         }
@@ -190,6 +193,9 @@ class Reads(private val db: Database, private val clock: () -> Long = System::cu
         JsonObject(LinkedHashMap<String, JsonElement>().apply {
             for (id in ids) read(id).takeIf { it.isNotEmpty() }?.let { put(id, JsonArray(it)) }
         })
+
+    /** The blocks on each of [ids] (migration 057), by card id. */
+    fun blocksFor(kind: String, ids: List<String>): Map<String, List<JsonObject>> = BlockReads(db, clock).views(kind, ids)
 
     /** The summaries of the cards each of [ids] points at (migration 056), by card id. */
     fun refsFor(kind: String, ids: List<String>): Map<String, List<JsonObject>> = CardRefs(db, clock).summaries(kind, ids)
@@ -464,12 +470,14 @@ class Reads(private val db: Database, private val clock: () -> Long = System::cu
         val embeds = embedsForMany("request_id", ids)
         val reactions = reactionsFor("request", ids)
         val refs = refsFor("request", ids)
+        val blocks = blocksFor("request", ids)
         return requests.zip(ids).map { (request, id) ->
             request.plus(
                 "media" to JsonArray(media[id].orEmpty()),
                 "embeds" to JsonArray(embeds[id].orEmpty()),
                 "reactions" to JsonArray(reactions.filter { it["card"].str("id") == id }),
                 "refs" to JsonArray(refs[id].orEmpty()),
+                "blocks" to JsonArray(blocks[id].orEmpty()),
             )
         }
     }
@@ -491,6 +499,7 @@ class Reads(private val db: Database, private val clock: () -> Long = System::cu
         val media = mediaForMany("message_id", messageIds)
         val embeds = embedsForMany("message_id", messageIds)
         val refs = refsFor("message", messageIds)
+        val blocks = blocksFor("message", messageIds)
         return listOf(
             "projects" to JsonArray(projects),
             "groups" to JsonArray(db.query("SELECT ${Groups.COLUMNS} FROM project_groups ORDER BY lower(name), seq") { Groups.json(it) }),
@@ -505,6 +514,7 @@ class Reads(private val db: Database, private val clock: () -> Long = System::cu
             "messageMedia" to byMessage(messageIds) { media[it].orEmpty() },
             "messageEmbeds" to byMessage(messageIds) { embeds[it].orEmpty() },
             "messageRefs" to byMessage(messageIds) { refs[it].orEmpty() },
+            "messageBlocks" to byMessage(messageIds) { blocks[it].orEmpty() },
         )
     }
 
@@ -515,6 +525,7 @@ class Reads(private val db: Database, private val clock: () -> Long = System::cu
         val media = mediaForMany("message_id", ids)
         val embeds = embedsForMany("message_id", ids)
         val refs = refsFor("message", ids)
+        val blocks = blocksFor("message", ids)
         return listOf(
             "messages" to JsonArray(messages),
             "acks" to JsonArray(acksForMessages(ids)),
@@ -523,6 +534,7 @@ class Reads(private val db: Database, private val clock: () -> Long = System::cu
             "deliveries" to JsonArray(deliveriesFor(ids)),
             "reactions" to JsonArray(reactionsFor("message", ids)),
             "refs" to byMessage(ids) { refs[it].orEmpty() },
+            "blocks" to byMessage(ids) { blocks[it].orEmpty() },
         )
     }
 

@@ -49,6 +49,7 @@ fun ToolRegistry.registerRequestTools(app: App) {
                 NewEmbed(embed["type"].jsString!!, embed["data"], embed["source_url"].jsString)
             },
             refs = refsArg(a),
+            blocks = a["blocks"] as? JsonArray,
         )
         requestResult(app.requests.requestInput(call.agent.id, input), app.db)
     }

@@ -22,7 +22,7 @@ import kotlinx.serialization.json.jsonPrimitive
  * `GET /api/agent/stream`, what the channel bridge listens to (spec/04-stream-and-events.md §4,
  * TS `src/http/stream/agent.ts`): `work` counts whenever they change, the newest unread `message`s
  * (each handed to a client once), the `answer` to one of the agent's requests, and the owner's
- * `reaction` on its lines. Frames carry no ids; there is no replay. Ends within about five seconds
+ * `reaction` on its lines, and a person's tick or vote on its `block`s (migration 057). Frames carry no ids; there is no replay. Ends within about five seconds
  * of the token being revoked (decided fix 11).
  *
  * With no `?project=` it hears what the agent follows on the server ([Subscriptions]), read afresh
@@ -71,6 +71,7 @@ internal suspend fun ApplicationCall.agentStream(app: App, agent: Agents.Agent, 
                     val next = runCatching { work.countScoped(agent.id, subscribed) }.getOrNull() ?: return@listener
                     if (event.type == "request.answered") answerFrame(app, agent.id, subscribed, event.payload)?.let(sink::send)
                     if (event.type == "reaction.updated") reactionFrame(app, agent.id, subscribed, event.payload)?.let(sink::send)
+                    if (event.type == "block.updated") blockFrame(app, agent.id, subscribed, event.payload)?.let(sink::send)
                     if (next == last) return@listener
                     val rose = next.unreadMessages > (last?.unreadMessages ?: 0)
                     last = next
@@ -93,7 +94,7 @@ private const val MESSAGE_LIMIT = 5
 private const val CLIENT_ID_MAX = 200
 private val WATCHED = setOf(
     "message.created", "message.deleted", "messages.read", "update.updated", "message.updated",
-    "reaction.updated", "request.created", "request.answered", "subscriptions.updated",
+    "reaction.updated", "request.created", "request.answered", "subscriptions.updated", "block.updated",
 )
 
 private fun ApplicationCall.subscription(app: App): Subscription {
@@ -208,6 +209,53 @@ private fun reactionFrame(app: App, agentId: String, subscribed: Subscription, p
         put("body", JsonPrimitive(m.body.replace(Regex("\\s+"), " ").trim().take(160)))
         // On a team, who reacted (migration 055).
         val by = (payload["userId"] as? JsonPrimitive)?.content ?: dev.wildware.feed.server.domain.People.FOUNDER
+        dev.wildware.feed.server.domain.People.teamName(app.db, by)?.let { who ->
+            put("by", buildJsonObject { put("user_id", JsonPrimitive(by)); put("name", JsonPrimitive(who)) })
+        }
+    })
+}
+
+/**
+ * A person ticked a line or voted on one of this agent's blocks (migration 057): it hears what, on
+ * which block and card, and who. Its own changes, and anything on another agent's card, it does not.
+ */
+private fun blockFrame(app: App, agentId: String, subscribed: Subscription, payload: JsonObject): String? {
+    if (payload["actor"]?.jsonPrimitive?.content != "human") return null
+    val action = payload["action"]?.jsonPrimitive?.content ?: return null
+    if (action != "check" && action != "vote") return null
+    val card = payload["card"] as? JsonObject ?: return null
+    val kind = card["kind"]?.jsonPrimitive?.content ?: return null
+    val id = card["id"]?.jsonPrimitive?.content ?: return null
+    val author = when (kind) {
+        "update" -> app.db.one("SELECT agent_id FROM updates WHERE id = ?", id) { "agent:" + it.getString(1) }
+        "request" -> app.db.one("SELECT agent_id FROM approvals WHERE id = ?", id) { "agent:" + it.getString(1) }
+        else -> app.db.one("SELECT author FROM messages WHERE id = ?", id) { it.getString(1) }
+    }
+    if (author != "agent:$agentId") return null
+    val projectId = (payload["projectId"] as? JsonPrimitive)?.takeIf { it.isString }?.content
+    if (!inScope(projectId, subscribed)) return null
+    val (slug, name) = projectNames(app, projectId)
+    val by = (payload["userId"] as? JsonPrimitive)?.content ?: dev.wildware.feed.server.domain.People.FOUNDER
+    return Frames.named("block", buildJsonObject {
+        put("type", JsonPrimitive("block"))
+        put("action", JsonPrimitive(action))
+        put("card", card)
+        put("update_id", if (kind == "update") JsonPrimitive(id) else JsonNull)
+        put("message_id", if (kind == "message") JsonPrimitive(id) else JsonNull)
+        put("request_id", if (kind == "request") JsonPrimitive(id) else JsonNull)
+        put("block_id", payload["blockId"] ?: JsonNull)
+        put("block_type", payload["blockType"] ?: JsonNull)
+        put("block_title", payload["blockTitle"] ?: JsonNull)
+        if (action == "check") {
+            put("item_id", payload["item"] ?: JsonNull)
+            put("item_text", payload["itemText"] ?: JsonNull)
+            put("done", payload["done"] ?: JsonNull)
+        } else {
+            put("options", payload["options"] ?: JsonArray(emptyList()))
+        }
+        put("project", slug)
+        put("project_name", name)
+        // On a team, who it was (migration 055).
         dev.wildware.feed.server.domain.People.teamName(app.db, by)?.let { who ->
             put("by", buildJsonObject { put("user_id", JsonPrimitive(by)); put("name", JsonPrimitive(who)) })
         }

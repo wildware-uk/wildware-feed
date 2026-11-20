@@ -21,6 +21,8 @@ class Updates(private val feed: Feed) {
         val apps: List<FeedAttachments.AppInput>? = null,
         /** Other cards this one points at (migration 056). */
         val refs: List<CardRef>? = null,
+        /** Blocks drawn on the card (migration 057), as the agent wrote them. */
+        val blocks: List<kotlinx.serialization.json.JsonElement>? = null,
     )
 
     class Edit(
@@ -52,6 +54,7 @@ class Updates(private val feed: Feed) {
         val priority = input.priority ?: "medium"
         if (priority !in PRIORITIES) throw invalid("priority must be one of: ${PRIORITIES.joinToString(", ")}")
         val refs = CardRefs(db, feed.clock).check("agent:$agentId", input.refs)
+        val blocks = feed.blocks.check(input.blocks, agentId)
 
         val id = Ulid.next()
         db.update(
@@ -65,6 +68,7 @@ class Updates(private val feed: Feed) {
         if (embeds.isNotEmpty()) FeedAttachments.attachEmbeds(db, embeds, "update_id", id, agentId, author, feed.now())
         if (apps.isNotEmpty()) FeedAttachments.attachApps(db, apps, CardRef("update", id), agentId, author, feed.now())
         if (refs.isNotEmpty()) CardRefs(db, feed.clock).set(CardRef("update", id), refs)
+        if (blocks.isNotEmpty()) feed.blocks.attach(CardRef("update", id), blocks)
         Subscriptions(db, feed.clock).run {
             followProject(Subscriptions.agent(agentId), project.id, afterSeq = 0)
             followThread(Subscriptions.agent(agentId), Subscriptions.Thread("update", id), project.id)

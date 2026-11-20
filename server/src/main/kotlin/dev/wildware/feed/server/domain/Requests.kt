@@ -75,6 +75,8 @@ data class NewRequest(
     val secretName: String? = null,
     /** Other cards the question points at (migration 056), shown inside it. */
     val refs: List<CardRef>? = null,
+    /** Blocks drawn on the question (migration 057), as the agent wrote them. */
+    val blocks: List<JsonElement>? = null,
 )
 
 data class NewEmbed(val type: String, val data: JsonElement?, val sourceUrl: String?)
@@ -149,6 +151,8 @@ class Requests(
             }
         } else baseConfig
         val refs = CardRefs(db, clock).check(author, input.refs)
+        val blockStore = Feed(db, bus, clock).blocks
+        val blocks = blockStore.check(input.blocks, agentId)
 
         val now = clock()
         val id = Ulid.next(now)
@@ -178,6 +182,7 @@ class Requests(
 
         val request = OwnerRequest(row)
         if (refs.isNotEmpty()) CardRefs(db, clock).set(CardRef("request", request.id), refs)
+        if (blocks.isNotEmpty()) blockStore.attach(CardRef("request", request.id), blocks)
         Subscriptions(db, clock).followThread(Subscriptions.agent(agentId), Subscriptions.Thread("request", request.id), request.projectId)
         val event = bus.publish("request.created", buildJsonObject {
             put("requestId", request.id)

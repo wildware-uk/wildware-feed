@@ -30,6 +30,8 @@ class Messages(private val feed: Feed) {
         val userId: String? = null,
         /** Other cards this one points at (migration 056). */
         val refs: List<CardRef>? = null,
+        /** Blocks drawn on the message (migration 057); only an agent's. */
+        val blocks: List<kotlinx.serialization.json.JsonElement>? = null,
     )
 
     class Page(val messages: List<MessageRow>, val cursor: String, val unread: Long, val markedRead: Boolean)
@@ -100,6 +102,7 @@ class Messages(private val feed: Feed) {
         val embeds = if (input.embeds.isNullOrEmpty()) emptyList() else FeedAttachments.checkedEmbeds(db, input.embeds)
         val apps = if (input.apps.isNullOrEmpty()) emptyList() else FeedAttachments.checkedApps(db, input.apps)
         val refs = cardRefs.check(author, input.refs)
+        val blocks = feed.blocks.check(input.blocks, if (author.startsWith(AGENT_PREFIX)) author.removePrefix(AGENT_PREFIX) else null)
 
         if (answered != null && !sameThread(answered, updateId, anchor, requestId)) {
             throw invalid("that message is in a different thread")
@@ -121,6 +124,7 @@ class Messages(private val feed: Feed) {
         if (embeds.isNotEmpty()) FeedAttachments.attachEmbeds(db, embeds, "message_id", id, agentId, author, feed.now())
         if (apps.isNotEmpty()) FeedAttachments.attachApps(db, apps, CardRef("message", id), agentId, author, feed.now())
         if (refs.isNotEmpty()) cardRefs.set(CardRef("message", id), refs)
+        if (blocks.isNotEmpty()) feed.blocks.attach(CardRef("message", id), blocks)
 
         feed.publish("message.created", buildJsonObject {
             put("messageId", message.id)

@@ -16,6 +16,7 @@ import dev.wildware.feed.server.mcp.registerMediaTools
 import dev.wildware.feed.server.mcp.registerPairingTools
 import dev.wildware.feed.server.mcp.registerSubscriptionTools
 import dev.wildware.feed.server.mcp.registerSecretTools
+import dev.wildware.feed.server.mcp.registerBlockTools
 import dev.wildware.feed.server.push.startApplePush
 
 /**
@@ -180,6 +181,7 @@ class App(val config: Config, val db: Database, val clock: () -> Long = System::
         tools.registerPairingTools(this)
         tools.registerSubscriptionTools(this)
         tools.registerSecretTools(this)
+        tools.registerBlockTools(this)
     }
 
     override fun close() {

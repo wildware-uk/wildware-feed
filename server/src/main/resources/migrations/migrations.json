@@ -390,5 +390,12 @@
   "file": "056-card-refs.sql",
   "rebuildsTables": false,
   "checksum": "615b0a189d84bfb1f3efe22d34fc55cfbecb9d9888d8679974ace937694222b0"
+ },
+ {
+  "version": 57,
+  "name": "card-blocks",
+  "file": "057-card-blocks.sql",
+  "rebuildsTables": false,
+  "checksum": "515b9437baa9f0a2632f52f40291bf0b8095036e510d45dcba488c1a218c99df"
  }
 ]

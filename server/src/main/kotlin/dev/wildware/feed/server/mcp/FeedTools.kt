@@ -3,6 +3,7 @@ package dev.wildware.feed.server.mcp
 import dev.wildware.feed.server.App
 import dev.wildware.feed.server.domain.AckRow
 import dev.wildware.feed.server.domain.CardRef
+import dev.wildware.feed.server.domain.BlockReads
 import dev.wildware.feed.server.domain.CardRefs
 import dev.wildware.feed.server.domain.Cards
 import dev.wildware.feed.server.domain.FeedAttachments
@@ -98,6 +99,7 @@ fun ToolRegistry.registerFeedTools(app: App) {
                 embeds = call.embeds(),
                 apps = call.apps(),
                 refs = refsArg(call.args),
+                blocks = call.list("blocks"),
             ),
         )
         val apps = if (call.list("apps").isNullOrEmpty()) emptyList() else FeedAttachments.appsOn(app.db, CardRef("update", update.id))
@@ -107,6 +109,7 @@ fun ToolRegistry.registerFeedTools(app: App) {
                 put("update", FeedViews.update(update))
                 if (apps.isNotEmpty()) put("apps", FeedViews.apps(apps))
                 refsView(app, CardRef("update", update.id), call.args)?.let { put("refs", it) }
+                blocksView(app, CardRef("update", update.id), call.args)?.let { put("blocks", it) }
             },
         )
     }
@@ -299,6 +302,7 @@ fun ToolRegistry.registerFeedTools(app: App) {
                 embeds = call.embeds(),
                 apps = call.apps(),
                 refs = refsArg(call.args),
+                blocks = call.list("blocks"),
             ),
         )
         val apps = if (call.list("apps").isNullOrEmpty()) emptyList() else FeedAttachments.appsOn(app.db, CardRef("message", message.id))
@@ -306,6 +310,7 @@ fun ToolRegistry.registerFeedTools(app: App) {
             put("message", FeedViews.message(message))
             if (apps.isNotEmpty()) put("apps", FeedViews.apps(apps))
             refsView(app, CardRef("message", message.id), call.args)?.let { put("refs", it) }
+            blocksView(app, CardRef("message", message.id), call.args)?.let { put("blocks", it) }
         })
     }
 
@@ -334,6 +339,12 @@ fun ToolRegistry.registerFeedTools(app: App) {
 }
 
 private fun plural(n: Int) = if (n == 1) "" else "s"
+
+/** A write's blocks (migration 057), for its result: only when the call gave `blocks`. */
+internal fun blocksView(app: App, card: CardRef, args: JsonObject): JsonArray? {
+    if ((args["blocks"] as? JsonArray).isNullOrEmpty()) return null
+    return JsonArray(BlockReads(app.db, app.clock).viewsOn(card))
+}
 
 /** The `refs` argument (migration 056): `[{ kind, id }]`, or null when it was left out. */
 internal fun refsArg(args: JsonObject): List<CardRef>? = (args["refs"] as? JsonArray)?.map {

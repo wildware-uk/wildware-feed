@@ -98,7 +98,8 @@ class ReadQueriesTest {
     }
 
     private companion object {
-        const val SNAPSHOT_MAX = 30L
+        // Blocks (migration 057) add a query for the updates' and one for the messages'.
+        const val SNAPSHOT_MAX = 31L
         const val MESSAGES_MAX = 12L
     }
 }

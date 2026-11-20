@@ -28,6 +28,7 @@ class Feed(val db: Database, val bus: Bus, val clock: () -> Long) {
     val fields = Fields(this)
     val embedTypes = EmbedTypes(this)
     val apps = Apps(this)
+    val blocks = Blocks(this)
 
     /** Run one write alone; nested calls join the outer one. */
     fun <T> op(block: () -> T): T {

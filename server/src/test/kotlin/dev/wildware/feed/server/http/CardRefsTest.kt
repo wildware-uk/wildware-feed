@@ -106,7 +106,7 @@ class CardRefsTest {
 
         val request = read(c.key, "/api/snapshot/requests").a("requests").single().jsonObject
         assertEquals(requestId, request.s("id"))
-        assertEquals("refs", request.keys.last(), "refs come last, after everything the TS server sent")
+        assertEquals(listOf("refs", "blocks"), request.keys.toList().takeLast(2), "refs come after everything the TS server sent, then blocks (migration 057)")
         val ref = request.a("refs").single().jsonObject
         assertEquals(
             listOf("kind", "id", "projectId", "deleted", "author", "authorName", "title", "text", "media", "mediaCount", "updateId", "replyTo", "requestId", "state"),
@@ -156,7 +156,7 @@ class CardRefsTest {
         val message = posted.o("message").s("id")!!
 
         val snapshot = read(c.key, "/api/snapshot")
-        assertEquals("messageRefs", snapshot.keys.last())
+        assertEquals(listOf("messageRefs", "messageBlocks"), snapshot.keys.toList().takeLast(2))
         val onMessage = snapshot.o("messageRefs").a(message)
         assertEquals(listOf(question, update, first), onMessage.map { it.jsonObject.s("id") })
         assertEquals("Release 1.2", onMessage.o(1).s("title"))
@@ -164,14 +164,14 @@ class CardRefsTest {
         assertEquals(setOf(message), snapshot.o("messageRefs").keys, "only messages that point at something")
 
         val thread = read(c.key, "/api/messages?update=$update")
-        assertEquals("refs", thread.keys.last())
+        assertEquals(listOf("refs", "blocks"), thread.keys.toList().takeLast(2))
         assertEquals(3, thread.o("refs").a(message).size)
 
         val later = c.ok("post_update", buildJsonObject { put("channel", "web"); put("body", "Follow-up"); put("refs", refs("message" to message)) })
             .o("update").s("id")!!
         val items = read(c.key, "/api/snapshot/updates").o("updates").a("items")
         val byId = items.associateBy { it.jsonObject.s("id") }
-        assertEquals("refs", byId[later]!!.jsonObject.keys.last())
+        assertEquals(listOf("refs", "blocks"), byId[later]!!.jsonObject.keys.toList().takeLast(2))
         assertEquals("see these", byId[later]!!.jsonObject.a("refs").single().jsonObject.s("text"))
         assertEquals(JsonArray(emptyList()), byId[update]!!.jsonObject["refs"], "an update that points at nothing has an empty list")
     }

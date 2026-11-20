@@ -2,6 +2,7 @@ package dev.wildware.feed.server.http
 
 import dev.wildware.feed.server.App
 import dev.wildware.feed.server.domain.People
+import dev.wildware.feed.server.domain.BlockReads
 import dev.wildware.feed.server.domain.CardRef
 import dev.wildware.feed.server.domain.Given
 import dev.wildware.feed.server.domain.Groups
@@ -193,6 +194,41 @@ fun Route.feedRoutes(app: App) {
             val emoji = body["emoji"].jsString ?: throw invalid("emoji must be a string")
             val (reactions, on) = app.feed.cards.react(card(), Messages.HUMAN, emoji, body["on"].jsBoolean, call.person.id)
             call.respondOwner(200, buildJsonObject { put("reactions", JsonArray(reactions.map { it.json })); put("on", on) })
+        },
+    )
+
+    // Blocks (migration 057, docs/BLOCKS.md): a card's blocks as they are now, a tick and a vote.
+    endpoint(
+        "/api/cards/{kind}/{id}/blocks",
+        HttpMethod.Get to {
+            val card = card()
+            app.feed.cards.resolve(card)
+            call.respondOwner(200, buildJsonObject {
+                put("card", card.json)
+                put("blocks", JsonArray(BlockReads(app.db, app.clock).viewsOn(card)))
+            })
+        },
+    )
+
+    endpoint(
+        "/api/cards/{kind}/{id}/blocks/{block}/check",
+        HttpMethod.Post to {
+            val body = call.lenientObjectBody()
+            val item = body["item"].jsString?.takeIf { it.isNotEmpty() } ?: throw invalid("item must be the id of a line")
+            val done = flag(body["done"], "done")
+            val block = app.feed.blocks.tick(card(), param("block"), item, done, call.person.id)
+            call.respondOwner(200, buildJsonObject { put("block", block) })
+        },
+    )
+
+    endpoint(
+        "/api/cards/{kind}/{id}/blocks/{block}/vote",
+        HttpMethod.Post to {
+            val body = call.lenientObjectBody()
+            val options = (body["options"] as? JsonArray)?.map { it.jsString ?: throw invalid("options must be a list of option ids") }
+                ?: throw invalid("options must be a list of option ids")
+            val block = app.feed.blocks.vote(card(), param("block"), options, call.person.id)
+            call.respondOwner(200, buildJsonObject { put("block", block) })
         },
     )
 

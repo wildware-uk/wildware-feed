@@ -31,6 +31,7 @@ object Access {
         "GET /api/groups" to M,
         "GET /api/agents" to M,
         "GET /api/settings/media-retention" to M,
+        "GET /api/cards/{kind}/{id}/blocks" to M,
 
         // Taking part: posting, reacting, answering, tagging, pins, work states, app state.
         "POST /api/messages" to M,
@@ -47,6 +48,8 @@ object Access {
         "POST /api/requests/{id}/answer" to M,
         "DELETE /api/requests/{id}" to M,
         "POST /api/apps/{view}/state" to M,
+        "POST /api/cards/{kind}/{id}/blocks/{block}/check" to M,
+        "POST /api/cards/{kind}/{id}/blocks/{block}/vote" to M,
 
         // Your own follows, bell and devices.
         "GET /api/cards/{kind}/{id}/followers" to M,

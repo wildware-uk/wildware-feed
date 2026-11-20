@@ -58,5 +58,11 @@
   "name": "card-refs",
   "file": "056-card-refs.sql",
   "checksum": "0a5745dd91944e1b43b58399c9fa777519e9c9739a1aace1ca5553184e03de7a"
+ },
+ {
+  "version": 57,
+  "name": "card-blocks",
+  "file": "057-card-blocks.sql",
+  "checksum": "a8cefa1218eecdaf283bf407b1bebd7014edb883fa80973bf24e1c7fcc0a3bc4"
  }
 ]

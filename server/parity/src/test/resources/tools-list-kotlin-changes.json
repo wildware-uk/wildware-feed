@@ -1317,5 +1317,180 @@
   "why": "Card refs (migration 056): a card points at other cards and shows them inside itself, so an agent can ask a question about a reply it posted elsewhere.",
   "replace": "before answering; \"no\" means nothing without the question it was a no to.\n",
   "with": "before answering; \"no\" means nothing without the question it was a no to.\n\n`refs` is present only on a message that points at other cards: each one's kind, id,\nheadline or first line, and how many files it carries. `removed` is true when that card\nis gone or is not one you can read.\n"
+ },
+ {
+  "tool": "post_update",
+  "path": [
+   "description"
+  ],
+  "why": "Blocks (migration 057): typed pieces of a card the apps draw natively (checklist, steps, diff, chart, table, log, poll), changed in place with update_block, ticked and voted on by the owner.",
+  "replace": "it to open that card's thread: \"this replaces the build I posted yesterday\".\n",
+  "with": "it to open that card's thread: \"this replaces the build I posted yesterday\".\n- blocks (optional): up to 8 rich blocks your owner sees drawn natively in the update\n  and changing live: a checklist they can tick, steps, a diff, a chart, a table, a log or\n  a poll they vote in. Each is { id, type, title?, ... } by type:\n    checklist { items: [{ id, text, done?, owner? }] } (owner: \"you\", an agent or a person);\n    steps { stages: [{ id, label, state, detail? }], progress?, eta? } (state: pending,\n    running, done, failed, skipped; progress 0-1; eta an ISO time);\n    diff { text } (a unified diff) or { files: [{ path, old_path?, status?, hunks }] };\n    chart { kind: line|bar, series: [{ id, label?, points: [[x, y]] }], x_label?, y_label?,\n    unit? }; table { columns: [{ label, kind? }], rows: [[...]], limit? };\n    log { lines or text, highlight?, tail? }; poll { question, options: [{ id, label }],\n    multi?, closes_at?, closed? }.\n  Change one later with update_block, without posting again; read it back, with who\n  ticked and who voted, with get_blocks. Ticks and votes reach you as a channel event.\n"
+ },
+ {
+  "tool": "post_update",
+  "path": [
+   "inputSchema",
+   "properties",
+   "blocks"
+  ],
+  "why": "Blocks (migration 057): typed pieces of a card the apps draw natively (checklist, steps, diff, chart, table, log, poll), changed in place with update_block, ticked and voted on by the owner.",
+  "now": {
+   "description": "Up to 8 blocks drawn natively on the card and changed live with update_block (docs/BLOCKS.md). Each is { id, type, title?, ... }: type is checklist, steps, diff, chart, table, log or poll, and each type takes its own keys, checked strictly. An unknown key, a wrong type or anything over a limit refuses the whole post.",
+   "maxItems": 8,
+   "type": "array",
+   "items": {
+    "type": "object",
+    "additionalProperties": {}
+   }
+  }
+ },
+ {
+  "tool": "post_message",
+  "path": [
+   "description"
+  ],
+  "why": "Blocks (migration 057): typed pieces of a card the apps draw natively (checklist, steps, diff, chart, table, log, poll), changed in place with update_block, ticked and voted on by the owner.",
+  "replace": "taps it to open that card's thread. Point at what was said elsewhere rather than\n  saying it twice. A card you cannot read, or one already removed, is refused; one\n  removed later shows as removed. The result lists them back as `refs`.\n",
+  "with": "taps it to open that card's thread. Point at what was said elsewhere rather than\n  saying it twice. A card you cannot read, or one already removed, is refused; one\n  removed later shows as removed. The result lists them back as `refs`.\n- blocks (optional): up to 8 rich blocks your owner sees drawn natively in the reply\n  and changing live: a checklist they can tick, steps, a diff, a chart, a table, a log or\n  a poll they vote in. Each is { id, type, title?, ... } by type:\n    checklist { items: [{ id, text, done?, owner? }] } (owner: \"you\", an agent or a person);\n    steps { stages: [{ id, label, state, detail? }], progress?, eta? } (state: pending,\n    running, done, failed, skipped; progress 0-1; eta an ISO time);\n    diff { text } (a unified diff) or { files: [{ path, old_path?, status?, hunks }] };\n    chart { kind: line|bar, series: [{ id, label?, points: [[x, y]] }], x_label?, y_label?,\n    unit? }; table { columns: [{ label, kind? }], rows: [[...]], limit? };\n    log { lines or text, highlight?, tail? }; poll { question, options: [{ id, label }],\n    multi?, closes_at?, closed? }.\n  Change one later with update_block, without posting again; read it back, with who\n  ticked and who voted, with get_blocks. Ticks and votes reach you as a channel event.\n"
+ },
+ {
+  "tool": "post_message",
+  "path": [
+   "inputSchema",
+   "properties",
+   "blocks"
+  ],
+  "why": "Blocks (migration 057): typed pieces of a card the apps draw natively (checklist, steps, diff, chart, table, log, poll), changed in place with update_block, ticked and voted on by the owner.",
+  "now": {
+   "description": "Up to 8 blocks drawn natively on the card and changed live with update_block (docs/BLOCKS.md). Each is { id, type, title?, ... }: type is checklist, steps, diff, chart, table, log or poll, and each type takes its own keys, checked strictly. An unknown key, a wrong type or anything over a limit refuses the whole post.",
+   "maxItems": 8,
+   "type": "array",
+   "items": {
+    "type": "object",
+    "additionalProperties": {}
+   }
+  }
+ },
+ {
+  "tool": "request_input",
+  "path": [
+   "description"
+  ],
+  "why": "Blocks (migration 057): typed pieces of a card the apps draw natively (checklist, steps, diff, chart, table, log, poll), changed in place with update_block, ticked and voted on by the owner.",
+  "replace": "\nHOW THE WAITING WORKS.",
+  "with": "\nblocks puts rich blocks on the question, as on post_update: a checklist your owner\nticks, a diff or a table to decide on, a poll. Each is { id, type, title?, ... } by type:\n  checklist { items: [{ id, text, done?, owner? }] } (owner: \"you\", an agent or a person);\n  steps { stages: [{ id, label, state, detail? }], progress?, eta? } (state: pending,\n  running, done, failed, skipped; progress 0-1; eta an ISO time);\n  diff { text } (a unified diff) or { files: [{ path, old_path?, status?, hunks }] };\n  chart { kind: line|bar, series: [{ id, label?, points: [[x, y]] }], x_label?, y_label?,\n  unit? }; table { columns: [{ label, kind? }], rows: [[...]], limit? };\n  log { lines or text, highlight?, tail? }; poll { question, options: [{ id, label }],\n  multi?, closes_at?, closed? }.\nChange one later with update_block; ticks and votes reach you as a channel event.\n\nHOW THE WAITING WORKS."
+ },
+ {
+  "tool": "request_input",
+  "path": [
+   "inputSchema",
+   "properties",
+   "blocks"
+  ],
+  "why": "Blocks (migration 057): typed pieces of a card the apps draw natively (checklist, steps, diff, chart, table, log, poll), changed in place with update_block, ticked and voted on by the owner.",
+  "now": {
+   "description": "Up to 8 blocks drawn natively on the card and changed live with update_block (docs/BLOCKS.md). Each is { id, type, title?, ... }: type is checklist, steps, diff, chart, table, log or poll, and each type takes its own keys, checked strictly. An unknown key, a wrong type or anything over a limit refuses the whole post.",
+   "maxItems": 8,
+   "type": "array",
+   "items": {
+    "type": "object",
+    "additionalProperties": {}
+   }
+  }
+ },
+ {
+  "tool": "update_block",
+  "why": "Blocks (migration 057): typed pieces of a card the apps draw natively (checklist, steps, diff, chart, table, log, poll), changed in place with update_block, ticked and voted on by the owner.",
+  "add": {
+   "name": "update_block",
+   "title": "Change a block in place",
+   "description": "Change one block on a card you posted, in place: tick a line, mark a stage failed, add log\nlines, add chart points, close a poll. The card stays where it is and nothing new is posted;\nyour owner sees the block change live. Use this instead of editing the card's text or posting\n\"step 3 done\" again.\n\nArguments (name exactly one card):\n- update_id, message_id or request_id: the card the block is on. Only your own cards.\n- block_id (required): the block's id, as you gave it.\n- patch (one of patch, block, remove): what to change. A plain value (title, progress,\n  kind, ...) is replaced, and null clears it. A list with ids (items, stages, series,\n  options) is merged by id: a given id changes only the fields you give, a new id is added\n  at the end, and remove: [ids] takes some away. append (log), append_rows (table) and a\n  series' points (chart) add to the end; a log keeps its newest 1000 lines and a series its\n  newest 500 points. The block is checked again whole afterwards.\n  Examples: { items: [{ id: \"3\", done: true }] }; { stages: [{ id: \"test\", state: \"failed\",\n  detail: \"2 failed\" }], progress: 0.6 }; { append: [\"line\", \"line\"] };\n  { series: [{ id: \"p95\", points: [[12, 340]] }] }; { closed: true }.\n- block (one of patch, block, remove): the whole block, as on post_update. It replaces the\n  block, or adds it when the card has none with that id (at most 8 on a card).\n- remove (one of patch, block, remove): true takes the block off the card.\n\nTwo changes at once never lose one another. A tick or vote by your owner is kept: the\nserver records who ticked a line and who voted, and you cannot write those yourself.\n\nReturns { block: { id, type, rev, updated_at } }, kept small so a long log costs you\nnothing per append; get_blocks reads the whole block. Removing returns { removed: true,\nblock_id }.\n\nOn failure: \"not_found\" means no such card, or no block with that id on it (give block\nto add one). \"invalid_argument\" means the card is not yours, the patch named something\nthat type does not have, or the block would break a limit; nothing is changed.",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "update_id": {
+      "description": "The update the block is on, from post_update. Name exactly one card.",
+      "type": "string"
+     },
+     "message_id": {
+      "description": "The message the block is on instead, from post_message.",
+      "type": "string"
+     },
+     "request_id": {
+      "description": "The question the block is on instead, from request_input.",
+      "type": "string"
+     },
+     "block_id": {
+      "type": "string",
+      "description": "The block's id on that card, as you gave it."
+     },
+     "patch": {
+      "description": "What to change: plain values replaced (null clears), lists with ids merged by id, remove: [ids], append / append_rows / a series' points added to the end.",
+      "type": "object",
+      "additionalProperties": {}
+     },
+     "block": {
+      "description": "The whole block instead, { id, type, title?, ... } as on post_update: replaces it, or adds it when the card has no block with this id.",
+      "type": "object",
+      "additionalProperties": {}
+     },
+     "remove": {
+      "description": "true takes the block off the card.",
+      "type": "boolean"
+     }
+    },
+    "required": [
+     "block_id"
+    ]
+   },
+   "annotations": {
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  }
+ },
+ {
+  "tool": "get_blocks",
+  "why": "Blocks (migration 057): typed pieces of a card the apps draw natively (checklist, steps, diff, chart, table, log, poll), changed in place with update_block, ticked and voted on by the owner.",
+  "add": {
+   "name": "get_blocks",
+   "title": "Read a card's blocks",
+   "description": "Read the blocks on a card as they are now: which lines are ticked and by whom, each stage's\nstate, a poll's votes and who cast them. Use it before acting on a checklist or a poll, or\nwhen a channel event said your owner ticked or voted and you want the whole picture.\n\nArguments (name exactly one card):\n- update_id, message_id or request_id: the card.\n- block_id (optional): just this block.\n\nReturns { blocks: [{ id, type, title, ..., rev, updated_at }] }. A checklist line that is\nticked has done_by { kind: \"person\" | \"agent\", id, name } and done_at. A poll's options\neach have votes and voters, and closed says whether it still takes votes.\n\nOn failure: \"not_found\" means no such card, or no block with that id.",
+   "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+     "update_id": {
+      "description": "The update the block is on, from post_update. Name exactly one card.",
+      "type": "string"
+     },
+     "message_id": {
+      "description": "The message the block is on instead, from post_message.",
+      "type": "string"
+     },
+     "request_id": {
+      "description": "The question the block is on instead, from request_input.",
+      "type": "string"
+     },
+     "block_id": {
+      "type": "string",
+      "description": "Just this block, by its id. Leave it out for all of them."
+     }
+    }
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "openWorldHint": false
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  }
  }
 ]
