@@ -79,8 +79,15 @@ class AgentWork(private val db: Database, private val bus: Bus, private val cloc
      * §4.4): a line written before [openedAt] that some session of the agent was handed before
      * [handedBefore] is not handed over again, whichever client it went to. Lines written since the
      * stream opened are live, and only the stream's own record of what it sent keeps them from repeating.
+     * Nothing written more than [MAX_AGE_MS] before the stream opened is caught up on at all, handed or
+     * not: an agent that never reads with get_messages would otherwise be sent its old history on
+     * every restart. get_messages still reaches it.
      */
-    data class Backlog(val openedAt: Long, val handedBefore: Long)
+    data class Backlog(val openedAt: Long, val handedBefore: Long) {
+        companion object {
+            const val MAX_AGE_MS = 24 * 60 * 60 * 1000L
+        }
+    }
 
     /**
      * The newest [limit] unread lines in scope (narrowed to [within] when a bridge named channels),
@@ -92,9 +99,11 @@ class AgentWork(private val db: Database, private val bus: Bus, private val cloc
         var where = unreadWhere(agentId, Subscriptions.Reach(within), args)
         if (backlog != null) {
             where += """
+              AND m.created_at >= ?
               AND NOT (m.created_at < ? AND EXISTS (
                 SELECT 1 FROM message_deliveries AS d
                 WHERE d.team_id = m.team_id AND d.message_id = m.id AND d.agent_id = ? AND d.delivered_at < ?))"""
+            args += backlog.openedAt - Backlog.MAX_AGE_MS
             args += backlog.openedAt
             args += agentId
             args += backlog.handedBefore

@@ -395,8 +395,10 @@ stream opened** is also skipped when any session of the same agent (any client
 id, or none) was handed it more than 2 minutes ago (`HANDOVER_MS`,
 `http/AgentStream.kt`). A line handed over in the last 2 minutes still comes,
 so a bridge that dropped and reconnected catches what it may have missed; a
-line no session was ever handed always comes (real catch-up). Nothing handed
-over more than a day ago is ever replayed, since that is well past 2 minutes.
+line no session was ever handed comes too (real catch-up), unless it was
+written more than a day before the stream opened (`AgentWork.Backlog.MAX_AGE_MS`):
+old history is never caught up on, handed or not, and `get_messages` still
+reaches it. Nothing handed over more than a day ago is ever replayed either.
 Lines written after the stream opened are live: only this connection's own
 de-dupe applies, so every session sharing one token hears each new line. The
 filter is in the unread query, so the 5-line limit is spent on lines the agent

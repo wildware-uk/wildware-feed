@@ -85,4 +85,14 @@ class AgentBacklogTest {
         now += 5 * minute
         assertEquals(listOf("live"), backlog(openedAt), "only the stream's own record of what it sent stops a live line")
     }
+
+    @Test
+    fun `a line written over a day before the stream opened is not caught up on, even if never handed`() {
+        setUp()
+        say("two days old")
+        now += 48 * 60 * minute
+        say("this morning")
+        assertEquals(listOf("this morning"), backlog())
+        assertEquals(listOf("two days old", "this morning"), work.unread("A", 5).map { it.body }, "get_messages still reaches it")
+    }
 }
