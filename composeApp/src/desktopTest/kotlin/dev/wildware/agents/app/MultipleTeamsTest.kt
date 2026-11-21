@@ -90,6 +90,8 @@ class MultipleTeamsTest {
         assertEquals(AppScreen.SigningIn(adding = true), model.screen.value)
         model.signIn("https://b.test", "right", "Test device")
         model.openOn("https://b.test")
+        // The list is published a moment after the screen changes.
+        model.teamsWhere { list -> list.size == 2 && list.lastOrNull()?.active == true }
         return model
     }
 
@@ -103,6 +105,7 @@ class MultipleTeamsTest {
         model.switchTeam(teams[0].key)
         model.openOn("https://a.test")
         assertEquals("https://a.test", sessions.load()?.server)
+        model.teamsWhere { list -> list.firstOrNull()?.active == true }
         assertEquals(2, model.teams.value.size, "switching signs nothing out")
         assertEquals(null, a.wrote("POST", "/api/devices/sign-out"))
     }
@@ -142,7 +145,7 @@ class MultipleTeamsTest {
         val other = model.teams.value.first { !it.active }
         model.signOutOf(other.key)
         withTimeout(10_000) { while (a.wrote("POST", "/api/devices/sign-out") == null) delay(20) }
-        assertEquals(listOf("b.test"), model.teams.value.map { it.name })
+        model.teamsWhere { list -> list.map { it.name } == listOf("b.test") }
         assertEquals("https://b.test", (model.screen.value as AppScreen.Signed).session.saved.server)
         assertEquals(null, b.wrote("POST", "/api/devices/sign-out"))
     }
@@ -153,7 +156,7 @@ class MultipleTeamsTest {
         model.signOut()
         model.openOn("https://a.test")
         withTimeout(10_000) { while (b.wrote("POST", "/api/devices/sign-out") == null) delay(20) }
-        assertEquals(listOf("a.test"), model.teams.value.map { it.name })
+        model.teamsWhere { list -> list.map { it.name } == listOf("a.test") }
         assertEquals("https://a.test", sessions.load()?.server)
     }
 

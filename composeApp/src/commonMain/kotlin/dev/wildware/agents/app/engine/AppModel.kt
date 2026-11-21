@@ -31,6 +31,8 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /** Where the demo's sessions think they are. Nothing is ever sent there: the demo answers itself. */
 internal const val DemoAddress = "https://demo.example"
@@ -103,6 +105,12 @@ class AppModel(
 
     private val savedTeams = MutableStateFlow(SavedTeams())
 
+    /** One change of open team at a time: each waits for the last to finish closing its team. */
+    private val changing = Mutex()
+
+    /** Runs [change] after any change of team already under way. */
+    private fun changeTeams(change: suspend () -> Unit): Job = scope.launch { changing.withLock { change() } }
+
     /** Every team this device is signed in to, the open one marked, in the order they were added. */
     val teams: StateFlow<List<TeamEntry>> = combine(savedTeams, watch.waiting) { saved, waiting ->
         saved.teams.map { t ->
@@ -143,10 +151,10 @@ class AppModel(
         val home = platform.homeServer
         val first = saved.activeTeam ?: saved.teams.maxByOrNull { it.lastUsed }
         when {
-            first != null -> openTeam(first)
+            first != null -> changeTeams { openTeam(first) }
             home != null -> scope.launch { adoptCookie(home) }
         }
-        scope.launch { watch.signedOut.collect { key -> forgetTeam(key, endDevice = false) } }
+        scope.launch { watch.signedOut.collect { key -> changeTeams { forgetTeam(key, endDevice = false) } } }
         publishTeams()
     }
 
@@ -162,18 +170,22 @@ class AppModel(
         addTeam(SavedSession(SignIn.normalise(home), SignIn.CookieSession, platform.deviceName))
     }
 
-    /** Closes the open team, if any: its live session stops and what waits to send is put by for it. */
-    private fun closeCurrent() {
+    /**
+     * Closes the open team, if any: its live session stops and, once its outbox has finished
+     * writing, what waits to send is put by for it.
+     */
+    private suspend fun closeCurrent() {
         watcher?.cancel()
         watcher = null
-        current?.stop()
+        val closing = current
         current = null
+        closing?.stopAndSettle()
         activeKey?.let { key -> runCatching { moveOutbox(platform.outbox, platform.teamFiles(key).outbox) } }
         activeKey = null
     }
 
     /** Opens [team]: on this computer's server once it has started, else straight away. */
-    private fun openTeam(team: SavedTeam) {
+    private suspend fun openTeam(team: SavedTeam) {
         closeCurrent()
         val opened = teamList.activate(team.key) ?: return
         activeKey = opened.key
@@ -231,7 +243,8 @@ class AppModel(
         val flow = hostedLogin ?: error("this app has no hosted Log in")
         teamList.find(team.address)?.let { known ->
             flow.startOver()
-            return openTeam(known)
+            changing.withLock { openTeam(known) }
+            return
         }
         val signed = flow.join(team, deviceName)
         addTeam(SavedSession(signed.server, signed.token, signed.device.name, signed.device.id), team.name)
@@ -262,7 +275,7 @@ class AppModel(
      * A new sign-in: added to the teams and opened. Signed in again to a team already here, it
      * takes that team's place, and the device it replaces is ended on the dashboard.
      */
-    private fun addTeam(saved: SavedSession, name: String? = null) {
+    private suspend fun addTeam(saved: SavedSession, name: String? = null) = changing.withLock {
         closeCurrent()
         val (team, replaced) = teamList.add(saved, name)
         if (replaced != null && replaced.token != SignIn.CookieSession && replaced.token != saved.token) endDevice(replaced)
@@ -290,13 +303,13 @@ class AppModel(
             return
         }
         val team = teamList.load().teams.firstOrNull { it.key == key } ?: return
-        openTeam(team)
+        changeTeams { if (activeKey != team.key || current == null) openTeam(team) }
     }
 
     /** Opens the team at [server], when this device is signed in to it. Whether it was. */
     fun switchTeamAt(server: String): Boolean {
         val team = teamList.find(server) ?: return false
-        if (team.key != activeKey) openTeam(team)
+        changeTeams { if (team.key != activeKey) openTeam(team) }
         return true
     }
 
@@ -369,7 +382,7 @@ class AppModel(
             mutableScreen.value = AppScreen.SigningIn(notice)
             return
         }
-        forgetTeam(key, endDevice = notice == null, notice = notice)
+        changeTeams { forgetTeam(key, endDevice = notice == null, notice = notice) }
     }
 
     /** Signs out of the team [key], open or not, as [signOut] does. */
@@ -379,21 +392,24 @@ class AppModel(
             publishTeams()
             return
         }
-        forgetTeam(key, endDevice = true)
+        changeTeams { forgetTeam(key, endDevice = true) }
     }
 
-    private fun forgetTeam(key: String, endDevice: Boolean, notice: String? = null) {
+    private suspend fun forgetTeam(key: String, endDevice: Boolean, notice: String? = null) {
         val team = teamList.load().teams.firstOrNull { it.key == key } ?: return
         val wasOpen = key == activeKey || (activeKey == null && teamList.load().active == key)
+        // Forgotten first: the key is gone from this device before anything else happens.
+        teamList.remove(key)
         // The owner chose to sign out: tell the dashboard, so this device's key stops working and its
         // alerts stop. Nothing waits on the answer.
         if (endDevice) endDevice(team.session)
         if (wasOpen) {
             watcher?.cancel()
             watcher = null
-            current?.stop()
+            val closing = current
             current = null
             activeKey = null
+            closing?.stopAndSettle()
             // What waited to send was that team's.
             runCatching { clearOutbox(platform.outbox) }
         }
@@ -402,7 +418,6 @@ class AppModel(
             clearOutbox(files.outbox)
             files.clear()
         }
-        teamList.remove(key)
         val left = teamList.load().teams
         publishTeams()
         when {

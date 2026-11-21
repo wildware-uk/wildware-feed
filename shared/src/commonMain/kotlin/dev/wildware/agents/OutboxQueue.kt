@@ -3,6 +3,7 @@ package dev.wildware.agents
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -109,6 +110,17 @@ class OutboxQueue @OptIn(ExperimentalTime::class) constructor(
     fun stop() {
         runner?.cancel()
         runner = null
+    }
+
+    /**
+     * Stops, and waits until nothing this queue started is still writing to its storage: before
+     * what waits there is moved somewhere else (another team opening on the same device).
+     */
+    suspend fun stopAndSettle() {
+        runner?.cancelAndJoin()
+        runner = null
+        // Whatever was handed to the queue's own thread before now has run once this has.
+        confined.launch {}.join()
     }
 
     /** Try now. [ignoreBackoff] when the odds changed: the network came back, or the owner opened the app. */

@@ -807,6 +807,13 @@ class DashboardSession(
         }
     }
 
+    /** [stop], once the outbox has finished writing: what waits to send can then be moved safely. */
+    suspend fun stopAndSettle() {
+        dashboard.stop()
+        outbox.stopAndSettle()
+        stop()
+    }
+
     fun stop() {
         dashboard.stop()
         outbox.stop()
