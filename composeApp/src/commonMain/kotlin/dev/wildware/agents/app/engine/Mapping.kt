@@ -30,6 +30,8 @@ import dev.wildware.agents.RequestCard
 import dev.wildware.agents.RequestKind
 import dev.wildware.agents.StreamStatus
 import dev.wildware.agents.ThreadLine
+import dev.wildware.agents.SharedSecretView
+import dev.wildware.agents.app.feed.SharedSecret
 import dev.wildware.agents.UpdateCard
 import dev.wildware.agents.app.feed.AgentDetails
 import dev.wildware.agents.NotificationList
@@ -279,6 +281,7 @@ internal class FeedMapper(
                 activityAt = activityAt,
                 refs = update.refs.linked(agents, project, update.projectId),
                 blocks = update.blocks.cardBlocks(CardKinds.Update, update.id),
+                secrets = update.secrets.shared(CardKinds.Update, update.id),
             )
         }
         is PostCard -> cardTime(createdAt, activityAt, post.message.editedAt).let { time -> FeedItem.Post(
@@ -312,6 +315,7 @@ internal class FeedMapper(
             undelivered = post.message.status == null && undelivered(post),
             refs = post.refs.linked(agents, project, projectId),
             blocks = post.blocks.cardBlocks(CardKinds.Message, id),
+            secrets = post.secrets.shared(CardKinds.Message, id),
         ) }
     }
 
@@ -452,6 +456,7 @@ internal class FeedMapper(
                 answering = line.message.answers?.let(byId::get)?.let { author(it, agents).let { a -> if (a is Author.Owner) "you" else a.name } },
                 refs = line.refs.linked(agents, project, line.message.projectId),
                 blocks = line.blocks.cardBlocks(CardKinds.Message, line.message.id),
+                secrets = line.secrets.shared(CardKinds.Message, line.message.id),
             )
         }
     }
@@ -504,6 +509,10 @@ internal class FeedMapper(
 
     private fun reactions(views: List<ReactionView>): List<Reaction> =
         views.groupBy { it.emoji }.map { (emoji, all) -> Reaction(emoji, all.size, mine = all.any(::mine), spoken = emoji) }
+
+    /** The secrets an agent attached to a card, as chips. */
+    private fun List<SharedSecretView>.shared(kind: String, cardId: String): List<SharedSecret> =
+        map { SharedSecret(kind, cardId, it.name, it.available) }
 
     /** The blocks on a card, with who you are, so the screen knows your tick and your vote. */
     private fun List<dev.wildware.agents.BlockView>.cardBlocks(kind: String, id: String): List<dev.wildware.agents.app.feed.CardBlock> {

@@ -635,6 +635,7 @@ internal class ThreadsReader(
             embeds = current.embeds.filterKeys { it !in replaced } + part.embeds.filterKeys { it in replaced },
             refs = current.refs.filterKeys { it !in replaced } + part.refs.filterKeys { it in replaced },
             blocks = current.blocks.filterKeys { it !in replaced } + part.blocks.filterKeys { it in replaced },
+            secrets = current.secrets.filterKeys { it !in replaced } + part.secrets.filterKeys { it in replaced },
             deliveries = current.deliveries.filter { it.messageId !in replaced } + part.deliveries.filter { it.messageId in replaced },
             reactions = current.reactions.filter { it.messageId !in replaced } + part.reactions.filter { it.messageId in replaced },
         ))

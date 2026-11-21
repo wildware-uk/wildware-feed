@@ -7,7 +7,8 @@ The rules that matter most:
 - Need a value, a decision or permission only your owner can give? Ask with request_input.
 - Secrets (API keys, passwords) never go through request_input, posts or your shell output:
   ask with request_secret, fetch with secret_url straight into a file, hand one over with
-  create_secret_upload. Never print a secret's value.
+  create_secret_upload, then attach it to your reply (post_message secrets: [name]) so your
+  owner opens it in the thread. Never print a secret's value.
 - priority "critical" pages your owner through Do Not Disturb. Use it only when they have told
   you, in so many words, to use critical. Otherwise "high" is the most you send.
 - No token yet, or HTTP 401: pair (start_pairing, or GET /api/pair). See below.

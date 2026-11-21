@@ -84,6 +84,7 @@ class Reads(private val db: Database, private val clock: () -> Long = System::cu
         val embeds = embedsForMany("update_id", ids)
         val refs = refsFor("update", ids)
         val blocks = blocksFor("update", ids)
+        val secrets = secretsFor("update", ids)
         val items = updates.zip(ids).map { (update, id) ->
             val extra = mutableListOf<Pair<String, JsonElement>>(
                 "media" to JsonArray(media[id].orEmpty()),
@@ -93,6 +94,8 @@ class Reads(private val db: Database, private val clock: () -> Long = System::cu
                 "refs" to JsonArray(refs[id].orEmpty()),
                 // Migration 057: the blocks drawn on it, last.
                 "blocks" to JsonArray(blocks[id].orEmpty()),
+                // Migration 066: secrets the agent attached, by name, and whether each can still be opened.
+                "secrets" to JsonArray(secrets[id].orEmpty()),
             )
             update.plus(*extra.toTypedArray())
         }
@@ -196,6 +199,10 @@ class Reads(private val db: Database, private val clock: () -> Long = System::cu
 
     /** The blocks on each of [ids] (migration 057), by card id. */
     fun blocksFor(kind: String, ids: List<String>): Map<String, List<JsonObject>> = BlockReads(db, clock).views(kind, ids)
+
+    /** The secrets attached to each of [ids] (migration 066), by card id: names only, never values. */
+    fun secretsFor(kind: String, ids: List<String>): Map<String, List<JsonObject>> =
+        CardSecrets(db, clock).on(kind, ids).mapValues { (_, shared) -> shared.map(CardSecrets::json) }
 
     /** The summaries of the cards each of [ids] points at (migration 056), by card id. */
     fun refsFor(kind: String, ids: List<String>): Map<String, List<JsonObject>> = CardRefs(db, clock).summaries(kind, ids)
@@ -501,6 +508,7 @@ class Reads(private val db: Database, private val clock: () -> Long = System::cu
         val embeds = embedsForMany("message_id", messageIds)
         val refs = refsFor("message", messageIds)
         val blocks = blocksFor("message", messageIds)
+        val secrets = secretsFor("message", messageIds)
         return listOf(
             "projects" to JsonArray(projects),
             "groups" to JsonArray(db.query("SELECT ${Groups.COLUMNS} FROM project_groups WHERE team_id = :team ORDER BY lower(name), seq") { Groups.json(it) }),
@@ -516,6 +524,7 @@ class Reads(private val db: Database, private val clock: () -> Long = System::cu
             "messageEmbeds" to byMessage(messageIds) { embeds[it].orEmpty() },
             "messageRefs" to byMessage(messageIds) { refs[it].orEmpty() },
             "messageBlocks" to byMessage(messageIds) { blocks[it].orEmpty() },
+            "messageSecrets" to byMessage(messageIds) { secrets[it].orEmpty() },
         )
     }
 
@@ -527,6 +536,7 @@ class Reads(private val db: Database, private val clock: () -> Long = System::cu
         val embeds = embedsForMany("message_id", ids)
         val refs = refsFor("message", ids)
         val blocks = blocksFor("message", ids)
+        val secrets = secretsFor("message", ids)
         return listOf(
             "messages" to JsonArray(messages),
             "acks" to JsonArray(acksForMessages(ids)),
@@ -536,6 +546,7 @@ class Reads(private val db: Database, private val clock: () -> Long = System::cu
             "reactions" to JsonArray(reactionsFor("message", ids)),
             "refs" to byMessage(ids) { refs[it].orEmpty() },
             "blocks" to byMessage(ids) { blocks[it].orEmpty() },
+            "secrets" to byMessage(ids) { secrets[it].orEmpty() },
         )
     }
 

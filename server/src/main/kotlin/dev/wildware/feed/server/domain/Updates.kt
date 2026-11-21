@@ -23,6 +23,8 @@ class Updates(private val feed: Feed) {
         val refs: List<CardRef>? = null,
         /** Blocks drawn on the card (migration 057), as the agent wrote them. */
         val blocks: List<kotlinx.serialization.json.JsonElement>? = null,
+        /** Names of secrets attached to the card (migration 066); people open them in place. Never values. */
+        val secrets: List<String>? = null,
     )
 
     class Edit(
@@ -51,7 +53,9 @@ class Updates(private val feed: Feed) {
         val priority = input.priority ?: "medium"
         // The same card posted again a moment ago: the agent's MCP client resending when the server was slow
         // to answer. The first one comes back, and nothing new happens. Checked before the media, which it holds.
-        if (input.embeds.isNullOrEmpty() && input.apps.isNullOrEmpty() && input.refs.isNullOrEmpty() && input.blocks.isNullOrEmpty()) {
+        if (input.embeds.isNullOrEmpty() && input.apps.isNullOrEmpty() && input.refs.isNullOrEmpty() && input.blocks.isNullOrEmpty() &&
+            input.secrets.isNullOrEmpty()
+        ) {
             repeatOf(agentId, project.id, title, body, input.level ?: "info", priority, input.mediaIds.orEmpty())?.let { return@op it }
         }
         val mediaIds = if (input.mediaIds.isNullOrEmpty()) emptyList() else FeedAttachments.assertAttachableToUpdate(db, input.mediaIds, agentId)
@@ -60,6 +64,7 @@ class Updates(private val feed: Feed) {
         if (priority !in PRIORITIES) throw invalid("priority must be one of: ${PRIORITIES.joinToString(", ")}")
         val refs = CardRefs(db, feed.clock).check("agent:$agentId", input.refs)
         val blocks = feed.blocks.check(input.blocks, agentId)
+        val secrets = CardSecrets(db, feed.clock).check(agentId, input.secrets)
 
         val id = Ulid.next()
         db.update(
@@ -74,6 +79,7 @@ class Updates(private val feed: Feed) {
         if (apps.isNotEmpty()) FeedAttachments.attachApps(db, apps, CardRef("update", id), agentId, author, feed.now())
         if (refs.isNotEmpty()) CardRefs(db, feed.clock).set(CardRef("update", id), refs)
         if (blocks.isNotEmpty()) feed.blocks.attach(CardRef("update", id), blocks)
+        if (secrets.isNotEmpty()) CardSecrets(db, feed.clock).attach(CardRef("update", id), agentId, secrets)
         Subscriptions(db, feed.clock).run {
             // From now on: a new card never turns the channel's old history into unread.
             followProject(Subscriptions.agent(agentId), project.id)

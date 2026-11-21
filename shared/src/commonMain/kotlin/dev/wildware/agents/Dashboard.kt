@@ -59,6 +59,8 @@ data class ThreadLine(
     val blocks: List<BlockView> = emptyList(),
     /** While [sending]: a voice note waiting for an Undo until then (epoch millis). Null when it can't be undone. */
     val undoUntil: Long? = null,
+    /** Secrets an agent attached to the line, by name (migration 066). */
+    val secrets: List<SharedSecretView> = emptyList(),
 )
 
 /** One card in the feed. */
@@ -853,6 +855,7 @@ class Feed internal constructor(
             sending = message.id in draftIds,
             uploaded = if (message.id in draftIds) uploads[message.id.removePrefix(DraftPrefix)] else null,
             undoUntil = draftHolds[message.id],
+            secrets = index.snapshot.secrets[message.id].orEmpty(),
         )
     }
 

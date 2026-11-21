@@ -301,6 +301,8 @@ data class Reply(
     val refs: List<LinkedCard> = emptyList(),
     /** Blocks drawn on it: a checklist, steps, a diff, a chart, a table, a log or a poll. */
     val blocks: List<CardBlock> = emptyList(),
+    /** Secrets the agent attached, drawn as locked chips the owner opens in place. */
+    val secrets: List<SharedSecret> = emptyList(),
 )
 
 /**
@@ -456,6 +458,8 @@ sealed interface FeedItem {
         val refs: List<LinkedCard> = emptyList(),
         /** Blocks drawn on it: a checklist, steps, a diff, a chart, a table, a log or a poll. */
         val blocks: List<CardBlock> = emptyList(),
+        /** Secrets the agent attached, drawn as locked chips the owner opens in place. */
+        val secrets: List<SharedSecret> = emptyList(),
     ) : Threaded {
         override val starter: Author get() = Author.AgentAuthor(agent)
     }
@@ -579,6 +583,8 @@ sealed interface FeedItem {
         val refs: List<LinkedCard> = emptyList(),
         /** Blocks drawn on it: a checklist, steps, a diff, a chart, a table, a log or a poll. */
         val blocks: List<CardBlock> = emptyList(),
+        /** Secrets the agent attached, drawn as locked chips the owner opens in place. */
+        val secrets: List<SharedSecret> = emptyList(),
     ) : Threaded {
         override val title: String get() = body.lineSequence().first().take(120)
         override val starter: Author get() = author
@@ -902,3 +908,11 @@ data class InviteRow(val id: String, val role: String, val email: String?, val e
 
 @Immutable
 data class CreatedInviteRow(val link: String, val code: String, val role: String, val email: String?)
+
+/**
+ * A secret an agent attached to a post or reply: "🔒 NAME — Reveal · Copy". The value is never
+ * held here; it is fetched when the owner asks, after the device has checked it is them.
+ * [available] is false once it can no longer be opened (deleted, paused, or taken from the agent).
+ */
+@Immutable
+data class SharedSecret(val cardKind: String, val cardId: String, val name: String, val available: Boolean = true)

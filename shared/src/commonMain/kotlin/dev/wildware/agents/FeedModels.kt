@@ -273,6 +273,8 @@ data class UpdateView(
     val refs: List<CardRefView> = emptyList(),
     /** Blocks drawn on it (docs/BLOCKS.md). */
     val blocks: List<BlockView> = emptyList(),
+    /** Secrets the agent attached, by name: opened one at a time with [DashboardClient.revealSharedSecret]. */
+    val secrets: List<SharedSecretView> = emptyList(),
 ) {
     @Serializable
     data class Share(val views: Int = 0, val sharedAt: Long = 0)
@@ -443,7 +445,17 @@ data class MessagesSnapshot(
     val refs: Map<String, List<CardRefView>> = emptyMap(),
     /** The blocks on each message, by message id; only messages that have some. */
     val blocks: Map<String, List<BlockView>> = emptyMap(),
+    /** The secrets an agent attached to each message, by message id; only messages that have some. */
+    val secrets: Map<String, List<SharedSecretView>> = emptyMap(),
 )
+
+/**
+ * A secret an agent attached to a post (migration 066): its name, and whether it can still be
+ * opened. False once the secret is deleted or paused, or the agent that shared it lost it. The value
+ * is never here: it is fetched on demand, for the person's eyes only.
+ */
+@Serializable
+data class SharedSecretView(val name: String, val available: Boolean = true)
 
 /** `GET /api/snapshot/requests`: every question waiting on the owner, never paged or scoped. */
 @Serializable

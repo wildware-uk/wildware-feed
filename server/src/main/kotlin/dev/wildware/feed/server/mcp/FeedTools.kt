@@ -5,6 +5,7 @@ import dev.wildware.feed.server.domain.AckRow
 import dev.wildware.feed.server.domain.CardRef
 import dev.wildware.feed.server.domain.BlockReads
 import dev.wildware.feed.server.domain.CardRefs
+import dev.wildware.feed.server.domain.CardSecrets
 import dev.wildware.feed.server.domain.Cards
 import dev.wildware.feed.server.domain.FeedAttachments
 import dev.wildware.feed.server.domain.FieldRow
@@ -104,6 +105,7 @@ fun ToolRegistry.registerFeedTools(app: App) {
                 apps = call.apps(),
                 refs = refsArg(call.args),
                 blocks = call.list("blocks"),
+                secrets = call.texts("secrets"),
             ),
         )
         val apps = if (call.list("apps").isNullOrEmpty()) emptyList() else FeedAttachments.appsOn(app.db, CardRef("update", update.id))
@@ -114,6 +116,7 @@ fun ToolRegistry.registerFeedTools(app: App) {
                 if (apps.isNotEmpty()) put("apps", FeedViews.apps(apps))
                 refsView(app, CardRef("update", update.id), call.args)?.let { put("refs", it) }
                 blocksView(app, CardRef("update", update.id), call.args)?.let { put("blocks", it) }
+                secretsView(app, CardRef("update", update.id), call.args)?.let { put("secrets", it) }
             },
         )
     }
@@ -252,6 +255,8 @@ fun ToolRegistry.registerFeedTools(app: App) {
         val count = page.messages.size
         val attachments = Attachments.forMessages(app, page.messages.map { it.id })
         val refs = CardRefs(app.db, app.clock).summaries("message", page.messages.map { it.id }, reader = call.author)
+        // Secrets attached to a message reach agents by name only: the value is for people to open.
+        val shared = CardSecrets(app.db, app.clock).on("message", page.messages.map { it.id })
         val read = when {
             count == 0 -> "No new messages. Carry on."
             page.unread == 0L -> "$count new message${plural(count)}, oldest first."
@@ -281,6 +286,7 @@ fun ToolRegistry.registerFeedTools(app: App) {
                     }
                     attachments.views[message.id]?.let { put("attachments", JsonArray(it)) }
                     refs[message.id]?.let { put("refs", JsonArray(it.map(FeedViews::ref))) }
+                    shared[message.id]?.let { list -> put("secrets", JsonArray(list.map { JsonPrimitive(it.name) })) }
                 }
             }))
             put("count", count)
@@ -316,6 +322,7 @@ fun ToolRegistry.registerFeedTools(app: App) {
                 apps = call.apps(),
                 refs = refsArg(call.args),
                 blocks = call.list("blocks"),
+                secrets = call.texts("secrets"),
             ),
         )
         val apps = if (call.list("apps").isNullOrEmpty()) emptyList() else FeedAttachments.appsOn(app.db, CardRef("message", message.id))
@@ -324,6 +331,7 @@ fun ToolRegistry.registerFeedTools(app: App) {
             if (apps.isNotEmpty()) put("apps", FeedViews.apps(apps))
             refsView(app, CardRef("message", message.id), call.args)?.let { put("refs", it) }
             blocksView(app, CardRef("message", message.id), call.args)?.let { put("blocks", it) }
+            secretsView(app, CardRef("message", message.id), call.args)?.let { put("secrets", it) }
         })
     }
 
@@ -357,6 +365,13 @@ private fun plural(n: Int) = if (n == 1) "" else "s"
 internal fun blocksView(app: App, card: CardRef, args: JsonObject): JsonArray? {
     if ((args["blocks"] as? JsonArray).isNullOrEmpty()) return null
     return JsonArray(BlockReads(app.db, app.clock).viewsOn(card))
+}
+
+/** The secrets a write attached (migration 066), by name: only when the call gave `secrets`. */
+internal fun secretsView(app: App, card: CardRef, args: JsonObject): JsonArray? {
+    if ((args["secrets"] as? JsonArray).isNullOrEmpty()) return null
+    val shared = CardSecrets(app.db, app.clock).on(card.kind, listOf(card.id))[card.id].orEmpty()
+    return JsonArray(shared.map { JsonPrimitive(it.name) })
 }
 
 /** The `refs` argument (migration 056): `[{ kind, id }]`, or null when it was left out. */

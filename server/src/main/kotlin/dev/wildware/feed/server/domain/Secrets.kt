@@ -186,6 +186,27 @@ class Secrets(
         return value
     }
 
+    /**
+     * A secret an agent attached to [card] (migration 066), for a person's eyes ([purpose] "reveal")
+     * or clipboard ("copy"). [who] is the person, for the audit. A share that can no longer be opened
+     * (the card or the secret is gone, the secret is paused, or the agent that shared it may no longer
+     * read it) answers `secret_unavailable`, 410.
+     */
+    fun revealShared(card: CardRef, name: String, purpose: String, actor: Actor, who: String?): ByteArray {
+        if (purpose != "reveal" && purpose != "copy") throw invalid("purpose must be reveal or copy")
+        if (card.kind != "update" && card.kind != "message") throw invalid("secrets are shared on an update or a message")
+        val opener = sealer()
+        val shares = CardSecrets(db, clock)
+        val shared = shares.find(card, name) ?: throw notFound("no secret named $name on that ${card.kind}")
+        val secret = find(shared.secretId)
+        if (secret == null || !shared.available || !shares.cardLive(card)) throw unavailable(name)
+        val value = opener.open(secret.id, sealedOf(secret.id))
+        val where = "in ${card.kind} ${card.id}" + (who?.let { ", by $it" } ?: "")
+        audit(secret.id, secret.name, if (purpose == "copy") "copied" else "revealed", actor, where)
+        changed(secret.id, "audited")
+        return value
+    }
+
     /** Newest first; [secretId] narrows it to one secret, deleted ones included. */
     fun audit(secretId: String? = null, limit: Int = 200): List<AuditEntry> = db.query(
         "SELECT * FROM secret_audit WHERE team_id = :team AND (? IS NULL OR secret_id = ?) ORDER BY seq DESC LIMIT ?",
@@ -402,6 +423,8 @@ class Secrets(
     // ---- inside -------------------------------------------------------------------------------
 
     private class Spent(val secretId: String?, val agentId: String, val name: String, val note: String?)
+
+    private fun unavailable(name: String) = DomainError("secret_unavailable", "$name is no longer available", 410)
 
     private fun sealer(): SecretBox = box ?: throw DomainError(
         "secrets_disabled",

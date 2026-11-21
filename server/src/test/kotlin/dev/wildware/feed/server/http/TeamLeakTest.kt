@@ -168,6 +168,9 @@ class TeamLeakTest {
         send(team, k, "PUT", "/api/settings/media-retention", """{"days":30}""")
         val secret = send(team, k, "POST", "/api/secrets", """{"name":"${if (lookAlike) "KEY_TWO" else "KEY_TWO_" + m.uppercase()}","value":"value $m","allAgents":true}""")
         assertEquals(201, secret.status.value, secret.bodyAsText())
+        // A secret shared in a thread (migration 066): the same name on both teams' posts on Postgres.
+        val shared = JsonArray(listOf(JsonPrimitive(if (lookAlike) "KEY_TWO" else "KEY_TWO_" + m.uppercase())))
+        tool(team, t, "post_message", args("update_id" to update, "body" to "Key $m", "secrets" to shared)).let { assertTrue("\"isError\":true" !in it, it) }
         send(team, k, "POST", "/api/requests/$request/answer", """{"value":true}""")
         tool(team, t, "request_input", args("kind" to "text", "question" to "Name $m?", "project" to slug, "timeout_s" to 3600))
         send(team, k, "POST", "/api/messages", """{"project":"$slug","body":"Owner post $m"}""")
@@ -235,6 +238,7 @@ class TeamLeakTest {
         sub("variant", listOf("original", "thumb"))
         sub("connection", b["session"].orEmpty())
         sub("token", b["token"].orEmpty())
+        sub("name", listOf("KEY_ONE", "KEY_TWO"))
         return paths
     }
 

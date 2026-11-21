@@ -1,6 +1,7 @@
 package dev.wildware.feed.server.http
 
 import dev.wildware.feed.server.App
+import dev.wildware.feed.server.domain.CardRef
 import dev.wildware.feed.server.domain.DomainError
 import dev.wildware.feed.server.domain.Secrets
 import dev.wildware.feed.server.domain.invalid
@@ -87,6 +88,21 @@ fun Route.secretRoutes(app: App) {
             val body = call.lenientObjectBody()
             val purpose = body["purpose"].jsString ?: "reveal"
             val value = secrets.reveal(call.parameters["id"].orEmpty(), purpose, call.owner(app))
+            val text = utf8(value)
+            call.respondOwner(200, buildJsonObject {
+                put("value", text ?: java.util.Base64.getEncoder().encodeToString(value))
+                put("encoding", if (text != null) "utf8" else "base64")
+            })
+        },
+    )
+    // A secret an agent attached to a post (migration 066): opened in place, one at a time, and audited.
+    endpoint(
+        "/api/cards/{kind}/{id}/secrets/{name}/reveal",
+        HttpMethod.Post to {
+            val body = call.lenientObjectBody()
+            val purpose = body["purpose"].jsString ?: "reveal"
+            val card = CardRef(call.parameters["kind"].orEmpty(), call.parameters["id"].orEmpty())
+            val value = secrets.revealShared(card, call.parameters["name"].orEmpty(), purpose, call.owner(app), call.person.name)
             val text = utf8(value)
             call.respondOwner(200, buildJsonObject {
                 put("value", text ?: java.util.Base64.getEncoder().encodeToString(value))

@@ -453,5 +453,12 @@
   "file": "065-messages-know-they-were-spoken.sql",
   "rebuildsTables": false,
   "checksum": "8a813fdcb5772bdbabb2019c0e2ea6909c25686776d3c03f90b1e1db1388fd8e"
+ },
+ {
+  "version": 66,
+  "name": "secrets-shared-in-a-thread",
+  "file": "066-secrets-shared-in-a-thread.sql",
+  "rebuildsTables": false,
+  "checksum": "ec379fefc915b819bfb135197946cec3d6f0a484f715bfbf37352e4f5c26bd24"
  }
 ]

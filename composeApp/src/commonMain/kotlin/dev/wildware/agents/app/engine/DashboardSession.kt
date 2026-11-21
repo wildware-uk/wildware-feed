@@ -23,6 +23,7 @@ import dev.wildware.agents.ThreadLine
 import dev.wildware.agents.app.feed.Author
 import dev.wildware.agents.app.feed.FeedEvent
 import dev.wildware.agents.app.feed.FeedItem
+import dev.wildware.agents.app.feed.SharedSecret
 import dev.wildware.agents.app.feed.ProjectGroup
 import dev.wildware.agents.app.feed.MarkdownCache
 import dev.wildware.agents.app.feed.Threaded
@@ -565,6 +566,23 @@ class DashboardSession(
         }
     }
 
+    /** A secret an agent attached to a post: handed to [result] and kept nowhere else. */
+    private fun revealSharedSecret(secret: SharedSecret, copy: Boolean, result: (String?, String?, Boolean) -> Unit) {
+        scope.launch {
+            try {
+                val revealed = client.revealSharedSecret(secret.cardKind, secret.cardId, secret.name, copy)
+                result(revealed.value, null, false)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (refused: DashboardException) {
+                val gone = refused.status == 410 || refused.status == 404
+                result(null, if (gone) "No longer available." else refused.message ?: "The dashboard said no.", gone)
+            } catch (failed: Throwable) {
+                result(null, "Couldn't reach the dashboard. Check the connection and try again.", false)
+            }
+        }
+    }
+
     /** Revokes a device's key, then reads the list again. Revoking this device's own key signs it out. */
     private fun revokeDevice(id: String) {
         if (mutableDevices.value.removing != null) return
@@ -891,6 +909,7 @@ class DashboardSession(
             }
             is FeedEvent.DeleteSecret -> changeSecret(event.secretId, event.done) { client.deleteSecret(event.secretId) }
             is FeedEvent.RevealSecret -> revealSecret(event.secretId, event.copy, event.result)
+            is FeedEvent.RevealSharedSecret -> revealSharedSecret(event.secret, event.copy, event.result)
             // Straight to the dashboard, never the outbox: a secret is never written to this device's disk.
             is FeedEvent.ProvideSecret -> changeNow(event.done) { client.provideSecret(event.questionId, event.value) }
             is FeedEvent.ReadPeople, is FeedEvent.InvitePerson, is FeedEvent.DismissInvite, is FeedEvent.RevokeInvite,

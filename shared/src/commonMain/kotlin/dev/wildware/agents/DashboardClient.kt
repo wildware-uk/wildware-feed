@@ -625,6 +625,19 @@ class DashboardClient(
             jsonBody(buildJsonObject { put("purpose", if (copy) "copy" else "reveal") })
         }.decoded()
 
+    /**
+     * The value of [name], a secret an agent attached to the update or message [cardId] ([cardKind]
+     * "update" or "message"), for the person's eyes ([copy] false) or clipboard ([copy] true). The
+     * dashboard logs which, with this device. One that can no longer be opened answers
+     * `secret_unavailable`.
+     */
+    @Throws(Exception::class)
+    suspend fun revealSharedSecret(cardKind: String, cardId: String, name: String, copy: Boolean): RevealedSecret =
+        http.post("api/cards/${cardKind.encodeURLPathPart()}/${cardId.encodeURLPathPart()}/secrets/${name.encodeURLPathPart()}/reveal") {
+            authorise()
+            jsonBody(buildJsonObject { put("purpose", if (copy) "copy" else "reveal") })
+        }.decoded()
+
     /** The audit, newest first; [secretId] narrows it to one secret. */
     @Throws(Exception::class)
     suspend fun secretAudit(secretId: String? = null): List<SecretAuditEntry> =

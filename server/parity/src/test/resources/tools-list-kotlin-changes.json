@@ -1501,5 +1501,84 @@
   "why": "Voice notes (migration 065): a transcribed message says so, for the agent only.",
   "replace": "A narrowed read (one channel, or an explicit since)",
   "with": "**A voice note says so.** When your owner spoke a message rather than typed it, it has\n`source: \"voice\"` and its `body` ends with a line saying it was transcribed: the words are\nas the phone heard them and may hold mistakes. Read it for meaning, and ask if something\nlooks off. That line is yours alone: your owner never sees it, so don't quote it back.\n\nA narrowed read (one channel, or an explicit since)"
+ },
+ {
+  "tool": "post_update",
+  "path": [
+   "description"
+  ],
+  "why": "Secrets in a thread (migration 066): an agent attaches a secret to a post by name and people open it in place; the value never enters the post.",
+  "replace": "el event.\n\nIf the ca",
+  "with": "el event.\n- secrets (optional): up to 8 names of secrets to hand your owner right here, in\n  the thread, e.g. [\"STRIPE_TEST_KEY\"]. Each must be one list_secrets shows you (one you\n  uploaded with create_secret_upload, or one shared with you). Your owner sees a locked\n  chip, \"🔒 STRIPE_TEST_KEY — Reveal · Copy\", and opens the value in place; you and every\n  other agent see only the name. Never put the value in body. This is how you give your\n  owner a secret: do not tell them to look in Settings.\n\nIf the ca"
+ },
+ {
+  "tool": "post_update",
+  "path": [
+   "inputSchema",
+   "properties",
+   "secrets"
+  ],
+  "why": "Secrets in a thread (migration 066): an agent attaches a secret to a post by name and people open it in place; the value never enters the post.",
+  "now": {
+   "description": "Names of secrets (as list_secrets gives them) to attach for your owner to open in place, at most 8. Names only, never values: the value never enters the post, its event or any agent's read of it.",
+   "type": "array",
+   "items": {
+    "type": "string"
+   },
+   "maxItems": 8
+  }
+ },
+ {
+  "tool": "post_message",
+  "path": [
+   "description"
+  ],
+  "why": "Secrets in a thread (migration 066): an agent attaches a secret to a post by name and people open it in place; the value never enters the post.",
+  "replace": "el event.\n\nReturns {",
+  "with": "el event.\n- secrets (optional): up to 8 names of secrets to hand your owner right here, in\n  the thread, e.g. [\"STRIPE_TEST_KEY\"]. Each must be one list_secrets shows you (one you\n  uploaded with create_secret_upload, or one shared with you). Your owner sees a locked\n  chip, \"🔒 STRIPE_TEST_KEY — Reveal · Copy\", and opens the value in place; you and every\n  other agent see only the name. Never put the value in body. This is how you give your\n  owner a secret: do not tell them to look in Settings.\n\nReturns {"
+ },
+ {
+  "tool": "post_message",
+  "path": [
+   "inputSchema",
+   "properties",
+   "secrets"
+  ],
+  "why": "Secrets in a thread (migration 066): an agent attaches a secret to a post by name and people open it in place; the value never enters the post.",
+  "now": {
+   "description": "Names of secrets (as list_secrets gives them) to attach for your owner to open in place, at most 8. Names only, never values: the value never enters the post, its event or any agent's read of it.",
+   "type": "array",
+   "items": {
+    "type": "string"
+   },
+   "maxItems": 8
+  }
+ },
+ {
+  "tool": "list_secrets",
+  "path": [
+   "description"
+  ],
+  "why": "Secrets in a thread (migration 066): an agent attaches a secret to a post by name and people open it in place; the value never enters the post.",
+  "replace": "umes it.\n\nMissing on",
+  "with": "umes it.\n\nTo give one to your owner, attach it to a post: post_message({ ..., secrets: [name] }).\n\nMissing on"
+ },
+ {
+  "tool": "create_secret_upload",
+  "path": [
+   "description"
+  ],
+  "why": "Secrets in a thread (migration 066): an agent attaches a secret to a post by name and people open it in place; the value never enters the post.",
+  "replace": "Your owner sees the secret in their app,\nmasked",
+  "with": "To hand it to your owner, post it in the\nthread you are talking in: post_message({ ..., secrets: [name] }) (or post_update). They\nsee a locked chip there and reveal or copy it in place. Never tell them to look in\nSettings; never paste the value"
+ },
+ {
+  "tool": "request_secret",
+  "path": [
+   "description"
+  ],
+  "why": "Secrets in a thread (migration 066): an agent attaches a secret to a post by name and people open it in place; the value never enters the post.",
+  "replace": "secret_url.\n\nAlways ",
+  "with": "secret_url.\n\nPass message_id (or update) to ask inside the thread you are talking in: the masked box\nshows right there, under that message, as well as at the top of their feed.\n\nAlways "
  }
 ]

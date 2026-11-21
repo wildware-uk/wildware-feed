@@ -12,7 +12,7 @@ package dev.wildware.feed.server.db
 object TeamTables {
     /** Every team-owned table (058 gave each a `team_id`; 055 made memberships and invites, 059 auth_codes, with one). */
     val ALL: List<String> = listOf(
-        "acknowledgements", "agent_pairings", "agents", "app_views", "approvals", "apps", "auth_codes", "card_blocks", "card_fields", "card_refs",
+        "acknowledgements", "agent_pairings", "agents", "app_views", "approvals", "apps", "auth_codes", "card_blocks", "card_fields", "card_refs", "card_secrets",
         "card_tags", "derivatives", "embed_types", "embeds", "group_subscriptions", "invites", "media", "memberships",
         "message_deliveries", "message_mentions", "messages", "notifications", "oauth_clients", "oauth_grants",
         "oauth_tokens", "owner_devices", "project_groups", "project_subscriptions", "projects", "reactions",

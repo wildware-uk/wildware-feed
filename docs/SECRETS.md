@@ -14,9 +14,35 @@ The agent hands the ticket to `curl`, and `curl` puts the coat straight into a f
 |---|---|---|
 | Owner, in the app | Agent | `secret_url(name)` returns a single-use URL. The agent runs `curl -fsS <url> -o .env.local` (or `export X="$(curl -fsS <url>)"`). |
 | Agent asks the owner | Agent | `request_secret(name, question)` shows a masked box in the app. The agent learns only that `name` is ready, then uses `secret_url`. |
-| Agent | Owner | `create_secret_upload(name)` returns a single-use URL. The agent runs `curl -fsS -T file <url>`. The owner sees it masked in the app. |
+| Agent | Owner | `create_secret_upload(name)` returns a single-use URL. The agent runs `curl -fsS -T file <url>`, then attaches it to its reply (below). |
+| Agent, in a thread | Owner | `post_message` or `post_update` with `secrets: ["NAME"]`. The owner sees a locked chip and opens it in place (below). |
 
 `list_secrets` returns names, notes and dates only.
+
+## Sharing in a thread
+
+An agent hands the owner a secret where they are already talking, not in Settings. It attaches
+the secret to a post by name: `post_message({..., secrets: ["STRIPE_TEST_KEY"]})` (or
+`post_update`), up to 8. Each must be a secret the agent may read itself (`list_secrets`), and not
+paused; anything else refuses the whole post. A name that is not one of the agent's is not echoed
+back in the error, in case an agent passed a value by mistake.
+
+The post carries the name only (migration 066, `card_secrets`: the card, the secret's id and name,
+and the agent). The owner's app draws a chip, "🔒 STRIPE_TEST_KEY — Reveal · Copy". Nothing is
+fetched until they tap. On a phone the app first asks for Face ID, a fingerprint or the passcode.
+Reveal shows the value in place for 30 seconds (or until the app loses focus); Copy puts it on the
+clipboard and clears it after a minute. Agents, including other agents in the channel, see only the
+name: in the post's tool result and in `get_messages` it is `secrets: ["NAME"]`.
+
+`POST /api/cards/<update|message>/<id>/secrets/<NAME>/reveal` `{purpose: "reveal" | "copy"}` opens
+it. It needs an owner's or admin's device key or browser cookie: a member gets 403, an agent's
+token 401, and another team's key finds nothing. Each opening is in the secret's audit
+(`revealed` or `copied`), with the device and "in message <id>, by <person>". Sharing is audited
+too (`shared`, by the agent).
+
+A share is checked again on every read. Once the secret is deleted or paused, or the agent that
+shared it loses it (or its token), the chip says "No longer available" and reveal answers 410
+`secret_unavailable`. Deleting the post does the same.
 
 ## Storage
 
@@ -82,6 +108,8 @@ Owner (device key):
 - `PATCH /api/secrets/<id>` `{value?, note?, allAgents?, agentIds?, paused?}` changes one.
 - `DELETE /api/secrets/<id>` deletes one.
 - `POST /api/secrets/<id>/reveal` `{purpose: "reveal" | "copy"}` returns `{value, encoding}`.
+- `POST /api/cards/<kind>/<id>/secrets/<name>/reveal` `{purpose}` opens a secret an agent attached
+  to that update or message (owner or admin; see "Sharing in a thread").
 - `GET /api/secrets/audit[?secret=<id>]` lists the audit, newest first.
 - `POST /api/requests/<id>/secret` `{value, note?}` answers a `request_secret`. The ordinary
   answer route refuses that kind, so its value never sits on the request row.

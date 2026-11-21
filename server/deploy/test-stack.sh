@@ -62,7 +62,7 @@ admin_key="$(secret)$(secret)"
 log="$work/server.log"
 (
     export ADMIN_PASSWORD_HASH="$("$bin" hash-password "$home_password" 2>/dev/null | sed -n 1p)"
-    export SESSION_SECRET="$(secret)" TOKEN_SECRET="$(secret)"
+    export SESSION_SECRET="$(secret)" TOKEN_SECRET="$(secret)" SECRETS_KEY="$(secret)"
     export DATABASE_URL="$app_url"
     export TEAM_DOMAIN=feed.test ADMIN_API_KEYS="$admin_key"
     # The control plane's page, which the tests stand in for at this address.

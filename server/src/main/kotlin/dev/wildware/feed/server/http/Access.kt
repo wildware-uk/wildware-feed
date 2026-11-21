@@ -108,6 +108,7 @@ object Access {
         "DELETE /api/secrets/{id}" to A,
         "POST /api/secrets/{id}/reveal" to A,
         "POST /api/requests/{id}/secret" to A,
+        "POST /api/cards/{kind}/{id}/secrets/{name}/reveal" to A, // a secret an agent attached to a post
     )
 
     /** The least role [method] on [pattern] needs; HEAD is GET's. Null: nobody. */

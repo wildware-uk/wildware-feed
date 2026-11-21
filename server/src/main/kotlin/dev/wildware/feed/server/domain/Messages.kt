@@ -13,6 +13,7 @@ class Messages(private val feed: Feed) {
     private val db get() = feed.db
     private val subscriptions get() = Subscriptions(feed.db, feed.clock)
     private val cardRefs get() = CardRefs(feed.db, feed.clock)
+    private val cardSecrets get() = CardSecrets(feed.db, feed.clock)
 
     /** Optional keys are null when left out; an empty string is still "given" where the TS checks `!= null`. */
     class Post(
@@ -32,6 +33,8 @@ class Messages(private val feed: Feed) {
         val refs: List<CardRef>? = null,
         /** Blocks drawn on the message (migration 057); only an agent's. */
         val blocks: List<kotlinx.serialization.json.JsonElement>? = null,
+        /** Names of secrets the agent attaches (migration 066); people open them in place. Never values. */
+        val secrets: List<String>? = null,
         /**
          * The app's own name for this send, the same on every try (migration 061). A second post with
          * it, by the same person, gets the first message back instead of making a copy.
@@ -125,7 +128,7 @@ class Messages(private val feed: Feed) {
         // A send tried again with no key: the owner's app from before send keys, or an agent's MCP client resending
         // when the server was slow to answer. Checked before the attachments, which the first copy already holds.
         val agentPost = author.startsWith(AGENT_PREFIX) && input.embeds.isNullOrEmpty() && input.apps.isNullOrEmpty() &&
-            input.refs.isNullOrEmpty() && input.blocks.isNullOrEmpty()
+            input.refs.isNullOrEmpty() && input.blocks.isNullOrEmpty() && input.secrets.isNullOrEmpty()
         if ((input.guardRepeats && person != null) || agentPost) {
             repeatOf(author, person, body, projectId, updateId, if (request) null else anchor, requestId, input.mediaIds.orEmpty())?.let { first ->
                 // Give the old copy this send's key, so the next try of it is caught by the key alone.
@@ -139,6 +142,7 @@ class Messages(private val feed: Feed) {
         val apps = if (input.apps.isNullOrEmpty()) emptyList() else FeedAttachments.checkedApps(db, input.apps)
         val refs = cardRefs.check(author, input.refs)
         val blocks = feed.blocks.check(input.blocks, if (author.startsWith(AGENT_PREFIX)) author.removePrefix(AGENT_PREFIX) else null)
+        val secrets = cardSecrets.check(if (author.startsWith(AGENT_PREFIX)) author.removePrefix(AGENT_PREFIX) else null, input.secrets)
 
         val id = Ulid.next()
         val inserted = db.update(
@@ -157,6 +161,7 @@ class Messages(private val feed: Feed) {
         if (apps.isNotEmpty()) FeedAttachments.attachApps(db, apps, CardRef("message", id), agentId, author, feed.now())
         if (refs.isNotEmpty()) cardRefs.set(CardRef("message", id), refs)
         if (blocks.isNotEmpty()) feed.blocks.attach(CardRef("message", id), blocks)
+        if (secrets.isNotEmpty()) cardSecrets.attach(CardRef("message", id), agentId!!, secrets)
 
         feed.publish("message.created", buildJsonObject {
             put("messageId", message.id)

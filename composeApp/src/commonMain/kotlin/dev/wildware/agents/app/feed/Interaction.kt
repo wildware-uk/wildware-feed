@@ -162,6 +162,18 @@ sealed interface FeedEvent {
      * already confirmed it is them. [result] hears the value, or null and why not.
      */
     data class RevealSecret(val secretId: String, val copy: Boolean, val result: (value: String?, problem: String?) -> Unit) : FeedEvent
+    /**
+     * Open a secret an agent attached to a post, for the owner's eyes or their clipboard with [copy].
+     * The chip has already confirmed it is them. [result] hears the value, or null and why not; a
+     * [gone] of true means it can no longer be opened at all.
+     */
+    data class RevealSharedSecret(
+        val secret: SharedSecret,
+        val copy: Boolean,
+        val result: (value: String?, problem: String?, gone: Boolean) -> Unit,
+    ) : FeedEvent {
+        override fun toString() = "RevealSharedSecret(${secret.cardKind} ${secret.cardId} ${secret.name}, copy=$copy)"
+    }
     /** Answer an agent's request for a secret. Sent at once, never queued. [toString] leaves the value out. */
     class ProvideSecret(val questionId: String, val value: String, val done: (String?) -> Unit = {}) : FeedEvent {
         override fun toString() = "ProvideSecret($questionId)"

@@ -156,7 +156,7 @@ class CardRefsTest {
         val message = posted.o("message").s("id")!!
 
         val snapshot = read(c.key, "/api/snapshot")
-        assertEquals(listOf("messageRefs", "messageBlocks"), snapshot.keys.toList().takeLast(2))
+        assertEquals(listOf("messageRefs", "messageBlocks", "messageSecrets"), snapshot.keys.toList().takeLast(3))
         val onMessage = snapshot.o("messageRefs").a(message)
         assertEquals(listOf(question, update, first), onMessage.map { it.jsonObject.s("id") })
         assertEquals("Release 1.2", onMessage.o(1).s("title"))
@@ -164,14 +164,14 @@ class CardRefsTest {
         assertEquals(setOf(message), snapshot.o("messageRefs").keys, "only messages that point at something")
 
         val thread = read(c.key, "/api/messages?update=$update")
-        assertEquals(listOf("refs", "blocks"), thread.keys.toList().takeLast(2))
+        assertEquals(listOf("refs", "blocks", "secrets"), thread.keys.toList().takeLast(3))
         assertEquals(3, thread.o("refs").a(message).size)
 
         val later = c.ok("post_update", buildJsonObject { put("channel", "web"); put("body", "Follow-up"); put("refs", refs("message" to message)) })
             .o("update").s("id")!!
         val items = read(c.key, "/api/snapshot/updates").o("updates").a("items")
         val byId = items.associateBy { it.jsonObject.s("id") }
-        assertEquals(listOf("refs", "blocks"), byId[later]!!.jsonObject.keys.toList().takeLast(2))
+        assertEquals(listOf("refs", "blocks", "secrets"), byId[later]!!.jsonObject.keys.toList().takeLast(3), "then secrets (migration 066)")
         assertEquals("see these", byId[later]!!.jsonObject.a("refs").single().jsonObject.s("text"))
         assertEquals(JsonArray(emptyList()), byId[update]!!.jsonObject["refs"], "an update that points at nothing has an empty list")
     }

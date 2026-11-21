@@ -161,8 +161,8 @@ class FeedApiTest : ParityTest() {
         val body = thread.obj()
         assertEquals(
             listOf("seq", "at", "messages", "acks", "media", "embeds", "deliveries", "reactions") +
-                // Card refs (migration 056) and blocks (migration 057), each by message.
-                if (Parity.kotlin) listOf("refs", "blocks") else emptyList(),
+                // Card refs (migration 056), blocks (migration 057) and secrets (migration 066), each by message.
+                if (Parity.kotlin) listOf("refs", "blocks", "secrets") else emptyList(),
             body.keys.toList(),
         )
         assertEquals(listOf(p, r1["id"].s, r2["id"].s), body["messages"].arr.map { it["id"].s })
