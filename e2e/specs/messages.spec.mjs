@@ -3,7 +3,7 @@
 import { expect, test } from '@playwright/test';
 import { Team } from '../lib/team.mjs';
 import { expectGone, expectShown, find, screenText, nextResponse, post, reload, signedIn, tap, typeInto } from '../lib/ui.mjs';
-import { expectAgentGets, goToChannel, inbox, listMessages, openCardMenu, sendWithKeys, tapOnCard, toolJson } from '../lib/messages-helpers.mjs';
+import { expectAgentGets, goToChannel, inbox, listMessages, openCardMenu, sendWithKeys, settledBox, tapOnCard, toolJson } from '../lib/messages-helpers.mjs';
 
 // Not serial: a failure doesn't skip the rest (the next test gets a fresh worker and team).
 test.describe.configure({ mode: 'default' });
@@ -86,6 +86,52 @@ test('a click inside the focused thread reply box keeps the focus', async ({ bro
     const sent = nextResponse(page, '/api/messages', 'POST', 5000);
     await sendWithKeys(page);
     expect((await sent).request().postDataJSON().body).toBe('one two three');
+});
+
+// Cards go by latest activity, so a reply moves its card to the top of the feed. The feed goes
+// with it, so the card the owner just answered doesn't vanish from under them.
+test('replying on a card further down takes the feed to the top with it', async ({ browser }) => {
+    await builder.call('create_project', { project: 'pile', name: 'Pile' });
+    // Oldest first, so card 11 ends up last: two digits each, so no title starts another.
+    for (let n = 11; n <= 20; n++) {
+        await builder.call('post_update', { project: 'pile', title: `Pile card ${n}`, body: `Card ${n} of the pile.\n\nA second paragraph, so each card takes some room.` });
+    }
+    const page = await signedIn(browser, team.owner);
+    opened.push(page);
+    await goToChannel(page, 'Pile');
+    // A card scrolled out of the list leaves the tree, so a box is read without waiting for one.
+    const oldest = page.getByRole('button', { name: /^Collapse update: Pile card 11/ }).first();
+    const newest = page.getByRole('button', { name: /^Collapse update: Pile card 20/ }).first();
+    const boxOf = (target) => target.boundingBox({ timeout: 500 }).catch(() => null);
+    const { height } = page.viewportSize();
+    const onScreen = (box) => !!box && box.width > 0 && box.y >= 0 && box.y + box.height <= height;
+    await find(page, 'button', /^Collapse update: Pile card 20/);
+    // Down to the end of the feed, where the oldest card is, so the top is out of sight.
+    for (let i = 0; i < 40 && !onScreen(await boxOf(oldest)); i++) {
+        await page.mouse.move(640, height / 2);
+        await page.mouse.wheel(0, 300);
+        await page.waitForTimeout(150);
+    }
+    for (let i = 0; i < 4; i++) {
+        await page.mouse.wheel(0, 300);
+        await page.waitForTimeout(150);
+    }
+    await settledBox(oldest);
+    expect(onScreen(await boxOf(oldest)), 'the oldest card is on screen').toBe(true);
+    expect(onScreen(await boxOf(newest)), 'the newest card is out of sight').toBe(false);
+    await tapOnCard(page, /^Collapse update: Pile card 11/, 'Reply');
+    await find(page, 'textbox', 'Reply');
+    await page.waitForTimeout(300);
+    await page.keyboard.type('Picking this one up', { delay: 15 });
+    const sent = nextResponse(page, '/api/messages');
+    await sendWithKeys(page);
+    expect((await sent).status()).toBe(201);
+    // Card 11 is first now, on screen at the top, with the rest under it and its reply box still open.
+    await expect.poll(async () => {
+        const [top, next] = [await boxOf(oldest), await boxOf(newest)];
+        return onScreen(top) && onScreen(next) && top.y < height / 2 && next.y > top.y;
+    }, { timeout: 15_000 }).toBe(true);
+    await find(page, 'textbox', 'Reply');
 });
 
 test('"Mention an agent" names one agent: only that agent gets the message', async ({ browser }) => {

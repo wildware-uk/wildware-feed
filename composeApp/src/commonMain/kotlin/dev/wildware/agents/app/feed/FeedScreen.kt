@@ -349,6 +349,7 @@ private fun DesktopColumns(ui: FeedUi, showRail: Boolean, startAt: String?) {
             }
             LoadOlderWhenNearEnd(ui, list)
             ScrollToRevealed(ui, list, itemsBefore = 1)
+            FollowRepliedCard(ui, list, itemsBefore = 1)
             ScrollToTopWhenAsked(ui, list)
             HoldArrivalsWhileAway(ui, list)
             NewOrBackToTop(ui, list, scrolledPast = 3, Modifier.align(Alignment.TopCenter).padding(top = 14.dp), toTop)
@@ -467,6 +468,7 @@ private fun PhoneFeed(ui: FeedUi, safeArea: SafeArea, startAt: String?, widthPx:
             }
             LoadOlderWhenNearEnd(ui, list)
             ScrollToRevealed(ui, list, itemsBefore = 2)
+            FollowRepliedCard(ui, list, itemsBefore = 2)
             ScrollToTopWhenAsked(ui, list)
         }
         // Tapping the status bar area scrolls to the top, as it does across iOS.
@@ -650,6 +652,32 @@ private fun ScrollToRevealed(ui: FeedUi, list: LazyListState, itemsBefore: Int) 
             if (motion.reduced) list.scrollToItem(index, -room) else list.animateScrollToItem(index, -room)
         }
         if (ui.revealing == target) ui.revealing = null
+    }
+}
+
+/**
+ * After the owner replies on a card, follows it to where the reply puts it (the top, usually), so
+ * it doesn't vanish from under them. It waits for the card to move up, which it does once the reply
+ * lands (another card jumping above it doesn't count); other people's replies never set this, so their activity leaves the view alone. A card
+ * that ends up first takes the feed right back to its top, which also lets held updates in.
+ */
+@Composable
+private fun FollowRepliedCard(ui: FeedUi, list: LazyListState, itemsBefore: Int) {
+    val target = ui.following ?: return
+    val motion = AgentTheme.motion
+    val room = with(LocalDensity.current) { 64.dp.roundToPx() }
+    LaunchedEffect(target) {
+        val moved = withTimeoutOrNull(RevealWaitMillis) {
+            snapshotFlow { cardIndex(ui.sections, target.id) }.first { it != null && it < target.from }
+        }
+        val index = moved?.let { indexIn(ui.sections, target.id, itemsBefore) }
+        when {
+            index == null -> Unit
+            moved == 0 -> if (motion.reduced) list.scrollToItem(0) else list.animateScrollToItem(0)
+            motion.reduced -> list.scrollToItem(index, -room)
+            else -> list.animateScrollToItem(index, -room)
+        }
+        if (ui.following == target) ui.following = null
     }
 }
 

@@ -558,6 +558,21 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
     fun reveal(id: String) {
         revealing = Reveal(id, ++revealSerial)
     }
+
+    /**
+     * The card the owner just replied on, and where it sat among the cards ([from]) when they sent.
+     * Their reply moves it up the feed once it lands, so the feed follows it there.
+     */
+    data class Follow(val id: String, val from: Int, val serial: Long)
+
+    /** The card the feed follows to its new place, until it moves up or the wait runs out. */
+    var following by mutableStateOf<Follow?>(null)
+
+    /** Follows card [id] once it moves: what sending a reply on it asks. */
+    private fun follow(id: String) {
+        val from = cardIndex(sections, id) ?: return
+        following = Follow(id, from, ++revealSerial)
+    }
     var isPhone = false
 
     /** Where the owner has been, for Back and Forward: channels and threads (History.kt). */
@@ -882,7 +897,11 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
                 // The box names who wrote it, and takes the cursor, ready to write the answer.
                 if (card != null && line != null) mentionAsk = MentionAsk(card.id, mentionFor(line.author), focus = true)
             }
-            is FeedEvent.SendReply -> replyingTo = null
+            is FeedEvent.SendReply -> {
+                replyingTo = null
+                // The reply makes this the newest card, so it jumps up the feed: the owner goes with it.
+                follow(event.threadId)
+            }
             is FeedEvent.SelectText -> selecting = textOf(event.targetId)?.let { SelectingText(event.targetId, it) }
             is FeedEvent.SetField -> fieldsHere[event.targetId] = fieldsHere[event.targetId].orEmpty() + (event.name to event.value)
             is FeedEvent.Tag -> noteTag(event)
@@ -974,4 +993,14 @@ fun threadProject(item: Threaded): String? = when (item) {
     is FeedItem.Update -> item.project.id
     is FeedItem.Question -> item.project.id
     is FeedItem.Post -> item.project.id
+}
+
+/** Where card [id] sits among every card in [sections], counting no headings; null when it isn't there. */
+internal fun cardIndex(sections: List<FeedSection>, id: String): Int? {
+    var i = 0
+    for (section in sections) for (item in section.items) {
+        if (item.id == id) return i
+        i++
+    }
+    return null
 }
