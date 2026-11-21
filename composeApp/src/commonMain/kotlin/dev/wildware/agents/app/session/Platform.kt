@@ -78,7 +78,26 @@ class AppPlatform(
      * (Android's channels do), so the app doesn't play it as well.
      */
     val systemSounds: (dev.wildware.agents.app.desktop.DesktopNotice) -> Boolean = { false },
+    /**
+     * Every team this device is signed in to, keys and all ([TeamList]): somewhere as private as
+     * [sessions]. In memory where nothing is kept (tests, previews).
+     */
+    val teamList: TextStore = MemoryTextStore(),
+    /**
+     * Each team's own files ([TeamFiles]) by its key. The empty key is the team the device had before
+     * it knew about teams, whose files are the ones above. Null keeps every team's in memory.
+     */
+    private val teamFilesFor: ((String) -> TeamFiles)? = null,
 ) {
+    private val memoryTeams = mutableMapOf<String, TeamFiles>()
+
+    /** The files team [key] keeps on this device. */
+    fun teamFiles(key: String): TeamFiles = teamFilesFor?.invoke(key) ?: memoryTeams.getOrPut(key) {
+        if (key.isEmpty()) TeamFiles(readMarks, feedCache, cardFolds, postTarget, MemoryOutboxStorage(), clear = {}) else TeamFiles.inMemory()
+    }
+
+
+
     companion object {
         /** Everything in memory: for tests and previews. */
         fun inMemory(

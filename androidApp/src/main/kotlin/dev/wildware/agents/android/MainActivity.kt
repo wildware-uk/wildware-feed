@@ -194,7 +194,10 @@ class MainActivity : ComponentActivity() {
     private fun handle(intent: Intent?) {
         intent ?: return
         when (intent.action) {
-            ActionOpenCard -> intent.getStringExtra(ExtraCardId)?.let(app::openCard)
+            ActionOpenCard -> intent.getStringExtra(ExtraCardId)?.let { card ->
+                val server = intent.getStringExtra(ExtraServer)
+                if (server != null) app.navigator.open(intent.getStringExtra(ExtraProject), card, server) else app.openCard(card)
+            }
             Intent.ACTION_VIEW -> intent.dataString?.let { link ->
                 // An invite's page: the join screen, filled in. Anything else is a page of the feed.
                 if (Links.isInvite(link)) app.navigator.openInvite(link) else Links.pathOf(link)?.let(app.navigator::openPath)
@@ -221,12 +224,21 @@ class MainActivity : ComponentActivity() {
         private const val MaxPick = 10
         private const val ActionOpenCard = "dev.wildware.agents.OPEN_CARD"
         private const val ExtraCardId = "card"
+        private const val ExtraServer = "server"
+        private const val ExtraProject = "project"
 
-        /** Opens the app, at [cardId] when there is one, for a notification's tap. */
-        fun openCard(context: Context, cardId: String?): Intent =
+        /**
+         * Opens the app, at [cardId] when there is one, for a notification's tap. [server]: the team
+         * it is in, when that isn't the open one, with the card's [project].
+         */
+        fun openCard(context: Context, cardId: String?, server: String? = null, project: String? = null): Intent =
             Intent(context, MainActivity::class.java)
                 .setAction(ActionOpenCard)
                 .putExtra(ExtraCardId, cardId)
+                .apply {
+                    if (server != null) putExtra(ExtraServer, server)
+                    if (project != null) putExtra(ExtraProject, project)
+                }
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
     }
 }

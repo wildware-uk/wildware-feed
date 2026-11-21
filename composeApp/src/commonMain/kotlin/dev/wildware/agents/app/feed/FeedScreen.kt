@@ -74,6 +74,7 @@ import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isCtrlPressed
 import androidx.compose.ui.input.key.isMetaPressed
+import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.onKeyEvent
@@ -316,6 +317,7 @@ private fun DesktopColumns(ui: FeedUi, showRail: Boolean, startAt: String?) {
     val keys = remember(ui) { FeedKeys(ui) }
     keys.refresh = refresh
     keys.toTop = toTop
+    keys.teams = LocalTeams.current
     keys.feedFocused = { focus.itself }
     keys.firstVisible = { list.layoutInfo.visibleItemsInfo.firstNotNullOfOrNull { (it.key as? String)?.takeIf { key -> ui.state.item(key) != null } } }
     Row(

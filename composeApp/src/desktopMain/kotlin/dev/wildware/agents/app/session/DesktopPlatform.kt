@@ -139,6 +139,34 @@ fun desktopPlatform(dir: File = desktopConfigDir(), quiet: () -> Boolean = { fal
         crashReports = dev.wildware.agents.app.crash.CrashReporting.setting,
         // Java can't add a sound to the system's notifications, so the app plays its own beside them.
         sounds = dev.wildware.agents.app.sound.SoundBoard(dev.wildware.agents.app.sound.DesktopSoundPlayer(), FileTextStore(File(dir, "sounds.txt")), quiet),
+        // Keys, like session.json: written 0600.
+        teamList = FileTextStore(File(dir, "teams.json")),
+        teamFilesFor = { key -> desktopTeamFiles(dir, key) },
+    )
+}
+
+/**
+ * Team [key]'s own files, in `teams/<key>`. The first team (empty key) keeps the files it always
+ * had at the top of [dir]; only what it parks while another team is open goes in `teams/first`.
+ */
+internal fun desktopTeamFiles(dir: File, key: String): TeamFiles {
+    val own = File(File(dir, "teams"), key.ifEmpty { "first" })
+    val home = if (key.isEmpty()) dir else own
+    val readMarks = File(home, "read-marks.json")
+    val feedCache = File(home, "feed-cache.json")
+    val cardFolds = File(home, "folded-cards.json")
+    val postTarget = File(home, "post-target.txt")
+    own.mkdirs()
+    privateTo(own.parentFile, directory = true)
+    privateTo(own, directory = true)
+    val outbox = FileOutboxStorage(File(own, "outbox").apply { mkdirs() })
+    return TeamFiles(
+        FileTextStore(readMarks), FileTextStore(feedCache), FileTextStore(cardFolds), FileTextStore(postTarget), outbox,
+        clear = {
+            outbox.clear()
+            listOf(readMarks, feedCache, cardFolds, postTarget).forEach { it.delete() }
+            if (key.isNotEmpty()) own.deleteRecursively()
+        },
     )
 }
 

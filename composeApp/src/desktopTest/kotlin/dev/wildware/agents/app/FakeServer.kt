@@ -96,6 +96,9 @@ class FakeServer {
     var revealed = """{"value":"sk-test-NOT-REAL-0000","encoding":"utf8"}"""
     var seq = 10L
 
+    /** `GET /api/summary` answers 401, as a dashboard that signed this device out does. */
+    @Volatile var summaryRefused = false
+
     /** Make every write fail, as when the server is down: the outbox keeps them waiting. */
     @Volatile var failWrites = false
 
@@ -122,7 +125,8 @@ class FakeServer {
 
     fun wrote(method: String, path: String): String? = synchronized(writes) { writes.lastOrNull { it.first == "$method $path" }?.second }
 
-    private suspend fun MockRequestHandleScope.route(request: HttpRequestData): HttpResponseData {
+    /** Answers [request] as this server: other fakes call it to stand behind another address. */
+    internal suspend fun MockRequestHandleScope.route(request: HttpRequestData): HttpResponseData {
         val path = request.url.encodedPath
         calls += path + request.url.encodedQuery.let { if (it.isEmpty()) "" else "?$it" }
         if (path == "/api/devices/sign-in") return signIn(request)
@@ -188,6 +192,21 @@ class FakeServer {
                     agentNames = agentNames,
                 )))
             }
+            // The small summary a team that isn't open is asked for: the questions waiting there.
+            "/api/summary" -> if (summaryRefused) ok("""{"error":"unauthenticated","message":"Sign in again."}""", HttpStatusCode.Unauthorized)
+            else ok(json.encodeToString(dev.wildware.agents.DashboardSummary.serializer(), dev.wildware.agents.DashboardSummary(
+                at = "2026-11-21T10:00:00Z",
+                onlineAgents = emptyList(),
+                requests = requests.map { r ->
+                    val project = projects.firstOrNull { it.id == r.projectId }
+                    dev.wildware.agents.PendingRequest(
+                        id = r.id, agentName = agentNames[r.agentId] ?: "agent", projectSlug = project?.slug, projectName = project?.name,
+                        question = r.question, kind = dev.wildware.agents.RequestKind.Buttons, options = r.options, expiresAt = "2026-11-22T10:00:00Z",
+                    )
+                },
+                work = dev.wildware.agents.WorkCounts(0, 0, 0),
+                projects = projects.map { dev.wildware.agents.ProjectRef(it.slug, it.name) },
+            )))
             "/api/messages" -> ok(json.encodeToString(MessagesSnapshot.serializer(), MessagesSnapshot(seq = seq, messages = messages, reactions = reactions, media = messageMedia)))
             "/api/snapshot/requests" -> ok(json.encodeToString(RequestsSnapshot.serializer(), RequestsSnapshot(seq, requests = requests, answered = answered)))
             "/api/me" -> me?.let { ok(it) } ?: ok("""{"error":"not_found"}""", HttpStatusCode.NotFound)

@@ -518,6 +518,10 @@ fun ProjectsDrawer(ui: FeedUi, progress: EdgeProgress, widthPx: Float, safeArea:
                 IconAction(Icons.Close, "Close projects", onClick = close)
             }
             Spacer(Modifier.height(12.dp))
+            LocalTeams.current?.let { teams ->
+                TeamSwitcher(teams, close)
+                Spacer(Modifier.height(8.dp))
+            }
             DrawerWaitingRow(ui, close)
             Spacer(Modifier.height(12.dp))
             val sections = ui.channelSections
@@ -567,7 +571,7 @@ fun ProjectsDrawer(ui: FeedUi, progress: EdgeProgress, widthPx: Float, safeArea:
                     open()
                 }
             }
-            SheetRow(if (LocalDemo.current) "Leave demo" else "Sign out", Icons.SignOut, destructive = false) { ui.emit(FeedEvent.SignOut) }
+            SheetRow(signOutLabel(LocalTeams.current, LocalDemo.current), Icons.SignOut, destructive = false) { ui.emit(FeedEvent.SignOut) }
         }
     }
 }

@@ -125,7 +125,7 @@ fun main(args: Array<String>) {
     val releases = MutableStateFlow<ReleaseSource?>(GitHubReleaseSource(platform.httpEngine()))
 
     fun openWindow(card: OpenAt?) {
-        if (card != null) navigator.open(card.projectSlug, card.cardId)
+        if (card != null) navigator.open(card.projectSlug, card.cardId, card.server)
         EventQueue.invokeLater {
             visible = true
             window?.let {

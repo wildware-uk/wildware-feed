@@ -85,7 +85,59 @@ fun iosPlatform(
             remove(cardFolds)
             remove(postTarget)
         },
+        // Keys: in the Keychain, as the open team's is ([KeychainText]).
+        teamList = KeychainText(),
+        teamFilesFor = { key -> iosTeamFiles(dataDir, caches ?: dataDir, key) },
     )
+}
+
+/**
+ * Team [key]'s own files, in `teams/<key>` of the app group folder. The first team (empty key)
+ * keeps the files it always had; only what it parks while another team is open goes in
+ * `teams/first`. The outbox the share sheet, Siri and alert buttons use is always the open team's.
+ */
+internal fun iosTeamFiles(dataDir: String, caches: String, key: String): TeamFiles {
+    val own = "$dataDir/teams/${key.ifEmpty { "first" }}"
+    val home = if (key.isEmpty()) dataDir else own
+    makeDir(own)
+    val cache = if (key.isEmpty()) caches else "$caches/teams/$key"
+    makeDir(cache)
+    val readMarks = "$home/read-marks.json"
+    val feedCache = "$cache/feed-cache.json"
+    val cardFolds = "$home/folded-cards.json"
+    val postTarget = "$home/post-target.txt"
+    val outbox = IosParkedOutbox("$own/outbox")
+    return TeamFiles(
+        IosTextStore(readMarks), IosTextStore(feedCache), IosTextStore(cardFolds), IosTextStore(postTarget), outbox,
+        clear = {
+            listOf(readMarks, feedCache, cardFolds, postTarget).forEach(::remove)
+            remove("$own/outbox")
+            if (key.isNotEmpty()) {
+                remove(own)
+                remove(cache)
+            }
+        },
+    )
+}
+
+/**
+ * Where a team's outbox waits while another team is open: a plain folder only this app reads, so
+ * nothing in it is sent until the team is opened and it moves back into the shared outbox.
+ */
+private class IosParkedOutbox(private val dir: String) : OutboxStorage {
+    private val list = "$dir/queue.json"
+
+    init {
+        makeDir(dir)
+    }
+
+    override fun load(): String = IosTextStore(list).read().orEmpty()
+    override fun save(text: String) = writeText(list, text)
+    override fun writeFile(name: String, bytes: ByteArray) {
+        bytes.toNSData().writeToFile("$dir/$name", atomically = true)
+    }
+    override fun readFile(name: String): ByteArray? = NSData.dataWithContentsOfFile("$dir/$name")?.toByteArray()
+    override fun deleteFile(name: String) = remove("$dir/$name")
 }
 
 /**

@@ -83,7 +83,16 @@ class DashboardSession(
     private val platform: AppPlatform,
     parent: CoroutineScope,
     private val clock: () -> Long = { Clock.System.now().toEpochMilliseconds() },
+    /** This team's own files on the device; null uses [platform]'s (the first team's). */
+    teamFiles: dev.wildware.agents.app.session.TeamFiles? = null,
 ) {
+    private val readMarks = teamFiles?.readMarks ?: platform.readMarks
+    private val feedCache = teamFiles?.feedCache ?: platform.feedCache
+    private val postTarget = teamFiles?.postTarget ?: platform.postTarget
+
+    /** The cards folded away on this device, for this team. */
+    val cardFolds: dev.wildware.agents.TextStore = teamFiles?.cardFolds ?: platform.cardFolds
+
     private val scope = CoroutineScope(parent.coroutineContext + SupervisorJob(parent.coroutineContext[Job]))
     val client = DashboardClient(saved.server, saved.token, platform.httpEngine())
     private val outbox = OutboxQueue(client, platform.outbox, scope)
@@ -91,9 +100,9 @@ class DashboardSession(
     private val foreground = platform.foreground
     /** The engine itself, for what lives outside the feed screen: the desktop tray and notifications. */
     val dashboard = Dashboard(
-        client, scope, ReadMarks(platform.readMarks), outbox,
+        client, scope, ReadMarks(readMarks), outbox,
         // Opens onto the feed as it last was on this device, for this dashboard and key only.
-        cache = FeedCache(platform.feedCache, FeedCache.ownerOf(client.serverUrl, client.authorizationHeader)),
+        cache = FeedCache(feedCache, FeedCache.ownerOf(client.serverUrl, client.authorizationHeader)),
     )
     private val actions = OwnerActions(outbox)
     private val mapper = FeedMapper(client.serverUrl, clock)
@@ -205,7 +214,7 @@ class DashboardSession(
     }.distinctUntilChanged()
 
     /** The project last posted to from "All projects", or last opened: where the next one from there goes. */
-    private val lastProject = MutableStateFlow(runCatching { platform.postTarget.read()?.trim() }.getOrNull()?.ifEmpty { null })
+    private val lastProject = MutableStateFlow(runCatching { postTarget.read()?.trim() }.getOrNull()?.ifEmpty { null })
 
     val state: StateFlow<FeedState> = combine(
         combine(
@@ -981,7 +990,7 @@ class DashboardSession(
     private fun remember(slug: String) {
         if (lastProject.value == slug) return
         lastProject.value = slug
-        runCatching { platform.postTarget.write(slug) }
+        runCatching { postTarget.write(slug) }
     }
 
     private fun select(slug: String?) {

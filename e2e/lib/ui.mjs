@@ -134,6 +134,12 @@ export function nextResponse(page, path, method = 'POST', timeout = 15_000) {
  */
 export async function signedIn(browser, person) {
     const page = await newBrowser(browser);
+    await signInPage(page, person);
+    return page;
+}
+
+/** [page] signed in to [person]'s team as [signedIn] does it, in the browser [page] is in (a second tab, say). */
+export async function signInPage(page, person) {
     const address = person.team.address;
     // From a page on the team's own address, so the browser keeps the cookie as the web app would.
     await page.goto(`${address}/api/server`);
@@ -149,7 +155,13 @@ export async function signedIn(browser, person) {
     await page.evaluate((session) => localStorage.setItem('feed.session', JSON.stringify(session)), { server: address, token: '', deviceName: device.name, deviceId: device.id });
     await openApp(page, address);
     await expectShown(page, 'All channels');
-    return page;
+}
+
+/** A tab the web app opened ([popup], from `context.waitForEvent('page')`), drawn and settled. */
+export async function settledTab(popup) {
+    await popup.waitForLoadState();
+    await settle(popup);
+    return popup;
 }
 
 /**

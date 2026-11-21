@@ -13,6 +13,12 @@ import dev.wildware.agents.app.feed.LocalAppCommands
 import dev.wildware.agents.app.feed.LocalDemo
 import dev.wildware.agents.app.feed.LocalCrashReports
 import dev.wildware.agents.app.feed.LocalSounds
+import dev.wildware.agents.app.feed.LocalTeams
+import dev.wildware.agents.app.feed.OpenTeamTabDialog
+import dev.wildware.agents.app.feed.TeamsUi
+import dev.wildware.agents.app.feed.safePadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.unit.dp
 import dev.wildware.agents.app.sound.tracksUse
 import dev.wildware.agents.app.feed.LocalOpenSettings
 import androidx.compose.runtime.Composable
@@ -126,6 +132,32 @@ fun AgentsApp(
         }
     }
 
+    // A notification from a team that isn't open opens that team first; its feed then takes the request.
+    LaunchedEffect(navigator) {
+        navigator?.requests?.filterNotNull()?.collect { request ->
+            val server = request.server ?: return@collect
+            when {
+                model.isOpen(server) -> Unit
+                model.knowsTeam(server) -> model.switchTeamAt(server)
+                else -> navigator.anyTeam(request)
+            }
+        }
+    }
+    val teamEntries by model.teams.collectAsState()
+    var addingTab by remember { mutableStateOf(false) }
+    val uris = androidx.compose.ui.platform.LocalUriHandler.current
+    val teamsUi = remember(teamEntries, uris) {
+        TeamsUi(
+            teamEntries,
+            // A team the web app holds no sign-in for is another tab: opened again, with its own cookie.
+            switchTo = { team -> if (team.link) runCatching { uris.openUri(team.server) } else model.switchTeam(team.key) },
+            add = { if (model.webApp) addingTab = true else model.startAddingTeam() },
+            signOutOf = { team -> model.signOutOf(team.key) },
+            web = model.webApp,
+            openTab = model::rememberTeamTab,
+        )
+    }
+
     AgentTheme(isDark, accessibility) {
         // While the owner is using the app, it makes no sound but a critical one.
         Box(Modifier.fillMaxSize().tracksUse(platform.sounds.activity)) {
@@ -152,7 +184,8 @@ fun AgentsApp(
                         signIn = model::signIn,
                         signInWithEmail = model::signInWithEmail,
                         acceptInvite = model::acceptInvite,
-                        tryDemo = model::enterDemo,
+                        // Adding a team: the demo is for a first look, not another team.
+                        tryDemo = if (screen.adding) null else model::enterDemo,
                         connect = connect,
                         hostFixed = home != null,
                         startInvite = joinWith?.link,
@@ -160,14 +193,16 @@ fun AgentsApp(
                         hosted = model.hostedLogin,
                         joinHosted = model::joinHostedTeam,
                     )
+                    if (screen.adding) AddingTeamBack(safeArea, model::cancelAddingTeam)
                 }
                 is AppScreen.LocalServerDown -> dev.wildware.agents.app.signin.LocalServerDownScreen(
                     screen.problem, safeArea, onRetry = model::retryLocal, onSignOut = { model.signOut() },
                 )
-                is AppScreen.Signed -> {
+                // Each team its own screen: nothing open in one (a thread, a dialog, the scroll) carries into another.
+                is AppScreen.Signed -> key(screen.session) {
                     val session = screen.session
                     val state = session.state.collectAsState()
-                    val folds = remember(session) { CardFolds(platform.cardFolds) }
+                    val folds = remember(session) { CardFolds(session.cardFolds) }
                     CompositionLocalProvider(
                         LocalCardFolds provides folds,
                         LocalMediaAuth provides MediaAuth(session.client.serverUrl, session.client.authorizationHeader),
@@ -183,6 +218,7 @@ fun AgentsApp(
                         LocalCrashReports provides platform.crashReports,
                         LocalLiveActivities provides platform.liveActivities,
                         LocalSounds provides platform.sounds.takeIf { it.available },
+                        LocalTeams provides teamsUi.takeIf { !screen.demo },
                     ) {
                         FeedScreen(state, safeArea, navigator = navigator, onAwayFromTop = session::holdArrivals) { event ->
                             when (event) {
@@ -202,13 +238,28 @@ fun AgentsApp(
                     onCancel = { confirmJoin = null },
                     onJoin = {
                         confirmJoin = null
-                        model.signOut()
+                        // Joining adds the team; into the open team, it takes that sign-in's place.
+                        model.startAddingTeam()
                         joinWith = invite
                     },
                 )
             }
+            if (addingTab) OpenTeamTabDialog(teamsUi, onClose = { addingTab = false })
             overlay()
         }
+    }
+}
+
+/** "Back" while adding a team, to the team that is open: over the sign-in screen's top corner. */
+@Composable
+private fun AddingTeamBack(safeArea: SafeArea, onBack: () -> Unit) {
+    Box(Modifier.fillMaxSize().safePadding(safeArea, top = 8.dp).padding(start = 12.dp)) {
+        dev.wildware.agents.app.feed.AppButton(
+            "Back",
+            dev.wildware.agents.app.feed.ButtonTone.Quiet,
+            icon = dev.wildware.agents.app.design.Icons.Back,
+            onClick = onBack,
+        )
     }
 }
 

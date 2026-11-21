@@ -85,7 +85,7 @@ class JoinFromLinkTest {
     }
 
     @Test
-    fun signedInItAsksBeforeSigningOut() = runDesktopComposeUiTest(390, 844) {
+    fun signedInToAnotherTeamItAsksThenAddsTheTeam() = runDesktopComposeUiTest(390, 844) {
         val store = MemorySessionStore(SavedSession("https://dash.test", "key-1", "Test device", deviceId = "d1"))
         val navigator = AppNavigator()
         app(store, navigator)
@@ -93,18 +93,32 @@ class JoinFromLinkTest {
         navigator.openInvite(link)
         waitUntil(timeoutMillis = 5_000) { onAllNodesWithText("Join a team?").fetchSemanticsNodes().isNotEmpty() }
         onNodeWithText("This device is signed in to dash.test", substring = true).assertExists()
-        // Staying signed in changes nothing.
-        onNodeWithText("Stay signed in").performClick()
+        // Not yet changes nothing.
+        onNodeWithText("Not yet").performClick()
         waitForIdle()
         assertTrue(onAllNodesWithText("Join a team?").fetchSemanticsNodes().isEmpty())
         assertEquals("key-1", store.load()?.token)
 
         navigator.openInvite(link)
-        waitUntil(timeoutMillis = 5_000) { onAllNodesWithText("Sign out and join").fetchSemanticsNodes().isNotEmpty() }
-        onNodeWithText("Sign out and join").performClick()
+        waitUntil(timeoutMillis = 5_000) { onAllNodesWithText("Join this team too").fetchSemanticsNodes().isNotEmpty() }
+        onNodeWithText("Join this team too").performClick()
         waitUntil(timeoutMillis = 5_000) { onAllNodesWithText("Join a team").fetchSemanticsNodes().isNotEmpty() }
         onAllNodes(hasSetTextAction() and hasText("https://feed.example.com/join/$code")).onFirst().assertExists()
-        assertNull(store.load(), "this device signed out to join as the new person")
+        assertEquals("key-1", store.load()?.token, "the team already here stays signed in beside the new one")
+        // And "Back" returns to it.
+        onNodeWithText("Back").performClick()
+        waitUntil(timeoutMillis = 5_000) { onAllNodesWithText("Ship the new sounds?").fetchSemanticsNodes().isNotEmpty() }
+    }
+
+    @Test
+    fun anInviteIntoTheOpenTeamStillSignsOutFirst() = runDesktopComposeUiTest(390, 844) {
+        val store = MemorySessionStore(SavedSession("https://feed.example.com", "key-1", "Test device", deviceId = "d1"))
+        val navigator = AppNavigator()
+        app(store, navigator)
+        waitUntil(timeoutMillis = 5_000) { onAllNodesWithText("Ship the new sounds?").fetchSemanticsNodes().isNotEmpty() }
+        navigator.openInvite(link)
+        waitUntil(timeoutMillis = 5_000) { onAllNodesWithText("Sign out and join").fetchSemanticsNodes().isNotEmpty() }
+        onNodeWithText("Stay signed in").assertExists()
     }
 
     @Test
@@ -126,7 +140,7 @@ class JoinFromLinkTest {
 
     private fun ComposeUiTest.shootAsk(width: Int, height: Int, scale: Float, dark: Boolean) {
         val navigator = AppNavigator()
-        app(MemorySessionStore(SavedSession("https://dash.test", "key-1", "Test device", deviceId = "d1")), navigator, width, height, dark, scale)
+        app(MemorySessionStore(SavedSession("https://feed.example.com", "key-1", "Test device", deviceId = "d1")), navigator, width, height, dark, scale)
         waitUntil(timeoutMillis = 5_000) { onAllNodesWithText("Ship the new sounds?").fetchSemanticsNodes().isNotEmpty() }
         navigator.openInvite(link)
         waitUntil(timeoutMillis = 5_000) { onAllNodesWithText("Join a team?").fetchSemanticsNodes().isNotEmpty() }

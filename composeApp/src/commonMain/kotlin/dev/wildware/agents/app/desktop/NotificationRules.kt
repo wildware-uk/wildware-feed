@@ -212,3 +212,19 @@ class NotificationRules(private val maxBody: Int = 140) {
         private fun updateKey(id: String) = "update-$id"
     }
 }
+
+/**
+ * The notice for a question asked in a team that isn't open ([dev.wildware.agents.app.engine.TeamWatch]):
+ * the team's name leads, so it is clear the click opens that team.
+ */
+fun teamQuestionNotice(question: dev.wildware.agents.app.engine.TeamQuestion): DesktopNotice {
+    val request = question.request
+    val where = listOfNotNull(question.teamName, request.projectName?.takeIf { it.isNotBlank() }).joinToString(" · ")
+    return DesktopNotice(
+        key = "team:${question.server}:${request.id}",
+        title = "${request.agentName} · $where",
+        body = request.question.lines().joinToString(" ").trim().take(240),
+        focusId = request.id,
+        sound = Sound.Question,
+    )
+}

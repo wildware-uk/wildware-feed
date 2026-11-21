@@ -11,6 +11,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import dev.wildware.agents.app.desktop.DesktopNotice
+import dev.wildware.agents.app.desktop.teamQuestionNotice
 import dev.wildware.agents.app.desktop.NotificationRules
 import dev.wildware.agents.app.engine.AppModel
 import dev.wildware.agents.app.engine.AppScreen
@@ -98,18 +99,19 @@ object Channels {
 class AndroidNotifier(private val context: Context) : SystemNotices {
     private val manager = NotificationManagerCompat.from(context)
 
-    fun show(notice: DesktopNotice) {
+    /** [server] and [project]: where the card is, for a notice from a team that isn't open. */
+    fun show(notice: DesktopNotice, server: String? = null, project: String? = null) {
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED &&
             android.os.Build.VERSION.SDK_INT >= 33
         ) {
             return
         }
         // An agent asking to join waits on the owner as a question does: the same loud channel.
-        val question = notice.key.startsWith("request-") || notice.key.startsWith("pairing-")
+        val question = notice.key.startsWith("request-") || notice.key.startsWith("pairing-") || notice.key.startsWith("team:")
         val open = PendingIntent.getActivity(
             context,
             notice.key.hashCode(),
-            MainActivity.openCard(context, notice.focusId),
+            MainActivity.openCard(context, notice.focusId, server, project),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
         val channel = when {
@@ -174,6 +176,12 @@ class Alerts(
     private var job: Job? = null
 
     fun start() {
+        // A question in a team that isn't open: its own notice, which opens that team.
+        scope.launch {
+            model.otherTeamQuestions.collect { question ->
+                if (!onScreen()) notifier.show(teamQuestionNotice(question), question.server, question.request.projectSlug)
+            }
+        }
         job = scope.launch {
             model.screen.collectLatest { screen ->
                 val session = (screen as? AppScreen.Signed)?.session

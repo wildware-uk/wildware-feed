@@ -21,8 +21,11 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 
-/** Where a click should land: [cardId] in [projectSlug]'s feed, or every project's when null. */
-data class OpenAt(val projectSlug: String?, val cardId: String)
+/**
+ * Where a click should land: [cardId] in [projectSlug]'s feed, or every project's when null.
+ * [server]: the team it is in, when that may not be the open one.
+ */
+data class OpenAt(val projectSlug: String?, val cardId: String, val server: String? = null)
 
 /**
  * Everything the desktop adds around the window: the tray count, notifications, and the three
@@ -76,6 +79,13 @@ class DesktopShell(
             watchingUpdates = scope.launch {
                 launch { updates.trayItem.collect { tray.showUpdate(it) } }
                 updates.available.collect { tray.showUpdateNotes(it?.version) }
+            }
+        }
+        // A question in a team that isn't open: its own notice, which opens that team.
+        scope.launch {
+            model.otherTeamQuestions.collect { question ->
+                if (mutableSettings.value.doNotDisturb || windowFocused()) return@collect
+                notifier.show(teamQuestionNotice(question)) { openWindow(OpenAt(question.request.projectSlug, question.request.id, question.server)) }
             }
         }
         watching = scope.launch {

@@ -85,6 +85,7 @@ fun keyboardShortcuts(mac: Boolean, web: Boolean): List<ShortcutGroup> {
                 Shortcut("$alt↑  $alt↓", "Previous or next channel"),
                 Shortcut("$alt$shift↑  $alt$shift↓", "Previous or next channel with something unread"),
                 Shortcut("${cmd}1 … ${cmd}9", "Channel 1 to 9, as the sidebar lists them"),
+            ) + (if (web) emptyList() else listOf(Shortcut("$cmd${shift}1 … $cmd${shift}9", "Team 1 to 9, as the team switcher lists them"))) + listOf(
                 Shortcut("G then H", "All channels"),
                 Shortcut("G then W", "Waiting on you"),
                 Shortcut("G then S", "Alerts on this device"),
@@ -217,6 +218,9 @@ internal class FeedKeys(private val ui: FeedUi, private val mac: Boolean = short
     /** The first card on screen, where J and K start. */
     var firstVisible: () -> String? = { null }
 
+    /** The teams, for Cmd/Ctrl+Shift+1 to 9; null outside a signed-in app. */
+    var teams: TeamsUi? = null
+
     private var gAt: TimeSource.Monotonic.ValueTimeMark? = null
 
     private val KeyEvent.command get() = if (mac) isMetaPressed else isCtrlPressed
@@ -236,6 +240,9 @@ internal class FeedKeys(private val ui: FeedUi, private val mac: Boolean = short
             e.isAltPressed && !either && e.key == Key.DirectionUp -> run { ui.stepChannel(-1, unread = e.isShiftPressed); true }
             e.isAltPressed && !either && e.key == Key.DirectionDown -> run { ui.stepChannel(1, unread = e.isShiftPressed); true }
             e.command && !e.isAltPressed && !e.isShiftPressed && digit(e) != null -> run { ui.openChannel(digit(e)!!); true }
+            // With Shift: that team, in the switcher's order. The web app is one team per tab.
+            e.command && !e.isAltPressed && e.isShiftPressed && digit(e) != null && teams?.web == false ->
+                teams?.numbered(digit(e)!!)?.let { teams?.switchTo(it); true } ?: false
             e.command && !e.isShiftPressed && e.key == Key.N -> run { ui.focusComposer(); true }
             else -> false
         }

@@ -55,7 +55,14 @@ import dev.wildware.agents.app.design.pressable
  * An action the app around the feed adds to the command bar (the desktop's "Check for updates").
  * [keywords] also match what is typed.
  */
-data class AppCommand(val title: String, val detail: String = "", val keywords: List<String> = emptyList(), val run: () -> Unit)
+data class AppCommand(
+    val title: String,
+    val detail: String = "",
+    val keywords: List<String> = emptyList(),
+    /** Its icon in the bar; null for the download arrow the desktop's update check has. */
+    val icon: androidx.compose.ui.graphics.vector.ImageVector? = null,
+    val run: () -> Unit,
+)
 
 /** Extra actions for the command bar, from whoever hosts the feed. */
 val LocalAppCommands = staticCompositionLocalOf { emptyList<AppCommand>() }
@@ -92,8 +99,9 @@ fun CommandBar(ui: FeedUi, safeArea: SafeArea, panelModifier: Modifier = Modifie
     val extra = LocalAppCommands.current
     val crashReports = LocalCrashReports.current
     val sounds = LocalSounds.current
-    val commands by remember(extra, crashReports, sounds) {
-        derivedStateOf { commandsFor(ui, query.text.toString().trim(), extra, crashReports, close, sounds) }
+    val teams = LocalTeams.current
+    val commands by remember(extra, crashReports, sounds, teams) {
+        derivedStateOf { commandsFor(ui, query.text.toString().trim(), extra, crashReports, close, sounds, teams) }
     }
     LaunchedEffect(query.text) { highlighted = 0 }
     val list = rememberLazyListState()
@@ -189,6 +197,7 @@ private fun commandsFor(
     crashReports: CrashReportSetting?,
     close: () -> Unit,
     sounds: dev.wildware.agents.app.sound.SoundBoard? = null,
+    teams: TeamsUi? = null,
 ): List<Command> {
     fun done(action: () -> Unit): () -> Unit = {
         close()
@@ -252,8 +261,22 @@ private fun commandsFor(
                 ),
             )
         }
-        extra.filter { wanted(it.title, *it.keywords.toTypedArray()) }.forEach { add(Command("Actions", it.title, it.detail, Icons.Download, done(it.run))) }
-        if (wanted("Sign out")) add(Command("Actions", "Sign out", "Forget this device's key", Icons.SignOut, done { ui.emit(FeedEvent.SignOut) }))
+        extra.filter { wanted(it.title, *it.keywords.toTypedArray()) }.forEach { add(Command("Actions", it.title, it.detail, it.icon ?: Icons.Download, done(it.run))) }
+        if (teams != null) {
+            // "Switch team…": every other team, by name, with what waits there.
+            teams.teams.forEachIndexed { i, team ->
+                if (team.active || !wanted(team.name, "switch team", "teams", "change team")) return@forEachIndexed
+                val detail = when {
+                    team.link -> "Opens in a new tab"
+                    else -> listOfNotNull((team.waiting ?: 0).takeIf { it > 0 }?.let(::questions)?.plus(" waiting"), if (i < 9) shortcutHint(i + 1) else null).joinToString(" · ")
+                }
+                add(Command("Teams", "Switch to ${team.name}", detail, Icons.People, done { teams.switchTo(team) }))
+            }
+            if (wanted("Add a team", "join team", "another team", "sign in")) {
+                add(Command("Teams", "Add a team", if (teams.web) "Open another team in a new tab" else "Sign in to another team on this device", Icons.Plus, done(teams.add)))
+            }
+        }
+        if (wanted("Sign out")) add(Command("Actions", signOutLabel(teams, demo = false), "Forget this device's key", Icons.SignOut, done { ui.emit(FeedEvent.SignOut) }))
     }
     val projects = buildList {
         if (wanted("All channels")) add(Command("Channels", "All channels", "Every channel's feed", Icons.Inbox, done { ui.emit(FeedEvent.SelectProject(null)) }, keys = "G H"))

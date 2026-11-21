@@ -274,8 +274,8 @@ Shared code (`composeApp` common, `shared`) does most of it, on phone and deskto
   (a list when the email is in several; one open team signs straight in). The account service hands
   the app a one-time ticket (a minute, once, that team's address only); the app trades it for an
   ordinary device key on the team's address and opens the feed (HOSTING.md §5). The account
-  service's own sign-in lives in memory only and is ended once the key is in hand. One team per
-  sign-in: to open another, sign out and log in again. Not in the web app: a browser is already
+  service's own sign-in lives in memory only and is ended once the key is in hand. To open another
+  team, "Add a team" (below) logs in again; a team already on the device just opens. Not in the web app: a browser is already
   at its team's address, and the account site signs it in there itself. The service's address is
   set at build time (`-Pfeed.accountUrl=…` or `FEED_ACCOUNT_URL`; default
   `https://account.feed.wildware.dev`; empty for no "Log in").
@@ -296,6 +296,32 @@ Shared code (`composeApp` common, `shared`) does most of it, on phone and deskto
 
 `GET /api/server` is public and says nothing a stranger can use: no team name, no counts, no
 user list. It lands before slice 1 (it is useful today), so the two-step screen ships first.
+
+**Many teams on one device.** One device can be signed in to several teams at once, each with
+its own device key on its own server:
+
+- *Where they are kept.* `TeamList` holds every team's sign-in, name and last use, somewhere as
+  private as the single key always was: a 0600 `teams.json` on desktop, `teams.bin` sealed by the
+  Android Keystore, a Keychain item (`dev.wildware.agents.teams`) on the iPhone, local storage in
+  the web app (no key there: the cookie is the key). The open team's key also stays where it
+  always was (`SessionStore`), so the iPhone's widgets, share sheet, Siri, alerts and watch keep
+  reading it. A device from before teams becomes a list of one, keeping its files.
+- *Each team's own files.* Read marks, the feed cache, folded cards and the post target live in
+  `teams/<key>/`; the first team keeps the files it had. The outbox the app sends from is always
+  the open team's: switching parks what waits in `teams/<key>/outbox` and brings the next team's
+  back, so nothing queued for one team is ever sent to another.
+- *The switcher.* The open team sits at the top of the sidebar and the phone drawer; tapped, every
+  team folds out with how many questions wait in it, "Add a team" (the sign-in screen again, with
+  "Back") and "Sign out of <team>" (which ends that device on its server, as sign-out always did).
+  The command bar lists "Switch to <team>" and "Add a team"; Ctrl/⌘+Shift+1–9 opens a team.
+- *Load.* Only the open team keeps the live feed. Each other team is asked for `GET /api/summary`
+  once a minute and when the app comes back to the front: its waiting count for the badge, and new
+  questions for the desktop's and Android's own notices (the iPhone gets those as pushes, since
+  each team's server keeps the phone's push token). A 401 there forgets that team.
+- *Alerts.* A notice from a team that isn't open carries its address (`AppNavigator.open(…,
+  server)` / `openUrl`); the app opens that team, then the card.
+- *The web app.* One team per tab: each address has its own cookie, so "Add a team" opens the
+  other team's address in a new tab, and the switcher offers it there again.
 
 **iOS (native Swift parts).** Notification content and service extensions: "Sam replied" text
 from the alert payload, which gains an `actorName` key. Widgets and Live Activity: no change in

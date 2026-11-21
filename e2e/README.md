@@ -19,6 +19,7 @@ deletes it at the end, so files run side by side and a staging server stays clea
 | `connect` | Connect an agent: copy the prompt, an agent asks to join at the address it names, Allow; nothing secret in it |
 | `settings` | Alerts on this device, sounds, dark mode |
 | `shortcuts` | The browser's Back and Forward walk channels; Alt+←/→; a reload keeps the channel; Alt+↓/↑; ? lists the shortcuts; / opens search |
+| `teams` | Two teams from one browser: "Add a team" opens the other team's address in a new tab, which signs in on its own; the switcher opens a team signed in there in its own tab |
 | `isolation` | Nothing of team B in team A's browser; no key, cookie, token, password or invite crossing teams |
 
 ## Run it locally

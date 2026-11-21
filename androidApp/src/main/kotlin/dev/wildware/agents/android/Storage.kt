@@ -91,6 +91,15 @@ class SealedSessionStore(private val file: File, private val box: SecretBox) : S
     }
 }
 
+/**
+ * Text sealed by [box] in [file]: the teams this phone is signed in to, keys included. A file that
+ * can't be opened reads as nothing.
+ */
+class SealedTextStore(private val file: File, private val box: SecretBox) : TextStore {
+    override fun read(): String? = if (!file.exists()) null else runCatching { box.open(file.readBytes()).decodeToString() }.getOrNull()
+    override fun write(text: String) = writeAtomically(file, box.seal(text.encodeToByteArray()))
+}
+
 /** One text file in the app's private storage, written whole. */
 class FileTextStore(private val file: File) : TextStore {
     override fun read(): String? = runCatching { file.readText() }.getOrNull()

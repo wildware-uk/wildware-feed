@@ -166,6 +166,35 @@ fun androidPlatform(context: Context, hooks: ActivityHooks, scope: CoroutineScop
         sounds = AndroidSoundPlayer(context, onScreen).let { player -> SoundBoard(player, FileTextStore(File(dir, "sounds.txt")), quiet = player::quiet) },
         // A notice shown in the shade makes its channel's sound: over the app only a critical one is shown.
         systemSounds = { notice -> notice.critical || !onScreen() },
+        // Keys, sealed by the Keystore like session.bin.
+        teamList = SealedTextStore(File(dir, "teams.bin"), KeystoreSecretBox()),
+        teamFilesFor = { key -> teamFiles(context, key) },
+    )
+}
+
+/**
+ * Team [key]'s own files, in `teams/<key>`. The first team (empty key) keeps the files it always
+ * had; only what it parks while another team is open goes in `teams/first`.
+ */
+private fun teamFiles(context: Context, key: String): dev.wildware.agents.app.session.TeamFiles {
+    val own = File(File(context.filesDir, "teams"), key.ifEmpty { "first" }).apply { mkdirs() }
+    val home = if (key.isEmpty()) context.filesDir else own
+    val cache = if (key.isEmpty()) context.cacheDir else File(File(context.cacheDir, "teams"), key).apply { mkdirs() }
+    val readMarks = File(home, "read-marks.json")
+    val feedCache = File(cache, "feed-cache.json")
+    val cardFolds = File(home, "folded-cards.json")
+    val postTarget = File(home, "post-target.txt")
+    val outbox = FileOutboxStorage(File(own, "outbox"))
+    return dev.wildware.agents.app.session.TeamFiles(
+        FileTextStore(readMarks), FileTextStore(feedCache), FileTextStore(cardFolds), FileTextStore(postTarget), outbox,
+        clear = {
+            outbox.clear()
+            listOf(readMarks, feedCache, cardFolds, postTarget).forEach { it.delete() }
+            if (key.isNotEmpty()) {
+                own.deleteRecursively()
+                cache.deleteRecursively()
+            }
+        },
     )
 }
 

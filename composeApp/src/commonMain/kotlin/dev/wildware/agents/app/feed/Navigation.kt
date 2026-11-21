@@ -10,6 +10,7 @@ import androidx.compose.runtime.snapshotFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
@@ -17,8 +18,10 @@ import kotlinx.coroutines.withTimeoutOrNull
 /**
  * A request to show one project, and maybe one card in it. [project] null means every project.
  * [serial] tells two taps on the same notification apart, so the second one opens it again.
+ * [server]: the team it is in, when it came from one that may not be open (a notification); null
+ * means the open team.
  */
-data class OpenCard(val project: String?, val cardId: String?, val serial: Long = 0) {
+data class OpenCard(val project: String?, val cardId: String?, val serial: Long = 0, val server: String? = null) {
     companion object {
         /**
          * Reads a dashboard page path the way notifications, widgets and search carry it:
@@ -54,9 +57,33 @@ class AppNavigator {
         pending.value = OpenCard(project, cardId, ++serial)
     }
 
+    /** Opens card [cardId] in [project] of the team at [server], switching to that team first. */
+    fun open(project: String?, cardId: String?, server: String?) {
+        pending.value = OpenCard(project, cardId, ++serial, server)
+    }
+
     /** Opens a dashboard page path, such as `/projects/garden-game?focus=abc`. */
     fun openPath(path: String) {
         pending.value = OpenCard.fromPath(path).copy(serial = ++serial)
+    }
+
+    /**
+     * Opens a whole dashboard address, such as a notification's
+     * `https://acme.example.com/projects/garden-game?focus=abc`: in that team, switching to it
+     * first when it isn't the open one. A bare path opens in the open team.
+     */
+    fun openUrl(url: String) {
+        val scheme = url.indexOf("://")
+        if (scheme < 0) return openPath(url)
+        val pathStart = url.indexOf('/', scheme + 3).let { if (it < 0) url.length else it }
+        val origin = url.substring(0, pathStart)
+        val path = url.substring(pathStart).ifEmpty { "/" }
+        pending.value = OpenCard.fromPath(path).copy(serial = ++serial, server = origin)
+    }
+
+    /** [request] is for a team this device isn't in: opens it in the open team instead. */
+    internal fun anyTeam(request: OpenCard) {
+        pending.compareAndSet(request, request.copy(server = null))
     }
 
     /** Marks [request] as handled, unless a newer one has already replaced it. */
@@ -158,8 +185,10 @@ internal fun FollowNavigation(ui: FeedUi, navigator: AppNavigator?) {
     }
     // A folded card a link points at opens, as the website unfolds its focus.
     val folds = LocalCardFolds.current
-    LaunchedEffect(ui, navigator) {
-        navigator.requests.filterNotNull().collect { open ->
+    val here = LocalDashboardAddress.current
+    LaunchedEffect(ui, navigator, here) {
+        // One for another team waits: the app opens that team, and its feed takes it.
+        navigator.requests.filterNotNull().filter { it.server == null || dev.wildware.agents.app.session.TeamList.sameServer(it.server, here) }.collect { open ->
             navigator.handled(open)
             ui.goTo(open) { id -> if (folds.isFolded(id)) folds.set(id, false) }
         }
