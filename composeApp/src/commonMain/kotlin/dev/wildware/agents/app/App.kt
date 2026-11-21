@@ -44,6 +44,7 @@ import dev.wildware.agents.app.feed.LocalPushAlerts
 import dev.wildware.agents.app.feed.LocalLiveActivities
 import dev.wildware.agents.app.feed.LocalFilePicker
 import dev.wildware.agents.app.feed.LocalVoiceInput
+import dev.wildware.agents.app.feed.LocalVoiceReview
 import dev.wildware.agents.app.feed.FilePicker
 import dev.wildware.agents.app.feed.MediaAuth
 import dev.wildware.agents.app.feed.SafeArea
@@ -175,6 +176,7 @@ fun AgentsApp(
                         LocalMediaHandler provides (platform.media ?: rememberPlatformMediaHandler(platform.httpEngine)),
                         LocalPushAlerts provides platform.pushAlerts,
                         LocalVoiceInput provides platform.voiceInput,
+                        LocalVoiceReview provides platform.voiceReview,
                         LocalAppCommands provides commands,
                         LocalDemo provides screen.demo,
                         LocalOpenSettings provides openSettings,

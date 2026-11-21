@@ -230,8 +230,10 @@ class OwnerActions(
     private val newId: () -> String = { Uuid.random().toString() },
 ) {
     /** Writes a new post into a project's feed, wearing [tags] once it is up. */
-    fun post(project: ProjectRef, text: String?, files: List<Attachment> = emptyList(), tags: List<OutboxTag> = emptyList()): String =
-        queue(files) { id, stored -> Outbox.message(id, clock(), "To ${project.name}", mapOf("project" to project.slug), text, stored).copy(tags = tags) }
+    fun post(project: ProjectRef, text: String?, files: List<Attachment> = emptyList(), tags: List<OutboxTag> = emptyList(), voice: Voice? = null): String =
+        queue(files) { id, stored ->
+            Outbox.message(id, clock(), "To ${project.name}", mapOf("project" to project.slug), text, stored).copy(tags = tags).spokenAs(voice)
+        }
 
     /** Posts and marks it as work, so an agent on the project picks it up. */
     fun ticket(project: ProjectRef, text: String): String = queue(emptyList()) { id, _ -> Outbox.ticket(id, clock(), project, text) }
@@ -240,7 +242,7 @@ class OwnerActions(
      * Replies on a card: an update's thread, under a post, or in the talk about a question.
      * [answers] is the line in that thread this answers, shown as "answering <name>".
      */
-    fun reply(card: CardRef, text: String?, answers: String? = null, files: List<Attachment> = emptyList(), label: String = "Reply"): String {
+    fun reply(card: CardRef, text: String?, answers: String? = null, files: List<Attachment> = emptyList(), label: String = "Reply", voice: Voice? = null): String {
         val thread = when (card.kind) {
             CardKinds.Update -> mapOf("update" to card.id)
             CardKinds.Message -> mapOf("replyTo" to card.id)
@@ -248,8 +250,13 @@ class OwnerActions(
             CardKinds.Task -> mapOf("task" to card.id)
             else -> throw IllegalArgumentException("Can't reply on a ${card.kind}.")
         }
-        return queue(files) { id, stored -> Outbox.reply(id, clock(), label, thread, text, answers, stored) }
+        return queue(files) { id, stored -> Outbox.reply(id, clock(), label, thread, text, answers, stored).spokenAs(voice) }
     }
+
+    /** A voice note: sent marked as one, after [holdMillis] for an Undo (0: at once, as reviewed before sending). */
+    data class Voice(val holdMillis: Long = 0)
+
+    private fun OutboxItem.spokenAs(voice: Voice?): OutboxItem = if (voice == null) this else Outbox.spoken(this, clock(), voice.holdMillis)
 
     /**
      * Answers a question with [value] exactly as the server takes it: a string, a boolean, a list of

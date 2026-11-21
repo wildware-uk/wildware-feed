@@ -70,6 +70,9 @@ class MessageRow(val json: JsonObject) {
     val requestId get() = json.text("requestId")
     val editedAt get() = json.number("editedAt")
 
+    /** How it was written (migration 065): [Messages.VOICE], or null when typed. */
+    val source get() = json.text("source")
+
     /** The person who wrote it (migration 055), or null for an agent. */
     val userId: String? get() = json.text("userId") ?: People.FOUNDER.takeIf { author == "human" }
 

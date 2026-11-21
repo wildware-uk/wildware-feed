@@ -106,5 +106,11 @@
   "name": "a-team-takes-over-home",
   "file": "064-a-team-takes-over-home.sql",
   "checksum": "b9113146cd4a1681e54fcc9e1f09125eb91e9b9ba476eb7e726aebbfb9bea045"
+ },
+ {
+  "version": 65,
+  "name": "messages-know-they-were-spoken",
+  "file": "065-messages-know-they-were-spoken.sql",
+  "checksum": "4d632aaabe330d09dfa4b611c344833363dc4a33a7a1ca882a9ab4cd6bc9f60d"
  }
 ]

@@ -57,6 +57,8 @@ data class ThreadLine(
     val refs: List<CardRefView> = emptyList(),
     /** Blocks drawn on the line, newest first-hand (docs/BLOCKS.md). */
     val blocks: List<BlockView> = emptyList(),
+    /** While [sending]: a voice note waiting for an Undo until then (epoch millis). Null when it can't be undone. */
+    val undoUntil: Long? = null,
 )
 
 /** One card in the feed. */
@@ -743,11 +745,15 @@ class Feed internal constructor(
     private var indexedDrafts: List<OutboxItem>? = null
     private var draftIds: Set<String> = emptySet()
 
+    /** Voice notes still waiting for an Undo: the line's id to when the wait ends. */
+    private var draftHolds: Map<String, Long> = emptyMap()
+
     private fun indexed(): ThreadIndex {
         val snapshot = threads.snapshot
         if (indexedFrom !== snapshot || indexedDrafts !== drafts) {
             val lines = drafts.mapNotNull(::draftLine)
             draftIds = lines.mapTo(HashSet()) { it.id }
+            draftHolds = drafts.filter { it.holdUntilMillis > 0 && DraftPrefix + it.id in draftIds }.associate { DraftPrefix + it.id to it.holdUntilMillis }
             // A draft's files show where they will be, saying they are going up, until the dashboard has them.
             val media = drafts.filter { it.files.isNotEmpty() && DraftPrefix + it.id in draftIds }.associate { item ->
                 DraftPrefix + item.id to item.files.mapIndexed { i, file ->
@@ -788,6 +794,7 @@ class Feed internal constructor(
             // Its files show under it, by name, so the words are only what was written.
             body = item.text.orEmpty(),
             createdAt = item.createdAtMillis,
+            source = item.source,
         )
     }
 
@@ -845,6 +852,7 @@ class Feed internal constructor(
             questions = context.requests.filter { it.messageId == message.id }.map { context.requestCard(it, this) },
             sending = message.id in draftIds,
             uploaded = if (message.id in draftIds) uploads[message.id.removePrefix(DraftPrefix)] else null,
+            undoUntil = draftHolds[message.id],
         )
     }
 

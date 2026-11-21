@@ -67,6 +67,7 @@ fun iosPlatform(
         imageCacheDir = caches?.let { "$it/agents-images" },
         filePicker = photoPicker,
         voiceInput = voiceInput,
+        voiceReview = voiceInput?.let { dev.wildware.agents.VoiceReviewSetting(IosTextStore("$dataDir/voice-review.txt")) },
         outboxChanged = OutboxSignals.changes,
         foreground = AppLifecycle.foregrounds,
         feedCache = IosTextStore(feedCache),

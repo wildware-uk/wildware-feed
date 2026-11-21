@@ -446,5 +446,12 @@
   "file": "064-a-team-takes-over-home.sql",
   "rebuildsTables": false,
   "checksum": "1346cc0ba89dce9fe9ec8abd4d240d411aff0ded4be60af688e9da6d6bafb8f9"
+ },
+ {
+  "version": 65,
+  "name": "messages-know-they-were-spoken",
+  "file": "065-messages-know-they-were-spoken.sql",
+  "rebuildsTables": false,
+  "checksum": "8a813fdcb5772bdbabb2019c0e2ea6909c25686776d3c03f90b1e1db1388fd8e"
  }
 ]

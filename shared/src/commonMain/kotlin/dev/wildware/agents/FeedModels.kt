@@ -304,7 +304,12 @@ data class MessageView(
     val editedAt: Long? = null,
     /** Which person wrote it, on a team (migration 055); left out for the founder. */
     val userId: String? = null,
+    /** How it was written: [VoiceNote.Source] for a voice note, null when typed. */
+    val source: String? = null,
 ) {
+    /** Said aloud and transcribed, not typed: drawn with a small mic. */
+    val isVoice: Boolean get() = source == VoiceNote.Source
+
     val isPost: Boolean get() = updateId == null && taskId == null && replyTo == null && requestId == null
     val isOwner: Boolean get() = author == HumanAuthor
 

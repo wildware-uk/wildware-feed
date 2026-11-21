@@ -2,6 +2,7 @@ package dev.wildware.agents.app.feed
 
 import dev.wildware.agents.AlertPrefs
 import dev.wildware.agents.MediaRetention
+import dev.wildware.agents.OwnerActions
 import dev.wildware.agents.RetentionForm
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.Stable
@@ -41,10 +42,17 @@ sealed interface FeedEvent {
     /** Start replying to a line in a thread: the reply box says who it answers. */
     data class Reply(val targetId: String) : FeedEvent
     /** Send a reply into a card's thread, answering [answers] when set. */
-    data class SendReply(val threadId: String, val text: String, val answers: String?, val files: List<PendingFile> = emptyList()) : FeedEvent
+    /** [voice]: a voice note, marked so agents know it was transcribed, and held a moment for an Undo when sent on release. */
+    data class SendReply(
+        val threadId: String, val text: String, val answers: String?, val files: List<PendingFile> = emptyList(), val voice: OwnerActions.Voice? = null,
+    ) : FeedEvent
     /** Write a new post into the project on screen. */
     /** Write a new post: into [project] (a slug) when given, as from "All projects", else the project on screen. */
-    data class Post(val text: String, val files: List<PendingFile> = emptyList(), val project: String? = null, val tags: List<CardTag> = emptyList()) : FeedEvent
+    /** [voice]: as [SendReply]'s. */
+    data class Post(
+        val text: String, val files: List<PendingFile> = emptyList(), val project: String? = null, val tags: List<CardTag> = emptyList(),
+        val voice: OwnerActions.Voice? = null,
+    ) : FeedEvent
     data class CopyText(val targetId: String) : FeedEvent
     /** Phones: show this card's or line's words with all of them selected, to pick some out. */
     data class SelectText(val targetId: String) : FeedEvent

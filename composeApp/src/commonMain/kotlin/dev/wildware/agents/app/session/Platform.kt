@@ -35,6 +35,8 @@ class AppPlatform(
     val filePicker: FilePicker? = null,
     /** Records voice notes for the composer's mic, or null where there is no mic. */
     val voiceInput: VoiceInput? = null,
+    /** "Review voice notes before sending", where [voiceInput] records them. */
+    val voiceReview: dev.wildware.agents.VoiceReviewSetting? = null,
     /** Fires when another process (the iPhone's share sheet, Siri, alert buttons) changed the outbox. */
     val outboxChanged: Flow<Unit> = emptyFlow(),
     /** Fires when the app comes back to the front after being away, so the live connection is renewed. */

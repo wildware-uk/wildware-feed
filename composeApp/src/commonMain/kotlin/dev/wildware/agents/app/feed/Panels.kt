@@ -15,6 +15,8 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.foundation.text.input.TextFieldState
 import dev.wildware.agents.Composer as Dictation
+import dev.wildware.agents.OwnerActions
+import dev.wildware.agents.VoiceNote
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -39,6 +41,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MenuDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -537,6 +540,11 @@ fun Composer(
     /** A reply box: who a Reply on a line asks it to name, and whether to take the cursor. [onAsked] once done. */
     ask: MentionAsk? = null,
     onAsked: () -> Unit = {},
+    /**
+     * Sends a voice note: its words and files, and how ([OwnerActions.Voice]). Null where only typing
+     * sends; then the mic always puts the words in the box to check.
+     */
+    onSendVoice: ((String, List<PendingFile>, OwnerActions.Voice) -> Unit)? = null,
 ) {
     val colors = AgentTheme.colors
     val shape = AgentTheme.shapes.large
@@ -570,10 +578,23 @@ fun Composer(
     var hovering by remember { mutableStateOf(false) }
     var refused by remember { mutableStateOf<String?>(null) }
     val picker = LocalFilePicker.current
-    // Hold-to-talk puts the words into the box, after anything already typed, to check before sending.
+    // Hold-to-talk sends the note on letting go, with a few seconds to Undo it on the line. With
+    // "Review voice notes before sending" on, the words go into the box after anything typed instead.
+    val review by (LocalVoiceReview.current?.enabled ?: NoReview).collectAsState()
+    val sendsOnRelease = VoiceNote.sendsOnRelease(review, canSendHere = onSendVoice != null)
+    // The box holds dictated words: it goes up as a voice note, so agents know to read it for meaning.
+    var dictated by remember(text) { mutableStateOf(false) }
     val recorder = rememberVoiceRecorder(LocalVoiceInput.current) { words ->
-        val joined = Dictation.appendDictation(text.text.toString(), words)
-        text.edit { replace(0, length, joined) }
+        val voice = onSendVoice
+        if (voice != null && VoiceNote.sendsOnRelease(review, canSendHere = true)) {
+            voice(words.trim(), emptyList(), OwnerActions.Voice(VoiceNote.UndoMillis))
+            true
+        } else {
+            val joined = Dictation.appendDictation(text.text.toString(), words)
+            text.edit { replace(0, length, joined) }
+            dictated = true
+            false
+        }
     }
     val add: (List<PendingFile>) -> Unit = { incoming ->
         val (fits, big) = incoming.partition { !tooBig(it) }
@@ -634,7 +655,9 @@ fun Composer(
     val send = {
         val typed = text.text.toString().trim()
         if (typed.isNotEmpty() || files.isNotEmpty()) {
-            onSend(typed, files.toList())
+            val voice = onSendVoice
+            if (dictated && voice != null) voice(typed, files.toList(), OwnerActions.Voice()) else onSend(typed, files.toList())
+            dictated = false
             text.clearText()
             files.clear()
             refused = null
@@ -738,7 +761,7 @@ fun Composer(
             }
             // An empty box offers the mic; once there is something to send, the send button.
             if (recorder != null && (recorder.active || (blank && files.isEmpty()))) {
-                MicButton(recorder)
+                MicButton(recorder, sendsOnRelease)
             } else {
                 SendButton(enabled = !blank || files.isNotEmpty(), onClick = send)
             }
@@ -746,6 +769,9 @@ fun Composer(
     }
     }
 }
+
+/** Where no review setting is (no mic, previews): never review. */
+private val NoReview = kotlinx.coroutines.flow.MutableStateFlow(false)
 
 /** How far down a finger drags the open box to close it. */
 private val SwipeToClose = 48.dp
@@ -809,7 +835,9 @@ fun ReplyView(reply: Reply, modifier: Modifier = Modifier) {
     val time = if (reply.sending) sendingLabel(reply.uploaded) else reply.time
     val detail = if (reply.sending) "" else reply.timeDetail
     val answering = reply.answering?.let { "answering $it" }
-    val spoken = listOfNotNull(reply.author.name, answering, detail.ifEmpty { time }, reply.edited, "new".takeIf { reply.unread }).joinToString(", ")
+    val spoken = listOfNotNull(
+        reply.author.name, answering, detail.ifEmpty { time }, "voice note".takeIf { reply.voice }, reply.edited, "new".takeIf { reply.unread },
+    ).joinToString(", ")
     Row(modifier.fillMaxWidth().alpha(if (reply.sending) SendingAlpha else 1f)) {
         Avatar(reply.author, 28.dp, showPresence = false)
         Column(Modifier.padding(start = 10.dp).weight(1f)) {
@@ -824,6 +852,7 @@ fun ReplyView(reply: Reply, modifier: Modifier = Modifier) {
                     style = AgentTheme.type.label.copy(fontWeight = FontWeight.SemiBold),
                 )
                 TimeText(time, detail, Modifier.padding(start = 8.dp).clearAndSetSemantics { })
+                if (reply.voice) VoiceMark(Modifier.padding(start = 6.dp))
                 if (reply.edited != null) EditedMark(Modifier.padding(start = 6.dp).clearAndSetSemantics { })
                 if (answering != null) {
                     // Last, and the one to give way: a long name ends in "…" before the time does.
@@ -833,6 +862,7 @@ fun ReplyView(reply: Reply, modifier: Modifier = Modifier) {
             }
             Spacer(Modifier.height(2.dp))
             MarkdownBody(reply.body)
+            if (reply.sending) UndoVoiceNote(reply.id, reply.undoUntil, Modifier.padding(top = 4.dp))
             PostMedia(reply.attachments, reply.sounds, reply.files, reply.embeds)
             CardBlocks(reply.blocks, Modifier.padding(top = 8.dp))
             LinkedCards(reply.refs, Modifier.padding(top = 8.dp))

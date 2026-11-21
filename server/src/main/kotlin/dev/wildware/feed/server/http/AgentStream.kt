@@ -4,6 +4,7 @@ import dev.wildware.feed.server.App
 import dev.wildware.feed.server.db.Tenant
 import dev.wildware.feed.server.domain.AgentWork
 import dev.wildware.feed.server.domain.Agents
+import dev.wildware.feed.server.domain.Messages
 import dev.wildware.feed.server.domain.Subscriptions
 import dev.wildware.feed.server.events.AppEvent
 import io.ktor.server.application.ApplicationCall
@@ -235,7 +236,8 @@ private fun projectNames(app: App, projectId: String?): Pair<JsonElement, JsonEl
 
 private fun str(v: String?): JsonElement = v?.let(::JsonPrimitive) ?: JsonNull
 
-private fun messageItem(app: App, m: AgentWork.Line, agentId: String): JsonObject {
+/** One line of the agent stream's message frame. Internal for tests. */
+internal fun messageItem(app: App, m: AgentWork.Line, agentId: String): JsonObject {
     val (slug, name) = projectNames(app, m.projectId)
     val quoted = app.work.quoted(m, "agent:$agentId")
     val media = app.db.query("SELECT id, kind FROM media WHERE team_id = :team AND message_id = ? ORDER BY seq", m.id) {
@@ -265,7 +267,9 @@ private fun messageItem(app: App, m: AgentWork.Line, agentId: String): JsonObjec
         val authorName = app.work.authorName(m.author, m.userId)
         put("author_name", str(authorName))
         if (m.author == "human" && authorName != null) put("author_user_id", JsonPrimitive(m.userId))
-        put("body", JsonPrimitive(m.body))
+        // A voice note's words carry a line saying so, which the bridge's notice shows as it is.
+        put("body", JsonPrimitive(Messages.forAgents(m.body, m.source)))
+        m.source?.let { put("source", JsonPrimitive(it)) }
         put("created_at", JsonPrimitive(Wire.isoOf(m.createdAt)))
         put("media", JsonArray(media))
     }

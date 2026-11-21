@@ -101,7 +101,7 @@ final class VoiceNotes: ObservableObject {
         }
         guard let destination else { throw VoiceNoteError.noProject }
         CredentialStore.lastProject = destination
-        let queued = OutboxQueue.enqueueMessage(label: "To \(destination.name)", thread: ["project": destination.slug], text: text)
+        let queued = OutboxQueue.enqueueMessage(label: "To \(destination.name)", thread: ["project": destination.slug], text: text, voice: true)
         let outcome = await OutboxQueue.flush(only: queued)
         if outcome == .refused { throw VoiceNoteError.refused }
         return (destination, outcome == .sent)

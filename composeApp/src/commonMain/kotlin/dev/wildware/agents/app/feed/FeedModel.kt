@@ -276,6 +276,10 @@ data class Reply(
     val sending: Boolean = false,
     /** While [sending]: how much of its files have gone up, 0 to 1; null when none are going up. */
     val uploaded: Float? = null,
+    /** Said aloud and transcribed, not typed: drawn with a small mic. */
+    val voice: Boolean = false,
+    /** While [sending]: a voice note that can still be taken back, until then (epoch millis). */
+    val undoUntil: Long? = null,
     /** Questions an agent asked under this reply. They are answered right here, as well as at the top. */
     val questions: List<FeedItem.Question> = emptyList(),
     /** The owner's line, sent a while ago, and no agent has it: nobody is listening. */
@@ -551,6 +555,10 @@ sealed interface FeedItem {
         val sending: Boolean = false,
         /** While [sending]: how much of its files have gone up, 0 to 1; null when none are going up. */
         val uploaded: Float? = null,
+        /** Said aloud and transcribed, not typed: drawn with a small mic. */
+        val voice: Boolean = false,
+        /** While [sending]: a voice note that can still be taken back, until then (epoch millis). */
+        val undoUntil: Long? = null,
         /** Questions an agent asked under the post itself, shown at the top of its thread. */
         val questions: List<Question> = emptyList(),
         /** When it was last changed, as "Edited Monday 3 August 2026 at 14:05"; null when never. Drawn as "edited". */

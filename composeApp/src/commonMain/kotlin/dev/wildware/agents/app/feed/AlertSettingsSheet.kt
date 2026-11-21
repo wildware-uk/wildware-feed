@@ -130,6 +130,7 @@ fun AlertSettingsSheet(ui: FeedUi, safeArea: SafeArea) {
                 style = AgentTheme.type.body,
             )
             LocalSounds.current?.let { SoundsGroup(it) }
+            LocalVoiceReview.current?.takeIf { LocalVoiceInput.current != null }?.let { VoiceNotesGroup(it) }
             LocalLiveActivities.current?.let { LiveActivitiesGroup(it) }
             LocalCrashReports.current?.let { CrashReportsGroup(it) }
             // The dashboard's own settings, for whoever may change them.
@@ -220,6 +221,20 @@ private fun SoundsGroup(sounds: dev.wildware.agents.app.sound.SoundBoard) {
     CheckRow("Play sounds", on, enabled = true) { sounds.set(!on) }
     Text(
         "A short sound in the app for questions, replies, finished work, errors and what you send. Follows your device's silent and Do Not Disturb settings; critical alerts still sound.",
+        Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+        color = AgentTheme.colors.textMuted,
+        style = AgentTheme.type.body,
+    )
+}
+
+/** "Review voice notes before sending": off, letting go of the mic sends the note, with a few seconds to Undo it. */
+@Composable
+private fun VoiceNotesGroup(setting: dev.wildware.agents.VoiceReviewSetting) {
+    val on by setting.enabled.collectAsState()
+    SettingsHeading("Voice notes")
+    CheckRow("Review voice notes before sending", on, enabled = true) { setting.set(!on) }
+    Text(
+        if (on) "Your words go into the message box to check, then you send them." else "A voice note sends when you let go of the mic, with a few seconds to undo it.",
         Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
         color = AgentTheme.colors.textMuted,
         style = AgentTheme.type.body,

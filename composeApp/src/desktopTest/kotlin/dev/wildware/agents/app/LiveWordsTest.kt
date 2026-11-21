@@ -47,7 +47,7 @@ class LiveWordsTest {
     fun theRecorderHoldsTheWordsHeardSoFarUntilTheFinishedOnesArrive() {
         val voice = FakeVoice()
         val written = mutableListOf<String>()
-        val recorder = VoiceRecorder(voice) { written += it }
+        val recorder = VoiceRecorder(voice) { written += it; false }
 
         recorder.press()
         voice.started(null)
@@ -66,7 +66,7 @@ class LiveWordsTest {
     @Test
     fun cancellingThrowsTheHeardWordsAway() {
         val voice = FakeVoice()
-        val recorder = VoiceRecorder(voice) { }
+        val recorder = VoiceRecorder(voice) { false }
         recorder.press()
         voice.started(null)
         voice.heard("never mind")
@@ -79,7 +79,7 @@ class LiveWordsTest {
     @Test
     fun wordsHeardAfterTheEndAreIgnored() {
         val voice = FakeVoice()
-        val recorder = VoiceRecorder(voice) { }
+        val recorder = VoiceRecorder(voice) { false }
         recorder.press()
         voice.started(null)
         recorder.release()

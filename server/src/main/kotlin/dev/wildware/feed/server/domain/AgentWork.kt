@@ -25,6 +25,8 @@ class AgentWork(private val db: Database, private val bus: Bus, private val cloc
         val createdAt: Long, val deletedAt: Long?,
         /** The person, for a `human` line (migration 055). */
         val userId: String? = null,
+        /** How it was written (migration 065): [Messages.VOICE] for a voice note. */
+        val source: String? = null,
     )
 
     private val subscriptions = Subscriptions(db, clock)
@@ -220,10 +222,11 @@ class AgentWork(private val db: Database, private val bus: Bus, private val cloc
         requestId = rs.getString("request_id"), author = rs.getString("author"), body = rs.getString("body"),
         createdAt = rs.getLong("created_at"), deletedAt = rs.getLong("deleted_at").let { if (rs.wasNull()) null else it },
         userId = rs.getString("user_id") ?: People.FOUNDER.takeIf { rs.getString("author") == "human" },
+        source = rs.getString("source"),
     )
 
     companion object {
         val OPEN = listOf("todo", "in_progress", "blocked")
-        private val LINE = listOf("seq", "id", "project_id", "update_id", "task_id", "reply_to", "answers", "request_id", "author", "body", "created_at", "deleted_at", "user_id")
+        private val LINE = listOf("seq", "id", "project_id", "update_id", "task_id", "reply_to", "answers", "request_id", "author", "body", "created_at", "deleted_at", "user_id", "source")
     }
 }

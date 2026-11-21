@@ -120,6 +120,7 @@ fun Route.feedRoutes(app: App) {
                     throw invalid("sendKey must be 1 to $SEND_KEY_MAX printable ASCII characters")
                 }
             }
+            val source = optional("source")
             val mediaIds = if ("mediaIds" in body) {
                 val list = body["mediaIds"] as? JsonArray ?: throw invalid("mediaIds must be a list")
                 list.mapIndexed { i, id -> text(id, "mediaIds[$i]") }
@@ -130,7 +131,7 @@ fun Route.feedRoutes(app: App) {
                 Messages.Post(
                     author = Messages.HUMAN, body = text, project = project, updateId = updateId, replyTo = replyTo,
                     answers = answers, requestId = requestId, mediaIds = mediaIds, userId = call.person.id, sendKey = sendKey,
-                    guardRepeats = true,
+                    source = source, guardRepeats = true,
                 ),
             )
             call.respondOwner(201, buildJsonObject { put("message", message.json) })

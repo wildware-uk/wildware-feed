@@ -1492,5 +1492,14 @@
     "taskSupport": "forbidden"
    }
   }
+ },
+ {
+  "tool": "get_messages",
+  "path": [
+   "description"
+  ],
+  "why": "Voice notes (migration 065): a transcribed message says so, for the agent only.",
+  "replace": "A narrowed read (one channel, or an explicit since)",
+  "with": "**A voice note says so.** When your owner spoke a message rather than typed it, it has\n`source: \"voice\"` and its `body` ends with a line saying it was transcribed: the words are\nas the phone heard them and may hold mistakes. Read it for meaning, and ask if something\nlooks off. That line is yours alone: your owner never sees it, so don't quote it back.\n\nA narrowed read (one channel, or an explicit since)"
  }
 ]

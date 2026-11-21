@@ -264,6 +264,11 @@ fun ToolRegistry.registerFeedTools(app: App) {
                 val name = messages.authorName(message.author, message.userId)
                 buildJsonObject {
                     FeedViews.message(message).forEach { (k, v) -> put(k, v) }
+                    // A voice note: the words as said, then a line saying they were transcribed.
+                    message.source?.let {
+                        put("body", Messages.forAgents(message.body, it))
+                        put("source", it)
+                    }
                     if (name != null) put("author_name", name)
                     // On a team, which person (migration 055); a team of one adds nothing.
                     if (name != null && message.author == Messages.HUMAN) put("author_user_id", message.userId)

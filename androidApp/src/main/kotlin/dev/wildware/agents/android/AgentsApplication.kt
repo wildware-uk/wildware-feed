@@ -161,6 +161,7 @@ fun androidPlatform(context: Context, hooks: ActivityHooks, scope: CoroutineScop
         filePicker = AndroidPhotoPicker(hooks, context.contentResolver, scope),
         // No recogniser on the phone (some builds without Google's apps): no mic, rather than one that can't work.
         voiceInput = if (SpeechRecognizer.isRecognitionAvailable(context)) SpeechVoiceInput(context, hooks) else null,
+        voiceReview = dev.wildware.agents.VoiceReviewSetting(FileTextStore(File(dir, "voice-review.txt"))),
         crashReports = CrashReporting.setting,
         sounds = AndroidSoundPlayer(context, onScreen).let { player -> SoundBoard(player, FileTextStore(File(dir, "sounds.txt")), quiet = player::quiet) },
         // A notice shown in the shade makes its channel's sound: over the app only a critical one is shown.

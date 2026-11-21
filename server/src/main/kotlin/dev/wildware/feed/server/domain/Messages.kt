@@ -37,6 +37,8 @@ class Messages(private val feed: Feed) {
          * it, by the same person, gets the first message back instead of making a copy.
          */
         val sendKey: String? = null,
+        /** How a person wrote it (migration 065): [VOICE] for a voice note, null when typed. */
+        val source: String? = null,
         /**
          * Treat the same words from the same person in the same thread, within [REPEAT_WINDOW_MS], as one
          * send tried again, when the earlier copy came with no key (apps from before send keys). Only the
@@ -66,6 +68,8 @@ class Messages(private val feed: Feed) {
         val author = input.author
         val person = if (author == HUMAN) input.userId ?: People.FOUNDER else null
         val sendKey = input.sendKey?.takeIf { person != null }
+        if (input.source != null && input.source !in SOURCES) throw invalid("source must be \"$VOICE\" or left out")
+        if (input.source != null && person == null) throw invalid("only a person's message has a source")
         // A send tried again (its answer was lost on the way back): the first message, not a copy.
         sentAlready(person, sendKey)?.let { return@op it }
 
@@ -138,9 +142,9 @@ class Messages(private val feed: Feed) {
 
         val id = Ulid.next()
         val inserted = db.update(
-            "INSERT INTO messages (team_id, id, project_id, update_id, task_id, author, body, created_at, reply_to, answers, request_id, user_id, send_key) " +
-                "VALUES (:team, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
-            id, projectId, updateId, author, body, feed.now(), if (request) null else anchor, answersId, requestId, person, sendKey,
+            "INSERT INTO messages (team_id, id, project_id, update_id, task_id, author, body, created_at, reply_to, answers, request_id, user_id, send_key, source) " +
+                "VALUES (:team, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
+            id, projectId, updateId, author, body, feed.now(), if (request) null else anchor, answersId, requestId, person, sendKey, input.source,
         )
         // Two tries of one send arrived together and the other got there first.
         if (inserted == 0) return@op sentAlready(person, sendKey) ?: throw IllegalStateException("message $id was not stored")
@@ -421,5 +425,16 @@ class Messages(private val feed: Feed) {
         const val HUMAN = "human"
         const val AGENT_PREFIX = "agent:"
         const val NO_PROJECT = ""
+
+        /** A voice note (migration 065): said aloud and transcribed on the phone, then sent as said. */
+        const val VOICE = "voice"
+        private val SOURCES = setOf(VOICE)
+
+        /** The line agents read under a voice note's words. People never see it, and it is never stored. */
+        const val VOICE_HINT =
+            "(Transcribed from a voice note, so it may contain mistakes: read it for meaning, and ask if something looks off.)"
+
+        /** [body] as an agent reads it: a voice note's words with [VOICE_HINT] under them; anything else as it is. */
+        fun forAgents(body: String, source: String?): String = if (source == VOICE) "$body\n\n$VOICE_HINT" else body
     }
 }

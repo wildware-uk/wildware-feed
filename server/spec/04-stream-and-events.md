@@ -309,6 +309,10 @@ data: {"type":"work","unread_messages":N,"open_tasks":N,"pending_approvals":N,"a
 task_id, reply_to, answers (|null), in_reply_to, request_id, author,
 author_name, body, created_at (ISO), media:[{id, kind}]`
 
+- Kotlin, migration 065: a voice note also has `source: "voice"`, and its `body` is the
+  words then a blank line and `(Transcribed from a voice note, so it may contain mistakes:
+  read it for meaning, and ask if something looks off.)`. The bridge's notice shows that body
+  as it is. The stored words never hold that line; people's reads, quotes and edits don't see it.
 - `in_reply_to` = `{id, author, body, truncated}` or `null`; parent chosen as
   `answers ?? reply_to`; body cut to 240 chars + `…`; `null` if parent deleted —
   `src/domain/messages.ts:620-665`.

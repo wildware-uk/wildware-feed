@@ -310,6 +310,7 @@ Body (strict; `readReply`, `src/http/owner/messages.ts:210-248`). Every key, if 
 | `answers` | `answers` | `answers must be a string` |
 | `request` | `requestId` | `request must be a string` |
 | `mediaIds` | list of strings | `mediaIds must be a list` / `mediaIds[<i>] must be a string` |
+| `source` | `source` (Kotlin, migration 065): `"voice"` for a transcribed voice note, else left out | `source must be a string`; any other value: `source must be "voice" or left out` |
 
 `task` is **not read** (silently ignored). Owners cannot send embeds or apps.
 

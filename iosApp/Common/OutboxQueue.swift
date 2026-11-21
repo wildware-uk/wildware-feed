@@ -56,8 +56,9 @@ enum OutboxQueue {
     // MARK: Queueing
 
     /// Queues a post or reply. [thread] is `{"project": slug}`, `{"request": id}`, or an alert's reply thread.
+    /// [voice]: the words were said aloud and transcribed, so the dashboard marks it as a voice note.
     @discardableResult
-    static func enqueueMessage(label: String, thread: [String: String], text: String?, photos: [OutboxPhoto] = []) -> String {
+    static func enqueueMessage(label: String, thread: [String: String], text: String?, photos: [OutboxPhoto] = [], voice: Bool = false) -> String {
         let id = UUID().uuidString
         let files = photos.enumerated().compactMap { index, photo -> OutboxFile? in
             let name = "\(id)-\(index)"
@@ -68,7 +69,8 @@ enum OutboxQueue {
             }
             return OutboxFile(name: name, filename: photo.filename, mimeType: photo.mimeType)
         }
-        add(Outbox.shared.message(id: id, nowMillis: nowMillis, label: label, thread: thread, text: text, files: files))
+        let item = Outbox.shared.message(id: id, nowMillis: nowMillis, label: label, thread: thread, text: text, files: files)
+        add(voice ? Outbox.shared.spoken(item: item) : item)
         return id
     }
 

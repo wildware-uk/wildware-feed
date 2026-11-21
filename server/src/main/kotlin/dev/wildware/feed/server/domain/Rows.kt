@@ -18,7 +18,7 @@ import java.sql.ResultSet
 internal object Rows {
     const val PROJECT = "seq, id, slug, name, description, status, pinned, created_at, updated_at, theme, board, group_id"
     const val UPDATE = "seq, id, project_id, agent_id, session_id, title, body, level, pinned, created_at, deleted_at, edited_at, priority, task_id, status, status_at"
-    const val MESSAGE = "seq, id, project_id, update_id, task_id, author, body, created_at, reply_to, deleted_at, answers, request_id, edited_at, pinned, status, status_at, user_id"
+    const val MESSAGE = "seq, id, project_id, update_id, task_id, author, body, created_at, reply_to, deleted_at, answers, request_id, edited_at, pinned, status, status_at, user_id, source"
     const val ACK = "seq, id, agent_id, message_id, task_id, update_id, request_id, state, created_at, updated_at"
     const val REACTION = "seq, id, message_id, update_id, request_id, task_id, actor, emoji, created_at, user_id"
     const val TAG = "seq, id, project_id, name, slug, colour, agent_id, created_at"
@@ -106,6 +106,8 @@ internal object Rows {
         str(rs, "status", "status")
         long(rs, "statusAt", "status_at")
         person(rs, "userId", "user_id")
+        // How it was written (migration 065): "voice" for a voice note; left out when typed.
+        rs.getString("source")?.let { put("source", it) }
     }
 
     /**

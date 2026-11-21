@@ -841,13 +841,13 @@ class DashboardSession(
             is FeedEvent.CheckBlockItem -> dashboard.checkBlockItem(CardRef(event.cardKind, event.cardId), event.blockId, event.itemId, event.done)
             is FeedEvent.VoteBlock -> dashboard.voteBlock(CardRef(event.cardKind, event.cardId), event.blockId, event.options, mutableTeam.value.me?.id)
             is FeedEvent.SendReply -> cardRef(event.threadId)?.let {
-                actions.reply(it, event.text.ifBlank { null }, answers = event.answers, files = event.files.map(::upload))
+                actions.reply(it, event.text.ifBlank { null }, answers = event.answers, files = event.files.map(::upload), voice = event.voice)
             }
             is FeedEvent.Post -> (event.project?.let(::projectRef) ?: postTarget())?.let {
                 remember(it.slug)
                 // A word made in the picker isn't on the dashboard yet: it is made as it goes on.
                 val tags = event.tags.map { t -> if (t.id.startsWith("new:")) OutboxTag(t.name, create = true) else OutboxTag(t.id) }
-                actions.post(it, event.text.ifBlank { null }, event.files.map(::upload), tags)
+                actions.post(it, event.text.ifBlank { null }, event.files.map(::upload), tags, voice = event.voice)
             }
             is FeedEvent.Delete -> cardRef(event.targetId)?.let { actions.delete(it) }
             is FeedEvent.Tag -> cardRef(event.targetId)?.let { actions.tag(it, event.tag, event.on, event.create) }

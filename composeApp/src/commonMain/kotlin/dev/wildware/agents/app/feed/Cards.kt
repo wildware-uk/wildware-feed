@@ -175,11 +175,13 @@ private fun CardHeader(
     edited: String? = null,
     /** The whole instants behind [time]: shown on hover, and read out in its place. */
     timeDetail: String = "",
+    /** Said aloud and transcribed: a small mic after the time. */
+    voice: Boolean = false,
 ) {
     val colors = AgentTheme.colors
     val type = AgentTheme.type
     val spoken = listOfNotNull(
-        author.name, role, timeDetail.ifEmpty { time }, edited, "pinned".takeIf { pinned }, "critical".takeIf { critical }, "high priority".takeIf { high && !critical },
+        author.name, role, timeDetail.ifEmpty { time }, "voice note".takeIf { voice }, edited, "pinned".takeIf { pinned }, "critical".takeIf { critical }, "high priority".takeIf { high && !critical },
         level?.label, status?.let { "status ${it.label}" },
     ).joinToString(", ")
     Row(
@@ -205,6 +207,7 @@ private fun CardHeader(
             }
             Spacer(Modifier.width(10.dp))
             TimeText(time, timeDetail, Modifier.clearAndSetSemantics { })
+            if (voice) VoiceMark(Modifier.padding(start = 6.dp))
             if (edited != null) EditedMark(Modifier.padding(start = 6.dp).clearAndSetSemantics { })
             if (pinned) Icon(Icons.Pin, null, tint = colors.accent, modifier = Modifier.padding(start = 8.dp).size(13.dp))
         }
@@ -1094,6 +1097,7 @@ fun PostCard(item: FeedItem.Post, modifier: Modifier = Modifier, density: Densit
                 fold = fold,
                 edited = item.edited,
                 timeDetail = if (item.sending) "" else item.timeDetail,
+                voice = item.voice,
             )
             Column(Modifier.padding(start = indent, top = 8.dp)) {
                 if (density == Density.Compact && item.status != null) Chips(null, item.status, modifier = Modifier.padding(bottom = 8.dp), onStatus = chooseStatus)
@@ -1103,6 +1107,7 @@ fun PostCard(item: FeedItem.Post, modifier: Modifier = Modifier, density: Densit
                 }
                 val body = @Composable { if (own) PlainBody(item.body) else MarkdownBody(item.body) }
                 if (inThread) body() else Clamp(item.id, "the whole post") { body() }
+                if (item.sending) UndoVoiceNote(item.id, item.undoUntil, Modifier.padding(top = 6.dp))
                 PostMedia(item.attachments, item.sounds, item.files, item.embeds)
                 CardBlocks(item.blocks, Modifier.padding(top = 10.dp))
                 LinkedCards(item.refs, Modifier.padding(top = 10.dp))

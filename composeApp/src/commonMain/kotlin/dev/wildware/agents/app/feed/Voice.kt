@@ -44,6 +44,8 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import dev.wildware.agents.app.design.AgentTheme
+import dev.wildware.agents.DraftPrefix
+import dev.wildware.agents.VoiceReviewSetting
 import dev.wildware.agents.app.design.Icons
 import kotlinx.coroutines.delay
 
@@ -72,9 +74,12 @@ val LocalVoiceInput = staticCompositionLocalOf<VoiceInput?> { null }
 /** How far left the finger slides before letting go throws the note away. */
 private val CancelDistance = 100.dp
 
-/** One composer's recording: what the mic button and the strip beside it draw. */
+/**
+ * One composer's recording: what the mic button and the strip beside it draw. [onWords] takes the
+ * finished words and says whether it sent them (true) or put them in the box to check (false).
+ */
 @Stable
-class VoiceRecorder(private val input: VoiceInput, private val onWords: (String) -> Unit) {
+class VoiceRecorder(private val input: VoiceInput, private val onWords: (String) -> Boolean) {
     enum class Phase { Idle, Starting, Recording, Writing }
 
     var phase by mutableStateOf(Phase.Idle)
@@ -83,7 +88,7 @@ class VoiceRecorder(private val input: VoiceInput, private val onWords: (String)
     /** The finger has slid far enough left that letting go cancels. */
     var willCancel by mutableStateOf(false)
 
-    /** A word for the owner under the box: "Check it, then send", or what went wrong. */
+    /** A word for the owner under the box: "Check it, then send", or what went wrong; nothing once sent. */
     var note by mutableStateOf<String?>(null)
 
     /** The words heard so far, while recording and while they are written down; then the finished words replace them. */
@@ -133,8 +138,8 @@ class VoiceRecorder(private val input: VoiceInput, private val onWords: (String)
             listening = false
             heard = ""
             phase = Phase.Idle
-            if (text != null) onWords(text)
-            note = problem ?: "Check it, then send"
+            val sent = text != null && onWords(text)
+            note = problem ?: if (sent) null else "Check it, then send"
         }
     }
 
@@ -149,14 +154,17 @@ class VoiceRecorder(private val input: VoiceInput, private val onWords: (String)
 }
 
 @Composable
-fun rememberVoiceRecorder(input: VoiceInput?, onWords: (String) -> Unit): VoiceRecorder? {
+fun rememberVoiceRecorder(input: VoiceInput?, onWords: (String) -> Boolean): VoiceRecorder? {
     val words by rememberUpdatedState(onWords)
     return remember(input) { input?.let { VoiceRecorder(it) { text -> words(text) } } }
 }
 
-/** Hold to talk, slide left to cancel. A screen reader taps once to start and again to stop. */
+/**
+ * Hold to talk, slide left to cancel. A screen reader taps once to start and again to stop.
+ * [sendsOnRelease]: letting go sends the note, rather than putting the words in the box.
+ */
 @Composable
-fun MicButton(recorder: VoiceRecorder) {
+fun MicButton(recorder: VoiceRecorder, sendsOnRelease: Boolean = false) {
     val colors = AgentTheme.colors
     val shape = AgentTheme.shapes.medium
     val cancelPx = with(LocalDensity.current) { CancelDistance.toPx() }
@@ -167,8 +175,12 @@ fun MicButton(recorder: VoiceRecorder) {
             .semantics {
                 role = Role.Button
                 contentDescription = "Hold to talk"
-                stateDescription = if (live) "Recording" else "Your words go into the message to check before sending"
-                onClick(if (live) "Stop and write it down" else "Start recording") {
+                stateDescription = when {
+                    live -> "Recording"
+                    sendsOnRelease -> "Your words are sent when you let go, with a few seconds to undo"
+                    else -> "Your words go into the message to check before sending"
+                }
+                onClick(if (live) (if (sendsOnRelease) "Stop and send" else "Stop and write it down") else "Start recording") {
                     if (live) recorder.release() else recorder.press()
                     true
                 }
@@ -257,3 +269,34 @@ fun LiveWords(words: String, modifier: Modifier = Modifier) {
 
 /** About four lines on a phone. */
 private const val LiveWordsShown = 160
+
+/** "Review voice notes before sending", where this device records them; null where it doesn't. */
+val LocalVoiceReview = staticCompositionLocalOf<VoiceReviewSetting?> { null }
+
+/** The small mic on a line that was said aloud and transcribed. Its words are read out by the line. */
+@Composable
+internal fun VoiceMark(modifier: Modifier = Modifier) {
+    Icon(Icons.Mic, null, tint = AgentTheme.colors.textFaint, modifier = modifier.size(12.dp))
+}
+
+/**
+ * "Undo" on a voice note still waiting to go, until [until]; then it goes on its way and this goes.
+ * Undo takes it out of the outbox, so nothing is sent. [lineId] is the line's, `outbox:<id>`.
+ */
+@Composable
+internal fun UndoVoiceNote(lineId: String, until: Long?, modifier: Modifier = Modifier) {
+    val ui = LocalFeedUi.current
+    if (until == null || ui == null) return
+    val now = LocalNow.current
+    var open by remember(until) { mutableStateOf(now() < until) }
+    if (!open) return
+    LaunchedEffect(until) {
+        delay(until - now())
+        open = false
+    }
+    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+        MetaText("Voice note", color = AgentTheme.colors.textMuted)
+        Spacer(Modifier.width(4.dp))
+        MetaAction("Undo") { ui.emit(FeedEvent.DropUnsent(lineId.removePrefix(DraftPrefix))) }
+    }
+}

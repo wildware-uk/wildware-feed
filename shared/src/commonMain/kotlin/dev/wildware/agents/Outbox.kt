@@ -109,6 +109,13 @@ data class OutboxItem(
     val shown: QuestionShown? = null,
     /** For a post: the tags it goes up wearing, put on once it is posted. */
     val tags: List<OutboxTag> = emptyList(),
+    /** For a post or reply: how it was written, [VoiceNote.Source] for a voice note. */
+    val source: String? = null,
+    /**
+     * Nothing sends it before this, not even a kick: a voice note waits here for an Undo, which
+     * takes it out. Zero when it can go at once.
+     */
+    val holdUntilMillis: Long = 0,
 ) {
     /** Items in one thread go in the order they were written. */
     val threadKey: String
@@ -249,6 +256,7 @@ object Outbox {
         return live.withIndex().firstOrNull { (index, item) ->
             item.id !in skip &&
                 item.claimedUntilMillis <= nowMillis &&
+                item.holdUntilMillis <= nowMillis &&
                 (ignoreBackoff || item.nextAttemptAtMillis <= nowMillis) &&
                 live.subList(0, index).none { it.threadKey == item.threadKey }
         }?.value
@@ -290,8 +298,18 @@ object Outbox {
 
     fun remove(items: List<OutboxItem>, id: String): List<OutboxItem> = items.filter { it.id != id }
 
+    /**
+     * [item] as a voice note: the dashboard marks it so agents know it was transcribed. With
+     * [holdMillis] it waits that long first, so the owner can Undo it.
+     */
+    fun spoken(item: OutboxItem, nowMillis: Long, holdMillis: Long): OutboxItem =
+        item.copy(source = VoiceNote.Source, holdUntilMillis = if (holdMillis > 0) nowMillis + holdMillis else 0)
+
+    /** [item] as a voice note sent with no wait: the lock screen's, Siri's. */
+    fun spoken(item: OutboxItem): OutboxItem = spoken(item, 0, 0)
+
     /** When the next waiting item falls due, to wake up for it. Null when nothing waits. */
-    fun nextWakeMillis(items: List<OutboxItem>): Long? = waiting(items).minOfOrNull { maxOf(it.nextAttemptAtMillis, it.claimedUntilMillis) }
+    fun nextWakeMillis(items: List<OutboxItem>): Long? = waiting(items).minOfOrNull { maxOf(it.nextAttemptAtMillis, it.claimedUntilMillis, it.holdUntilMillis) }
 
     /** Files no item uses any more, to delete from the outbox's folder. */
     fun orphanedFiles(before: List<OutboxItem>, after: List<OutboxItem>): List<String> {
@@ -331,7 +349,10 @@ internal suspend fun DashboardClient.deliverQueued(
         when (item.kind) {
             OutboxKind.Message -> {
                 // The item's id is its send key: every try of it is the same send, so the dashboard keeps one.
-                val posted = sendMessage(item.thread + listOfNotNull(item.answers?.let { "answers" to it }), item.text, attachments, sendKey = item.id, sent = uploaded).message
+                val posted = sendMessage(
+                    item.thread + listOfNotNull(item.answers?.let { "answers" to it }, item.source?.let { "source" to it }),
+                    item.text, attachments, sendKey = item.id, sent = uploaded,
+                ).message
                 sent = posted
                 // As on the website, a tag that won't go on doesn't undo the post: the words matter more.
                 val card = posted?.let { CardRef(CardKinds.Message, it.id) }

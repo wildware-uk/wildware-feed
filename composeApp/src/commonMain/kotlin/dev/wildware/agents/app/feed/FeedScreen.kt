@@ -362,6 +362,7 @@ private fun DesktopComposer(ui: FeedUi, target: Project, postTo: String?, pickin
                 focus = ui.composerFocus,
                 placeholder = "Write to everyone in ${target.name}…",
                 onSend = { text, files -> ui.emit(FeedEvent.Post(text, files, project = postTo, tags = ui.takePostTags(target.id))) },
+                onSendVoice = { text, files, voice -> ui.emit(FeedEvent.Post(text, files, project = postTo, tags = ui.takePostTags(target.id), voice = voice)) },
                 draftKey = "project:${target.slug}",
                 tagProject = target.id,
             )
@@ -471,6 +472,7 @@ private fun PhoneFeed(ui: FeedUi, safeArea: SafeArea, startAt: String?, widthPx:
                 focus = ui.composerFocus,
                 placeholder = "Message ${target.name}…",
                 onSend = { text, files -> ui.emit(FeedEvent.Post(text, files, project = postTo, tags = ui.takePostTags(target.id))) },
+                onSendVoice = { text, files, voice -> ui.emit(FeedEvent.Post(text, files, project = postTo, tags = ui.takePostTags(target.id), voice = voice)) },
                 draftKey = "project:${target.slug}",
                 tagProject = target.id,
                 compact = true,
