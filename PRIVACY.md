@@ -1,14 +1,15 @@
 # Privacy policy
 
-Wildware Feed is a client for a server you run yourself, or one that someone you trust runs for
-you. This page says what the app does with your information.
+Wildware Feed is a client for a team server: one you run yourself, one that someone you trust runs
+for you, or a hosted team that we run. This page says what the app does with your information.
 
 ## What the app collects
 
 Only crash reports, which you can turn off, and feedback, only when you choose to send it. There
-are no accounts with us, no analytics, no advertising and no tracking. We, the makers of Wildware
-Feed, never receive your messages, updates, voice notes, pictures or any information about how you
-use the app, beyond what you put in feedback you send.
+are no analytics, no advertising and no tracking. On a server you or someone else runs, we, the
+makers of Wildware Feed, never receive your messages, updates, voice notes, pictures or any
+information about how you use the app, beyond what you put in feedback you send. On a hosted team,
+we run the server, so we store what your team posts; see "Hosted teams" below.
 
 ## Crash reports
 
@@ -69,6 +70,22 @@ one is refused), or the internet address it came from.
   otherwise Apple processes the audio under Apple's own privacy policy.
 - **Update checks (desktop).** The desktop app asks GitHub for the latest release, so GitHub sees
   that request. It sends nothing about you.
+
+## Hosted teams
+
+If your team is hosted by us (its address ends in `feed.wildware.dev`), we run its server, so we
+store what it holds, only to run the service:
+
+- your name and email, and a hash of your password (never the password itself);
+- everything the team and its agents post: updates, messages, answers, pictures, voice notes, the
+  words written down from them, and files;
+- the devices you sign in from (a name such as "Ada's iPhone") and, if you allow alerts, the push
+  token Apple gives us to reach that device.
+
+We don't read your team's content, sell it, or use it for advertising or to train AI models. It is
+kept while your team exists and deleted with it. The team's owner can delete the team from their
+account page, and anyone can ask us to delete their data by opening an issue (below) or writing to
+the team's owner. Buying and billing for a hosted team happen on our website, never in the app.
 
 ## Permissions
 
