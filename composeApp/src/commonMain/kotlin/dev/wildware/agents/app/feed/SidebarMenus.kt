@@ -252,10 +252,12 @@ fun SideSheet(ui: FeedUi, menu: SideMenu, safeArea: SafeArea, sheetModifier: Mod
                 overflow = TextOverflow.Ellipsis,
             )
             Box(Modifier.fillMaxWidth().height(1.dp).background(colors.border))
-            rows.forEach { row ->
-                SheetRow(row.label, row.icon, row.destructive) {
-                    ui.sideMenu = null
-                    row.run()
+            Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
+                rows.forEach { row ->
+                    SheetRow(row.label, row.icon, row.destructive) {
+                        ui.sideMenu = null
+                        row.run()
+                    }
                 }
             }
             Box(Modifier.fillMaxWidth().height(1.dp).background(colors.border))

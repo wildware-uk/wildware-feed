@@ -343,7 +343,10 @@ fun ActionSheet(target: MenuTarget, safeArea: SafeArea, sheetModifier: Modifier 
                 }
             }
             Box(Modifier.fillMaxWidth().height(1.dp).background(colors.border))
-            menuRows(target, phone = true, save = save, ui = ui).forEach { row -> SheetRow(row.label, row.icon, row.destructive) { row.pick(ui, run) } }
+            // The rows scroll when there are more than a small phone shows; Cancel stays at the foot.
+            Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
+                menuRows(target, phone = true, save = save, ui = ui).forEach { row -> SheetRow(row.label, row.icon, row.destructive) { row.pick(ui, run) } }
+            }
             Box(Modifier.fillMaxWidth().height(1.dp).background(colors.border))
             SheetRow("Cancel", Icons.Close, false) { ui.menu = null }
         }

@@ -108,7 +108,7 @@ class TagTest {
     fun aPhoneOpensThePickerFromTheSheet() = runComposeUiTest {
         feed(390)
         onNodeWithText(fixTitle).performScrollTo().performTouchInput { longClick() }
-        onNodeWithText("Tags…").performClick()
+        onNodeWithText("Tags…").performScrollTo().performClick()
         onNode(hasContentDescription("sessions, on")).assertExists()
         assertTrue(events.isEmpty(), "opening the picker changes nothing: $events")
     }

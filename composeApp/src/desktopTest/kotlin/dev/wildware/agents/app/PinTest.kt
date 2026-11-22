@@ -69,7 +69,7 @@ class PinTest {
     fun aPinnedCardUnpinsFromAPhone() = runComposeUiTest {
         feed(390, startAt = "u3")
         onNodeWithText(diskTitle).performScrollTo().performTouchInput { longClick() }
-        onNodeWithText("Unpin").performClick()
+        onNodeWithText("Unpin").performScrollTo().performClick()
         waitForIdle()
         assertEquals(listOf<FeedEvent>(FeedEvent.Pin("u3", pinned = false)), events)
     }

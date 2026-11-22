@@ -78,7 +78,7 @@ class DeleteTest {
     fun yourOwnPostAsksOnAPhone() = runComposeUiTest {
         feed(390, startAt = "u2")
         onNode(hasContentDescription("You, 8:57", substring = true)).performTouchInput { longClick() }
-        onNodeWithText("Delete").performClick()
+        onNodeWithText("Delete").performScrollTo().performClick()
         onNodeWithText("Delete this post?").assertExists()
         confirmButton().performClick()
         waitForIdle()
@@ -95,7 +95,7 @@ class DeleteTest {
         )
         feed(390, startAt = "u2", state = withReplies)
         onNode(hasContentDescription("You, 8:57", substring = true)).performTouchInput { longClick() }
-        onNodeWithText("Delete").performClick()
+        onNodeWithText("Delete").performScrollTo().performClick()
         onNodeWithText("Delete this post and its 2 replies?").assertExists()
     }
 
