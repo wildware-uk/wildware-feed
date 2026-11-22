@@ -95,13 +95,16 @@ test('a picture saves: the browser downloads the original as itself', async ({ b
     await download.saveAs(kept);
     expect(readFileSync(kept).equals(readFileSync(picture)), 'the upload byte for byte, not a thumbnail').toBe(true);
 
-    // The dashboard sends it as an attachment, and only with the owner's sign-in.
-    const answer = await page.request.get(download.url());
-    expect(answer.status()).toBe(200);
-    expect(answer.headers()['content-disposition']).toMatch(/^attachment; filename="image\.png"/);
-    const stranger = await browser.newContext();
-    expect((await stranger.request.get(download.url())).status(), 'nobody signed in').toBe(401);
-    await stranger.close();
+    // The dashboard sends it as an attachment, and only with the owner's sign-in (asked from the page,
+    // which knows the team's address).
+    const asked = (credentials) => page.evaluate(async ([url, credentials]) => {
+        const r = await fetch(url, { credentials, cache: 'no-store' });
+        return { status: r.status, disposition: r.headers.get('content-disposition') };
+    }, [download.url(), credentials]);
+    const answer = await asked('same-origin');
+    expect(answer.status).toBe(200);
+    expect(answer.disposition).toMatch(/^attachment; filename="image\.png"/);
+    expect((await asked('omit')).status, 'nobody signed in').toBe(401);
 });
 
 test('a sound: it uploads, posts, shows, and plays', async ({ browser }, info) => {
