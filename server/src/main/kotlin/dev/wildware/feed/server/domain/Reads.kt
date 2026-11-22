@@ -57,7 +57,7 @@ class Reads(private val db: Database, private val clock: () -> Long = System::cu
     fun projectSlugsById(): Map<String, String> = db.query("SELECT id, slug FROM projects WHERE team_id = :team") { it.getString(1) to it.getString(2) }.toMap()
 
     fun listProjects(status: String? = null): List<JsonObject> = db.query(
-        "SELECT ${Rows.PROJECT} FROM projects WHERE team_id = :team AND (? IS NULL OR status = ?)${access.notHidden("id")} ORDER BY pinned DESC, seq DESC",
+        "SELECT ${Rows.PROJECT} FROM projects WHERE team_id = :team AND (? IS NULL OR status = ?)${access.notHidden("id")} ORDER BY ${Rows.PROJECT_ORDER}",
         status, status,
     ) { Rows.project(it) }
 
@@ -515,7 +515,7 @@ class Reads(private val db: Database, private val clock: () -> Long = System::cu
         val secrets = secretsFor("message", messageIds)
         return listOf(
             "projects" to JsonArray(projects),
-            "groups" to JsonArray(db.query("SELECT ${Groups.COLUMNS} FROM project_groups WHERE team_id = :team${access.groupNotHidden("id")} ORDER BY lower(name), seq") { Groups.json(it) }),
+            "groups" to JsonArray(db.query("SELECT ${Groups.COLUMNS} FROM project_groups WHERE team_id = :team${access.groupNotHidden("id")} ORDER BY ${Groups.ORDER}") { Groups.json(it) }),
             "tags" to JsonArray(listTags(query.project)),
             "cardTags" to JsonArray(cardTags),
             "cardFields" to JsonArray(cardFields),
@@ -560,7 +560,7 @@ class Reads(private val db: Database, private val clock: () -> Long = System::cu
     fun summary(isoOf: (Long) -> String): JsonObject {
         val now = clock()
         val active = db.query(
-            "SELECT id, slug, name, pinned FROM projects WHERE team_id = :team AND status = 'active'${access.notHidden("id")} ORDER BY pinned DESC, seq DESC",
+            "SELECT id, slug, name, pinned FROM projects WHERE team_id = :team AND status = 'active'${access.notHidden("id")} ORDER BY ${Rows.PROJECT_ORDER}",
         ) { listOf(it.getString(1), it.getString(2), it.getString(3), it.getInt(4) == 1) }
         val counts = workCounts(active.map { it[0] as String })
         val requests = pendingRequests().map { request ->

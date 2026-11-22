@@ -10,6 +10,7 @@ deletes it at the end, so files run side by side and a staging server stays clea
 | `apps` | The phone and desktop apps' sign-ins over HTTP (password alone, with email, a ticket, a member) and no team's password or key opening another |
 | `people` | Invite from the People sheet; the invitee joins in their own browser and sees the feed; role change; removing someone signs them out |
 | `channels` | Make a channel and post; an agent's update shows live; rename; remove an agent from a channel; projects |
+| `arrange` | Drag a channel into a project with the mouse; the channel menu's Move to project; both stick after a reload |
 | `permissions` | Make a channel private from its Permissions panel; a member stops seeing it (list, feed, API); give them Read: they read it and can't post; the change log |
 | `messages` | Replies, threads, @mentions, reactions, edit and delete; a reply further down takes the feed to the top with its card |
 | `search` | Search everything finds messages and cards |

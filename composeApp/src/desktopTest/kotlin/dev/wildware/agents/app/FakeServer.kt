@@ -40,6 +40,8 @@ class FakeServer {
 
     var password = "right"
     var projects = listOf(ProjectView(id = "p1", slug = "mega", name = "Mega"), ProjectView(id = "p2", slug = "other", name = "Other"))
+    /** Projects (groups of channels), as the snapshot lists them. */
+    var groups = listOf<dev.wildware.agents.GroupView>()
     var agentNames = mapOf("a1" to "forge", "a2" to "scout")
     var updates = listOf(
         UpdateView(
@@ -157,6 +159,23 @@ class FakeServer {
                 }
                 path == "/api/settings/media-retention" -> refuseRetention?.let { ok("""{"error":"invalid_argument","message":"$it"}""", HttpStatusCode.BadRequest) }
                     ?: ok(body.also { mediaRetention = it })
+                // Drags in the channel list: kept, so a reload shows them where they were dropped.
+                path == "/api/projects/order" -> {
+                    val order = json.parseToJsonElement(body) as kotlinx.serialization.json.JsonObject
+                    val ids = (order["ids"] as kotlinx.serialization.json.JsonArray).map { (it as kotlinx.serialization.json.JsonPrimitive).content }
+                    val moveTo = order["groupId"]?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.takeIf { p -> p.isString }?.content }
+                    projects = projects.map { p ->
+                        val at = ids.indexOf(p.slug)
+                        if (at < 0) p else p.copy(position = at.toLong(), groupId = if ("groupId" in order) moveTo else p.groupId)
+                    }.sortedWith(compareBy({ it.position != null }, { it.position ?: 0L }))
+                    ok("{}")
+                }
+                path == "/api/groups/order" -> {
+                    val ids = ((json.parseToJsonElement(body) as kotlinx.serialization.json.JsonObject)["ids"] as kotlinx.serialization.json.JsonArray)
+                        .map { (it as kotlinx.serialization.json.JsonPrimitive).content }
+                    groups = groups.map { g -> ids.indexOf(g.slug).let { at -> if (at < 0) g else g.copy(position = at.toLong()) } }
+                    ok("{}")
+                }
                 path == "/api/projects" -> ok("""{"project":{"id":"p-new","slug":"harbor-app","name":"harbor-app"},"created":true}""", HttpStatusCode.Created)
                 path.startsWith("/api/projects/") -> ok("""{"project":{"id":"p1","slug":"${path.substringAfterLast('/')}","name":"x"}}""")
                 path == "/api/secrets" -> ok("""{"secret":{"id":"s2","name":"NEW","createdAt":"2026-11-19T10:00:00Z","updatedAt":"2026-11-19T10:00:00Z"}}""", HttpStatusCode.Created)
@@ -187,6 +206,7 @@ class FakeServer {
                 ok(json.encodeToString(FeedSnapshot.serializer(), FeedSnapshot(
                     seq = seq,
                     projects = projects,
+                    groups = groups,
                     tags = emptyList(), cardTags = emptyList(), cardFields = emptyList(), cardApps = emptyList(),
                     updates = UpdatesPage(updates.filter { slug == null || it.projectId == projectId }, null, false),
                     agentNames = agentNames,

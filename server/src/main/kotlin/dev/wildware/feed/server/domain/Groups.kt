@@ -42,7 +42,7 @@ class Groups(private val feed: Feed) {
     fun resolve(reference: String): GroupRow = find(reference) ?: throw notFound("no such group: ${reference.jsTrim()}")
 
     /** By name, as the app lists them. */
-    fun list(): List<GroupRow> = db.query("SELECT $COLUMNS FROM project_groups WHERE team_id = :team${feed.access.groupNotHidden("id")} ORDER BY lower(name), seq") { GroupRow(json(it)) }
+    fun list(): List<GroupRow> = db.query("SELECT $COLUMNS FROM project_groups WHERE team_id = :team${feed.access.groupNotHidden("id")} ORDER BY $ORDER") { GroupRow(json(it)) }
 
     /** Idempotent on the slug, as [Projects.create]: an existing group comes back untouched. */
     fun create(name: String, slug: String?): Pair<GroupRow, Boolean> = feed.op {
@@ -83,6 +83,19 @@ class Groups(private val feed: Feed) {
         byId(group.id)!!.also { changed("group.updated", it) }
     }
 
+    /** Puts projects [ids] in this order (migration 069), as [Projects.arrange] does channels. */
+    fun arrange(ids: List<String>): List<GroupRow> = feed.op {
+        if (ids.isEmpty()) throw invalid("ids must name at least one project")
+        if (ids.size > Projects.ARRANGE_MAX) throw invalid("at most ${Projects.ARRANGE_MAX} projects at once")
+        val rows = ids.map { resolve(it) }
+        if (rows.distinctBy { it.id }.size != rows.size) throw invalid("ids must not name a project twice")
+        val now = feed.now()
+        rows.forEachIndexed { index, g ->
+            db.update("UPDATE project_groups SET position = ?, updated_at = ? WHERE team_id = :team AND id = ?", index, now, g.id)
+        }
+        rows.map { byId(it.id)!! }.onEach { changed("group.updated", it) }
+    }
+
     /** Deleting a group only ungroups its channels; what anyone chose for it goes with it. */
     fun delete(reference: String): GroupRow = feed.op {
         val group = resolve(reference)
@@ -103,7 +116,10 @@ class Groups(private val feed: Feed) {
         feed.publish(type, buildJsonObject { put("groupId", group.id); put("slug", group.slug) })
 
     companion object {
-        const val COLUMNS = "seq, id, slug, name, status, created_at, updated_at, theme, private"
+        const val COLUMNS = "seq, id, slug, name, status, created_at, updated_at, theme, private, position"
+
+        /** Arranged ones in their place (migration 069), after the rest by name. */
+        const val ORDER = "position IS NOT NULL, position, lower(name), seq"
 
         fun json(rs: java.sql.ResultSet): JsonObject = with(Rows) {
             buildJsonObject {
@@ -117,6 +133,7 @@ class Groups(private val feed: Feed) {
                 put("theme", json(rs, "theme"))
                 // Migration 068: only those listed can see it (spec/15).
                 put("private", rs.getInt("private") == 1)
+                long(rs, "position", "position")
             }
         }
     }

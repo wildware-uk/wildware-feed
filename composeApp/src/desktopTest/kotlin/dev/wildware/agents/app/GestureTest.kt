@@ -165,7 +165,9 @@ class GestureTest {
     fun projectsReorderFromTheScreenReaderToo() = runComposeUiTest {
         phone(ScreenPreview(drawerOpen = true))
         runCustomAction("Move ios-companion up")
-        assertEquals(listOf<FeedEvent>(FeedEvent.MoveProject(1, 0)), events)
+        val moved = events.filterIsInstance<FeedEvent.ArrangeChannels>().single()
+        assertEquals(listOf("ios-companion", "agent-dashboard", "rust-engine", "website", "infra"), moved.slugs)
+        assertEquals(null, moved.groupId)
     }
 
     @Test

@@ -32,7 +32,7 @@ import dev.wildware.agents.app.design.pressable
  * [mention] instead (null names nobody) and, with [focus], to take the cursor.
  */
 @androidx.compose.runtime.Immutable
-data class MentionAsk(val threadId: String, val mention: String?, val focus: Boolean)
+data class MentionAsk(val threadId: String, val mention: String?, val focus: Boolean, val quote: String? = null)
 
 /**
  * The @mention being typed, if the cursor is in one. The dashboard matches `@` and an agent's name

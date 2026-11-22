@@ -329,7 +329,7 @@ class DashboardSession(
         // that scrolls into view (or arrives) finds its markdown ready instead of parsing mid-frame.
         shown.copy(searchIndex = searchEntriesOf(all.sections), bell = mapper.bell(notifications), alerts = alerts, retention = retention, mentionable = mentionable, postTarget = postTarget, devices = devices, secrets = secrets, feedback = feedback, joining = extras.joining, connections = extras.connections, members = extras.members, access = extras.access,
             agents = withOffline(shown.agents, known), follows = follows,
-            groups = groups.map { ProjectGroup(it.id, it.slug, it.name, accent = it.theme?.accent, archived = it.isArchived) }).also { MarkdownCache.warm(markdownIn(it).asIterable()) }
+            groups = groups.map { ProjectGroup(it.id, it.slug, it.name, accent = it.theme?.accent, archived = it.isArchived, position = it.position) }).also { MarkdownCache.warm(markdownIn(it).asIterable()) }
     }.stateIn(scope, SharingStarted.Eagerly, mapper.map(feed.state.value, emptyList(), emptyList(), emptyList(), null))
 
     /** True once the dashboard has stopped taking this device's key. */
@@ -864,6 +864,15 @@ class DashboardSession(
             .forEach(dashboard::markRead)
     }
 
+    /** Marks every card and question in one channel read: its menu's "Mark read". */
+    private fun markChannelRead(projectId: String) {
+        val everything = dashboard.everything.state.value
+        (everything.allCards.filter { it.projectId == projectId && it.unread > 0 }.map { it.id } +
+            (dashboard.waiting.value + everything.waiting).filter { it.request.projectId == projectId && it.unread > 0 }.map { it.id })
+            .distinct()
+            .forEach(dashboard::markRead)
+    }
+
     fun start() {
         outbox.start()
         dashboard.start()
@@ -1021,6 +1030,7 @@ class DashboardSession(
             is FeedEvent.Pin -> cardRef(event.targetId)?.let { actions.pin(it, event.pinned) }
             is FeedEvent.SetField -> cardRef(event.targetId)?.let { actions.setField(it, event.name, event.value) }
             is FeedEvent.OpenThread -> dashboard.markRead(event.cardId)
+            is FeedEvent.MarkUnread -> dashboard.markUnread(event.targetId)
             is FeedEvent.MarkAllRead -> markAllRead()
             is FeedEvent.OpenNotification -> dashboard.markNotificationsSeen(listOf(event.id))
             is FeedEvent.ClearNotifications -> dashboard.markNotificationsSeen(null)
@@ -1064,6 +1074,7 @@ class DashboardSession(
             is FeedEvent.SelectProject -> select(event.slug)
             is FeedEvent.CreateProject -> changeNow(event.done) {
                 val made = client.createProject(event.name.trim(), event.description?.trim())
+                event.groupId?.let { client.setProjectGroup(made.slug, it) }
                 dashboard.refresh()
                 select(made.slug)
             }
@@ -1112,6 +1123,15 @@ class DashboardSession(
                 client.deleteGroup(event.slug)
                 dashboard.refresh()
             }
+            is FeedEvent.ArrangeChannels -> changeNow(event.done) {
+                client.arrangeChannels(event.slugs, event.groupId)
+                dashboard.refresh()
+            }
+            is FeedEvent.ArrangeGroups -> changeNow(event.done) {
+                client.arrangeGroups(event.slugs)
+                dashboard.refresh()
+            }
+            is FeedEvent.MarkChannelRead -> markChannelRead(event.projectId)
             is FeedEvent.MoveChannel -> changeNow {
                 client.setProjectGroup(event.slug, event.groupId)
                 dashboard.refresh()
@@ -1137,7 +1157,7 @@ class DashboardSession(
             is FeedEvent.LoadOlder -> scope.launch { runCatching { feed.loadOlder() } }
             is FeedEvent.RetrySend -> outbox.retryNow(event.outboxId)
             is FeedEvent.DropUnsent -> outbox.remove(event.outboxId)
-            is FeedEvent.ChooseStatus, is FeedEvent.Reply, is FeedEvent.OpenDetails, is FeedEvent.EditTags, is FeedEvent.FeedbackAbout, is FeedEvent.CopyText, is FeedEvent.SelectText, is FeedEvent.CopyLink, is FeedEvent.MoveProject, is FeedEvent.SignOut, is FeedEvent.ToggleTheme -> Unit
+            is FeedEvent.ChooseStatus, is FeedEvent.Reply, is FeedEvent.OpenDetails, is FeedEvent.EditTags, is FeedEvent.FeedbackAbout, is FeedEvent.CopyText, is FeedEvent.SelectText, is FeedEvent.CopyLink, is FeedEvent.Quote, is FeedEvent.MoveProject, is FeedEvent.SignOut, is FeedEvent.ToggleTheme -> Unit
         }
     }
 

@@ -1198,7 +1198,10 @@ internal fun PostMedia(attachments: List<Attachment>, sounds: List<Sound>, files
  * never work and can't be deleted here (the agent withdraws it); any update can be deleted; a post
  * only by the owner who wrote it.
  */
-internal fun menuTargetFor(item: FeedItem, pinned: Boolean, following: Boolean? = null): MenuTarget = when (item) {
+internal fun menuTargetFor(item: FeedItem, pinned: Boolean, following: Boolean? = null): MenuTarget = menuTargetOf(item, pinned, following)
+    .let { t -> t.copy(markUnread = (item as? Threaded)?.replies?.any { it.author !is Author.Owner } == true) }
+
+private fun menuTargetOf(item: FeedItem, pinned: Boolean, following: Boolean?): MenuTarget = when (item) {
     is FeedItem.Update -> MenuTarget(item.id, item.agent.name, item.title, own = false, taggable = true, work = true, status = item.status, pinned = pinned, deletable = true, hasDetails = true, following = following, saves = item.attachments.saves())
     is FeedItem.Question -> MenuTarget(item.id, item.agent.name, item.prompt, own = false, taggable = true, pinned = pinned, deletable = false, hasDetails = true, following = following, saves = item.attachments.saves())
     is FeedItem.Post -> (item.author is Author.Owner).let { own ->

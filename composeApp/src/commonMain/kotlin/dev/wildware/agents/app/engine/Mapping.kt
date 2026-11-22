@@ -211,6 +211,7 @@ internal class FeedMapper(
             logoMediaId = logoId,
             logoInsteadOfName = logoId != null && project.theme?.logoReplacesName == true,
             groupId = project.groupId,
+            position = project.position,
         )
     }
 

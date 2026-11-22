@@ -290,6 +290,21 @@ class DemoServer(private val now: () -> Long = { Clock.System.now().toEpochMilli
                 groupLevels = if (level == null) groupLevels - group.id else groupLevels + (group.id to level)
                 ok("{}")
             }
+            // Drags in the channel list (migration 069): each named one at its index, in that order.
+            path == "api/projects/order" && method == HttpMethod.Put -> {
+                val ids = (input["ids"] as? kotlinx.serialization.json.JsonArray)?.mapNotNull { it.jsonPrimitive.contentOrNull } ?: return bad("ids must be a list")
+                val moveTo = if ("groupId" in input) input.text("groupId")?.let { ref -> groups.firstOrNull { it.id == ref || it.slug == ref }?.id } else null
+                projects = projects.map { p ->
+                    val at = ids.indexOfFirst { it == p.slug || it == p.id }
+                    if (at < 0) p else p.copy(position = at.toLong(), groupId = if ("groupId" in input) moveTo else p.groupId)
+                }.sortedWith(compareBy({ it.position != null }, { it.position ?: 0L }))
+                ok("{}")
+            }
+            path == "api/groups/order" && method == HttpMethod.Put -> {
+                val ids = (input["ids"] as? kotlinx.serialization.json.JsonArray)?.mapNotNull { it.jsonPrimitive.contentOrNull } ?: return bad("ids must be a list")
+                groups = groups.map { g -> ids.indexOfFirst { it == g.slug || it == g.id }.let { at -> if (at < 0) g else g.copy(position = at.toLong()) } }
+                ok("{}")
+            }
             path == "api/groups" && method == HttpMethod.Post -> {
                 val name = input.text("name")?.trim().orEmpty()
                 if (name.isEmpty()) return bad("A project needs a name.")

@@ -177,7 +177,7 @@ class ChannelsRoutesTest {
 
             val made = send("POST", "/api/groups", """{"name":"Launch"}""", status = 201)["group"]!!.jsonObject
             val id = made.str("id")!!
-            assertEquals(listOf("seq", "id", "slug", "name", "status", "createdAt", "updatedAt", "theme", "private"), made.keys.toList())
+            assertEquals(listOf("seq", "id", "slug", "name", "status", "createdAt", "updatedAt", "theme", "private", "position"), made.keys.toList())
             assertEquals(false, send("POST", "/api/groups", """{"name":"Launch"}""")["created"]!!.jsonPrimitive.content.toBoolean())
 
             val moved = send("PATCH", "/api/projects/web", """{"groupId":"launch"}""")["project"]!!.jsonObject
@@ -200,6 +200,67 @@ class ChannelsRoutesTest {
             assertEquals(JsonNull, send("GET", "/api/snapshot")["projects"]!!.jsonArray.single().jsonObject["groupId"])
             assertEquals(0, send("GET", "/api/groups")["groups"]!!.jsonArray.size)
             send("PATCH", "/api/projects/web", """{"groupId":"launch"}""", status = 404)
+        } finally {
+            server.stop()
+        }
+    }
+
+    @Test
+    fun `channels and projects keep the order they are dragged into`() {
+        val app = App(config, Database.memory())
+        val (_, key) = app.devices.mint("Phone")
+        val server = FeedServer(app).start()
+        try {
+            for (name in listOf("Web", "Api", "Docs")) app.feed.projects.create(name, null, null)
+            app.feed.groups.create("Launch", "launch")
+            app.feed.groups.create("Backend", "backend")
+            val client = HttpClient.newHttpClient()
+            fun send(method: String, path: String, json: String = "", status: Int = 200): JsonObject {
+                val r = client.send(
+                    HttpRequest.newBuilder(URI.create("http://127.0.0.1:${server.port}$path")).header("Authorization", "Bearer $key")
+                        .header("Content-Type", "application/json").method(method, HttpRequest.BodyPublishers.ofString(json)).build(),
+                    HttpResponse.BodyHandlers.ofString(),
+                )
+                return Wire.json.parseToJsonElement(r.body()).jsonObject.also { assertEquals(status, r.statusCode(), r.body()) }
+            }
+            fun channels() = send("GET", "/api/snapshot")["projects"]!!.jsonArray.map { it.jsonObject }
+            fun groups() = send("GET", "/api/snapshot")["groups"]!!.jsonArray.map { it.jsonObject.str("slug") }
+
+            // Not arranged yet: newest first, projects by name.
+            assertEquals(listOf("docs", "api", "web"), channels().map { it.str("slug") })
+            assertEquals(listOf("backend", "launch"), groups())
+
+            // Dragged into a project, in a place: one call moves and orders.
+            val moved = send("PUT", "/api/projects/order", """{"groupId":"launch","ids":["web","docs"]}""")["projects"]!!.jsonArray
+            assertEquals(listOf("0", "1"), moved.map { it.jsonObject.str("position") })
+            val launch = app.feed.groups.resolve("launch").id
+            val after = channels().associateBy { it.str("slug") }
+            assertEquals(launch, after["web"]!!.str("groupId"))
+            assertEquals(launch, after["docs"]!!.str("groupId"))
+            assertEquals(null, after["api"]!!.str("groupId"))
+            // Api is not arranged, so it leads; then the arranged ones in their places.
+            assertEquals(listOf("api", "web", "docs"), channels().map { it.str("slug") })
+
+            // Reordered within the project, without moving it: groupId left out keeps each where it is.
+            send("PUT", "/api/projects/order", """{"ids":["docs","web"]}""")
+            assertEquals(listOf("api", "docs", "web"), channels().map { it.str("slug") })
+            assertEquals(launch, channels().first { it.str("slug") == "web" }.str("groupId"))
+
+            // Dragged out to no project.
+            send("PUT", "/api/projects/order", """{"groupId":null,"ids":["web","api"]}""")
+            assertEquals(null, channels().first { it.str("slug") == "web" }.str("groupId"))
+
+            // Pinning takes it out of the arranged order, to the top.
+            send("PATCH", "/api/projects/docs", """{"pinned":true}""")
+            assertEquals("docs", channels().first().str("slug"))
+
+            send("PUT", "/api/groups/order", """{"ids":["launch","backend"]}""")
+            assertEquals(listOf("launch", "backend"), groups())
+
+            send("PUT", "/api/projects/order", """{"ids":[]}""", status = 400)
+            send("PUT", "/api/projects/order", """{"ids":["web","web"]}""", status = 400)
+            send("PUT", "/api/projects/order", """{"ids":["nope"]}""", status = 404)
+            send("PUT", "/api/groups/order", """{"ids":"launch"}""", status = 400)
         } finally {
             server.stop()
         }

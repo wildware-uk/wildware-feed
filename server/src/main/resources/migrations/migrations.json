@@ -474,5 +474,12 @@
   "file": "068-channel-permissions.sql",
   "rebuildsTables": false,
   "checksum": "33a663a1d401d08588fe3f3156cbc2373ddd490cb2fd29c96793465ec3cda02c"
+ },
+ {
+  "version": 69,
+  "name": "channels-and-projects-keep-their-order",
+  "file": "069-channels-and-projects-keep-their-order.sql",
+  "rebuildsTables": false,
+  "checksum": "291b6c1b2a88ecd5becc9c0154d529b59fc00cc39ad165c9d8db1c4af4f77d27"
  }
 ]

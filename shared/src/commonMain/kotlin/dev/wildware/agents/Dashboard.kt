@@ -509,6 +509,14 @@ class Dashboard internal constructor(
         }
     }
 
+    /** Lights card [cardId] up again from its newest reply by someone else: the menu's "Mark unread". */
+    fun markUnread(cardId: String) {
+        confined.launch {
+            feeds.values.firstNotNullOfOrNull { it.commentsOn(cardId) }?.let { readMarks.markUnread(cardId, it) }
+            changed()
+        }
+    }
+
     /** Cards opened and not yet told to the dashboard. */
     private val cardsSeen = LinkedHashSet<String>()
     private var cardsSeenSend: Job? = null
@@ -593,7 +601,8 @@ class Dashboard internal constructor(
         val groupOf = everything.projects().mapNotNull { p -> p.groupId?.let { p.id to it } }.toMap()
         val followed = follows.follows.copy(groupOf = groupOf)
         if (mutableFollows.value != followed) mutableFollows.value = followed
-        val groups = everything.groups().sortedBy { it.name.lowercase() }
+        // As the dashboard lists them: not arranged yet first, by name, then the arranged ones in place.
+        val groups = everything.groups().sortedWith(compareBy({ it.position != null }, { it.position ?: 0L }, { it.name.lowercase() }))
         if (mutableGroups.value != groups) mutableGroups.value = groups
         if (!mutableReady.value && requests.loaded && everything.state.value.loaded) mutableReady.value = true
     }

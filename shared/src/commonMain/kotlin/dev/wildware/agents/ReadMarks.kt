@@ -50,6 +50,12 @@ class ReadMarks(private val store: TextStore = MemoryTextStore()) {
         write(cardId, newest)
     }
 
+    /** Puts the mark just before the newest comment someone else wrote, so it counts as one unread. */
+    fun markUnread(cardId: String, comments: List<MessageView>) {
+        val newest = comments.filter { !it.isOwner }.maxOfOrNull { it.createdAt } ?: return
+        write(cardId, newest - 1)
+    }
+
     fun isKnown(cardId: String): Boolean = cardId in marks
 
     val size: Int get() = marks.size

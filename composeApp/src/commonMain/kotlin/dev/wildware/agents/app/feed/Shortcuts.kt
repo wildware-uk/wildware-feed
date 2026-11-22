@@ -85,6 +85,8 @@ fun keyboardShortcuts(mac: Boolean, web: Boolean): List<ShortcutGroup> {
                 Shortcut("$alt↑  $alt↓", "Previous or next channel"),
                 Shortcut("$alt$shift↑  $alt$shift↓", "Previous or next channel with something unread"),
                 Shortcut("${cmd}1 … ${cmd}9", "Channel 1 to 9, as the sidebar lists them"),
+                Shortcut("$shift" + "F10  or  Menu", "Menu for the channel, project or agent in focus"),
+                Shortcut("$cmd$shift↑  $cmd$shift↓", "Move the channel or project in focus up or down"),
             ) + (if (web) emptyList() else listOf(Shortcut("$cmd${shift}1 … $cmd${shift}9", "Team 1 to 9, as the team switcher lists them"))) + listOf(
                 Shortcut("G then H", "All channels"),
                 Shortcut("G then W", "Waiting on you"),

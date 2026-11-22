@@ -12,6 +12,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.Alignment
@@ -78,7 +79,7 @@ internal fun MembersList(ui: FeedUi, inset: Dp = 0.dp, onOpenAgent: () -> Unit =
         SectionLabel("Agents", Modifier.padding(horizontal = inset))
         Spacer(Modifier.height(4.dp))
         if (agents.isEmpty()) MetaText("No agents yet.", Modifier.padding(horizontal = inset), color = colors.textMuted)
-        agents.forEach { agent -> AgentRow(agent, inset) { open(agent) } }
+        agents.forEach { agent -> AgentMenu(ui, agent) { AgentRow(agent, inset) { open(agent) } } }
         ConnectAgentButton(ui, inset)
         target?.let { state.members[it]?.problem }?.let { MetaText(it, Modifier.padding(horizontal = inset), color = colors.error) }
         return
@@ -90,9 +91,11 @@ internal fun MembersList(ui: FeedUi, inset: Dp = 0.dp, onOpenAgent: () -> Unit =
     if (hearing.isEmpty()) MetaText("No agent hears it. An @mention still reaches one.", Modifier.padding(horizontal = inset), color = colors.textMuted)
     hearing.forEach { m ->
         val agent = byId.getValue(m.agentId)
-        AgentRow(agent, inset, action = MemberAction("Remove", "Remove ${agent.name} from this channel", canChange && list.busy == null) {
-            ui.emit(FeedEvent.SetMember(slug, false, m.agentId, hears = false))
-        }) { open(agent) }
+        AgentMenu(ui, agent) {
+            AgentRow(agent, inset, action = MemberAction("Remove", "Remove ${agent.name} from this channel", canChange && list.busy == null) {
+                ui.emit(FeedEvent.SetMember(slug, false, m.agentId, hears = false))
+            }) { open(agent) }
+        }
     }
     if (others.isNotEmpty()) {
         Spacer(Modifier.height(12.dp))
@@ -100,13 +103,27 @@ internal fun MembersList(ui: FeedUi, inset: Dp = 0.dp, onOpenAgent: () -> Unit =
         Spacer(Modifier.height(4.dp))
         others.forEach { m ->
             val agent = byId.getValue(m.agentId)
-            AgentRow(agent, inset, note = m.note, action = MemberAction("Add", "Add ${agent.name} to this channel", canChange && list.busy == null) {
-                ui.emit(FeedEvent.SetMember(slug, false, m.agentId, hears = true))
-            }) { open(agent) }
+            AgentMenu(ui, agent) {
+                AgentRow(agent, inset, note = m.note, action = MemberAction("Add", "Add ${agent.name} to this channel", canChange && list.busy == null) {
+                    ui.emit(FeedEvent.SetMember(slug, false, m.agentId, hears = true))
+                }) { open(agent) }
+            }
         }
     }
     ConnectAgentButton(ui, inset)
     list.problem?.let { MetaText(it, Modifier.padding(horizontal = inset), color = colors.error) }
+}
+
+/** An agent's row with its menu: right-click, a hold, Shift+F10 or the Menu key. */
+@Composable
+private fun AgentMenu(ui: FeedUi, agent: Agent, row: @Composable () -> Unit) {
+    val focus = remember { androidx.compose.ui.focus.FocusRequester() }
+    val menu = { at: androidx.compose.ui.geometry.Offset -> ui.sideMenu = SideMenu(SideTarget.Agent(agent.id), at) }
+    SideMenuAnchor(
+        ui, SideTarget.Agent(agent.id),
+        Modifier.sidebarGestures(agent.name, canDrag = false, openMenu = menu, onStart = {}, onMove = {}, onEnd = {}, nudge = null, focus = focus),
+        row,
+    )
 }
 
 /** A button at the end of an agent's row: Add or Remove. */

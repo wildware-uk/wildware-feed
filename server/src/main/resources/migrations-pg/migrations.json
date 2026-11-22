@@ -130,5 +130,11 @@
   "name": "channel-permissions",
   "file": "068-channel-permissions.sql",
   "checksum": "8ca04504f418c43604f32d2b64db01b1b86a789c897bb0273c5501e03fab918f"
+ },
+ {
+  "version": 69,
+  "name": "channels-and-projects-keep-their-order",
+  "file": "069-channels-and-projects-keep-their-order.sql",
+  "checksum": "8f587f9d234b6c5f94c822dfd013e6584944673261e59e44032c120129c16874"
  }
 ]

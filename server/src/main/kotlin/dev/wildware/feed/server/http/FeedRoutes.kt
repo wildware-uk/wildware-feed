@@ -62,6 +62,26 @@ fun Route.feedRoutes(app: App) {
         },
     )
 
+    // Migration 069: the order people drag channels into, and into which project.
+    endpoint(
+        "/api/projects/order",
+        HttpMethod.Put to {
+            val body = call.jsonObjectBody()
+            val ids = idList(body["ids"], "ids")
+            val group = if ("groupId" in body) Given(nullableText(body["groupId"], "groupId")) else null
+            val projects = app.feed.projects.arrange(ids, group)
+            call.respondOwner(200, buildJsonObject { put("projects", JsonArray(projects.map { it.json })) })
+        },
+    )
+
+    endpoint(
+        "/api/groups/order",
+        HttpMethod.Put to {
+            val ids = idList(call.jsonObjectBody()["ids"], "ids")
+            call.respondOwner(200, buildJsonObject { put("groups", JsonArray(app.feed.groups.arrange(ids).map { it.json })) })
+        },
+    )
+
     endpoint(
         "/api/projects/{reference}/tags",
         HttpMethod.Post to {
@@ -486,6 +506,10 @@ fun Route.feedRoutes(app: App) {
 internal fun text(value: JsonElement?, field: String): String = value.jsString ?: throw invalid("$field must be a string")
 
 internal fun nullableText(value: JsonElement?, field: String): String? = if (value is JsonNull) null else text(value, field)
+
+/** A list of ids or slugs, each a string. */
+private fun idList(value: JsonElement?, field: String): List<String> =
+    (value as? JsonArray ?: throw invalid("$field must be a list")).map { it.jsString ?: throw invalid("$field must hold strings") }
 
 internal fun flag(value: JsonElement?, field: String): Boolean = value.jsBoolean ?: throw invalid("$field must be true or false")
 

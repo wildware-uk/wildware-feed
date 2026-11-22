@@ -76,6 +76,8 @@ fun ProjectDialogView(ui: FeedUi, dialog: ProjectDialog) {
     if (dialog is ProjectDialog.NewGroup || dialog is ProjectDialog.GroupSettings) return GroupDialogView(ui, dialog)
     if (dialog is ProjectDialog.Permissions) return PermissionsDialogView(ui, dialog.projectId, group = false)
     if (dialog is ProjectDialog.GroupPermissions) return PermissionsDialogView(ui, dialog.groupId, group = true)
+    if (dialog is ProjectDialog.MoveChannel || dialog is ProjectDialog.Rename || dialog is ProjectDialog.DeleteGroup) return SidebarDialogView(ui, dialog)
+    val into = (dialog as? ProjectDialog.NewChannelIn)?.let { d -> ui.groups.firstOrNull { it.id == d.groupId } }
     val project = (dialog as? ProjectDialog.Settings)?.let { s ->
         ui.projects.firstOrNull { it.id == s.projectId } ?: ui.state.current.takeIf { it.id == s.projectId }
     }
@@ -101,7 +103,7 @@ fun ProjectDialogView(ui: FeedUi, dialog: ProjectDialog) {
                 problem = null
                 val about = description.text.toString().trim().ifEmpty { null }
                 ui.emit(
-                    if (project?.slug == null) FeedEvent.CreateProject(typed, about, done)
+                    if (project?.slug == null) FeedEvent.CreateProject(typed, about, done, groupId = into?.id)
                     else FeedEvent.EditProject(project.slug, typed, about, done),
                 )
             }
@@ -113,7 +115,16 @@ fun ProjectDialogView(ui: FeedUi, dialog: ProjectDialog) {
         titleContentColor = colors.text,
         textContentColor = colors.textMuted,
         shape = AgentTheme.shapes.large,
-        title = { Text(if (project == null) "New channel" else "Channel settings", style = AgentTheme.type.title) },
+        title = {
+            Text(
+                when {
+                    project != null -> "Channel settings"
+                    into != null -> "New channel in ${into.name}"
+                    else -> "New channel"
+                },
+                style = AgentTheme.type.title,
+            )
+        },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
                 BoxedField("Name", name, "Channel name", "garden-game", onSubmit = save)

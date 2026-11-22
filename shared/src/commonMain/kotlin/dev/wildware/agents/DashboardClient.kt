@@ -275,6 +275,30 @@ class DashboardClient(
         http.delete("api/groups/${slug.encodeURLPathPart()}") { authorise() }.requireSuccess()
     }
 
+    /**
+     * Puts channels [slugs] in this order, each at its index (migration 069), and every one of them
+     * in project [groupId] (by id or slug; null for none): the whole list a drag left there.
+     */
+    @Throws(Exception::class)
+    suspend fun arrangeChannels(slugs: List<String>, groupId: String?) {
+        http.put("api/projects/order") {
+            authorise()
+            jsonBody(buildJsonObject {
+                put("groupId", groupId?.let(::JsonPrimitive) ?: JsonNull)
+                put("ids", JsonArray(slugs.map(::JsonPrimitive)))
+            })
+        }.requireSuccess()
+    }
+
+    /** Puts projects (groups of channels) [slugs] in this order (migration 069). */
+    @Throws(Exception::class)
+    suspend fun arrangeGroups(slugs: List<String>) {
+        http.put("api/groups/order") {
+            authorise()
+            jsonBody(buildJsonObject { put("ids", JsonArray(slugs.map(::JsonPrimitive))) })
+        }.requireSuccess()
+    }
+
     /** Puts a channel in a project (by group id or slug), or in none with null. */
     @Throws(Exception::class)
     suspend fun setProjectGroup(slug: String, groupId: String?): ProjectView =

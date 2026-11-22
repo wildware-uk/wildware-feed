@@ -167,12 +167,14 @@ fun Sidebar(
 ) {
     val state = ui.state
     val colors = AgentTheme.colors
+    val drag = remember { SidebarDrag() }
+    val scroll = rememberScrollState()
     Column(
         modifier
             .fillMaxHeight()
             .background(colors.sidebar),
     ) {
-        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 14.dp)) {
+        Column(Modifier.weight(1f).dragViewport(drag).verticalScroll(scroll).padding(horizontal = 14.dp)) {
             Spacer(Modifier.height(18.dp))
             Row(Modifier.padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 AppMark(28.dp)
@@ -214,16 +216,7 @@ fun Sidebar(
                 spoken = "Waiting on you, " + if (state.waitingTotal == 0) "nothing" else questions(state.waitingTotal),
             )
             Spacer(Modifier.height(22.dp))
-            val sections = ui.channelSections
-            if (sections.groups.isNotEmpty()) {
-                SectionLabel("Projects", Modifier.padding(horizontal = 10.dp))
-                Spacer(Modifier.height(8.dp))
-                ProjectGroups(ui) { p -> SidebarChannelRow(ui, p) }
-                Spacer(Modifier.height(14.dp))
-            }
-            SectionLabel("Channels", Modifier.padding(horizontal = 10.dp))
-            Spacer(Modifier.height(8.dp))
-            sections.loose.forEach { p -> SidebarChannelRow(ui, p) }
+            ArrangeableChannels(ui, ui.channelSections, state.mayArrange, drag, scroll, drawer = false, hint = null, onOpened = NothingMore)
             NewProjectRow(ui)
             NewGroupRow(ui)
             ArchivedProjects(ui)
@@ -237,9 +230,12 @@ fun Sidebar(
     }
 }
 
+/** Nothing to do once a channel is opened from the sidebar: it stays open. */
+private val NothingMore: () -> Unit = {}
+
 /** One channel in the sidebar, under its project or among the loose ones. */
 @Composable
-private fun SidebarChannelRow(ui: FeedUi, p: Project) {
+internal fun SidebarChannelRow(ui: FeedUi, p: Project) {
     val selected = p.id == ui.state.current.id
     NavRow(
         p.name,
@@ -625,7 +621,9 @@ fun Composer(
             // Read here, not while drawing, so the box doesn't redraw with every engine publish.
             val known = ui?.state?.mentionable.orEmpty().map { it.name }
             val now = text.text.toString()
-            val next = MentionText.retarget(now, ask.mention, known)
+            // A quote goes on top, as markdown, with what is already written kept under it.
+            val next = ask.quote?.let { q -> q.lines().joinToString("\n") { "> $it" } + "\n\n" + now.trimStart() }
+                ?: MentionText.retarget(now, ask.mention, known)
             if (next != now || ask.focus) text.edit {
                 if (next != now) replace(0, length, next)
                 selection = TextRange(length)

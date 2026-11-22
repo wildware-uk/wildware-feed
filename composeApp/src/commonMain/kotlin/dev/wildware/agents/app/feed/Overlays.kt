@@ -97,7 +97,6 @@ import androidx.compose.foundation.focusable
 import dev.wildware.agents.app.design.gesture.DismissDrag
 import dev.wildware.agents.app.design.gesture.EdgeProgress
 import dev.wildware.agents.app.design.gesture.GestureAction
-import dev.wildware.agents.app.design.gesture.ReorderableColumn
 import dev.wildware.agents.app.design.gesture.SwipeActions
 import dev.wildware.agents.app.design.gesture.SwipeActionsState
 import dev.wildware.agents.app.design.gesture.ZoomState
@@ -117,11 +116,22 @@ private data class MenuRow(val label: String, val icon: ImageVector, val destruc
  * [phone] adds "Select text": on a phone a press anywhere on a card opens this menu, so picking out
  * some of its words starts here. On the desktop a drag selects.
  */
-private fun menuRows(target: MenuTarget, phone: Boolean = false, save: ((List<FileAttachment>) -> Unit)? = null): List<MenuRow> = buildList {
+private fun menuRows(
+    target: MenuTarget, phone: Boolean = false, save: ((List<FileAttachment>) -> Unit)? = null, ui: FeedUi? = null,
+): List<MenuRow> = buildList {
+    // A card's thread; a line in a thread is already in one.
+    if (ui != null && target.following != null) {
+        add(MenuRow("Open thread", Icons.Expand, false, FeedEvent.OpenThread(target.id)) {
+            ui.openThread(target.id, phone = phone)
+            ui.emit(FeedEvent.OpenThread(target.id))
+        })
+    }
     add(MenuRow("Reply", Icons.Reply, false, FeedEvent.Reply(target.id)))
+    if (target.quotable) add(MenuRow("Quote", Icons.Reply, false, FeedEvent.Quote(target.id)))
     add(MenuRow("Copy text", Icons.Copy, false, FeedEvent.CopyText(target.id)))
     if (phone) add(MenuRow("Select text", Icons.SelectText, false, FeedEvent.SelectText(target.id)))
     add(MenuRow("Copy link", Icons.Link, false, FeedEvent.CopyLink(target.id)))
+    if (target.markUnread) add(MenuRow("Mark unread", Icons.Inbox, false, FeedEvent.MarkUnread(target.id)))
     // Each picture and video has its own Save button too, which is what a screen reader is offered.
     if (save != null && target.saves.isNotEmpty()) add(MenuRow(saveLabel(target.saves), Icons.Download, false, null) { save(target.saves) })
     if (target.hasDetails) add(MenuRow("Details…", Icons.Details, false, FeedEvent.OpenDetails(target.id)))
@@ -211,7 +221,7 @@ fun DesktopMenu(target: MenuTarget, anchorHeightPx: Int) {
                 ) { Text(emoji, fontSize = 18.sp) }
             }
         }
-        menuRows(target, save = save).forEach { row ->
+        menuRows(target, save = save, ui = ui).forEach { row ->
             DropdownMenuItem(
                 text = { Text(row.label, style = AgentTheme.type.label) },
                 leadingIcon = { Icon(row.icon, null, modifier = Modifier.size(16.dp)) },
@@ -333,7 +343,7 @@ fun ActionSheet(target: MenuTarget, safeArea: SafeArea, sheetModifier: Modifier 
                 }
             }
             Box(Modifier.fillMaxWidth().height(1.dp).background(colors.border))
-            menuRows(target, phone = true, save = save).forEach { row -> SheetRow(row.label, row.icon, row.destructive) { row.pick(ui, run) } }
+            menuRows(target, phone = true, save = save, ui = ui).forEach { row -> SheetRow(row.label, row.icon, row.destructive) { row.pick(ui, run) } }
             Box(Modifier.fillMaxWidth().height(1.dp).background(colors.border))
             SheetRow("Cancel", Icons.Close, false) { ui.menu = null }
         }
@@ -341,7 +351,7 @@ fun ActionSheet(target: MenuTarget, safeArea: SafeArea, sheetModifier: Modifier 
 }
 
 @Composable
-private fun SheetRow(label: String, icon: ImageVector, destructive: Boolean, onClick: () -> Unit) {
+internal fun SheetRow(label: String, icon: ImageVector, destructive: Boolean, onClick: () -> Unit) {
     val colors = AgentTheme.colors
     val tint = if (destructive) colors.error else colors.text
     Row(
@@ -501,6 +511,8 @@ fun ProjectsDrawer(ui: FeedUi, progress: EdgeProgress, widthPx: Float, safeArea:
     val close: () -> Unit = { scope.launch { progress.settle(false, motion.settle()) } }
     val density = LocalDensity.current
     val width = with(density) { widthPx.toDp() }
+    val drag = remember { SidebarDrag() }
+    val scroll = rememberScrollState()
     Box(
         Modifier
             .fillMaxSize()
@@ -521,7 +533,8 @@ fun ProjectsDrawer(ui: FeedUi, progress: EdgeProgress, widthPx: Float, safeArea:
                     },
                 )
                 .semantics { paneTitle = "Projects" }
-                .verticalScroll(rememberScrollState())
+                .dragViewport(drag)
+                .verticalScroll(scroll)
                 .safePadding(safeArea, top = 8.dp, bottom = 12.dp)
                 .padding(start = 14.dp, end = 14.dp),
         ) {
@@ -542,40 +555,8 @@ fun ProjectsDrawer(ui: FeedUi, progress: EdgeProgress, widthPx: Float, safeArea:
             }
             DrawerWaitingRow(ui, close)
             Spacer(Modifier.height(12.dp))
-            val sections = ui.channelSections
-            if (sections.groups.isNotEmpty()) {
-                SectionLabel("Projects", Modifier.padding(horizontal = 10.dp))
-                Spacer(Modifier.height(6.dp))
-                ProjectGroups(ui) { p ->
-                    DrawerProjectRow(p, selected = p.id == ui.state.current.id, dragging = false, grip = false) {
-                        ui.emit(FeedEvent.SelectProject(p.slug))
-                        close()
-                    }
-                }
-                Spacer(Modifier.height(12.dp))
-            }
-            Row(Modifier.padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                SectionLabel("Channels", Modifier.weight(1f))
-                if (sections.loose.size > 1) MetaText("Hold to reorder")
-            }
-            Spacer(Modifier.height(6.dp))
-            // Moves count among every active channel, so the loose ones' places are turned into theirs.
-            val active = ui.projects.filter { !it.archived }
-            ReorderableColumn(
-                items = sections.loose,
-                keyOf = { it.id },
-                label = { it.name },
-                onMove = { from, to ->
-                    val a = active.indexOfFirst { it.id == sections.loose[from].id }
-                    val b = active.indexOfFirst { it.id == sections.loose[to].id }
-                    if (a >= 0 && b >= 0) ui.emit(FeedEvent.MoveProject(a, b))
-                },
-            ) { p, dragging ->
-                DrawerProjectRow(p, selected = p.id == ui.state.current.id, dragging = dragging) {
-                    ui.emit(FeedEvent.SelectProject(p.slug))
-                    close()
-                }
-            }
+            // Hold a channel or a project to drag it; hold and let go for its menu.
+            ArrangeableChannels(ui, ui.channelSections, ui.state.mayArrange, drag, scroll, drawer = true, hint = "Hold to reorder", onOpened = close)
             NewProjectRow(ui)
             NewGroupRow(ui)
             ArchivedProjects(ui)
@@ -629,13 +610,12 @@ private fun DrawerWaitingRow(ui: FeedUi, close: () -> Unit) {
 }
 
 @Composable
-private fun DrawerProjectRow(p: Project, selected: Boolean, dragging: Boolean, grip: Boolean = true, onClick: () -> Unit) {
+internal fun DrawerProjectRow(p: Project, selected: Boolean, dragging: Boolean, grip: Boolean = true, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val colors = AgentTheme.colors
     val shape = AgentTheme.shapes.medium
     Row(
-        Modifier
+        modifier
             .fillMaxWidth()
-            .then(if (dragging) Modifier.lift(AgentTheme.elevation.raised, shape) else Modifier)
             .clip(shape)
             .background(
                 when {
@@ -701,6 +681,7 @@ fun InteractiveReply(reply: Reply, modifier: Modifier = Modifier) {
         text = reply.body,
         own = reply.author is Author.Owner,
         saves = reply.attachments.mapNotNull { it.saveable },
+        quotable = true,
     )
     val shape = AgentTheme.shapes.medium
     val hover = remember { MutableInteractionSource() }

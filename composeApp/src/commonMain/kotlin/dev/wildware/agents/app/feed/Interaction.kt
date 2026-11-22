@@ -69,10 +69,26 @@ sealed interface FeedEvent {
     /** Open a card's details, to read or add fields. The screen handles it; nothing is sent. */
     data class OpenDetails(val targetId: String) : FeedEvent
     data class OpenThread(val cardId: String) : FeedEvent
-    data class MoveProject(val from: Int, val to: Int) : FeedEvent
+    /** Mark a card unread again, from its newest reply by someone else. */
+    data class MarkUnread(val targetId: String) : FeedEvent
+    /** Start a reply quoting a line in a thread. */
+    data class Quote(val targetId: String) : FeedEvent
+    /**
+     * Put channels [slugs] in this order, and every one of them in project [groupId] (null: none):
+     * the whole list a drag left in that project. [done] hears null once the dashboard has it, or why not.
+     */
+    data class ArrangeChannels(val slugs: List<String>, val groupId: String?, val done: (problem: String?) -> Unit = {}) : FeedEvent
 
-    /** Make a project. [done] hears null once it is made, or why it wasn't. */
-    data class CreateProject(val name: String, val description: String?, val done: (problem: String?) -> Unit = {}) : FeedEvent
+    /** Put projects (groups of channels) [slugs] in this order. [done] as for [ArrangeChannels]. */
+    data class ArrangeGroups(val slugs: List<String>, val done: (problem: String?) -> Unit = {}) : FeedEvent
+
+    /** Mark everything in channel [projectId] read. */
+    data class MarkChannelRead(val projectId: String) : FeedEvent
+
+    /** Make a channel, in project [groupId] when set. [done] hears null once it is made, or why it wasn't. */
+    data class CreateProject(
+        val name: String, val description: String?, val done: (problem: String?) -> Unit = {}, val groupId: String? = null,
+    ) : FeedEvent
 
     /** Rename project [slug] and say what it is for. [done] as for [CreateProject]. */
     data class EditProject(val slug: String, val name: String, val description: String?, val done: (problem: String?) -> Unit = {}) : FeedEvent
@@ -302,6 +318,10 @@ data class MenuTarget(
     val hasDetails: Boolean = false,
     /** Whether the owner follows the card's thread; null for what has no thread of its own, such as a reply. */
     val following: Boolean? = null,
+    /** A card with a reply from someone else, which can be marked unread again. */
+    val markUnread: Boolean = false,
+    /** A line in a thread, which a reply can quote. */
+    val quotable: Boolean = false,
     /** The originals of its pictures and videos, for the menu's Save; none for placeholders. */
     val saves: List<FileAttachment> = emptyList(),
 )
@@ -697,14 +717,17 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
     val thread: Threaded? get() = threadId?.let { state.item(it) as? Threaded }
     val phoneThread: Threaded? get() = if (phoneThreadOpen) thread else null
 
-    /** The owner's own order for the project list, kept on this device. */
-    private var projectOrder by mutableStateOf<List<String>?>(null)
+    /** Drags sent to the dashboard and not back yet, laid over what it says so a drop lands at once. */
+    val arranging = PendingArrangement()
 
-    val projects: List<Project>
-        get() {
-            val order = projectOrder ?: return state.projects
-            return state.projects.sortedBy { p -> order.indexOf(p.id).let { if (it < 0) Int.MAX_VALUE else it } }
-        }
+    /** The channels, in the order the dashboard keeps, with drops on their way already in place. */
+    val projects: List<Project> get() = arranging.channels(state.projects)
+
+    /** The projects (groups of channels), likewise. */
+    val groups: List<ProjectGroup> get() = arranging.groups(state.groups)
+
+    /** A sidebar menu, open on a channel, a project or an agent. */
+    var sideMenu by mutableStateOf<SideMenu?>(null)
 
     /** The activity time last seen per card, to tell when one moves on. Plain data: nothing draws from it. */
     private val seenActivity = HashMap<String, Long>()
@@ -946,11 +969,6 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
                 val mineNow = reactionsFor(event.targetId, reactionsOn(event.targetId)).any { it.emoji == event.emoji && it.mine }
                 wanted[event.targetId] = wanted[event.targetId].orEmpty() + (event.emoji to !mineNow)
             }
-            // Moves count among the active projects; archived ones keep their place at the end.
-            is FeedEvent.MoveProject -> {
-                val (active, archived) = projects.partition { !it.archived }
-                projectOrder = active.map { it.id }.toMutableList().apply { add(event.to, removeAt(event.from)) } + archived.map { it.id }
-            }
             is FeedEvent.Answer, is FeedEvent.AnswerText, is FeedEvent.AnswerForm, is FeedEvent.DismissQuestion -> picks.remove(questionIdOf(event))
             // "Reply" on a card opens its thread; on a line in a thread it answers that line.
             is FeedEvent.Reply -> if (state.item(event.targetId) is Threaded) {
@@ -965,6 +983,17 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
                 replyingTo = line
                 // The box names who wrote it, and takes the cursor, ready to write the answer.
                 if (card != null && line != null) mentionAsk = MentionAsk(card.id, mentionFor(line.author), focus = true)
+            }
+            // A line in a thread, quoted at the top of its thread's reply box.
+            is FeedEvent.Quote -> {
+                val card = thread?.takeIf { t -> t.replies.any { it.id == event.targetId } }
+                    ?: state.sections.asSequence().flatMap { it.items }.filterIsInstance<Threaded>()
+                        .firstOrNull { t -> t.replies.any { it.id == event.targetId } }
+                val words = textOf(event.targetId)
+                if (card != null && words != null) {
+                    if (card.id != threadId) openThread(card.id, phone = isPhone)
+                    mentionAsk = MentionAsk(card.id, mention = null, focus = true, quote = words)
+                }
             }
             is FeedEvent.SendReply -> {
                 replyingTo = null
@@ -1052,6 +1081,14 @@ sealed interface ProjectDialog {
     data class Permissions(val projectId: String) : ProjectDialog
     /** Who may read, post in and manage a project and the channels in it. */
     data class GroupPermissions(val groupId: String) : ProjectDialog
+    /** A new channel, made in project [groupId]: the project menu's "New channel here". */
+    data class NewChannelIn(val groupId: String) : ProjectDialog
+    /** "Move to project…": which project channel [channelId] goes in. */
+    data class MoveChannel(val channelId: String) : ProjectDialog
+    /** A channel's or ([group]) a project's new name. */
+    data class Rename(val id: String, val group: Boolean) : ProjectDialog
+    /** "Delete project?", asked before it goes; its channels stay, in no project. */
+    data class DeleteGroup(val groupId: String) : ProjectDialog
 }
 
 /** The kind of thread a card heads, as the dashboard names it. */

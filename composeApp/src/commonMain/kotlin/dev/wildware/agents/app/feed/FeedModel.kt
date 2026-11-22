@@ -93,6 +93,8 @@ data class Project(
     val logoInsteadOfName: Boolean = false,
     /** The project ([ProjectGroup]) this channel is in, or null for none. */
     val groupId: String? = null,
+    /** Its place among its project's channels once someone has dragged them into an order; null before. */
+    val position: Long? = null,
 )
 
 /**
@@ -108,6 +110,8 @@ data class ProjectGroup(
     val accent: String? = null,
     /** Finished with: it and its channels list under Archived. */
     val archived: Boolean = false,
+    /** Its place among the projects once someone has dragged them into an order; null before. */
+    val position: Long? = null,
 )
 
 /**

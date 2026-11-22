@@ -59,7 +59,7 @@ class Projects(private val feed: Feed) {
 
     /** Pinned first, then newest; only what this work's viewer can read. */
     fun list(status: String?): List<ProjectRow> = db.query(
-        "SELECT ${Rows.PROJECT} FROM projects WHERE team_id = :team AND (? IS NULL OR status = ?)${feed.access.notHidden("id")} ORDER BY pinned DESC, seq DESC",
+        "SELECT ${Rows.PROJECT} FROM projects WHERE team_id = :team AND (? IS NULL OR status = ?)${feed.access.notHidden("id")} ORDER BY ${Rows.PROJECT_ORDER}",
         status, status,
     ) { ProjectRow(Rows.project(it)) }
 
@@ -108,7 +108,12 @@ class Projects(private val feed: Feed) {
         if (name != null) { sets["name"] = name; given = true }
         if (patch.description != null) { sets["description"] = description; given = true }
         if (patch.status != null) { sets["status"] = patch.status; given = true }
-        if (patch.pinned != null) { sets["pinned"] = if (patch.pinned) 1 else 0; given = true }
+        if (patch.pinned != null) {
+            sets["pinned"] = if (patch.pinned) 1 else 0
+            // Pinning puts it at the top: out of the arranged order, pinned ones lead the rest.
+            if (patch.pinned) sets["position"] = null
+            given = true
+        }
         if (patch.theme != null) { sets["theme"] = theme?.let(Wire::encode); given = true }
         if (patch.board != null) { sets["board"] = board?.let(Wire::encode); given = true }
         if (patch.group != null) {
@@ -132,6 +137,35 @@ class Projects(private val feed: Feed) {
         val updated = byId(project.id)!!
         feed.publish("project.updated", buildJsonObject { put("projectId", updated.id); put("slug", updated.slug) })
         updated
+    }
+
+    /**
+     * Puts channels [ids] in this order (migration 069): each takes its index as its place. With
+     * [group] given, each moves into that project too (`Given(null)`: into none), so a channel
+     * dragged into a project lands there and in its place together. The ids are the whole list the
+     * person sees there; channels left out keep their place.
+     */
+    fun arrange(ids: List<String>, group: Given<String?>?): List<ProjectRow> = feed.op {
+        if (ids.isEmpty()) throw invalid("ids must name at least one channel")
+        if (ids.size > ARRANGE_MAX) throw invalid("at most $ARRANGE_MAX channels at once")
+        val rows = ids.map { resolve(it) }
+        if (rows.distinctBy { it.id }.size != rows.size) throw invalid("ids must not name a channel twice")
+        // As for any change to a channel (spec/15): Manage on each, and on a project they move into.
+        rows.forEach { p -> feed.access.requireManage(p.id) { notFound("no such project: ${p.slug}") } }
+        val groupId = group?.value?.let { feed.groups.resolve(it).id }
+        if (groupId != null) feed.access.requireManageGroup(groupId) { notFound("no such group: ${group.value}") }
+        // Leaving a project keeps the access a channel had through it: nothing hidden comes into view.
+        if (group != null) rows.forEach { p -> p.groupId?.takeIf { it != groupId }?.let { from -> feed.access.keepThroughMove(p.id, from) } }
+        val now = feed.now()
+        rows.forEachIndexed { index, p ->
+            if (group != null) {
+                db.update("UPDATE projects SET position = ?, group_id = ?, updated_at = ? WHERE team_id = :team AND id = ?", index, groupId, now, p.id)
+            } else {
+                db.update("UPDATE projects SET position = ?, updated_at = ? WHERE team_id = :team AND id = ?", index, now, p.id)
+            }
+        }
+        feed.access.bump()
+        rows.map { byId(it.id)!! }.onEach { feed.publish("project.updated", buildJsonObject { put("projectId", it.id); put("slug", it.slug) }) }
     }
 
     /** `mergeTheme`: the stored keys keep their order, new ones are appended; `{}` becomes null. */
@@ -176,6 +210,8 @@ class Projects(private val feed: Feed) {
     companion object {
         const val NAME_MAX = 200
         const val DESCRIPTION_MAX = 2_000
+        /** The most channels one [arrange] takes. */
+        const val ARRANGE_MAX = 1_000
         const val COLUMNS_MAX = 6
         const val COLUMN_TITLE_MAX = 40
         private val THEME_COLOUR = Regex("^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$")

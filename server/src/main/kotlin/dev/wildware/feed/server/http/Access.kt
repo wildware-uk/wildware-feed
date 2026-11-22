@@ -87,6 +87,8 @@ object Access {
         // Running the team: channels, projects, tags, retention, agents, secrets.
         "POST /api/projects" to A,
         "PATCH /api/projects/{reference}" to M, // Manage on the channel (spec/15): admins by default
+        "PUT /api/projects/order" to M, // Manage on each channel, and on a project it moves into (Projects.arrange)
+        "PUT /api/groups/order" to A,
 
         "POST /api/groups" to A,
         "PATCH /api/groups/{reference}" to M, // Manage on the project (spec/15)

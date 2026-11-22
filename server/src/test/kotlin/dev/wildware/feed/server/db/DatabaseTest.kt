@@ -16,8 +16,8 @@ class DatabaseTest {
         // 52 subscriptions, 53 channels and projects, 54 secrets, 55 people, 56 card refs, 57 blocks, 58 teams apart, 59 many teams,
         // 60 the owner adds and removes agents, 61 send keys, 62 one-time codes know their email, 63 a repeat send is found fast,
         // 64 a team takes over home, 65 a message knows it was spoken, 66 a secret shared in a thread, 67 feedback,
-        // 68 per channel and per project permissions.
-        assertEquals((1..68).toList(), Migrations.all.map { it.version })
+        // 68 per channel and per project permissions, 69 channels and projects keep their order.
+        assertEquals((1..69).toList(), Migrations.all.map { it.version })
         for (m in Migrations.all) assertEquals(m.checksum, Migrations.checksum(m.sql), "migration ${m.version}")
         assertEquals(listOf(16, 25, 26, 31, 34, 38), Migrations.all.filter { it.rebuildsTables }.map { it.version })
     }

@@ -514,6 +514,13 @@ private fun PhoneFeed(ui: FeedUi, safeArea: SafeArea, startAt: String?, widthPx:
                 exit = slideOutVertically(motion.normal()) { it },
             ))
         }
+        // A channel's, project's or agent's menu, over the drawer it was opened from.
+        Presence(ui.sideMenu, fadeIn(motion.fast()), fadeOut(motion.normal())) { menu ->
+            SideSheet(ui, menu, safeArea, Modifier.animateEnterExit(
+                enter = slideInVertically(motion.settle()) { it },
+                exit = slideOutVertically(motion.normal()) { it },
+            ))
+        }
     }
 }
 
