@@ -95,11 +95,13 @@ internal fun FollowHistory(ui: FeedUi) {
         }
     }
     LaunchedEffect(ui) {
-        var first = true
+        // Until the feed's first read lands it is still opening. Later, a channel not read before is
+        // unloaded for a moment too, but going there is a step like any other.
+        var opening = true
         snapshotFlow { ui.place to ui.state.loaded }.collect { (place, loaded) ->
             // Where the feed opens (its channel, a thread it opened with) is the start, not a step.
-            if (first || !loaded) {
-                first = false
+            if (opening) {
+                if (loaded) opening = false
                 ui.history.replace(place)
                 ui.browser?.replace(place)
             } else {

@@ -91,6 +91,42 @@ class ShortcutsTest {
         assertEquals(before, channelsPicked.size)
     }
 
+    /**
+     * A channel not read before has nothing loaded at first: the engine switches to it unloaded and
+     * fills it a moment later. Each is still a step to go Back to, however soon the switch lands.
+     */
+    @Test
+    fun channelsThatLoadAfterTheSwitchAreStillStepsBack() = runDesktopComposeUiTest(1440, 900) {
+        val state = mutableStateOf(FakeFeed.state.copy(openThread = null))
+        setContent {
+            AgentTheme(dark = true) {
+                FeedScreen(state, onEvent = { e ->
+                    events += e
+                    if (e is FeedEvent.SelectProject) {
+                        // At once, before the screen has drawn the channel it asked for.
+                        state.value.projects.firstOrNull { it.slug == e.slug }?.let { state.value = state.value.copy(current = it, loaded = false) }
+                    }
+                })
+            }
+        }
+        waitForIdle()
+        fun loads() {
+            waitForIdle()
+            state.value = state.value.copy(loaded = true)
+            waitForIdle()
+        }
+        keys { command(Key.Two) }
+        loads()
+        keys { command(Key.Three) }
+        loads()
+        assertEquals(listOf<String?>("ios-companion", "rust-engine"), channelsPicked)
+        keys { back() }
+        assertEquals("ios-companion", channelsPicked.last())
+        loads()
+        keys { back() }
+        assertEquals("agent-dashboard", channelsPicked.last())
+    }
+
     @Test
     fun theMouseBackAndForwardButtonsWalkChannels() = runDesktopComposeUiTest(1440, 900) {
         desktop()

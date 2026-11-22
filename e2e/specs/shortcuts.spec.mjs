@@ -21,9 +21,13 @@ const showing = (page, name) => expectShown(page, `CHANNEL\n${name}\n`);
 /** The owner's browser, on Alpha then Beta: two steps in the tab's history. */
 async function alphaThenBeta(browser) {
     const page = await signedIn(browser, team.owner);
+    const steps = () => page.evaluate(() => history.length);
+    const before = await steps();
     await openChannel(page, 'Alpha');
     await openChannel(page, 'Beta');
     await expect.poll(() => new URL(page.url()).hash).toBe('#/projects/beta');
+    // Each channel is a step of its own, even one that loads after the switch: Back stays in the app.
+    await expect.poll(steps).toBe(before + 2);
     return page;
 }
 
