@@ -10,10 +10,10 @@ package dev.wildware.feed.server.db
  * and sweeps. On Postgres, row security ([setRowSecurity]) catches what the lint can't see.
  */
 object TeamTables {
-    /** Every team-owned table (058 gave each a `team_id`; 055 made memberships and invites, 059 auth_codes, with one; 067 made feedback with one). */
+    /** Every team-owned table (058 gave each a `team_id`; 055 made memberships and invites, 059 auth_codes, with one; 067 made feedback with one; 072 card_assignees). */
     val ALL: List<String> = listOf(
         "access_audit", "acknowledgements", "agent_pairings", "agents", "app_views", "approvals", "apps", "auth_codes", "card_blocks", "card_fields", "card_refs", "card_secrets",
-        "card_tags", "channel_access", "derivatives", "embed_types", "embeds", "feedback", "group_subscriptions", "invites", "media", "memberships",
+        "card_assignees", "card_tags", "channel_access", "derivatives", "embed_types", "embeds", "feedback", "group_subscriptions", "invites", "media", "memberships",
         "message_deliveries", "message_mentions", "messages", "notifications", "oauth_clients", "oauth_grants",
         "oauth_tokens", "owner_devices", "project_groups", "project_subscriptions", "projects", "reactions",
         "read_cursors", "secret_agents", "secret_audit", "secret_grants", "secrets", "server_settings", "sessions",

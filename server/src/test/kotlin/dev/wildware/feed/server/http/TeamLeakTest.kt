@@ -184,6 +184,10 @@ class TeamLeakTest {
         // Not asserted, as media retention isn't: SQLite's server_settings keeps a key unique across teams.
         send(team, k, "PUT", "/api/settings/board", """{"autoRemoveDays":3}""")
         send(team, k, "PUT", "/api/cards/update/$update/follow", """{"follow":true}""")
+        // Assignees (migration 072): the agent takes the update, and the owner assigns it a post too.
+        tool(team, t, "assign_work", args("update_id" to update, "assignees" to JsonArray(listOf(JsonPrimitive("me"))))).let { assertTrue("\"isError\":true" !in it, it) }
+        val agentName = Tenant.allTeams { app.db.one("SELECT name FROM agents WHERE team_id = ? ORDER BY seq LIMIT 1", team.id) { it.getString(1) } }!!
+        assertEquals(200, send(team, k, "POST", "/api/cards/message/$finished/assignees", """{"assignees":["$agentName"],"mode":"set"}""").status.value)
         val client = send(team, null, "POST", "/oauth/register", """{"redirect_uris":["http://localhost:9/cb"],"client_name":"Client $m"}""")
         assertTrue(client.status.value in 200..299, client.bodyAsText())
     }
@@ -277,6 +281,8 @@ class TeamLeakTest {
             put("mediaIds", JsonArray(listOf(JsonPrimitive(pick("media"))))); put("token", pick("token"))
             put("name", "KEY_ONE"); put("body", "hello"); put("emoji", "👍"); put("on", true); put("status", "done"); put("state", "done")
             put("removed", true); put("autoRemoveDays", 7)
+            put("assignees", JsonArray(listOf(JsonPrimitive(pick("agent")), JsonPrimitive(pick("person")), JsonPrimitive("me"))))
+            put("mode", "set"); put("assigned_to", pick("agent")); put("assigned", pick("person"))
             put("value", true); put("kind", "confirm"); put("question", "q?"); put("level", "all"); put("follow", true); put("pinned", true)
             put("ids", JsonArray(listOf(JsonPrimitive(pick("update")))))
             put("cards", JsonArray(listOf(buildJsonObject { put("kind", "update"); put("id", pick("update")) })))

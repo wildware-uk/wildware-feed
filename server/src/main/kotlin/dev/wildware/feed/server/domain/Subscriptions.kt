@@ -641,15 +641,21 @@ class Subscriptions(private val db: Database, private val clock: () -> Long = Sy
 
         /**
          * The @mention audience rule (for messages aliased `m`): a message that names agents reaches only
-         * them. One parameter, the reader's agent id. See [reachSql] for [oneMessage].
+         * them, and an assignment line only the agents it names. One parameter, the reader's agent id. See [reachSql] for [oneMessage].
          */
         fun audienceSql(oneMessage: Boolean = false): String = if (oneMessage) {
-            "(NOT EXISTS (SELECT 1 FROM message_mentions AS mm WHERE mm.team_id = m.team_id AND mm.message_id = m.id) " +
+            "((NOT EXISTS (SELECT 1 FROM message_mentions AS mm WHERE mm.team_id = m.team_id AND mm.message_id = m.id) AND $NOT_ASSIGNMENT) " +
                 "OR EXISTS (SELECT 1 FROM message_mentions AS mm WHERE mm.team_id = m.team_id AND mm.message_id = m.id AND mm.agent_id = ?))"
         } else {
-            "(m.id NOT IN (SELECT mm.message_id FROM message_mentions AS mm WHERE mm.team_id = :team) " +
+            "((m.id NOT IN (SELECT mm.message_id FROM message_mentions AS mm WHERE mm.team_id = :team) AND $NOT_ASSIGNMENT) " +
                 "OR m.id IN (SELECT mm.message_id FROM message_mentions AS mm WHERE mm.team_id = :team AND mm.agent_id = ?))"
         }
+
+        /**
+         * A line saying who was assigned (migration 072) reaches only the agents it names: one that
+         * assigns only people reaches no agent at all.
+         */
+        private const val NOT_ASSIGNMENT = "coalesce(m.source, '') <> '${Messages.ASSIGNMENT}'"
 
         /** [NAMES_READER] as a set: the messages that name the agent. */
         private const val NAMES_READER_SET = "m.id IN (SELECT mm.message_id FROM message_mentions AS mm WHERE mm.team_id = :team AND mm.agent_id = ?)"

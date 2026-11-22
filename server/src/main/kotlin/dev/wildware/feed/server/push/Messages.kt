@@ -77,15 +77,26 @@ class PushMessages(private val app: App) {
      * 055). Null for a team of one's own words.
      */
     fun reply(messageId: String, member: String = People.FOUNDER): Reply? {
-        data class Row(val author: String, val projectId: String?, val body: String, val replyTo: String?, val updateId: String?, val taskId: String?, val userId: String?)
-        val row = db.one("SELECT author, project_id, body, reply_to, update_id, task_id, user_id FROM messages WHERE team_id = :team AND id = ?", messageId) {
-            Row(it.getString(1), it.getString(2), it.getString(3), it.getString(4), it.getString(5), it.getString(6), it.getString(7))
+        data class Row(val author: String, val projectId: String?, val body: String, val replyTo: String?, val updateId: String?, val taskId: String?, val userId: String?, val source: String?)
+        val row = db.one("SELECT author, project_id, body, reply_to, update_id, task_id, user_id, source FROM messages WHERE team_id = :team AND id = ?", messageId) {
+            Row(it.getString(1), it.getString(2), it.getString(3), it.getString(4), it.getString(5), it.getString(6), it.getString(7), it.getString(8))
         } ?: return null
         val person = if (row.author == "human") row.userId ?: People.FOUNDER else null
         val name = when {
             person != null -> People.teamName(db, person) ?: return null
             row.author.startsWith("agent:") -> agentName(row.author.removePrefix("agent:")) ?: "An agent"
             else -> return null
+        }
+        // A line saying who was assigned (migration 072): only the people it assigned are told.
+        if (row.source == dev.wildware.feed.server.domain.Messages.ASSIGNMENT) {
+            val card = db.one(
+                "SELECT card_kind, card_id FROM card_assignees WHERE team_id = :team AND message_id = ? AND principal = ?", messageId, People.subscriber(member),
+            ) { dev.wildware.feed.server.domain.CardRef(it.getString(1), it.getString(2)) } ?: return null
+            val title = dev.wildware.feed.server.domain.Assignees(dev.wildware.feed.server.domain.Feed(db, app.bus, app.clock)).cardTitle(card)
+            return Reply(
+                PushMessage(title = "$name assigned you", body = PlainText.notification(title), url = projectUrl(row.projectId, card.id), tag = "message-$messageId"),
+                row.projectId, title, true, person, name.takeIf { person != null },
+            )
         }
         val answered = repliesTo(member, row.replyTo, row.updateId, row.taskId)
         return Reply(

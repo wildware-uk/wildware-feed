@@ -48,6 +48,11 @@ class Messages(private val feed: Feed) {
          * owner's own HTTP posts ask for it.
          */
         val guardRepeats: Boolean = false,
+        /**
+         * The server's own line saying who assigned or unassigned whom (migration 072): stored with
+         * source [ASSIGNMENT], which no client can set.
+         */
+        val assignment: Boolean = false,
     )
 
     class Page(val messages: List<MessageRow>, val cursor: String, val unread: Long, val markedRead: Boolean)
@@ -75,6 +80,7 @@ class Messages(private val feed: Feed) {
         val sendKey = input.sendKey?.takeIf { person != null }
         if (input.source != null && input.source !in SOURCES) throw invalid("source must be \"$VOICE\" or left out")
         if (input.source != null && person == null) throw invalid("only a person's message has a source")
+        val source = if (input.assignment) ASSIGNMENT else input.source
         // A send tried again (its answer was lost on the way back): the first message, not a copy.
         sentAlready(person, sendKey)?.let { return@op it }
 
@@ -154,7 +160,7 @@ class Messages(private val feed: Feed) {
         val inserted = db.update(
             "INSERT INTO messages (team_id, id, project_id, update_id, task_id, author, body, created_at, reply_to, answers, request_id, user_id, send_key, source) " +
                 "VALUES (:team, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
-            id, projectId, updateId, author, body, feed.now(), if (request) null else anchor, answersId, requestId, person, sendKey, input.source,
+            id, projectId, updateId, author, body, feed.now(), if (request) null else anchor, answersId, requestId, person, sendKey, source,
         )
         // Two tries of one send arrived together and the other got there first.
         if (inserted == 0) return@op sentAlready(person, sendKey) ?: throw IllegalStateException("message $id was not stored")
@@ -445,6 +451,9 @@ class Messages(private val feed: Feed) {
 
         /** A voice note (migration 065): said aloud and transcribed on the phone, then sent as said. */
         const val VOICE = "voice"
+
+        /** A line the server writes in a card's thread when its assignees change (migration 072). */
+        const val ASSIGNMENT = "assignment"
         private val SOURCES = setOf(VOICE)
 
         /** The line agents read under a voice note's words. People never see it, and it is never stored. */

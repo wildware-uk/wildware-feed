@@ -129,8 +129,8 @@ class Notifications(private val db: Database, private val bus: Bus, private val 
      */
     fun forMessage(messageId: String, member: String = People.FOUNDER): New? {
         val row = db.one(
-            "SELECT id, project_id, update_id, task_id, author, body, reply_to, deleted_at, user_id FROM messages WHERE team_id = :team AND id = ?", messageId,
-        ) { rs -> (1..9).map { rs.getObject(it)?.toString() } } ?: return null
+            "SELECT id, project_id, update_id, task_id, author, body, reply_to, deleted_at, user_id, source FROM messages WHERE team_id = :team AND id = ?", messageId,
+        ) { rs -> (1..10).map { rs.getObject(it)?.toString() } } ?: return null
         val id = row[0]!!
         val projectId = row[1]
         val updateId = row[2]
@@ -144,6 +144,14 @@ class Notifications(private val db: Database, private val bus: Bus, private val 
             author.startsWith("agent:") && author.length > "agent:".length -> author.removePrefix("agent:").let { Triple(it, agentName(it), null) }
             else -> return null
         }
+        // A line saying who was assigned (migration 072) rings only for the people it assigned.
+        if (row[9] == Messages.ASSIGNMENT) {
+            val title = assignedTitle(id, member) ?: return null
+            return New(
+                kind = "reply", projectId = projectId, messageId = id, agentId = agentId,
+                title = "$who assigned you", body = title, toOwner = true, authorMember = person,
+            )
+        }
         val toOwner = repliesTo(member, replyTo, updateId, taskId)
         return New(
             kind = "reply",
@@ -155,6 +163,14 @@ class Notifications(private val db: Database, private val bus: Bus, private val 
             toOwner = toOwner,
             authorMember = person,
         )
+    }
+
+    /** The title of the card that assignment line [lineId] assigned [member] to, or null when it did not. */
+    private fun assignedTitle(lineId: String, member: String): String? {
+        val card = db.one(
+            "SELECT card_kind, card_id FROM card_assignees WHERE team_id = :team AND message_id = ? AND principal = ?", lineId, People.subscriber(member),
+        ) { CardRef(it.getString(1), it.getString(2)) } ?: return null
+        return Assignees(Feed(db, bus, clock)).cardTitle(card)
     }
 
     /**

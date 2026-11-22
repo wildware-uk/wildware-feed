@@ -123,6 +123,9 @@ class ChannelAccessLeakTest {
         assertEquals(200, send(ownerKey, "POST", "/api/cards/message/$finished/status", """{"status":"done"}""").status.value)
         assertEquals(200, send(ownerKey, "POST", "/api/cards/message/$finished/board", """{"removed":true}""").status.value)
         assertEquals(200, send(ownerKey, "PUT", "/api/cards/update/$update/follow", """{"following":true}""").status.value)
+        // Assignees (migration 072): scout takes the zebra plan, and the owner assigns it the finished post.
+        assertTrue("\"isError\":true" !in tool(scout, "assign_work", args("update_id" to update, "assignees" to JsonArray(listOf(JsonPrimitive("me"))))))
+        assertEquals(200, send(ownerKey, "POST", "/api/cards/message/$finished/assignees", """{"assignees":["scout"]}""").status.value)
         send(ownerKey, "POST", "/api/messages", """{"project":"vault","body":"@other zebra for you"}""")
         // And the rest of the team's ordinary life, in web, where everyone is.
         tool(scout, "post_update", args("project" to "web", "title" to "Web plan", "body" to "an ordinary update"))
@@ -209,6 +212,8 @@ class ChannelAccessLeakTest {
             put("mediaIds", JsonArray(listOf(JsonPrimitive(pick("media"))))); put("projects", JsonArray(listOf(JsonPrimitive("vault"))))
             put("name", "Field"); put("body", "hello"); put("emoji", "👍"); put("on", true); put("status", "done"); put("state", "done")
             put("removed", true); put("autoRemoveDays", 7)
+            put("assignees", JsonArray(listOf(JsonPrimitive("scout"), JsonPrimitive("Sam"), JsonPrimitive("me")))); put("mode", "set")
+            put("assigned_to", "scout"); put("assigned", "scout")
             put("value", true); put("kind", "confirm"); put("question", "q?"); put("level", "read"); put("follow", true); put("following", true); put("pinned", true)
             put("private", false); put("item", "1"); put("done", true); put("options", JsonArray(listOf(JsonPrimitive("a"))))
             put("ids", JsonArray(listOf(JsonPrimitive(pick("update")))))

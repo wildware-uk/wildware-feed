@@ -35,6 +35,7 @@ object Access {
         "GET /api/board" to M,
         "GET /api/settings/board" to M,
         "GET /api/cards/{kind}/{id}/blocks" to M,
+        "GET /api/cards/{kind}/{id}/assignees" to M,
         "GET /api/projects/{reference}/agents" to M,
         "GET /api/groups/{reference}/agents" to M,
 
@@ -48,6 +49,7 @@ object Access {
         "POST /api/cards/{kind}/{id}/pin" to M,
         "POST /api/cards/{kind}/{id}/status" to M,
         "POST /api/cards/{kind}/{id}/board" to M, // a finished card off the board, or back: Post on its channel
+        "POST /api/cards/{kind}/{id}/assignees" to M, // who it is assigned to: Post on its channel
         "POST /api/cards/{kind}/{id}/reactions" to M,
         "POST /api/cards/{kind}/{id}/tags" to M,
         "POST /api/cards/{kind}/{id}/fields" to M,

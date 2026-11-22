@@ -2,6 +2,9 @@ package dev.wildware.feed.server.mcp
 
 import dev.wildware.feed.server.App
 import dev.wildware.feed.server.domain.AckRow
+import dev.wildware.feed.server.domain.Assignees
+import dev.wildware.feed.server.domain.assignees
+import dev.wildware.feed.server.domain.invalid
 import dev.wildware.feed.server.domain.CardRef
 import dev.wildware.feed.server.domain.BlockReads
 import dev.wildware.feed.server.domain.CardRefs
@@ -152,12 +155,46 @@ fun ToolRegistry.registerFeedTools(app: App) {
         ToolResult.ok(summary, buildJsonObject { put("card", card.json); put("status", status) })
     }
 
+    register("assign_work") { call ->
+        val card = Cards.oneCard(update = call.text("update_id"), message = call.text("message_id"), request = call.text("request_id"))
+        val names = call.texts("assignees") ?: throw invalid("assignees is required: a list of names or ids (an empty list with mode set unassigns everyone)")
+        val change = app.feed.assignees.change(card, names, call.text("mode") ?: Assignees.MODE_ADD, call.author, app.teams.address())
+        fun list(ws: List<Assignees.Who>) = ws.joinToString(", ") { it.name }
+        val summary = when {
+            change.added.isEmpty() && change.removed.isEmpty() -> "Nothing changed. " +
+                if (change.assignees.isEmpty()) "Nobody is assigned." else "Assigned: ${list(change.assignees)}."
+            else -> listOfNotNull(
+                change.added.takeIf { it.isNotEmpty() }?.let { "Assigned ${list(it)}." },
+                change.removed.takeIf { it.isNotEmpty() }?.let { "Unassigned ${list(it)}." },
+                "A line in the thread says so; the agents named in it were told there.",
+            ).joinToString(" ")
+        }
+        ToolResult.ok(summary, buildJsonObject {
+            put("card", card.json)
+            put("assignees", FeedViews.assignees(change.assignees))
+            put("added", FeedViews.assignees(change.added))
+            put("removed", FeedViews.assignees(change.removed))
+            put("status", change.status)
+            put("line_id", change.lineId)
+        })
+    }
+
     register("list_work") { call ->
         val project = call.channel()
-        val projectIds = if (!project.isNullOrEmpty()) listOf(app.feed.projects.resolve(project).id) else app.feed.messages.projectsForAgent(call.agent.id)
+        // assigned_to (migration 072): "me" is this agent, else a person's or agent's name or id.
+        val assignedTo = call.text("assigned_to")?.takeIf { it.isNotBlank() }?.let { app.feed.assignees.resolve(it, call.author).principal }
+        val projectIds = when {
+            !project.isNullOrEmpty() -> listOf(app.feed.projects.resolve(project).id)
+            // Work assigned to someone is found in every channel this agent can read, followed or not.
+            assignedTo != null -> null
+            else -> app.feed.messages.projectsForAgent(call.agent.id)
+        }
         val statuses = call.texts("status")
         // The statuses are checked first, as `listWorkInScope` does; the enum schema makes that moot.
-        val work = app.feed.cards.listWork(projectIds, statuses, call.args["limit"].jsNumber?.toInt() ?: 50, reader = call.author)
+        val work = app.feed.cards.listWork(projectIds, statuses, call.args["limit"].jsNumber?.toInt() ?: 50, reader = call.author, assignedTo = assignedTo)
+        val assigned = app.feed.assignees.let { a ->
+            a.forCards("update", work.filter { it.kind == "update" }.map { it.id }) + a.forCards("message", work.filter { it.kind == "message" }.map { it.id })
+        }
         val counts = LinkedHashMap<String, Int>()
         for (item in work) counts[item.status] = (counts[item.status] ?: 0) + 1
         val summary = if (work.isEmpty()) {
@@ -177,6 +214,7 @@ fun ToolRegistry.registerFeedTools(app: App) {
                     put("author", item.author)
                     put("created_at", Wire.isoOf(item.createdAt))
                     put("status_at", item.statusAt?.let(Wire::isoOf))
+                    put("assignees", FeedViews.assignees(assigned[item.id].orEmpty()))
                 }
             }))
             put("count", work.size)
@@ -422,6 +460,10 @@ private fun readThread(app: App, call: ToolCall): ToolResult {
                 put("author", c.author)
                 if (author != null) put("author_name", author)
                 if (c.kind == "update") { put("title", c.title); put("body", c.body) }
+                // Who it is assigned to (migration 072): a work card's people and agents.
+                if (c.kind == "update" || c.kind == "message") {
+                    put("assignees", FeedViews.assignees(app.feed.assignees.forCards(c.kind, listOf(c.id))[c.id].orEmpty()))
+                }
                 if (c.kind == "request") {
                     put("question", c.title)
                     c.request?.let { r ->
@@ -495,6 +537,11 @@ private fun ToolCall.apps(): List<FeedAttachments.AppInput>? = list("apps")?.map
 
 /** The MCP shapes (spec/05 §3.1): snake_case, ISO times, keys in the TS order. */
 internal object FeedViews {
+    /** Assignees as agents read them (migration 072): `{ kind, id, name }`, kind "agent" or "person". */
+    fun assignees(ws: List<Assignees.Who>): JsonArray = JsonArray(ws.map { w ->
+        buildJsonObject { put("kind", w.kind); put("id", w.id); put("name", w.name) }
+    })
+
     /** A group (a project, in the app), as a channel names it. */
     fun groupRef(g: GroupRow): JsonObject = buildJsonObject { put("id", g.id); put("slug", g.slug); put("name", g.name) }
 

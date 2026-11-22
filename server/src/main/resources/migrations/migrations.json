@@ -504,6 +504,13 @@
   "checksum": "07dba67af2faaf557f463cfcae6d425acd812857d81867ae71c731185bd6bdf0"
  },
  {
+  "version": 72,
+  "name": "work-is-assigned",
+  "file": "072-work-is-assigned.sql",
+  "rebuildsTables": false,
+  "checksum": "867c528f05929e1acf4a518be0c1fac260efef07b2ca968c88a4323ddd0a75ae"
+ },
+ {
   "version": 73,
   "name": "agents-know-who-let-them-in",
   "file": "073-agents-know-who-let-them-in.sql",

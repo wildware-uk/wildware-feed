@@ -19,6 +19,9 @@ import dev.wildware.feed.server.domain.jsTrim
 import dev.wildware.feed.server.domain.Cards
 import dev.wildware.feed.server.domain.Board
 import dev.wildware.feed.server.domain.board
+import dev.wildware.feed.server.domain.Assignees
+import dev.wildware.feed.server.domain.assignees
+import dev.wildware.feed.server.db.Viewer
 import dev.wildware.feed.server.domain.Js
 import io.ktor.http.HttpMethod
 import io.ktor.server.routing.Route
@@ -205,7 +208,46 @@ fun Route.feedRoutes(app: App) {
             val limit = if (Js.isInteger(asked) && asked > 0) minOf(asked, Board.PAGE_MAX.toDouble()).toInt() else Board.PAGE
             val column = params["column"]?.takeIf { it.isNotEmpty() }
             val removed = params["removed"] == "1" || params["removed"] == "true"
-            call.respondOwner(200, board.read(scope, column, Board.Cursor.parse(params["after"]), limit, removed))
+            // Assigned to me, to nobody, or to one person or agent (migration 072).
+            val assigned = params["assigned"]?.takeIf { it.isNotBlank() }?.let { asked ->
+                when (asked) {
+                    Board.UNASSIGNED -> Board.UNASSIGNED
+                    Assignees.ME -> Viewer.currentOrNull?.principal ?: Viewer.MEMBER + call.person.id
+                    else -> app.feed.assignees.resolve(asked, Viewer.MEMBER + call.person.id).principal
+                }
+            }
+            call.respondOwner(200, board.read(scope, column, Board.Cursor.parse(params["after"]), limit, removed, assigned))
+        },
+    )
+
+    // Who a card is assigned to (migration 072): read them with everyone who could be, or change them.
+    endpoint(
+        "/api/cards/{kind}/{id}/assignees",
+        HttpMethod.Get to {
+            val card = card()
+            val assignees = app.feed.assignees
+            val now = assignees.on(card)
+            call.respondOwner(200, buildJsonObject {
+                put("card", card.json)
+                put("assignees", JsonArray(now.map { it.json }))
+                put("candidates", JsonArray(assignees.candidates(card).map { (who, canRead) -> JsonObject(who.json + ("canRead" to JsonPrimitive(canRead))) }))
+                put("max", Assignees.MAX)
+            })
+        },
+        HttpMethod.Post to {
+            val body = call.lenientObjectBody()
+            val names = (body["assignees"] as? JsonArray)?.map { it.jsString ?: throw invalid("assignees must be a list of names or ids") }
+                ?: throw invalid("assignees must be a list of names or ids")
+            val mode = body["mode"].jsString ?: Assignees.MODE_SET
+            val card = card()
+            val change = app.feed.assignees.change(card, names, mode, Viewer.MEMBER + call.person.id, app.teams.address())
+            call.respondOwner(200, buildJsonObject {
+                put("card", card.json)
+                put("assignees", JsonArray(change.assignees.map { it.json }))
+                put("added", JsonArray(change.added.map { it.json }))
+                put("removed", JsonArray(change.removed.map { it.json }))
+                put("status", change.status)
+            })
         },
     )
 

@@ -150,15 +150,18 @@ class Cards(private val feed: Feed) {
      * `listWorkInScope`: [projectIds] null is every project. An agent [reader] (`agent:<id>`) is not
      * shown a message that @names other agents, as get_messages does not show it one.
      */
-    fun listWork(projectIds: List<String>?, statuses: List<String>?, limit: Int, reader: String = Messages.HUMAN): List<WorkItem> {
+    fun listWork(projectIds: List<String>?, statuses: List<String>?, limit: Int, reader: String = Messages.HUMAN, assignedTo: String? = null): List<WorkItem> {
         for (status in statuses.orEmpty()) if (status !in STATUSES) throw invalid("${JsText.quote(status)} is not a work state")
         if (projectIds != null && projectIds.isEmpty()) return emptyList()
         val states = statuses ?: STATUSES
         if (states.isEmpty()) return emptyList()
         val marks = states.joinToString(", ") { "?" }
-        val scope = projectIds?.let { ids -> "AND project_id IN (${ids.joinToString(", ") { "?" }})" } ?: ""
-        val params = states + projectIds.orEmpty()
-        val (audience, heard) = if (reader == Messages.HUMAN) {
+        // Only what the reader can read; [assignedTo] (migration 072) keeps the cards assigned to them.
+        val assigned = assignedTo?.let { " AND " + Assignees.assignedToSql("id") } ?: ""
+        val scope = (projectIds?.let { ids -> "AND project_id IN (${ids.joinToString(", ") { "?" }})" } ?: "") + feed.access.notHidden("project_id") + assigned
+        val params = states + projectIds.orEmpty() + listOfNotNull(assignedTo)
+        // A card assigned to the reader is theirs to read, whoever else it @names.
+        val (audience, heard) = if (reader == Messages.HUMAN || (assignedTo != null && assignedTo == reader)) {
             "" to emptyList()
         } else {
             " AND (author = ? OR id NOT IN (SELECT mm.message_id FROM message_mentions AS mm WHERE mm.team_id = :team) " +
