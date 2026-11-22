@@ -109,8 +109,27 @@ class People(
      * membership: its founder is its first owner, by the password they set from their setup link.
      */
     fun signInFounder(password: String): Person? {
-        val founder = (if (Tenant.id == HOME) find(FOUNDER) else firstOwner())?.takeIf { it.active } ?: return null
+        val founder = founder() ?: run {
+            Passwords.verify(dummyHash, password)
+            return null
+        }
         return founder.takeIf { verify(it, password) }
+    }
+
+    /** Whom a sign-in with no email is for: the home team's [FOUNDER], or another team's first owner. */
+    private fun founder(): Person? = (if (Tenant.id == HOME) find(FOUNDER) else firstOwner())?.takeIf { it.active }
+
+    /**
+     * The key one account's wrong passwords are counted under, however it is signed in to: by its
+     * email, or with no email as a team's founder. An account is one budget across every team it is
+     * in, so guesses can't be spread over its teams or over the two ways in. An unknown email is
+     * counted under itself, as a known one is.
+     */
+    fun signInKey(email: String?): String {
+        if (email != null) return "email:" + email.jsTrim().lowercase()
+        val founder = founder() ?: return "founder:" + Tenant.id
+        val own = db.one("SELECT email FROM users WHERE id = ?", founder.accountId) { it.getString(1) }
+        return if (own != null) "email:" + own.jsTrim().lowercase() else "account:" + founder.accountId
     }
 
     /** Whether [password] is this person's. */

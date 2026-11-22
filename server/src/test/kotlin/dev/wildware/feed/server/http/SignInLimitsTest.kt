@@ -5,6 +5,7 @@ import dev.wildware.feed.server.Config
 import dev.wildware.feed.server.auth.Passwords
 import dev.wildware.feed.server.auth.SlidingLimiter
 import dev.wildware.feed.server.db.Database
+import dev.wildware.feed.server.db.Tenant
 import dev.wildware.feed.server.domain.AlertPrefs
 import dev.wildware.feed.server.domain.DomainError
 import dev.wildware.feed.server.domain.People
@@ -72,6 +73,77 @@ class SignInLimitsTest {
         assertEquals(429, guess(), "and then the address is locked out")
         // The founder's own password, from another address, clears the founder's lockout there.
         assertEquals(200, status(runBlocking { app.checkPassword("owner password", "198.51.100.5") }))
+    }
+
+    /** Two hosted teams, each with its own first owner, who signs in with no email. */
+    private fun twoTeams(app: App): Pair<String, String> {
+        val (mine, theirs) = "mine${System.nanoTime()}" to "theirs${System.nanoTime()}"
+        Tenant.allTeams {
+            for (t in listOf(mine, theirs)) app.db.update("INSERT INTO teams (id, slug, name, created_at) VALUES (?, ?, ?, 1)", t, t, t)
+        }
+        Tenant.with(mine) { app.people.createOwner("me@$mine.test", "Me", "my own password") }
+        Tenant.with(theirs) { app.people.createOwner("them@$theirs.test", "Them", "their own password") }
+        return mine to theirs
+    }
+
+    private fun at(team: String, password: String, address: String, email: String? = null) =
+        status(runBlocking { Tenant.withTeam(team) { app.checkPassword(password, address, email) } })
+
+    private lateinit var app: App
+
+    @Test
+    fun `a right sign-in to your own team does not clear guesses made at another team`() = App(config, Database.memory()).use { made ->
+        app = made
+        val (mine, theirs) = twoTeams(app)
+        val address = "198.51.100.20"
+        repeat(4) { assertEquals(400, at(theirs, "guess $it", address)) }
+        assertEquals(200, at(mine, "my own password", address))
+        assertEquals(400, at(theirs, "guess 5", address), "the fifth wrong guess is still checked")
+        assertEquals(429, at(theirs, "guess 6", address), "the address is out of guesses")
+        assertEquals(429, at(theirs, "guess 7", address))
+    }
+
+    @Test
+    fun `guesses at one account from many addresses share one budget`() = App(config, Database.memory()).use { made ->
+        app = made
+        val (_, theirs) = twoTeams(app)
+        // Each address stays under its own five, so only the account's ten an hour stops them.
+        repeat(10) { assertEquals(400, at(theirs, "guess $it", "198.51.100.${30 + it / 3}")) }
+        assertEquals(429, at(theirs, "guess 10", "203.0.113.1"), "no email: the account's budget")
+        assertEquals(429, at(theirs, "guess 11", "203.0.113.2", "them@$theirs.test"), "the same account by its email")
+        assertEquals(429, at(theirs, "their own password", "203.0.113.3"), "even the right password waits")
+    }
+
+    @Test
+    fun `past the free guesses each wrong one waits twice as long`() {
+        var now = 1_000_000L
+        val backoff = dev.wildware.feed.server.auth.Backoff(free = 2, baseMs = 1_000, maxMs = 4_000, forgetMs = 60_000, clock = { now })
+        repeat(2) { assertTrue(backoff.take("k").allowed) }
+        assertTrue(backoff.take("k").allowed.not(), "the third waits a second after the second")
+        now += 1_000
+        assertTrue(backoff.take("k").allowed)
+        now += 1_999
+        assertFalse(backoff.take("k").allowed, "then two seconds")
+        now += 1
+        assertTrue(backoff.take("k").allowed)
+        now += 4_000
+        assertTrue(backoff.take("k").allowed, "up to four at most")
+        assertEquals(4_000, backoff.waitMs("k"))
+        backoff.giveBack("k")
+        backoff.clear("k")
+        assertEquals(0, backoff.waitMs("k"), "the right password starts again")
+        repeat(3) { backoff.take("k"); now += 1_000 }
+        now += 60_000
+        assertEquals(0, backoff.waitMs("k"), "and so does a quiet minute")
+    }
+
+    @Test
+    fun `an unknown email and a wrong password get the same answer`() = App(config, Database.memory()).use { made ->
+        app = made
+        val (_, theirs) = twoTeams(app)
+        val wrong = runBlocking { Tenant.withTeam(theirs) { app.checkPassword("not it", "198.51.100.40", "them@$theirs.test") } }
+        val unknown = runBlocking { Tenant.withTeam(theirs) { app.checkPassword("not it", "198.51.100.41", "nobody@$theirs.test") } }
+        assertEquals(wrong, unknown)
     }
 
     @Test

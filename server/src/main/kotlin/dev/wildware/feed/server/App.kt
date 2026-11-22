@@ -71,8 +71,20 @@ class App(val config: Config, val db: Database, val clock: () -> Long = System::
      */
     val loopbackLimiter = SlidingLimiter(limit = 20, windowMs = 900_000, clock = clock)
 
-    /** Ten wrong passwords an hour per email, from anywhere (docs/TEAMS.md §10). */
+    /**
+     * Ten wrong passwords an hour per account (People.signInKey), from anywhere, with or without
+     * an email (docs/TEAMS.md §10).
+     */
     val emailLimiter = SlidingLimiter(limit = 10, windowMs = 3_600_000, clock = clock)
+
+    /**
+     * Past ten wrong passwords in a row at one account, each further one waits twice as long as the
+     * last: one minute, two, four, up to 15 minutes. Only the right password, or a day with no wrong
+     * one, starts the count again.
+     */
+    val signInBackoff = dev.wildware.feed.server.auth.Backoff(
+        free = 10, baseMs = 60_000, maxMs = 900_000, forgetMs = 86_400_000, clock = clock,
+    )
 
     /** Invites looked at or accepted: 20 an hour per address. */
     val inviteLimiter = SlidingLimiter(limit = 20, windowMs = 3_600_000, clock = clock)
