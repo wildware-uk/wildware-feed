@@ -1,7 +1,7 @@
 // Channels: the owner makes one, posts in it, and an agent's update shows up live.
 import { expect, test } from '@playwright/test';
 import { Team } from '../lib/team.mjs';
-import { expectShown, nextResponse, openChannel, post, reload, replaceText, signedIn, tap, typeInto } from '../lib/ui.mjs';
+import { expectShown, find, nextResponse, openChannel, post, reload, replaceText, signedIn, tap, typeInto } from '../lib/ui.mjs';
 
 test.describe.configure({ mode: 'serial' });
 let team;
@@ -62,6 +62,9 @@ test('an agent in the channel is listed, and the owner removes it from the chann
 
 test('the owner makes a project and puts the channel in it', async ({ browser }) => {
     const page = await signedIn(browser, team.owner);
+    // The channel list first, so New project is where the tap reads it: tapped while the list was
+    // still empty, the row above it (New channel) had moved into its place by the time of the click.
+    await find(page, 'button', /^Launch day, /);
     const made = nextResponse(page, '/api/groups');
     await tap(page, 'button', 'New project, a group of channels');
     await typeInto(page, 'Project name', 'Q4 launch');
