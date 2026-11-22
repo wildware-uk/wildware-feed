@@ -3,7 +3,7 @@
 // the feed; only the board stops showing it, for everyone in the team.
 import { expect, test } from '@playwright/test';
 import { Team } from '../lib/team.mjs';
-import { expectGone, expectShown, find, nextResponse, openChannel, signedIn, tap } from '../lib/ui.mjs';
+import { expectGone, expectShown, find, has, nextResponse, openChannel, signedIn, tap } from '../lib/ui.mjs';
 
 test.describe.configure({ mode: 'serial' });
 let team;
@@ -13,6 +13,12 @@ test.beforeAll(async () => {
     agent = await team.agent('builder');
 });
 test.afterAll(async () => { await team?.delete(); });
+
+/** The first of [roles] the tree names [name] with: a chip or toggle may be a button or a tab. */
+async function roleOf(page, roles, name) {
+    for (const role of roles) if (await has(page, role, name)) return role;
+    return roles[0];
+}
 
 /** The board for [channel] as the owner's API reads it: card titles by column. */
 async function boardOf(channel, removed = false) {
@@ -32,14 +38,14 @@ test('the owner drags a card to Done on the board and removes it from the board'
 
     const page = await signedIn(browser, team.owner);
     await openChannel(page, 'Sprint');
-    await tap(page, 'tab', 'Board');
+    await tap(page, await roleOf(page, ['tab', 'button'], 'Board'), 'Board');
     await expectShown(page, 'BOARD  ·  CHANNEL');
     await expectShown(page, 'Write the release notes');
     await expectShown(page, 'Fix the flaky upload test');
 
     // Drag the card by the mouse into the Done column.
-    const card = await find(page, 'button', /^Write the release notes/);
-    const done = await find(page, 'heading', 'Done');
+    const card = await find(page, await roleOf(page, ['button', 'group'], /^Write the release notes/), /^Write the release notes/);
+    const done = (await has(page, 'heading', 'Done')) ? await find(page, 'heading', 'Done') : page.getByText('Done', { exact: true }).first();
     const from = await card.boundingBox();
     const to = await done.boundingBox();
     const moved = nextResponse(page, `/api/cards/message/${notes}/status`);
