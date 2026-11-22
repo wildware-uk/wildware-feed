@@ -467,5 +467,12 @@
   "file": "067-feedback.sql",
   "rebuildsTables": false,
   "checksum": "49bd2e99dc8d95d81c87cc1f4f27a2f9719ab0c2193c1bbb7f75a81f4a310ac3"
+ },
+ {
+  "version": 68,
+  "name": "channel-permissions",
+  "file": "068-channel-permissions.sql",
+  "rebuildsTables": false,
+  "checksum": "90e5a3925c4f202711dacffd20709f998f34a3f7688e96aa1126965b4086146c"
  }
 ]

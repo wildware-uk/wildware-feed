@@ -1779,5 +1779,68 @@
     "taskSupport": "forbidden"
    }
   }
+ },
+ {
+  "tool": "list_projects",
+  "path": [
+   "description"
+  ],
+  "why": "Per channel and per project permissions (spec/15): an agent may have Read, Post or no access, and a channel it can't see answers not_found.",
+  "replace": "nnels. An empty list is a normal answer, not an error: use\ncreate_project first.",
+  "with": "nnels. An empty list is a normal answer, not an error: use\ncreate_project first.\n\nOnly channels you have access to are listed: your owner can make a channel or project\nprivate, or keep you out of one."
+ },
+ {
+  "tool": "post_update",
+  "path": [
+   "description"
+  ],
+  "why": "Per channel and per project permissions (spec/15): an agent may have Read, Post or no access, and a channel it can't see answers not_found.",
+  "replace": "med a session belonging to\nanother agent. Nothing is posted when either happens.",
+  "with": "med a session belonging to\nanother agent. Nothing is posted when either happens.\n\nPermissions: your owner decides, per channel and project, what you may do there. Where you\nhave Read only, this fails with forbidden; a channel you have no access to answers not_found."
+ },
+ {
+  "tool": "get_messages",
+  "path": [
+   "description"
+  ],
+  "why": "Per channel and per project permissions (spec/15): an agent may have Read, Post or no access, and a channel it can't see answers not_found.",
+  "replace": "instead. \"not_found\" means no such channel;\ncall list_projects to see the slugs.",
+  "with": "instead. \"not_found\" means no such channel;\ncall list_projects to see the slugs.\n\nPermissions: your owner decides, per channel and project, whether you can read and post\nthere. A channel you have no access to answers not_found everywhere, and nothing in it\nreaches you, not even an @mention."
+ },
+ {
+  "tool": "post_message",
+  "path": [
+   "description"
+  ],
+  "why": "Per channel and per project permissions (spec/15): an agent may have Read, Post or no access, and a channel it can't see answers not_found.",
+  "replace": ", or that you\nnamed a channel that disagrees with the one the anchor belongs to.",
+  "with": ", or that you\nnamed a channel that disagrees with the one the anchor belongs to.\n\nPermissions: your owner decides, per channel and project, what you may do there. Where you\nhave Read only, this fails with forbidden; a channel you have no access to answers not_found."
+ },
+ {
+  "tool": "react",
+  "path": [
+   "description"
+  ],
+  "why": "Per channel and per project permissions (spec/15): an agent may have Read, Post or no access, and a channel it can't see answers not_found.",
+  "replace": "ntence, or\nsomething far too long — or that you named no card, or more than one.",
+  "with": "ntence, or\nsomething far too long — or that you named no card, or more than one.\n\nPermissions: your owner decides, per channel and project, what you may do there. Where you\nhave Read only, this fails with forbidden; a channel you have no access to answers not_found."
+ },
+ {
+  "tool": "request_input",
+  "path": [
+   "description"
+  ],
+  "why": "Per channel and per project permissions (spec/15): an agent may have Read, Post or no access, and a channel it can't see answers not_found.",
+  "replace": "ge says which.\n\"not_found\" means the channel or update you named does not exist.",
+  "with": "ge says which.\n\"not_found\" means the channel or update you named does not exist.\n\nPermissions: your owner decides, per channel and project, what you may do there. Where you\nhave Read only, this fails with forbidden; a channel you have no access to answers not_found."
+ },
+ {
+  "tool": "subscribe",
+  "path": [
+   "description"
+  ],
+  "why": "Per channel and per project permissions (spec/15): an agent may have Read, Post or no access, and a channel it can't see answers not_found.",
+  "replace": "t\" (none\nnamed, or more than one), \"forbidden\" (your owner removed you from it).",
+  "with": "t\" (none\nnamed, or more than one), \"forbidden\" (your owner removed you from it).\n\nA channel or project you have no access to answers not_found."
  }
 ]

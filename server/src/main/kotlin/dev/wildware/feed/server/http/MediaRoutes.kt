@@ -1,5 +1,8 @@
 package dev.wildware.feed.server.http
 
+import dev.wildware.feed.server.db.Viewer
+import dev.wildware.feed.server.domain.CardRef
+import dev.wildware.feed.server.domain.feed
 import dev.wildware.feed.server.App
 import dev.wildware.feed.server.media.Chunks
 import dev.wildware.feed.server.media.MediaError
@@ -28,11 +31,19 @@ fun Route.mediaRoutes(app: App) {
     endpoint("/api/media", HttpMethod.Post to { call.ownerUpload(app) })
     endpoint("/media/{id}/{variant}", HttpMethod.Get to {
         val save = call.request.queryParameters["download"] == "1"
-        call.serveMedia(app, call.parameters["id"].orEmpty(), call.parameters["variant"].orEmpty(), save = save)
+        val id = call.parameters["id"].orEmpty()
+        // A file on a card in a channel this person can't read is missing (spec/14).
+        val card = app.db.mediaCard(id)
+        if (card != null && app.feed.cards.find(card) == null) return@to call.mediaMiss()
+        call.serveMedia(app, id, call.parameters["variant"].orEmpty(), save = save)
     })
     endpoint("/api/agent/media/{id}", HttpMethod.Get to {
         val id = call.parameters["id"].orEmpty()
-        if (call.agentMayFetch(app)) call.serveMedia(app, id, "original", attachedOnly = true) else call.mediaMiss()
+        val agent = call.agentMayFetch(app) ?: return@to call.mediaMiss()
+        // The same rule as reading the card the file is on (issue #304, spec/14): any refusal is the same 404.
+        val card = app.db.mediaCard(id)
+        if (card == null || !Viewer.with(Viewer.agent(agent.id)) { app.feed.threads.mayFetch(agent.id, card) }) return@to call.mediaMiss()
+        call.serveMedia(app, id, "original", attachedOnly = true)
     })
 }
 
@@ -111,11 +122,18 @@ private suspend fun ApplicationCall.ownerUpload(app: App) {
     }
 }
 
-/** May this bearer fetch agent media? Any refusal is the same 404 (spec/07 §8). */
-private fun ApplicationCall.agentMayFetch(app: App): Boolean {
-    val token = app.agents.parseBearer(request.headers["Authorization"]).first ?: return false
-    val agent = app.agents.authenticate(token).first ?: return false
-    return app.agentMediaLimiter.take(agent.id).allowed
+/** The agent behind this bearer, when it may fetch agent media at all; null is the same 404 (spec/07 §8). */
+private fun ApplicationCall.agentMayFetch(app: App): dev.wildware.feed.server.domain.Agents.Agent? {
+    val token = app.agents.parseBearer(request.headers["Authorization"]).first ?: return null
+    val agent = app.agents.authenticate(token).first ?: return null
+    return agent.takeIf { app.agentMediaLimiter.take(it.id).allowed }
+}
+
+/** The card a file is attached to, or null. */
+private fun dev.wildware.feed.server.db.Database.mediaCard(id: String): CardRef? = one(
+    "SELECT update_id, message_id, request_id FROM media WHERE team_id = :team AND id = ?", id,
+) { rs ->
+    rs.getString(1)?.let { CardRef("update", it) } ?: rs.getString(2)?.let { CardRef("message", it) } ?: rs.getString(3)?.let { CardRef("request", it) }
 }
 
 private suspend fun ApplicationCall.mediaMiss() =

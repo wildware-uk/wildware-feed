@@ -124,5 +124,11 @@
   "name": "feedback",
   "file": "067-feedback.sql",
   "checksum": "78e18c5d8327fccaec67e3afa9bbcf7dc3eb72c117c1a4c9108ae6a533816b17"
+ },
+ {
+  "version": 68,
+  "name": "channel-permissions",
+  "file": "068-channel-permissions.sql",
+  "checksum": "8ca04504f418c43604f32d2b64db01b1b86a789c897bb0273c5501e03fab918f"
  }
 ]

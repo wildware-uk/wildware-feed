@@ -74,7 +74,12 @@ class AgentMembers(private val feed: Feed) {
      * that changed anything, and answers the agent as the list now shows it.
      */
     fun setChannel(project: ProjectRow, agentId: String, hears: Boolean, by: String): Member = feed.op {
+        // Which agents hear a channel is its settings: Manage (spec/14). Hearing needs access first.
+        feed.access.requireManage(project.id) { notFound("no such project: ${project.id}") }
         val name = agentName(agentId)
+        if (hears && !feed.access.canRead(Subscriptions.agent(agentId), project.id)) {
+            throw conflict("$name has no access to #${project.slug}: give it Read or Post in Permissions first")
+        }
         val changed = if (hears) subs.ownerAddChannel(agentId, project.id) else subs.ownerRemoveChannel(agentId, project.id)
         if (changed) {
             changedFor(agentId, buildJsonObject { put("projectId", project.id) })
@@ -91,6 +96,7 @@ class AgentMembers(private val feed: Feed) {
 
     /** As [setChannel], for a project (group of channels). */
     fun setGroup(group: GroupRow, agentId: String, hears: Boolean, by: String): Member = feed.op {
+        feed.access.requireManageGroup(group.id) { notFound("no such group: ${group.id}") }
         val name = agentName(agentId)
         val changed = if (hears) subs.ownerAddGroup(agentId, group.id) else subs.ownerRemoveGroup(agentId, group.id)
         if (changed) {

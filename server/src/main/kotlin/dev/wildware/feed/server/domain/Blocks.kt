@@ -61,7 +61,7 @@ class Blocks(private val feed: Feed) {
     fun change(card: CardRef, blockId: String, agentId: String, patch: JsonElement?, block: JsonElement?, remove: Boolean): JsonObject? = feed.op {
         val given = listOf(patch != null, block != null, remove).count { it }
         if (given != 1) throw invalid("give one of patch, block or remove")
-        val row = feed.cards.resolve(card)
+        val row = feed.cards.resolveToWrite(card)
         if (author(card) != "agent:$agentId") throw invalid("only the agent that posted that ${card.kind} can change its blocks")
         val actor = Actor.agent(agentId)
         if (block != null) {
@@ -95,7 +95,7 @@ class Blocks(private val feed: Feed) {
 
     /** A person ticks or unticks a checklist line. */
     fun tick(card: CardRef, blockId: String, itemId: String, done: Boolean, personId: String): JsonObject = feed.op {
-        val row = feed.cards.resolve(card)
+        val row = feed.cards.resolveToWrite(card)
         if (find(card, blockId) == null) throw notFound("no block \"$blockId\" on that ${card.kind}")
         val current = find(card, blockId)!!
         val was = (current.data["items"] as? JsonArray)?.firstOrNull { (it as JsonObject)["id"].jsString == itemId }?.let { (it as JsonObject)["done"].jsBoolean }
@@ -118,7 +118,7 @@ class Blocks(private val feed: Feed) {
 
     /** A person votes on a poll; [options] empty takes their vote back. */
     fun vote(card: CardRef, blockId: String, options: List<String>, personId: String): JsonObject = feed.op {
-        val row = feed.cards.resolve(card)
+        val row = feed.cards.resolveToWrite(card)
         val current = find(card, blockId) ?: throw notFound("no block \"$blockId\" on that ${card.kind}")
         val mine = (current.data["votes"] as? JsonArray)?.map { it as JsonObject }?.firstOrNull { it["by"].jsString == "person:$personId" }
             ?.let { v -> (v["options"] as JsonArray).mapNotNull { it.jsString }.toSet() } ?: emptySet()

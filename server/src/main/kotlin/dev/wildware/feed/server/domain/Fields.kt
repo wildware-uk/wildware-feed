@@ -14,7 +14,7 @@ class Fields(private val feed: Feed) {
 
     /** Set (upsert by slug) or, with a null [value], remove. Returns the card's fields and whether one is set. */
     fun set(card: CardRef, name: String, value: String?, actor: String): Pair<List<FieldRow>, Boolean> = feed.op {
-        val row = feed.cards.resolve(card)
+        val row = feed.cards.resolveToWrite(card)
         val clean = name.jsTrim()
         if (clean.isEmpty()) throw invalid("a field needs a name")
         if (clean.length > NAME_MAX) throw invalid("a field name may be at most $NAME_MAX characters")

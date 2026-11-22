@@ -51,8 +51,24 @@ class ThreadReads(private val feed: Feed) {
     )
 
     fun read(agentId: String, card: CardRef): Read = feed.op {
+        val (thread, projectId, head, all, shown) = open(agentId, card)
+        val withheld = all.size - shown.size
+        // A feed post's root stays first; the newest replies win when the thread is long.
+        val root = shown.firstOrNull()?.takeIf { thread.kind == "message" && it.id == thread.id }
+        val replies = if (root != null) shown.drop(1) else shown
+        val kept = replies.takeLast(LIMIT)
+        val fields = feed.fields.on(CardRef(thread.kind, thread.id))
+        Read(thread, head, fields, listOfNotNull(root) + kept, withheld, replies.size - kept.size)
+    }
+
+    private data class Opened(val thread: Subscriptions.Thread, val projectId: String?, val head: Card, val all: List<MessageRow>, val shown: List<MessageRow>)
+
+    /** The thread [card] is in, and the lines of it [agentId] may read; refused as [read] says. */
+    private fun open(agentId: String, card: CardRef): Opened {
         val me = AGENT + agentId
         val (thread, projectId) = subscriptions.threadAt(card)
+        // A channel the agent has no access to doesn't exist for it (spec/14).
+        if (!ChannelAccess(db, feed.clock).canRead(me, projectId)) throw notFound("no such ${card.kind}: ${card.id}")
         val head = card(thread, projectId)
         val all = lines(thread)
         if (!mayRead(agentId, thread, projectId, head, all)) {
@@ -66,13 +82,22 @@ class ThreadReads(private val feed: Feed) {
         val shown = all.filter { line ->
             line.author == me || Mentions.readable(db, line.id, line.author, me) || (byPerson && line.author == HUMAN)
         }
-        val withheld = all.size - shown.size
-        // A feed post's root stays first; the newest replies win when the thread is long.
-        val root = shown.firstOrNull()?.takeIf { thread.kind == "message" && it.id == thread.id }
-        val replies = if (root != null) shown.drop(1) else shown
-        val kept = replies.takeLast(LIMIT)
-        val fields = feed.fields.on(CardRef(thread.kind, thread.id))
-        Read(thread, head, fields, listOfNotNull(root) + kept, withheld, replies.size - kept.size)
+        return Opened(thread, projectId, head, all, shown)
+    }
+
+    /**
+     * Whether [agentId] may download a file on [card] (issue #304, `GET /api/agent/media/{id}`): the
+     * same rule as reading the card. On an update or a question, reading its thread; on a message,
+     * reading that very line of it ([read]'s rule, mentions and the whole-thread rule included).
+     */
+    fun mayFetch(agentId: String, card: CardRef): Boolean {
+        val opened = try {
+            open(agentId, card)
+        } catch (e: DomainError) {
+            return false
+        }
+        if (card.kind != "message") return true
+        return opened.shown.any { it.id == card.id }
     }
 
     private fun mayRead(agentId: String, thread: Subscriptions.Thread, projectId: String?, head: Card, all: List<MessageRow>): Boolean {

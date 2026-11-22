@@ -35,6 +35,7 @@ import dev.wildware.feed.server.db.Ulid
  * moment it started (`after_seq`), so following never turns old history into unread messages.
  */
 class Subscriptions(private val db: Database, private val clock: () -> Long = System::currentTimeMillis) {
+    private val access get() = ChannelAccess(db, clock)
     data class Thread(val kind: String, val id: String)
 
     data class ProjectFollow(val projectId: String, val slug: String, val name: String, val since: Long, val chosen: Boolean = false)
@@ -103,7 +104,9 @@ class Subscriptions(private val db: Database, private val clock: () -> Long = Sy
             }
         }.map { it.first }.toSet()
         // Followed channels in the order they were followed, then those heard only through a group.
-        return channels.map { it.first }.filter { it in heard } + all.map { it.first }.filter { it in heard && it !in own }
+        // A channel the agent has no access to is never heard (spec/14), whatever it follows.
+        val hidden = access.hiddenFor(me)
+        return (channels.map { it.first }.filter { it in heard } + all.map { it.first }.filter { it in heard && it !in own }).filter { it !in hidden }
     }
 
     /** Every channel the agent hears now, by id: [followedProjects]. */
@@ -165,8 +168,9 @@ class Subscriptions(private val db: Database, private val clock: () -> Long = Sy
             reach.threadsAnywhere -> "(($hears AND " + inChannels() + ") OR " + followsThread(agentId, args, oneMessage) + ")"
             else -> "(($hears OR " + followsThread(agentId, args, oneMessage) + ") AND " + inChannels() + ")"
         }
-        // A message that @mentions the agent reaches it wherever it is, as a mention always has.
-        return " AND ($narrowed OR " + namesReader(agentId, args, oneMessage) + ")"
+        // A message that @mentions the agent reaches it wherever it is, as a mention always has,
+        // except in a channel it has no access to (spec/14): there nothing reaches it.
+        return " AND ($narrowed OR " + namesReader(agentId, args, oneMessage) + ")" + access.notHiddenFor(agent(agentId), "m.project_id")
     }
 
     private fun followsThread(agentId: String, args: MutableList<Any?>, oneMessage: Boolean): String = if (oneMessage) {
@@ -300,31 +304,31 @@ class Subscriptions(private val db: Database, private val clock: () -> Long = Sy
     /** The channels [who] follows on their own (not through a group), in the order followed. */
     fun projects(who: String): List<ProjectFollow> = db.query(
         "SELECT ps.project_id, p.slug, p.name, ps.created_at, ps.chosen FROM project_subscriptions AS ps JOIN projects AS p ON p.id = ps.project_id " +
-            "WHERE ps.team_id = :team AND ps.subscriber = ? AND ps.unsubscribed_at IS NULL ORDER BY ps.seq",
+            "WHERE ps.team_id = :team AND ps.subscriber = ? AND ps.unsubscribed_at IS NULL${access.notHiddenFor(who, "ps.project_id")} ORDER BY ps.seq",
         who,
     ) { ProjectFollow(it.getString(1), it.getString(2), it.getString(3), it.getLong(4), it.getInt(5) == 1) }
 
     /** The channels [who] chose not to follow, by id. */
     fun leftProjects(who: String): List<String> = db.query(
-        "SELECT project_id FROM project_subscriptions WHERE team_id = :team AND subscriber = ? AND unsubscribed_at IS NOT NULL AND chosen = 1 ORDER BY seq", who,
+        "SELECT project_id FROM project_subscriptions WHERE team_id = :team AND subscriber = ? AND unsubscribed_at IS NOT NULL AND chosen = 1${access.notHiddenFor(who, "project_id")} ORDER BY seq", who,
     ) { it.getString(1) }
 
     /** The groups [who] follows, in the order followed. */
     fun groups(who: String): List<GroupFollow> = db.query(
         "SELECT gs.group_id, g.slug, g.name, gs.created_at FROM group_subscriptions AS gs JOIN project_groups AS g ON g.id = gs.group_id " +
-            "WHERE gs.team_id = :team AND gs.subscriber = ? AND gs.unsubscribed_at IS NULL ORDER BY gs.seq",
+            "WHERE gs.team_id = :team AND gs.subscriber = ? AND gs.unsubscribed_at IS NULL${access.groupNotHiddenFor(who, "gs.group_id")} ORDER BY gs.seq",
         who,
     ) { GroupFollow(it.getString(1), it.getString(2), it.getString(3), it.getLong(4)) }
 
     /** The threads [who] follows, newest first, [limit] at most. */
     fun threads(who: String, limit: Int): List<ThreadFollow> = db.query(
-        "SELECT kind, thread_id, project_id, created_at FROM thread_subscriptions WHERE team_id = :team AND subscriber = ? AND unsubscribed_at IS NULL " +
-            "ORDER BY created_at DESC, seq DESC LIMIT ?",
+        "SELECT kind, thread_id, project_id, created_at FROM thread_subscriptions WHERE team_id = :team AND subscriber = ? AND unsubscribed_at IS NULL" +
+            "${access.notHiddenFor(who, "project_id")} ORDER BY created_at DESC, seq DESC LIMIT ?",
         who, limit,
     ) { ThreadFollow(Thread(it.getString(1), it.getString(2)), it.getString(3), it.getLong(4)) }
 
     fun countThreads(who: String): Int =
-        db.one("SELECT count(*) FROM thread_subscriptions WHERE team_id = :team AND subscriber = ? AND unsubscribed_at IS NULL", who) { it.getInt(1) } ?: 0
+        db.one("SELECT count(*) FROM thread_subscriptions WHERE team_id = :team AND subscriber = ? AND unsubscribed_at IS NULL${access.notHiddenFor(who, "project_id")}", who) { it.getInt(1) } ?: 0
 
     /** The live agents following [thread], by id and name, oldest follower first. */
     fun followers(thread: Thread): List<Pair<String, String>> = db.query(
@@ -518,13 +522,13 @@ class Subscriptions(private val db: Database, private val clock: () -> Long = Sy
     }
 
     fun choices(who: String): OwnerChoices = OwnerChoices(
-        levels = db.query("SELECT project_id, level FROM project_subscriptions WHERE team_id = :team AND subscriber = ? AND unsubscribed_at IS NULL ORDER BY seq", who) {
+        levels = db.query("SELECT project_id, level FROM project_subscriptions WHERE team_id = :team AND subscriber = ? AND unsubscribed_at IS NULL${access.notHiddenFor(who, "project_id")} ORDER BY seq", who) {
             it.getString(1) to it.getString(2)
         },
-        groups = db.query("SELECT group_id, level FROM group_subscriptions WHERE team_id = :team AND subscriber = ? AND unsubscribed_at IS NULL ORDER BY seq", who) {
+        groups = db.query("SELECT group_id, level FROM group_subscriptions WHERE team_id = :team AND subscriber = ? AND unsubscribed_at IS NULL${access.groupNotHiddenFor(who, "group_id")} ORDER BY seq", who) {
             it.getString(1) to it.getString(2)
         },
-        threads = db.query("SELECT kind, thread_id, unsubscribed_at IS NULL FROM thread_subscriptions WHERE team_id = :team AND subscriber = ? ORDER BY seq", who) {
+        threads = db.query("SELECT kind, thread_id, unsubscribed_at IS NULL FROM thread_subscriptions WHERE team_id = :team AND subscriber = ?${access.notHiddenFor(who, "project_id")} ORDER BY seq", who) {
             Thread(it.getString(1), it.getString(2)) to it.getBoolean(3)
         },
     )
@@ -574,7 +578,12 @@ class Subscriptions(private val db: Database, private val clock: () -> Long = Sy
      * The thread a card is in, with its project: an update's comments, a request's discussion, or
      * the feed post a message is in (the post itself, or the update or request it hangs off).
      */
-    fun threadAt(card: CardRef): Pair<Thread, String?> = when (card.kind) {
+    fun threadAt(card: CardRef): Pair<Thread, String?> = rawThreadAt(card).also { (_, projectId) ->
+        // A thread in a channel this work's viewer can't read answers as missing (spec/14).
+        if (!access.visible(projectId)) throw notFound("no such ${card.kind}: ${card.id}")
+    }
+
+    private fun rawThreadAt(card: CardRef): Pair<Thread, String?> = when (card.kind) {
         "update" -> db.one("SELECT project_id FROM updates WHERE team_id = :team AND id = ? AND deleted_at IS NULL", card.id) { Thread("update", card.id) to it.getString(1) }
             ?: throw notFound("no such update: ${card.id}")
         "request" -> db.one("SELECT project_id FROM approvals WHERE team_id = :team AND id = ?", card.id) { Thread("request", card.id) to it.getString(1) }

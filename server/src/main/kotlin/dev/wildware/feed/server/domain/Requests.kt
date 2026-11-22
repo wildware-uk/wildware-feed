@@ -131,6 +131,10 @@ class Requests(
         val options = assertOptions(kind, input.options)
         val baseConfig = assertConfig(kind, options, input)
         val anchor = anchor(input)
+        // Asking needs Post on the channel (spec/14); one the agent can't read is missing.
+        ChannelAccess(db, clock).requirePost(anchor.projectId) {
+            notFound(input.message?.let { "no such message: $it" } ?: input.update?.let { "no such update: $it" } ?: "no such project: ${input.project}")
+        }
         val timeoutS = assertTimeout(input.timeoutS)
         val priority = input.priority ?: "medium"
         if (priority !in Updates.PRIORITIES) throw invalid("priority must be one of: ${Updates.PRIORITIES.joinToString(", ")}")
@@ -216,7 +220,7 @@ class Requests(
      * answer is written makes it lose too.
      */
     fun answer(requestId: String, value: JsonElement, by: String = People.FOUNDER, shown: Shown? = null): OwnerRequest {
-        val request = expireIfDue(mustFind(requestId))
+        val request = expireIfDue(toAnswer(requestId))
         // The same person giving the same answer again is an app trying again after the reply was lost:
         // it already worked, so it says so rather than "already answered".
         if (request.state == "answered" && request.answeredBy == by && request.kind != "secret" &&
@@ -249,7 +253,7 @@ class Requests(
      * [releaseSecret] if storing it failed.
      */
     fun claimSecret(requestId: String, name: String, by: String = People.FOUNDER): JsonObject {
-        val request = expireIfDue(mustFind(requestId))
+        val request = expireIfDue(toAnswer(requestId))
         if (request.kind != "secret") throw invalid("request $requestId is not asking for a secret")
         if (request.state != "pending") throw settledAlready(request)
         val answer = buildJsonObject { put("kind", "secret"); put("value", name) }
@@ -266,7 +270,7 @@ class Requests(
 
     /** A person dismisses (`DELETE /api/requests/:id`). Not idempotent: the second is a 409. */
     fun cancel(requestId: String, by: String = People.FOUNDER): OwnerRequest {
-        val request = expireIfDue(mustFind(requestId))
+        val request = expireIfDue(toAnswer(requestId))
         if (request.state != "pending") throw settledAlready(request)
         val row = decide(requestId, "cancelled", null, null, clock(), by) ?: throw settledAlready(mustFind(requestId))
         return settle(row, "cancelled")
@@ -283,6 +287,7 @@ class Requests(
     /** The asking agent rewrites its pending question (TS `editRequest`, `requests.ts:498`). */
     fun edit(requestId: String, agentId: String, input: RequestEdit): OwnerRequest {
         val request = expireIfDue(own(requestId, agentId))
+        ChannelAccess(db, clock).requirePost(request.projectId) { notFound("no such request: $requestId") }
         if (request.state != "pending") throw settledAlready(request)
 
         val question = input.question?.let { requiredText(it, "question", QUESTION_MAX_LENGTH) }
@@ -367,8 +372,10 @@ class Requests(
         ) { Rows.request(it) }.map { settle(it, "timeout") }
     }
 
+    /** A question in a channel this work's viewer can't read answers as missing (spec/14). */
     fun find(requestId: String): OwnerRequest? =
         db.one("SELECT ${Rows.APPROVAL} FROM approvals WHERE team_id = :team AND id = ?", requestId) { OwnerRequest(Rows.request(it)) }
+            ?.takeIf { ChannelAccess(db, clock).visible(it.projectId) }
 
     // ---- the wait ---------------------------------------------------------------------------------
 
@@ -453,6 +460,11 @@ class Requests(
     private fun changedSinceShown() = conflict("This question changed after you saw it. Read it again, then answer.")
 
     private fun mustFind(requestId: String): OwnerRequest = find(requestId) ?: throw notFound("no such request: $requestId")
+
+    /** [mustFind], for answering or changing it: that needs Post on its channel (spec/14). */
+    private fun toAnswer(requestId: String): OwnerRequest = mustFind(requestId).also {
+        ChannelAccess(db, clock).requirePost(it.projectId) { notFound("no such request: $requestId") }
+    }
 
     private fun own(requestId: String, agentId: String): OwnerRequest {
         val request = mustFind(requestId)

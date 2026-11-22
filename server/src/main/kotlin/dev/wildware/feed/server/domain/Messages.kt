@@ -54,7 +54,9 @@ class Messages(private val feed: Feed) {
 
     class Quoted(val id: String, val author: String, val body: String, val truncated: Boolean, val userId: String? = null)
 
-    fun find(id: String): MessageRow? = db.one("SELECT ${Rows.MESSAGE} FROM messages WHERE team_id = :team AND id = ?", id) { MessageRow(Rows.message(it)) }
+    /** A message in a channel this work's viewer can't read answers as missing (spec/14). */
+    fun find(id: String): MessageRow? =
+        db.one("SELECT ${Rows.MESSAGE} FROM messages WHERE team_id = :team AND id = ?", id) { MessageRow(Rows.message(it)) }?.takeIf { feed.access.visible(it.projectId) }
 
     private fun agentExists(id: String) = db.one("SELECT id FROM agents WHERE team_id = :team AND id = ?", id) { it.getString(1) } != null
 
@@ -119,6 +121,8 @@ class Messages(private val feed: Feed) {
             throw invalid("that update, task or message belongs to a different project")
         }
         val projectId = anchored ?: namedProject
+        // Posting needs Post on the channel (spec/14); one the author can't read is missing.
+        feed.access.requirePost(projectId) { notFound(if (requestId != null) "no such request: $requestId" else "no such project: ${input.project ?: input.updateId ?: input.replyTo ?: ""}") }
 
         if (answered != null && !sameThread(answered, updateId, anchor, requestId)) {
             throw invalid("that message is in a different thread")
@@ -218,6 +222,7 @@ class Messages(private val feed: Feed) {
         if (message == null || message.deletedAt != null) throw notFound("no such message: $messageId")
         checkAuthor(by)
         if (by != message.author) throw invalid("that message was posted by somebody else")
+        feed.access.requirePost(message.projectId) { notFound("no such message: $messageId") }
         val clean = requiredText(body, "body", BODY_MAX)
         val card = CardRef("message", message.id)
         val newRefs = refs?.let { cardRefs.check(by, it, self = card, kept = cardRefs.on(card)) }
@@ -248,6 +253,7 @@ class Messages(private val feed: Feed) {
             throw forbidden("only an owner or an admin can unsend someone else's message")
         }
         if (message.deletedAt != null) return@op message
+        feed.access.requirePost(message.projectId) { notFound("no such message: $messageId") }
         val at = feed.now()
         val replies = if (message.replyTo == null) {
             db.query("SELECT id FROM messages WHERE team_id = :team AND reply_to = ? AND deleted_at IS NULL ORDER BY seq ASC", message.id) { it.getString(1) }

@@ -26,7 +26,10 @@ class Groups(private val feed: Feed) {
     fun byId(id: String): GroupRow? = row("id", id)
     fun bySlug(slug: String): GroupRow? = row("slug", slug)
 
-    private fun row(column: String, value: String) =
+    /** A project this work's viewer can't see at all answers as missing (spec/14). */
+    private fun row(column: String, value: String) = rawRow(column, value)?.takeIf { feed.access.groupVisible(it.id) }
+
+    private fun rawRow(column: String, value: String) =
         db.one("SELECT $COLUMNS FROM project_groups WHERE team_id = :team AND $column = ?", value) { GroupRow(json(it)) }
 
     /** As [Projects.find]: an id-shaped reference tries the id first, anything else the slug first. */
@@ -39,13 +42,14 @@ class Groups(private val feed: Feed) {
     fun resolve(reference: String): GroupRow = find(reference) ?: throw notFound("no such group: ${reference.jsTrim()}")
 
     /** By name, as the app lists them. */
-    fun list(): List<GroupRow> = db.query("SELECT $COLUMNS FROM project_groups WHERE team_id = :team ORDER BY lower(name), seq") { GroupRow(json(it)) }
+    fun list(): List<GroupRow> = db.query("SELECT $COLUMNS FROM project_groups WHERE team_id = :team${feed.access.groupNotHidden("id")} ORDER BY lower(name), seq") { GroupRow(json(it)) }
 
     /** Idempotent on the slug, as [Projects.create]: an existing group comes back untouched. */
     fun create(name: String, slug: String?): Pair<GroupRow, Boolean> = feed.op {
         val cleanName = requiredText(name, "name", Projects.NAME_MAX)
         val cleanSlug = Slugs.slugFor(cleanName, slug)
         bySlug(cleanSlug)?.let { return@op it to false }
+        if (rawRow("slug", cleanSlug) != null) throw DomainError("conflict", "a project with that slug already exists that you don't have access to: pick another slug", 409)
         val now = feed.now()
         val id = Ulid.next(now)
         db.update(
@@ -59,11 +63,12 @@ class Groups(private val feed: Feed) {
 
     fun update(reference: String, patch: Patch): GroupRow = feed.op {
         val group = resolve(reference)
+        feed.access.requireManageGroup(group.id) { notFound("no such group: ${reference.jsTrim()}") }
         val sets = LinkedHashMap<String, Any?>()
         patch.name?.let { sets["name"] = requiredText(it, "name", Projects.NAME_MAX) }
         patch.slug?.let {
             val slug = Slugs.assertSlug(it)
-            val holder = bySlug(slug)
+            val holder = rawRow("slug", slug)
             if (holder != null && holder.id != group.id) throw conflict("slug already in use: $slug")
             sets["slug"] = slug
         }
@@ -81,7 +86,11 @@ class Groups(private val feed: Feed) {
     /** Deleting a group only ungroups its channels; what anyone chose for it goes with it. */
     fun delete(reference: String): GroupRow = feed.op {
         val group = resolve(reference)
+        feed.access.requireManageGroup(group.id) { notFound("no such group: ${reference.jsTrim()}") }
         val channels = db.query("SELECT id, slug FROM projects WHERE team_id = :team AND group_id = ?", group.id) { it.getString(1) to it.getString(2) }
+        // Its channels keep the access they had through it (spec/14); then its own rows go.
+        for ((id, _) in channels) feed.access.keepThroughMove(id, group.id)
+        feed.access.forgetGroup(group.id)
         db.update("UPDATE projects SET group_id = NULL, updated_at = ? WHERE team_id = :team AND group_id = ?", feed.now(), group.id)
         db.update("DELETE FROM group_subscriptions WHERE team_id = :team AND group_id = ?", group.id)
         db.update("DELETE FROM project_groups WHERE team_id = :team AND id = ?", group.id)
@@ -94,7 +103,7 @@ class Groups(private val feed: Feed) {
         feed.publish(type, buildJsonObject { put("groupId", group.id); put("slug", group.slug) })
 
     companion object {
-        const val COLUMNS = "seq, id, slug, name, status, created_at, updated_at, theme"
+        const val COLUMNS = "seq, id, slug, name, status, created_at, updated_at, theme, private"
 
         fun json(rs: java.sql.ResultSet): JsonObject = with(Rows) {
             buildJsonObject {
@@ -106,6 +115,8 @@ class Groups(private val feed: Feed) {
                 long(rs, "createdAt", "created_at")
                 long(rs, "updatedAt", "updated_at")
                 put("theme", json(rs, "theme"))
+                // Migration 067: only those listed can see it (spec/14).
+                put("private", rs.getInt("private") == 1)
             }
         }
     }

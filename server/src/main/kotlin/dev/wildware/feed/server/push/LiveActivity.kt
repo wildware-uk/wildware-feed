@@ -1,5 +1,7 @@
 package dev.wildware.feed.server.push
 
+import dev.wildware.feed.server.db.Viewer
+import dev.wildware.feed.server.domain.ChannelAccess
 import dev.wildware.feed.server.App
 import dev.wildware.feed.server.db.Tenant
 import dev.wildware.feed.server.domain.Reads
@@ -109,10 +111,13 @@ class LiveActivity(private val app: App, private val apns: Apns, private val bun
         val devices = apns.devices()
         if (devices.none { it.liveActivityToken != null || it.pushToStartToken != null }) return
         val now = app.clock()
-        val state = state()
+        // Each person's own state: what waits and who works only in channels they can read (spec/14).
+        val states = HashMap<String, JsonObject>()
+        fun stateOf(device: PushDevice) = states.getOrPut(device.userId) { Viewer.with(Viewer.member(device.userId)) { state() } }
         val timestamp = now / 1000
         for (device in devices) {
             val token = device.liveActivityToken ?: continue
+            val state = stateOf(device)
             if (!needed(state)) {
                 end(device, token, state, timestamp)
                 continue
@@ -131,9 +136,13 @@ class LiveActivity(private val app: App, private val apns: Apns, private val bun
             val outcome = apns.deliver(device, "live_activity_token", headers(10), Wire.encode(payload))
             if (outcome == "sent") lastSent[key] = state else lastSent.remove(key)
         }
-        if (requestId == null || !needed(state)) return
+        if (requestId == null) return
+        val asked = app.db.one("SELECT project_id FROM approvals WHERE team_id = :team AND id = ?", requestId) { it.getString(1) }
+        val access = ChannelAccess(app.db, app.clock)
         for (device in devices) {
             if (device.pushToStartToken == null || device.liveActivityToken != null) continue
+            val state = stateOf(device)
+            if (!needed(state) || !access.canRead(Viewer.MEMBER + device.userId, asked)) continue
             if (now - (startedAt[device.id] ?: Long.MIN_VALUE / 2) < PUSH_TO_START_COOLDOWN_MS) continue
             val alert = requestAlert(requestId, state)
             startedAt[device.id] = now

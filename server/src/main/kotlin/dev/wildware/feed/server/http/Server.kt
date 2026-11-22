@@ -4,6 +4,7 @@ import dev.wildware.feed.server.App
 import dev.wildware.feed.server.CrashReports
 import dev.wildware.feed.server.domain.DomainError
 import dev.wildware.feed.server.db.Tenant
+import dev.wildware.feed.server.db.Viewer
 import io.ktor.http.HttpMethod
 import kotlinx.coroutines.withContext
 import io.ktor.server.application.Application
@@ -129,6 +130,7 @@ fun Application.feed(app: App, placeOf: (ApplicationCall) -> Place = { Hosts.pla
         agentRoutes(app)
         streamRoutes(app)
         feedRoutes(app)
+        accessRoutes(app)
         requestRoutes(app)
         sessionRoutes(app)
         mediaRoutes(app)
@@ -290,8 +292,10 @@ fun Route.endpoint(path: String, vararg handlers: Pair<HttpMethod, suspend Routi
                     return@handle
                 }
             }
+            // Whoever is calling, as every read that hands out channel content sees them (spec/14).
+            val viewer = call.attributes.getOrNull(CallerKey)?.let { Viewer.member(it.person.id) }
             try {
-                h()
+                if (viewer != null) withContext(Viewer.element(viewer)) { h() } else h()
             } catch (e: DomainError) {
                 call.respondDomainError(e)
             }

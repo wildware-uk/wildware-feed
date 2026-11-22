@@ -483,11 +483,11 @@ fun Route.feedRoutes(app: App) {
     )
 }
 
-private fun text(value: JsonElement?, field: String): String = value.jsString ?: throw invalid("$field must be a string")
+internal fun text(value: JsonElement?, field: String): String = value.jsString ?: throw invalid("$field must be a string")
 
-private fun nullableText(value: JsonElement?, field: String): String? = if (value is JsonNull) null else text(value, field)
+internal fun nullableText(value: JsonElement?, field: String): String? = if (value is JsonNull) null else text(value, field)
 
-private fun flag(value: JsonElement?, field: String): Boolean = value.jsBoolean ?: throw invalid("$field must be true or false")
+internal fun flag(value: JsonElement?, field: String): Boolean = value.jsBoolean ?: throw invalid("$field must be true or false")
 
 private fun projectStatus(value: JsonElement?): String =
     value.jsString?.takeIf { it == "active" || it == "archived" } ?: throw invalid("status must be active or archived")

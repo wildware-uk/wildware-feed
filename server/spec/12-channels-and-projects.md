@@ -102,6 +102,9 @@ A bridge set up for one channel never hears another's messages, not even a follo
 there; a message that @mentions the agent still reaches it, as a mention does anywhere. `*` or no list is no narrowing; a name that matches no channel narrows to nothing.
 `get_messages` with a `channel` narrows the same way, to that one channel.
 
+Access (migration 067, spec/14) comes before all of it: a channel the agent has no access to is
+never heard, and no message there reaches it, not even one that @mentions it.
+
 The owner's choices (migration 060, below) come first: a channel or group the owner removed the
 agent from is not heard, whatever steps 2 and 3 say, until the owner adds it back.
 

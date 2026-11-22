@@ -177,7 +177,8 @@ class AgentWork(private val db: Database, private val bus: Bus, private val cloc
         ) == 1
     }
 
-    fun find(id: String): Line? = db.one("SELECT ${LINE.joinToString(", ")} FROM messages WHERE team_id = :team AND id = ?", id) { line(it) }
+    fun find(id: String): Line? =
+        db.one("SELECT ${LINE.joinToString(", ")} FROM messages WHERE team_id = :team AND id = ?", id) { line(it) }?.takeIf { ChannelAccess(db, clock).visible(it.projectId) }
 
     /** `threadKeys` (TS): the message's own thread columns. */
     fun threadKeys(m: Line): List<Pair<String, String?>> = listOf(

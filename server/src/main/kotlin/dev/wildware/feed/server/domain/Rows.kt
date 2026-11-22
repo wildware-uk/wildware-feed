@@ -16,7 +16,7 @@ import java.sql.ResultSet
  * keys in the same order. The column lists are the TS ones too.
  */
 internal object Rows {
-    const val PROJECT = "seq, id, slug, name, description, status, pinned, created_at, updated_at, theme, board, group_id"
+    const val PROJECT = "seq, id, slug, name, description, status, pinned, created_at, updated_at, theme, board, group_id, private"
     const val UPDATE = "seq, id, project_id, agent_id, session_id, title, body, level, pinned, created_at, deleted_at, edited_at, priority, task_id, status, status_at"
     const val MESSAGE = "seq, id, project_id, update_id, task_id, author, body, created_at, reply_to, deleted_at, answers, request_id, edited_at, pinned, status, status_at, user_id, source"
     const val ACK = "seq, id, agent_id, message_id, task_id, update_id, request_id, state, created_at, updated_at"
@@ -67,6 +67,8 @@ internal object Rows {
         put("board", json(rs, "board"))
         // Migration 053: the group (a project, in the app) this channel is in.
         str(rs, "groupId", "group_id")
+        // Migration 067: only those listed can see it (spec/14).
+        put("private", rs.getInt("private") == 1)
     }
 
     fun update(rs: ResultSet): JsonObject = buildJsonObject {

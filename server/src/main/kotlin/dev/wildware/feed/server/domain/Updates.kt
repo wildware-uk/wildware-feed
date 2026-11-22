@@ -36,10 +36,13 @@ class Updates(private val feed: Feed) {
         val refs: List<CardRef>? = null,
     )
 
-    fun find(id: String): UpdateRow? = db.one("SELECT ${Rows.UPDATE} FROM updates WHERE team_id = :team AND id = ?", id) { UpdateRow(Rows.update(it)) }
+    /** A card in a channel this work's viewer can't read answers as missing (spec/14). */
+    fun find(id: String): UpdateRow? =
+        db.one("SELECT ${Rows.UPDATE} FROM updates WHERE team_id = :team AND id = ?", id) { UpdateRow(Rows.update(it)) }?.takeIf { feed.access.visible(it.projectId) }
 
     fun post(input: Post): UpdateRow = feed.op {
         val project = feed.projects.resolve(input.project)
+        feed.access.requirePost(project.id) { notFound("no such project: ${input.project}") }
         val agentId = db.one("SELECT id FROM agents WHERE team_id = :team AND id = ?", input.agentId) { it.getString(1) }
             ?: throw notFound("no such agent: ${input.agentId}")
         val body = requiredText(input.body, "body", BODY_MAX)
@@ -107,6 +110,7 @@ class Updates(private val feed: Feed) {
         val update = find(updateId)
         if (update == null || update.deletedAt != null) throw notFound("no such update: $updateId")
         if (update.agentId != agentId) throw invalid("that update was posted by another agent")
+        feed.access.requirePost(update.projectId) { notFound("no such update: $updateId") }
         val sets = LinkedHashMap<String, Any?>()
         sets["edited_at"] = feed.now()
         edit.title?.let { sets["title"] = optionalText(it.value, "title", TITLE_MAX) }
@@ -138,6 +142,7 @@ class Updates(private val feed: Feed) {
     /** Soft, and quiet when it already is. Nothing on the card goes with it. */
     fun delete(updateId: String): UpdateRow = feed.op {
         val update = find(updateId) ?: throw notFound("no such update: $updateId")
+        feed.access.requirePost(update.projectId) { notFound("no such update: $updateId") }
         if (update.deletedAt != null) return@op update
         db.update("UPDATE updates SET deleted_at = ? WHERE team_id = :team AND id = ? AND deleted_at IS NULL", feed.now(), update.id)
         feed.publish("update.deleted", buildJsonObject { put("updateId", update.id); put("projectId", update.projectId) })

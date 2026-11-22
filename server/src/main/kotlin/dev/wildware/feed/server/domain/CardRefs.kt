@@ -141,6 +141,8 @@ class CardRefs(private val db: Database, private val clock: () -> Long) {
      * query, and a card in another team is simply not found.
      */
     private fun visible(by: String, target: Target): Boolean {
+        // A card in a channel the reader has no access to is as good as removed (spec/14).
+        if (by.startsWith(AGENT) && !ChannelAccess(db, clock).canRead(by, target.projectId)) return false
         if (target.kind != "message") return true
         return Mentions.readable(db, target.id, target.author, by)
     }
@@ -175,6 +177,9 @@ class CardRefs(private val db: Database, private val clock: () -> Long) {
                 }.forEach { out[CardRef(kind, it.id)] = it }
             }
         }
+        // Cards in channels this work's viewer can't read are left out: they read as removed (spec/14).
+        val access = ChannelAccess(db, clock)
+        out.entries.removeAll { !access.visible(it.value.projectId) }
         return out
     }
 

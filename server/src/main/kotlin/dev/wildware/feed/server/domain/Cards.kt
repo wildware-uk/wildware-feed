@@ -26,6 +26,13 @@ class Cards(private val feed: Feed) {
             "SELECT id, project_id, pinned, $status AS status, $statusAt AS status_at, $deleted AS deleted_at FROM ${card.table} WHERE team_id = :team AND id = ?",
             card.id,
         ) { CardRow(it.getString("id"), it.getString("project_id"), it.getInt("pinned") == 1, it.getString("status"), it.longOrNull("status_at"), it.longOrNull("deleted_at")) }
+            // A card in a channel this work's viewer can't read answers as missing (spec/14).
+            ?.takeIf { feed.access.visible(it.projectId) }
+    }
+
+    /** [resolve], for a write: the caller needs Post on the card's channel (spec/14). */
+    fun resolveToWrite(card: CardRef): CardRow = resolve(card).also { row ->
+        feed.access.requirePost(row.projectId) { notFound("no such ${card.kind}: ${card.id}") }
     }
 
     /** Missing or deleted is `no such <kind>: <id>`. */
@@ -51,7 +58,7 @@ class Cards(private val feed: Feed) {
     }
 
     fun pin(card: CardRef, pinned: Boolean): Boolean = feed.op {
-        val row = resolve(card)
+        val row = resolveToWrite(card)
         if (row.pinned == pinned) return@op row.pinned
         db.update("UPDATE ${card.table} SET pinned = ? WHERE team_id = :team AND id = ?", pinned, card.id)
         val saved = find(card) ?: throw notFound("no such ${card.kind}: ${card.id}")
@@ -62,7 +69,7 @@ class Cards(private val feed: Feed) {
     fun setStatus(card: CardRef, status: String?): String? = feed.op {
         if (card.kind !in WORKABLE) throw invalid("a ${card.kind} cannot be marked as work")
         if (status != null && status !in STATUSES) throw invalid("status must be one of: ${STATUSES.joinToString(", ")}")
-        val row = resolve(card)
+        val row = resolveToWrite(card)
         if (row.status == status) return@op row.status
         db.update("UPDATE ${card.table} SET status = ?, status_at = ? WHERE team_id = :team AND id = ?", status, feed.now(), card.id)
         val saved = find(card) ?: throw notFound("no such ${card.kind}: ${card.id}")
@@ -78,7 +85,7 @@ class Cards(private val feed: Feed) {
      * actor `human` with their [userId] (migration 055), so each person has their own.
      */
     fun react(card: CardRef, actor: String, emoji: String, on: Boolean?, userId: String? = null): Pair<List<ReactionRow>, Boolean> = feed.op {
-        val row = resolve(card)
+        val row = resolveToWrite(card)
         val clean = Emoji.assert(emoji)
         val person = if (actor == Messages.HUMAN) userId ?: People.FOUNDER else ""
         val already = reactions(card).any { it.actor == actor && it.emoji == clean && (it.userId ?: "") == person }

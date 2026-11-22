@@ -27,7 +27,9 @@ fun Route.agentRoutes(app: App) {
         HttpMethod.Get to {
             val agent = call.agentFor(app, app.agentStreamLimiter, mcpStyle = false) ?: return@to
             val token = app.agents.parseBearer(call.request.headers["Authorization"]).first!!
-            call.agentStream(app, agent, token)
+            kotlinx.coroutines.withContext(dev.wildware.feed.server.db.Viewer.element(dev.wildware.feed.server.db.Viewer.agent(agent.id))) {
+                call.agentStream(app, agent, token)
+            }
         },
     )
 }
@@ -145,7 +147,10 @@ private suspend fun ApplicationCall.mcp(app: App) {
             taken += limiter to key
         }
     }
-    val answers = requests.map { answer(app, agent, it) }
+    // Every tool sees as this agent does (spec/14): channels it has no access to don't exist for it.
+    val answers = kotlinx.coroutines.withContext(dev.wildware.feed.server.db.Viewer.element(dev.wildware.feed.server.db.Viewer.agent(agent.id))) {
+        requests.map { answer(app, agent, it) }
+    }
     respondRaw(200, if (parsed is JsonArray) Wire.encode(JsonArray(answers)) else Wire.encode(answers.single()), Wire.JSON)
 }
 

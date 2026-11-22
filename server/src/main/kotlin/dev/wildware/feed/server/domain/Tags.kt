@@ -8,7 +8,7 @@ import kotlinx.serialization.json.put
 class Tags(private val feed: Feed) {
     private val db get() = feed.db
 
-    fun byId(id: String): TagRow? = db.one("SELECT ${Rows.TAG} FROM tags WHERE team_id = :team AND id = ?", id) { TagRow(Rows.tag(it)) }
+    fun byId(id: String): TagRow? = db.one("SELECT ${Rows.TAG} FROM tags WHERE team_id = :team AND id = ?", id) { TagRow(Rows.tag(it)) }?.takeIf { feed.access.visible(it.projectId) }
 
     fun bySlug(projectId: String, slug: String): TagRow? =
         db.one("SELECT ${Rows.TAG} FROM tags WHERE team_id = :team AND project_id = ? AND slug = ?", projectId, slug) { TagRow(Rows.tag(it)) }
@@ -36,6 +36,7 @@ class Tags(private val feed: Feed) {
     /** Idempotent on the word: an existing tag comes back as it is, colour and all. */
     fun define(project: String, name: String, colour: String?, agentId: String?): TagRow = feed.op {
         val projectId = feed.projects.resolve(project).id
+        feed.access.requirePost(projectId) { notFound("no such project: $project") }
         val (clean, slug) = checkedName(name)
         checkColour(colour)
         bySlug(projectId, slug)?.let { return@op it }
@@ -55,6 +56,7 @@ class Tags(private val feed: Feed) {
     /** Rename or recolour; a word another tag already has is refused. Publishes even when nothing changed. */
     fun rename(id: String, name: String?, colour: Given<String?>?): TagRow = feed.op {
         val tag = byId(id) ?: throw notFound("no such tag: $id")
+        feed.access.requirePost(tag.projectId) { notFound("no such tag: $id") }
         checkColour(colour?.value)
         var clean: Pair<String, String>? = null
         if (name != null) {
@@ -76,6 +78,7 @@ class Tags(private val feed: Feed) {
     /** A real delete, off every card too. Not idempotent: the second is a 404. */
     fun retire(id: String): Pair<String, String> = feed.op {
         val tag = byId(id) ?: throw notFound("no such tag: $id")
+        feed.access.requirePost(tag.projectId) { notFound("no such tag: $id") }
         db.transaction {
             db.update("DELETE FROM card_tags WHERE team_id = :team AND tag_id = ?", id)
             db.update("DELETE FROM tags WHERE team_id = :team AND id = ?", id)
@@ -86,7 +89,7 @@ class Tags(private val feed: Feed) {
 
     /** `tagCard`: omitting [on] toggles; [create] defines a missing word first (and keeps it even if the tagging then fails). */
     fun tagCard(card: CardRef, tag: String, actor: String, on: Boolean?, create: Boolean): Pair<TagRow, Boolean> = feed.op {
-        val row = feed.cards.resolve(card)
+        val row = feed.cards.resolveToWrite(card)
         val projectId = row.projectId?.takeIf { it.isNotEmpty() }
             ?: throw invalid("this card does not belong to a project, so it cannot be tagged")
         val found = resolveTag(projectId, tag, create, actor)

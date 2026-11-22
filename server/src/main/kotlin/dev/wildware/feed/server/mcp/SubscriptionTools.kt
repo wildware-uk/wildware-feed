@@ -2,6 +2,7 @@ package dev.wildware.feed.server.mcp
 
 import dev.wildware.feed.server.App
 import dev.wildware.feed.server.domain.Cards
+import dev.wildware.feed.server.domain.access
 import dev.wildware.feed.server.domain.Subscriptions
 import dev.wildware.feed.server.domain.feed
 import dev.wildware.feed.server.domain.forbidden
@@ -156,7 +157,7 @@ fun ToolRegistry.registerSubscriptionTools(app: App) {
         val threads = subs.threads(me, Subscriptions.LIST_LIMIT)
         val threadCount = subs.countThreads(me)
         val followedGroups = groups.map { it.groupId }.toSet()
-        val removed = app.db.query("SELECT id, slug FROM projects WHERE team_id = :team ORDER BY seq") { it.getString(1) to it.getString(2) }
+        val removed = app.db.query("SELECT id, slug FROM projects WHERE team_id = :team${app.feed.access.notHidden("id")} ORDER BY seq") { it.getString(1) to it.getString(2) }
             .filter { subs.removedFrom(call.agent.id, it.first) != null }
         val channels = heard.mapNotNull { id ->
             app.db.one("SELECT p.slug, p.name, p.group_id, g.slug FROM projects AS p LEFT JOIN project_groups AS g ON g.id = p.group_id WHERE p.team_id = :team AND p.id = ?", id) {

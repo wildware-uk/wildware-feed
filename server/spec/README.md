@@ -41,6 +41,9 @@ for those parts are tagged `tsOnly`.
 | [10-embedding.md](10-embedding.md) | What the server needs beyond plain code (native modules, ffmpeg, files, secrets, ports, proxy, service, agent setup) and what a desktop app hosting it would do about each |
 | [11-oauth.md](11-oauth.md) | OAuth 2.1 for MCP clients (Kotlin only): discovery metadata, client registration, the authorize page, tokens and refresh, and how an access token stands in for an agent token |
 | [14-feedback.md](14-feedback.md) | Feedback and feature requests (migration 067): people send, agents propose and their team approves, the admin API and the operator's channel |
+| [12-channels-and-projects.md](12-channels-and-projects.md) | Channels and projects (groups of channels), following and reach, the owner adding and removing agents |
+| [13-people.md](13-people.md) | People on a team: roles, invites, sign-in, alerts per person |
+| [15-permissions.md](15-permissions.md) | Per channel and per project permissions: levels, private channels, where they are enforced, the Permissions panel API, the audit log |
 
 ## Rules that cut across every file
 

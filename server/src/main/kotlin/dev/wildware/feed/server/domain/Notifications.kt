@@ -20,6 +20,9 @@ import kotlinx.serialization.json.put
  * deleted. An event for one person carries their `memberId`.
  */
 class Notifications(private val db: Database, private val bus: Bus, private val clock: () -> Long = System::currentTimeMillis) {
+    /** What this work's viewer can't read stays out of their bell (spec/14). */
+    private val access get() = ChannelAccess(db, clock)
+
     /** What one notification will say, before it is written. */
     data class New(
         val kind: String,
@@ -71,6 +74,8 @@ class Notifications(private val db: Database, private val bus: Bus, private val 
 
     /** Whether [who] follows what this is about (migration 052): a muted channel rings no bell. */
     private fun followed(input: New, who: String): Boolean {
+        // Nobody hears about a channel they can't read (spec/14).
+        if (!ChannelAccess(db, clock).canRead(who, input.projectId)) return false
         val subs = Subscriptions(db, clock)
         return when {
             input.updateId != null -> subs.hearsUpdate(who, input.projectId, priorityOf("updates", input.updateId))
@@ -193,11 +198,11 @@ class Notifications(private val db: Database, private val bus: Bus, private val 
     fun markSeen(ids: List<String>?, member: String = People.FOUNDER): Int {
         val at = clock()
         val changed = when {
-            ids == null -> db.query("UPDATE notifications SET seen_at = ? WHERE team_id = :team AND seen_at IS NULL AND member_id = ? RETURNING $SEEN_COLUMNS", at, member, row = ::tagOf)
+            ids == null -> db.query("UPDATE notifications SET seen_at = ? WHERE team_id = :team AND seen_at IS NULL AND member_id = ?${access.notHidden("project_id")} RETURNING $SEEN_COLUMNS", at, member, row = ::tagOf)
             ids.isEmpty() -> emptyList()
             else -> ids.distinct().chunked(CHUNK).flatMap { chunk ->
                 db.query(
-                    "UPDATE notifications SET seen_at = ? WHERE team_id = :team AND seen_at IS NULL AND member_id = ? AND id IN (${marks(chunk)}) RETURNING $SEEN_COLUMNS",
+                    "UPDATE notifications SET seen_at = ? WHERE team_id = :team AND seen_at IS NULL AND member_id = ? AND id IN (${marks(chunk)})${access.notHidden("project_id")} RETURNING $SEEN_COLUMNS",
                     at, member, *chunk.toTypedArray(), row = ::tagOf,
                 )
             }
@@ -218,7 +223,7 @@ class Notifications(private val db: Database, private val bus: Bus, private val 
         val changed = cards.distinct().chunked(CHUNK).flatMap { chunk ->
             val m = marks(chunk)
             db.query(
-                "UPDATE notifications SET seen_at = ? WHERE team_id = :team AND seen_at IS NULL$whose AND (" +
+                "UPDATE notifications SET seen_at = ? WHERE team_id = :team AND seen_at IS NULL$whose${access.notHidden("project_id")} AND (" +
                     "update_id IN ($m) OR request_id IN ($m) OR message_id IN ($m) OR message_id IN (" +
                     "SELECT id FROM messages WHERE team_id = :team AND (update_id IN ($m) OR reply_to IN ($m) OR request_id IN ($m) OR task_id IN ($m)))" +
                     ") RETURNING $SEEN_COLUMNS",
@@ -308,7 +313,7 @@ class Notifications(private val db: Database, private val bus: Bus, private val 
     }
 
     fun unseen(member: String = People.FOUNDER): Long =
-        db.one("SELECT count(*) AS n FROM notifications WHERE team_id = :team AND seen_at IS NULL AND member_id = ?", member) { it.getLong(1) } ?: 0
+        db.one("SELECT count(*) AS n FROM notifications WHERE team_id = :team AND seen_at IS NULL AND member_id = ?${access.notHidden("project_id")}", member) { it.getLong(1) } ?: 0
 
     companion object {
         const val HUMAN = "human"

@@ -130,7 +130,7 @@ internal suspend fun ApplicationCall.agentStream(app: App, agent: Agents.Agent, 
                     ) {
                         sink.send(Frames.retry(Frames.RETRY_MS) + Frames.comment("connected"))
                     }
-                    val worker = launch(STREAM_WORK + Tenant.element(team)) {
+                    val worker = launch(STREAM_WORK + Tenant.element(team) + dev.wildware.feed.server.db.Viewer.element(dev.wildware.feed.server.db.Viewer.agent(agent.id))) {
                         runCatching { handle(sink, emptyList()) }.onFailure { System.err.println("agent stream: opening failed: $it") }
                         inBatches(events, SETTLE_MS, GAP_MS) { batch ->
                             runCatching { handle(sink, batch) }.onFailure { System.err.println("agent stream: batch failed: $it") }
@@ -228,8 +228,14 @@ private fun ApplicationCall.bridgeChannels(app: App): List<String>? {
     return wanted.mapNotNull { ref -> app.reads.findProject(ref)?.id }.distinct()
 }
 
-/** True when a frame about [projectId] may go to a bridge narrowed to [within]: no narrowing, or no channel, or one it named. */
-private fun inScope(projectId: String?, within: List<String>?) = within == null || projectId == null || projectId in within
+/**
+ * True when a frame about [projectId] may go to this agent's bridge narrowed to [within]: no
+ * narrowing, or no channel, or one it named; and never about a channel the agent has no access to
+ * (spec/14).
+ */
+private fun inScope(app: App, agentId: String, projectId: String?, within: List<String>?) =
+    (within == null || projectId == null || projectId in within) &&
+        dev.wildware.feed.server.domain.ChannelAccess(app.db, app.clock).canRead("agent:$agentId", projectId)
 
 private fun projectNames(app: App, projectId: String?): Pair<JsonElement, JsonElement> {
     val p = projectId?.let { id -> app.db.one("SELECT slug, name FROM projects WHERE team_id = :team AND id = ?", id) { it.getString(1) to it.getString(2) } }
@@ -292,7 +298,7 @@ private fun answerFrame(app: App, agentId: String, within: List<String>?, payloa
         Req(it.getString(1), it.getString(2), it.getString(3), it.getString(4), it.getString(5), it.getString(6), it.getString(7),
             it.getLong(8).let { v -> if (it.wasNull()) null else v })
     } ?: return null
-    if (r.agentId != agentId || !inScope(r.projectId, within)) return null
+    if (r.agentId != agentId || !inScope(app, agentId, r.projectId, within)) return null
     val state = when (r.state) { "approved", "rejected" -> "answered"; else -> r.state }
     if (state == "withdrawn") return null
     val value: JsonElement = r.answer?.let { (Wire.json.parseToJsonElement(it) as? JsonObject)?.get("value") }
@@ -325,7 +331,7 @@ private fun reactionFrame(app: App, agentId: String, within: List<String>?, payl
     val concerns = m.author == mine ||
         (m.updateId != null && app.db.one("SELECT agent_id FROM updates WHERE team_id = :team AND id = ?", m.updateId) { it.getString(1) } == agentId) ||
         app.work.threadOf(m).any { it.author == mine }
-    if (!concerns || !inScope(m.projectId, within)) return null
+    if (!concerns || !inScope(app, agentId, m.projectId, within)) return null
     // The frame quotes the message: one that @named other agents is theirs to read.
     if (!dev.wildware.feed.server.domain.Mentions.readable(app.db, m.id, m.author, mine)) return null
     val (slug, name) = projectNames(app, m.projectId)
@@ -365,7 +371,7 @@ private fun blockFrame(app: App, agentId: String, within: List<String>?, payload
     }
     if (author != "agent:$agentId") return null
     val projectId = (payload["projectId"] as? JsonPrimitive)?.takeIf { it.isString }?.content
-    if (!inScope(projectId, within)) return null
+    if (!inScope(app, agentId, projectId, within)) return null
     val (slug, name) = projectNames(app, projectId)
     val by = (payload["userId"] as? JsonPrimitive)?.content ?: dev.wildware.feed.server.domain.People.FOUNDER
     return Frames.named("block", buildJsonObject {

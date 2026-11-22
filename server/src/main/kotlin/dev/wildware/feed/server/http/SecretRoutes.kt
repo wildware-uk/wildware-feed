@@ -1,5 +1,6 @@
 package dev.wildware.feed.server.http
 
+import dev.wildware.feed.server.domain.feed
 import dev.wildware.feed.server.App
 import dev.wildware.feed.server.domain.CardRef
 import dev.wildware.feed.server.domain.DomainError
@@ -102,6 +103,8 @@ fun Route.secretRoutes(app: App) {
             val body = call.lenientObjectBody()
             val purpose = body["purpose"].jsString ?: "reveal"
             val card = CardRef(call.parameters["kind"].orEmpty(), call.parameters["id"].orEmpty())
+            // A card in a channel this person can't read is missing (spec/14).
+            if (card.kind in CardRef.KINDS && app.feed.cards.find(card) == null) throw dev.wildware.feed.server.domain.notFound("no such ${card.kind}: ${card.id}")
             val value = secrets.revealShared(card, call.parameters["name"].orEmpty(), purpose, call.owner(app), call.person.name)
             val text = utf8(value)
             call.respondOwner(200, buildJsonObject {

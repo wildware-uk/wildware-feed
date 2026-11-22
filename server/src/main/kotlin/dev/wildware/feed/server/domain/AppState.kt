@@ -24,6 +24,10 @@ class AppState(private val db: Database, private val clock: () -> Long = System:
             else -> db.one("SELECT 1 FROM approvals WHERE team_id = :team AND id = ?", cardId) { true }
         }
         if (live != true) throw notFound("no such $kind: $cardId")
+        // A card in a channel this viewer can't read answers as missing (spec/14).
+        val table = when (kind) { "update" -> "updates"; "message" -> "messages"; else -> "approvals" }
+        val channel = db.one("SELECT project_id FROM $table WHERE team_id = :team AND id = ?", cardId) { it.getString(1) }
+        if (!ChannelAccess(db, clock).visible(channel)) throw notFound("no such $kind: $cardId")
 
         val text = state?.let {
             if (FeedAttachments.tooDeep(it)) throw invalid("state may nest at most ${FeedAttachments.APP_JSON_DEPTH_MAX} levels deep")

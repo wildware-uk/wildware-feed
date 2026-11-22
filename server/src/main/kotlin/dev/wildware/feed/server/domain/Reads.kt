@@ -27,8 +27,12 @@ class Reads(private val db: Database, private val clock: () -> Long = System::cu
 
     // ---- projects -------------------------------------------------------------------------------
 
+    private val access get() = ChannelAccess(db, clock)
+
+    /** A channel this work's viewer can't read answers as missing (spec/14). */
     private fun projectRef(sql: String, value: String) =
         db.one("SELECT id, slug, name FROM projects WHERE team_id = :team AND $sql = ?", value) { ProjectRef(it.getString(1), it.getString(2), it.getString(3)) }
+            ?.takeIf { access.visible(it.id) }
 
     /**
      * `findProject` (TS `src/domain/projects.ts`): an id-shaped reference tries the id first, anything
@@ -53,7 +57,7 @@ class Reads(private val db: Database, private val clock: () -> Long = System::cu
     fun projectSlugsById(): Map<String, String> = db.query("SELECT id, slug FROM projects WHERE team_id = :team") { it.getString(1) to it.getString(2) }.toMap()
 
     fun listProjects(status: String? = null): List<JsonObject> = db.query(
-        "SELECT ${Rows.PROJECT} FROM projects WHERE team_id = :team AND (? IS NULL OR status = ?) ORDER BY pinned DESC, seq DESC",
+        "SELECT ${Rows.PROJECT} FROM projects WHERE team_id = :team AND (? IS NULL OR status = ?)${access.notHidden("id")} ORDER BY pinned DESC, seq DESC",
         status, status,
     ) { Rows.project(it) }
 
@@ -73,7 +77,7 @@ class Reads(private val db: Database, private val clock: () -> Long = System::cu
         val projectId = project?.let { resolveProject(it).id }
         val rows = db.query(
             "SELECT ${Rows.UPDATE} FROM updates WHERE team_id = :team AND (? IS NULL OR project_id = ?) AND (? IS NULL OR seq < ?) " +
-                "AND deleted_at IS NULL ORDER BY seq DESC LIMIT ?",
+                "AND deleted_at IS NULL${access.notHidden("project_id")} ORDER BY seq DESC LIMIT ?",
             projectId, projectId, beforeSeq, beforeSeq, pageLimit + 1,
         ) { Rows.update(it) }
         val hasMore = rows.size > pageLimit
@@ -135,7 +139,7 @@ class Reads(private val db: Database, private val clock: () -> Long = System::cu
             val post = messageById(query.replyTo) ?: return emptyList()
             if (post["deletedAt"] !is JsonNull) return emptyList()
             val replies = db.query(
-                "SELECT ${Rows.MESSAGE} FROM messages WHERE team_id = :team AND reply_to = ? AND deleted_at IS NULL ORDER BY seq ASC",
+                "SELECT ${Rows.MESSAGE} FROM messages WHERE team_id = :team AND reply_to = ? AND deleted_at IS NULL${access.notHidden("project_id")} ORDER BY seq ASC",
                 post.str("id"),
             ) { Rows.message(it) }
             // `slice(-(limit - 1))`: a limit of 1 is `slice(-0)`, which is all of them.
@@ -145,14 +149,14 @@ class Reads(private val db: Database, private val clock: () -> Long = System::cu
         val projectId = query.project?.let { resolveProject(it).id }
         val window = db.query(
             "SELECT ${Rows.MESSAGE} FROM messages WHERE team_id = :team AND (? IS NULL OR project_id = ?) AND (? IS NULL OR update_id = ?) " +
-                "AND (? IS NULL OR task_id = ?) AND (? IS NULL OR request_id = ?) AND deleted_at IS NULL ORDER BY seq DESC LIMIT ?",
+                "AND (? IS NULL OR task_id = ?) AND (? IS NULL OR request_id = ?) AND deleted_at IS NULL${access.notHidden("project_id")} ORDER BY seq DESC LIMIT ?",
             projectId, projectId, query.updateId, query.updateId, query.taskId, query.taskId, query.requestId, query.requestId, limit,
         ) { Rows.message(it) }.reversed()
         return withParents(window)
     }
 
     private fun messageById(id: String): JsonObject? =
-        db.one("SELECT ${Rows.MESSAGE} FROM messages WHERE team_id = :team AND id = ?", id) { Rows.message(it) }
+        db.one("SELECT ${Rows.MESSAGE} FROM messages WHERE team_id = :team AND id = ?", id) { Rows.message(it) }?.takeIf { access.visible(it.str("projectId")) }
 
     private fun withParents(window: List<JsonObject>): List<JsonObject> {
         val present = window.map { it.str("id") }.toSet()
@@ -160,7 +164,7 @@ class Reads(private val db: Database, private val clock: () -> Long = System::cu
         for (m in window) m.str("replyTo")?.takeIf { it.isNotEmpty() && it !in present }?.let(wanted::add)
         if (wanted.isEmpty()) return window
         val byId = inChunks(wanted.toList()) { chunk ->
-            db.query("SELECT ${Rows.MESSAGE} FROM messages WHERE team_id = :team AND id IN (${marks(chunk)})", *chunk.toTypedArray()) { Rows.message(it) }
+            db.query("SELECT ${Rows.MESSAGE} FROM messages WHERE team_id = :team AND id IN (${marks(chunk)})${access.notHidden("project_id")}", *chunk.toTypedArray()) { Rows.message(it) }
         }.associateBy { it.str("id") }
         val heads = wanted.mapNotNull { byId[it] }.filter { it["deletedAt"] is JsonNull }
         return (heads + window).sortedBy { it["seq"]!!.toString().toLong() }
@@ -345,7 +349,7 @@ class Reads(private val db: Database, private val clock: () -> Long = System::cu
 
     /** `listTags`: one project's (a truthy reference is resolved) or every project's, by seq. */
     fun listTags(project: String?): List<JsonObject> {
-        if (project.isNullOrEmpty()) return db.query("SELECT ${Rows.TAG} FROM tags WHERE team_id = :team ORDER BY seq") { Rows.tag(it) }
+        if (project.isNullOrEmpty()) return db.query("SELECT ${Rows.TAG} FROM tags WHERE team_id = :team${access.notHidden("project_id")} ORDER BY seq") { Rows.tag(it) }
         val id = resolveProject(project).id
         return db.query("SELECT ${Rows.TAG} FROM tags WHERE team_id = :team AND project_id IN (?) ORDER BY seq", id) { Rows.tag(it) }
     }
@@ -453,7 +457,7 @@ class Reads(private val db: Database, private val clock: () -> Long = System::cu
 
     /** `listPendingRequests`: the oldest 200 pending, minus the ones already due, by seq. */
     fun pendingRequests(now: Long = clock()): List<JsonObject> = db.query(
-        "SELECT ${Rows.APPROVAL} FROM approvals WHERE team_id = :team AND state = 'pending' ORDER BY seq ASC LIMIT ?",
+        "SELECT ${Rows.APPROVAL} FROM approvals WHERE team_id = :team AND state = 'pending'${access.notHidden("project_id")} ORDER BY seq ASC LIMIT ?",
         PENDING_REQUEST_LIMIT,
     ) { Rows.request(it) }.filter { (it["expiresAt"] as JsonPrimitive).content.toLong() > now }
 
@@ -463,7 +467,7 @@ class Reads(private val db: Database, private val clock: () -> Long = System::cu
      */
     fun answeredRequests(now: Long = clock()): List<JsonObject> = withCards(
         db.query(
-            "SELECT ${Rows.APPROVAL} FROM approvals WHERE team_id = :team AND state IN ('approved', 'rejected') AND decided_at >= ? ORDER BY decided_at DESC, seq DESC LIMIT ?",
+            "SELECT ${Rows.APPROVAL} FROM approvals WHERE team_id = :team AND state IN ('approved', 'rejected') AND decided_at >= ?${access.notHidden("project_id")} ORDER BY decided_at DESC, seq DESC LIMIT ?",
             now - ANSWERED_WINDOW_MS, ANSWERED_LIMIT,
         ) { Rows.request(it) },
     )
@@ -511,7 +515,7 @@ class Reads(private val db: Database, private val clock: () -> Long = System::cu
         val secrets = secretsFor("message", messageIds)
         return listOf(
             "projects" to JsonArray(projects),
-            "groups" to JsonArray(db.query("SELECT ${Groups.COLUMNS} FROM project_groups WHERE team_id = :team ORDER BY lower(name), seq") { Groups.json(it) }),
+            "groups" to JsonArray(db.query("SELECT ${Groups.COLUMNS} FROM project_groups WHERE team_id = :team${access.groupNotHidden("id")} ORDER BY lower(name), seq") { Groups.json(it) }),
             "tags" to JsonArray(listTags(query.project)),
             "cardTags" to JsonArray(cardTags),
             "cardFields" to JsonArray(cardFields),
@@ -556,7 +560,7 @@ class Reads(private val db: Database, private val clock: () -> Long = System::cu
     fun summary(isoOf: (Long) -> String): JsonObject {
         val now = clock()
         val active = db.query(
-            "SELECT id, slug, name, pinned FROM projects WHERE team_id = :team AND status = 'active' ORDER BY pinned DESC, seq DESC",
+            "SELECT id, slug, name, pinned FROM projects WHERE team_id = :team AND status = 'active'${access.notHidden("id")} ORDER BY pinned DESC, seq DESC",
         ) { listOf(it.getString(1), it.getString(2), it.getString(3), it.getInt(4) == 1) }
         val counts = workCounts(active.map { it[0] as String })
         val requests = pendingRequests().map { request ->
@@ -668,7 +672,7 @@ class Reads(private val db: Database, private val clock: () -> Long = System::cu
 
     /** [member]'s bell (migration 055), newest first, each with its project and the path it opens. */
     fun notifications(unseenOnly: Boolean, limit: Int, member: String = People.FOUNDER): List<JsonObject> = db.query(
-        "SELECT ${Rows.NOTIFICATION} FROM notifications WHERE team_id = :team AND member_id = ? AND (? = 0 OR seen_at IS NULL) ORDER BY seq DESC LIMIT ?",
+        "SELECT ${Rows.NOTIFICATION} FROM notifications WHERE team_id = :team AND member_id = ? AND (? = 0 OR seen_at IS NULL)${access.notHidden("project_id")} ORDER BY seq DESC LIMIT ?",
         member, if (unseenOnly) 1 else 0, limit,
     ) { Rows.notification(it) }.map { n ->
         val project = n.str("projectId")?.takeIf { it.isNotEmpty() }?.let { id ->
@@ -686,7 +690,7 @@ class Reads(private val db: Database, private val clock: () -> Long = System::cu
     }
 
     fun unseenNotifications(member: String = People.FOUNDER): Long =
-        db.one("SELECT count(*) AS n FROM notifications WHERE team_id = :team AND member_id = ? AND seen_at IS NULL", member) { it.getLong(1) } ?: 0
+        db.one("SELECT count(*) AS n FROM notifications WHERE team_id = :team AND member_id = ? AND seen_at IS NULL${access.notHidden("project_id")}", member) { it.getLong(1) } ?: 0
 
     companion object {
         const val WORKING_MAX = 3

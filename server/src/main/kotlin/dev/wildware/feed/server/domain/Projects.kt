@@ -1,5 +1,6 @@
 package dev.wildware.feed.server.domain
 
+import dev.wildware.feed.server.db.Viewer
 import dev.wildware.feed.server.http.Wire
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -38,8 +39,14 @@ class Projects(private val feed: Feed) {
     fun byId(id: String): ProjectRow? = row("id", id)
     fun bySlug(slug: String): ProjectRow? = row("slug", slug)
 
-    private fun row(column: String, value: String) =
+    /** A channel this work's viewer can't read answers as missing (spec/14). */
+    private fun row(column: String, value: String) = rawRow(column, value)?.takeIf { feed.access.visible(it.id) }
+
+    private fun rawRow(column: String, value: String) =
         db.one("SELECT ${Rows.PROJECT} FROM projects WHERE team_id = :team AND $column = ?", value) { ProjectRow(Rows.project(it)) }
+
+    /** Whether any channel holds [slug], seen or not: a slug is unique whoever can see its channel. */
+    private fun slugHeld(slug: String): ProjectRow? = rawRow("slug", slug)
 
     /** An id-shaped reference tries the id first, anything else the (lowercased) slug first. */
     fun find(reference: String): ProjectRow? {
@@ -50,9 +57,9 @@ class Projects(private val feed: Feed) {
 
     fun resolve(reference: String): ProjectRow = find(reference) ?: throw notFound("no such project: ${reference.jsTrim()}")
 
-    /** Pinned first, then newest. */
+    /** Pinned first, then newest; only what this work's viewer can read. */
     fun list(status: String?): List<ProjectRow> = db.query(
-        "SELECT ${Rows.PROJECT} FROM projects WHERE team_id = :team AND (? IS NULL OR status = ?) ORDER BY pinned DESC, seq DESC",
+        "SELECT ${Rows.PROJECT} FROM projects WHERE team_id = :team AND (? IS NULL OR status = ?)${feed.access.notHidden("id")} ORDER BY pinned DESC, seq DESC",
         status, status,
     ) { ProjectRow(Rows.project(it)) }
 
@@ -62,6 +69,8 @@ class Projects(private val feed: Feed) {
         val cleanSlug = Slugs.slugFor(cleanName, slug)
         val cleanDescription = optionalText(description, "description", DESCRIPTION_MAX)
         bySlug(cleanSlug)?.let { return@op it to false }
+        // A channel this viewer can't see holds the slug: say only that the name is taken.
+        if (slugHeld(cleanSlug) != null) throw DomainError("conflict", "a channel with that slug already exists that you don't have access to: pick another slug", 409)
 
         val now = feed.now()
         val id = dev.wildware.feed.server.db.Ulid.next()
@@ -77,6 +86,11 @@ class Projects(private val feed: Feed) {
     /** Every given field is written and `updatedAt` bumped, even when nothing changes. */
     fun update(reference: String, patch: Patch): ProjectRow = feed.op {
         val project = resolve(reference)
+        // Changing a channel needs Manage on it (spec/14). An agent's set_project_theme keeps what it
+        // always had: a theme alone needs only Post from an agent.
+        val missing = { notFound("no such project: ${reference.jsTrim()}") }
+        val themeOnly = patch == Patch(theme = patch.theme) && patch.theme != null
+        if (themeOnly && Viewer.currentOrNull?.isAgent == true) feed.access.requirePost(project.id, missing) else feed.access.requireManage(project.id, missing)
         val sets = LinkedHashMap<String, Any?>()
         var given = false
         var slug: String? = null
@@ -86,7 +100,7 @@ class Projects(private val feed: Feed) {
         val board = patch.board?.let { assertBoard(it.value) }
         if (patch.slug != null) {
             slug = Slugs.assertSlug(patch.slug)
-            val holder = bySlug(slug)
+            val holder = slugHeld(slug)
             if (holder != null && holder.id != project.id) throw conflict("slug already in use: $slug")
         }
 
@@ -97,14 +111,24 @@ class Projects(private val feed: Feed) {
         if (patch.pinned != null) { sets["pinned"] = if (patch.pinned) 1 else 0; given = true }
         if (patch.theme != null) { sets["theme"] = theme?.let(Wire::encode); given = true }
         if (patch.board != null) { sets["board"] = board?.let(Wire::encode); given = true }
-        if (patch.group != null) { sets["group_id"] = patch.group.value?.let { feed.groups.resolve(it).id }; given = true }
+        if (patch.group != null) {
+            // Moving a channel into a project needs Manage on that project too.
+            val to = patch.group.value?.let { feed.groups.resolve(it).id }
+            if (to != null) feed.access.requireManageGroup(to) { notFound("no such group: ${patch.group.value}") }
+            sets["group_id"] = to
+            given = true
+        }
         if (!given) throw invalid("update requires at least one field to change")
         sets["updated_at"] = feed.now()
 
+        // Leaving a project keeps the access the channel had through it: nothing hidden comes into view.
+        val from = project.groupId
+        if ("group_id" in sets && from != null && sets["group_id"] != from) feed.access.keepThroughMove(project.id, from)
         db.update(
             "UPDATE projects SET ${sets.keys.joinToString(", ") { "$it = ?" }} WHERE team_id = :team AND id = ?",
             *sets.values.toTypedArray(), project.id,
         )
+        feed.access.bump()
         val updated = byId(project.id)!!
         feed.publish("project.updated", buildJsonObject { put("projectId", updated.id); put("slug", updated.slug) })
         updated

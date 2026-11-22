@@ -177,7 +177,7 @@ class ChannelsRoutesTest {
 
             val made = send("POST", "/api/groups", """{"name":"Launch"}""", status = 201)["group"]!!.jsonObject
             val id = made.str("id")!!
-            assertEquals(listOf("seq", "id", "slug", "name", "status", "createdAt", "updatedAt", "theme"), made.keys.toList())
+            assertEquals(listOf("seq", "id", "slug", "name", "status", "createdAt", "updatedAt", "theme", "private"), made.keys.toList())
             assertEquals(false, send("POST", "/api/groups", """{"name":"Launch"}""")["created"]!!.jsonPrimitive.content.toBoolean())
 
             val moved = send("PATCH", "/api/projects/web", """{"groupId":"launch"}""")["project"]!!.jsonObject

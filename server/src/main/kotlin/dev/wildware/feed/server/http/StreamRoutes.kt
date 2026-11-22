@@ -30,8 +30,13 @@ fun Route.streamRoutes(app: App) {
             val bus = app.bus
             // An event about one person's own bell or follows (it names a memberId) goes only to them.
             val me = call.person.id
+            // Nor does one about a channel or project they can't see (spec/14). Listeners run as the
+            // server's own work, so each stream asks as its own person.
+            val viewer = dev.wildware.feed.server.db.Viewer.member(me)
+            val access = dev.wildware.feed.server.domain.ChannelAccess(app.db, app.clock)
             fun mine(event: dev.wildware.feed.server.events.AppEvent) =
-                (event.payload["memberId"] as? kotlinx.serialization.json.JsonPrimitive)?.content.let { it == null || it == me }
+                (event.payload["memberId"] as? kotlinx.serialization.json.JsonPrimitive)?.content.let { it == null || it == me } &&
+                    dev.wildware.feed.server.db.Viewer.with(viewer) { runCatching { access.eventVisible(event.payload) }.getOrDefault(false) }
             call.withStreamSlot(app) {
                 call.respondSse(
                 SseContent(

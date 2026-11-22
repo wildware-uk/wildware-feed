@@ -140,7 +140,10 @@ class ToolRegistry {
             return ToolResult.failed("suspended", dev.wildware.feed.server.http.Suspension.message(team))
         }
         return try {
-            handler(ToolCall(app, agent, args!!))
+            // Every tool sees as this agent does (spec/14): a channel it has no access to doesn't exist for it.
+            kotlinx.coroutines.withContext(dev.wildware.feed.server.db.Viewer.element(dev.wildware.feed.server.db.Viewer.agent(agent.id))) {
+                handler(ToolCall(app, agent, args!!))
+            }
         } catch (e: DomainError) {
             ToolResult.failed(e.code, groupHint(app, e))
         } catch (e: Exception) {

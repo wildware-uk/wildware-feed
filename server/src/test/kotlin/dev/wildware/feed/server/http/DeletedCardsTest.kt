@@ -72,8 +72,10 @@ class DeletedCardsTest {
         val dir = Files.createTempDirectory("deleted-cards").toFile()
         val app = App(config(dir.path), Database.memory()) { now }
         val (_, ownerKey) = app.devices.mint("Phone")
-        val (_, agentToken) = app.agents.mint("alpha")
+        val (alpha, agentToken) = app.agents.mint("alpha")
         app.feed.projects.create("Web", null, null)
+        // An agent fetches a file it may read (issue #304): this one hears the channel.
+        dev.wildware.feed.server.domain.Subscriptions(app.db, app.clock).followProject(dev.wildware.feed.server.domain.Subscriptions.agent(alpha.id), app.feed.projects.resolve("web").id, chosen = true)
         try {
             testApplication {
                 application { feed(app) }
