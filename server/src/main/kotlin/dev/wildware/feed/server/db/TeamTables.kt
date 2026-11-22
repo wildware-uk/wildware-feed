@@ -89,39 +89,55 @@ object TeamTables {
             .orElse(false)
     }
 
-    /**
-     * Turn Postgres row security on or off for every team table. On: `ENABLE` and `FORCE` (the
-     * database user owns the tables, and owners skip row security without `FORCE`), so a statement
-     * sees only rows of the team the connection was told ([Database.rowSecurity]). Off: as before.
-     * Nothing on SQLite, which only ever holds one team.
-     */
     /** Whether row security is forced on any team table of [db] (Postgres), as a server with many teams leaves it. */
     fun rowSecurityForced(db: Database): Boolean {
         if (db.dialect != Dialect.POSTGRES) return false
-        return db.withConnection { c ->
-            c.prepareStatement(
-                "SELECT coalesce(bool_or(relforcerowsecurity), false) FROM pg_class " +
-                    "WHERE relnamespace = current_schema()::regnamespace AND relname = ANY (?)",
-            ).use { st ->
-                st.setArray(1, c.createArrayOf("text", ALL.toTypedArray()))
-                st.executeQuery().use { it.next(); it.getBoolean(1) }
+        return tableStates(db).values.any { it.second }
+    }
+
+    /** The team tables of [db] whose row security is not enabled and forced (Postgres); none on SQLite. */
+    fun notForced(db: Database): List<String> {
+        if (db.dialect != Dialect.POSTGRES) return emptyList()
+        val states = tableStates(db)
+        return ALL.filter { states[it] != (true to true) }
+    }
+
+    /** Each team table's (enabled, forced) row security. */
+    private fun tableStates(db: Database): Map<String, Pair<Boolean, Boolean>> = db.withConnection { c ->
+        c.prepareStatement(
+            "SELECT relname, relrowsecurity, relforcerowsecurity FROM pg_class " +
+                "WHERE relnamespace = current_schema()::regnamespace AND relkind = 'r' AND relname = ANY (?)",
+        ).use { st ->
+            st.setArray(1, c.createArrayOf("text", ALL.toTypedArray()))
+            st.executeQuery().use { rs ->
+                buildMap { while (rs.next()) put(rs.getString(1), rs.getBoolean(2) to rs.getBoolean(3)) }
             }
         }
     }
 
+    /**
+     * Turn Postgres row security on or off for every team table. On: `ENABLE` and `FORCE` (the
+     * database user owns the tables, and owners skip row security without `FORCE`), so a statement
+     * sees only rows of the team the connection was told ([Database.rowSecurity]). Off: as before.
+     * Only tables not already so are altered, so running it again is cheap and safe: a server with
+     * row security on runs it at every start, and that is what turns it on for a table a later
+     * migration added. Nothing on SQLite, which only ever holds one team.
+     */
     fun setRowSecurity(db: Database, on: Boolean) {
         if (db.dialect != Dialect.POSTGRES) return
         db.rowSecurity = false
+        val states = tableStates(db)
         Tenant.allTeams {
             db.withConnection { c ->
                 c.createStatement().use { st ->
                     for (t in ALL) {
+                        val (enabled, forced) = states[t] ?: (false to false)
                         if (on) {
-                            st.execute("ALTER TABLE \"$t\" ENABLE ROW LEVEL SECURITY")
-                            st.execute("ALTER TABLE \"$t\" FORCE ROW LEVEL SECURITY")
+                            if (!enabled) st.execute("ALTER TABLE \"$t\" ENABLE ROW LEVEL SECURITY")
+                            if (!forced) st.execute("ALTER TABLE \"$t\" FORCE ROW LEVEL SECURITY")
                         } else {
-                            st.execute("ALTER TABLE \"$t\" NO FORCE ROW LEVEL SECURITY")
-                            st.execute("ALTER TABLE \"$t\" DISABLE ROW LEVEL SECURITY")
+                            if (forced) st.execute("ALTER TABLE \"$t\" NO FORCE ROW LEVEL SECURITY")
+                            if (enabled) st.execute("ALTER TABLE \"$t\" DISABLE ROW LEVEL SECURITY")
                         }
                     }
                 }

@@ -149,4 +149,47 @@ class TeamsApartTest {
             assertEquals(2L, Tenant.allTeams { db.one("SELECT count(*) FROM projects") { it.getLong(1) } })
         }
     }
+
+    private fun Database.turnOff(vararg tables: String) = Tenant.allTeams {
+        for (t in tables) {
+            update("ALTER TABLE \"$t\" NO FORCE ROW LEVEL SECURITY")
+            update("ALTER TABLE \"$t\" DISABLE ROW LEVEL SECURITY")
+        }
+    }
+
+    @Test
+    fun `every team table has row security forced`() {
+        assumeTrue(!System.getenv("PG_TEST_URL").isNullOrBlank(), "PG_TEST_URL not set")
+        Database.memory().use { db -> assertEquals(emptyList(), TeamTables.notForced(db)) }
+    }
+
+    @Test
+    fun `a server with row security on switches it on at start for a table that lacks it`() {
+        assumeTrue(!System.getenv("PG_TEST_URL").isNullOrBlank(), "PG_TEST_URL not set")
+        Database.memory().use { db ->
+            // As an upgraded server was left: on everywhere but the tables added later.
+            db.turnOff("card_secrets", "feedback", "channel_access", "access_audit")
+            assertTrue(TeamTables.rowSecurityForced(db))
+            assertEquals(listOf("access_audit", "card_secrets", "channel_access", "feedback"), TeamTables.notForced(db))
+            App(config().copy(rowSecurity = true), db).close()
+            assertEquals(emptyList(), TeamTables.notForced(db))
+        }
+    }
+
+    @Test
+    fun `migration 072 switches the newer tables on only where row security is on`() {
+        assumeTrue(!System.getenv("PG_TEST_URL").isNullOrBlank(), "PG_TEST_URL not set")
+        val sql = PostgresMigrations.all.single { it.version == 72 }.sql
+        fun Database.run072() = Tenant.allTeams { SqlScript.split(sql).forEach { update(it) } }
+        Database.memory().use { db ->
+            db.turnOff("card_secrets", "feedback", "channel_access", "access_audit")
+            db.run072()
+            assertEquals(emptyList(), TeamTables.notForced(db))
+        }
+        Database.memory().use { db ->
+            TeamTables.setRowSecurity(db, false)
+            db.run072()
+            assertEquals(TeamTables.ALL, TeamTables.notForced(db), "off stays off")
+        }
+    }
 }
