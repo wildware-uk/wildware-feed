@@ -36,7 +36,7 @@ class Updates(private val feed: Feed) {
         val refs: List<CardRef>? = null,
     )
 
-    /** A card in a channel this work's viewer can't read answers as missing (spec/14). */
+    /** A card in a channel this work's viewer can't read answers as missing (spec/15). */
     fun find(id: String): UpdateRow? =
         db.one("SELECT ${Rows.UPDATE} FROM updates WHERE team_id = :team AND id = ?", id) { UpdateRow(Rows.update(it)) }?.takeIf { feed.access.visible(it.projectId) }
 

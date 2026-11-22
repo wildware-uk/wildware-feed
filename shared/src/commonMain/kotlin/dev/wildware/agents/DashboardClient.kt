@@ -1072,7 +1072,7 @@ internal data class AgentsBody(val agents: List<AgentRecord> = emptyList())
 @kotlinx.serialization.Serializable
 internal data class AgentMembersBody(val agents: List<AgentMember> = emptyList())
 
-/** A channel's or project's Permissions panel (server spec/14). Levels: "none", "read", "post", "manage". */
+/** A channel's or project's Permissions panel (server spec/15). Levels: "none", "read", "post", "manage". */
 @kotlinx.serialization.Serializable
 data class AccessPanel(
     val projectId: String? = null,

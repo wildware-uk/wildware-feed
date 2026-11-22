@@ -29,7 +29,7 @@ class Reads(private val db: Database, private val clock: () -> Long = System::cu
 
     private val access get() = ChannelAccess(db, clock)
 
-    /** A channel this work's viewer can't read answers as missing (spec/14). */
+    /** A channel this work's viewer can't read answers as missing (spec/15). */
     private fun projectRef(sql: String, value: String) =
         db.one("SELECT id, slug, name FROM projects WHERE team_id = :team AND $sql = ?", value) { ProjectRef(it.getString(1), it.getString(2), it.getString(3)) }
             ?.takeIf { access.visible(it.id) }

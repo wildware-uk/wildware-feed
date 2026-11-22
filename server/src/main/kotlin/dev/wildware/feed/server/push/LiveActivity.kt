@@ -111,7 +111,7 @@ class LiveActivity(private val app: App, private val apns: Apns, private val bun
         val devices = apns.devices()
         if (devices.none { it.liveActivityToken != null || it.pushToStartToken != null }) return
         val now = app.clock()
-        // Each person's own state: what waits and who works only in channels they can read (spec/14).
+        // Each person's own state: what waits and who works only in channels they can read (spec/15).
         val states = HashMap<String, JsonObject>()
         fun stateOf(device: PushDevice) = states.getOrPut(device.userId) { Viewer.with(Viewer.member(device.userId)) { state() } }
         val timestamp = now / 1000

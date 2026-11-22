@@ -20,7 +20,7 @@ import kotlinx.serialization.json.put
  * deleted. An event for one person carries their `memberId`.
  */
 class Notifications(private val db: Database, private val bus: Bus, private val clock: () -> Long = System::currentTimeMillis) {
-    /** What this work's viewer can't read stays out of their bell (spec/14). */
+    /** What this work's viewer can't read stays out of their bell (spec/15). */
     private val access get() = ChannelAccess(db, clock)
 
     /** What one notification will say, before it is written. */
@@ -74,7 +74,7 @@ class Notifications(private val db: Database, private val bus: Bus, private val 
 
     /** Whether [who] follows what this is about (migration 052): a muted channel rings no bell. */
     private fun followed(input: New, who: String): Boolean {
-        // Nobody hears about a channel they can't read (spec/14).
+        // Nobody hears about a channel they can't read (spec/15).
         if (!ChannelAccess(db, clock).canRead(who, input.projectId)) return false
         val subs = Subscriptions(db, clock)
         return when {

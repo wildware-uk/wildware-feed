@@ -131,7 +131,7 @@ class Requests(
         val options = assertOptions(kind, input.options)
         val baseConfig = assertConfig(kind, options, input)
         val anchor = anchor(input)
-        // Asking needs Post on the channel (spec/14); one the agent can't read is missing.
+        // Asking needs Post on the channel (spec/15); one the agent can't read is missing.
         ChannelAccess(db, clock).requirePost(anchor.projectId) {
             notFound(input.message?.let { "no such message: $it" } ?: input.update?.let { "no such update: $it" } ?: "no such project: ${input.project}")
         }
@@ -372,7 +372,7 @@ class Requests(
         ) { Rows.request(it) }.map { settle(it, "timeout") }
     }
 
-    /** A question in a channel this work's viewer can't read answers as missing (spec/14). */
+    /** A question in a channel this work's viewer can't read answers as missing (spec/15). */
     fun find(requestId: String): OwnerRequest? =
         db.one("SELECT ${Rows.APPROVAL} FROM approvals WHERE team_id = :team AND id = ?", requestId) { OwnerRequest(Rows.request(it)) }
             ?.takeIf { ChannelAccess(db, clock).visible(it.projectId) }
@@ -461,7 +461,7 @@ class Requests(
 
     private fun mustFind(requestId: String): OwnerRequest = find(requestId) ?: throw notFound("no such request: $requestId")
 
-    /** [mustFind], for answering or changing it: that needs Post on its channel (spec/14). */
+    /** [mustFind], for answering or changing it: that needs Post on its channel (spec/15). */
     private fun toAnswer(requestId: String): OwnerRequest = mustFind(requestId).also {
         ChannelAccess(db, clock).requirePost(it.projectId) { notFound("no such request: $requestId") }
     }

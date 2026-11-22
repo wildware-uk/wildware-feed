@@ -231,7 +231,7 @@ private fun ApplicationCall.bridgeChannels(app: App): List<String>? {
 /**
  * True when a frame about [projectId] may go to this agent's bridge narrowed to [within]: no
  * narrowing, or no channel, or one it named; and never about a channel the agent has no access to
- * (spec/14).
+ * (spec/15).
  */
 private fun inScope(app: App, agentId: String, projectId: String?, within: List<String>?) =
     (within == null || projectId == null || projectId in within) &&

@@ -157,7 +157,7 @@ class Apps(private val feed: Feed) {
         val (appId, card) = db.one("SELECT app_id, update_id, message_id, request_id FROM app_views WHERE team_id = :team AND id = ?", viewId) {
             it.getString(1) to (it.getString(2)?.let { id -> CardRef("update", id) } ?: it.getString(3)?.let { id -> CardRef("message", id) } ?: it.getString(4)?.let { id -> CardRef("request", id) })
         } ?: return null
-        // A showing on a card in a channel this viewer can't read is missing (spec/14).
+        // A showing on a card in a channel this viewer can't read is missing (spec/15).
         if (card != null && feed.cards.find(card) == null) return null
         val app = db.query("SELECT $columns FROM apps WHERE team_id = :team AND id = ?", appId, row = ::row).firstOrNull() ?: return null
         if (app.url != null) return null

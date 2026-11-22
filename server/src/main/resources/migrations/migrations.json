@@ -473,6 +473,6 @@
   "name": "channel-permissions",
   "file": "068-channel-permissions.sql",
   "rebuildsTables": false,
-  "checksum": "90e5a3925c4f202711dacffd20709f998f34a3f7688e96aa1126965b4086146c"
+  "checksum": "33a663a1d401d08588fe3f3156cbc2373ddd490cb2fd29c96793465ec3cda02c"
  }
 ]

@@ -13,7 +13,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 
 /**
- * Who may read, post in and manage each channel and project (migration 068, spec/14).
+ * Who may read, post in and manage each channel and project (migration 068, spec/15).
  *
  * A person (`member:<membership id>`) or an agent (`agent:<agent id>`) has one level on each
  * channel, the most specific that applies:
@@ -225,7 +225,7 @@ class ChannelAccess(private val db: Database, private val clock: () -> Long = Sy
 
     /**
      * Whether a live event may go to this work's viewer: one about a channel (its `projectId`, or
-     * the card it names) or a project (`groupId`) they can't see does not (spec/14).
+     * the card it names) or a project (`groupId`) they can't see does not (spec/15).
      */
     fun eventVisible(payload: JsonObject): Boolean {
         if (hidden().isEmpty() && hiddenGroups().isEmpty()) return true

@@ -86,12 +86,12 @@ object Access {
 
         // Running the team: channels, projects, tags, retention, agents, secrets.
         "POST /api/projects" to A,
-        "PATCH /api/projects/{reference}" to M, // Manage on the channel (spec/14): admins by default
+        "PATCH /api/projects/{reference}" to M, // Manage on the channel (spec/15): admins by default
 
         "POST /api/groups" to A,
-        "PATCH /api/groups/{reference}" to M, // Manage on the project (spec/14)
+        "PATCH /api/groups/{reference}" to M, // Manage on the project (spec/15)
         "DELETE /api/groups/{reference}" to A,
-        "PUT /api/projects/{reference}/agents/{agentId}" to M, // which agents hear a channel: Manage on it (spec/14)
+        "PUT /api/projects/{reference}/agents/{agentId}" to M, // which agents hear a channel: Manage on it (spec/15)
         "PUT /api/groups/{reference}/agents/{agentId}" to M,
         "PATCH /api/tags/{id}" to A,
         "DELETE /api/tags/{id}" to A,
@@ -113,7 +113,7 @@ object Access {
         "POST /api/requests/{id}/secret" to A,
         "POST /api/cards/{kind}/{id}/secrets/{name}/reveal" to A, // a secret an agent attached to a post
 
-        // Permissions (spec/14): anyone who can read a channel sees who else can; changing it needs Manage there.
+        // Permissions (spec/15): anyone who can read a channel sees who else can; changing it needs Manage there.
         "GET /api/projects/{reference}/access" to M,
         "PUT /api/projects/{reference}/access" to M,
         "PUT /api/projects/{reference}/access/{kind}/{id}" to M,

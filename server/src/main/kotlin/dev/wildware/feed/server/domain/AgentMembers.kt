@@ -74,7 +74,7 @@ class AgentMembers(private val feed: Feed) {
      * that changed anything, and answers the agent as the list now shows it.
      */
     fun setChannel(project: ProjectRow, agentId: String, hears: Boolean, by: String): Member = feed.op {
-        // Which agents hear a channel is its settings: Manage (spec/14). Hearing needs access first.
+        // Which agents hear a channel is its settings: Manage (spec/15). Hearing needs access first.
         feed.access.requireManage(project.id) { notFound("no such project: ${project.id}") }
         val name = agentName(agentId)
         if (hears && !feed.access.canRead(Subscriptions.agent(agentId), project.id)) {

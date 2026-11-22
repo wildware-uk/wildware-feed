@@ -1041,7 +1041,7 @@ sealed interface ProjectDialog {
     data object NewGroup : ProjectDialog
     /** A project's settings. */
     data class GroupSettings(val groupId: String) : ProjectDialog
-    /** Who may read, post in and manage a channel (server spec/14). */
+    /** Who may read, post in and manage a channel (server spec/15). */
     data class Permissions(val projectId: String) : ProjectDialog
     /** Who may read, post in and manage a project and the channels in it. */
     data class GroupPermissions(val groupId: String) : ProjectDialog

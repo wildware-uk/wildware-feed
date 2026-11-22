@@ -104,7 +104,7 @@ class Subscriptions(private val db: Database, private val clock: () -> Long = Sy
             }
         }.map { it.first }.toSet()
         // Followed channels in the order they were followed, then those heard only through a group.
-        // A channel the agent has no access to is never heard (spec/14), whatever it follows.
+        // A channel the agent has no access to is never heard (spec/15), whatever it follows.
         val hidden = access.hiddenFor(me)
         return (channels.map { it.first }.filter { it in heard } + all.map { it.first }.filter { it in heard && it !in own }).filter { it !in hidden }
     }
@@ -169,7 +169,7 @@ class Subscriptions(private val db: Database, private val clock: () -> Long = Sy
             else -> "(($hears OR " + followsThread(agentId, args, oneMessage) + ") AND " + inChannels() + ")"
         }
         // A message that @mentions the agent reaches it wherever it is, as a mention always has,
-        // except in a channel it has no access to (spec/14): there nothing reaches it.
+        // except in a channel it has no access to (spec/15): there nothing reaches it.
         return " AND ($narrowed OR " + namesReader(agentId, args, oneMessage) + ")" + access.notHiddenFor(agent(agentId), "m.project_id")
     }
 
@@ -579,7 +579,7 @@ class Subscriptions(private val db: Database, private val clock: () -> Long = Sy
      * the feed post a message is in (the post itself, or the update or request it hangs off).
      */
     fun threadAt(card: CardRef): Pair<Thread, String?> = rawThreadAt(card).also { (_, projectId) ->
-        // A thread in a channel this work's viewer can't read answers as missing (spec/14).
+        // A thread in a channel this work's viewer can't read answers as missing (spec/15).
         if (!access.visible(projectId)) throw notFound("no such ${card.kind}: ${card.id}")
     }
 

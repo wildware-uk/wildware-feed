@@ -39,7 +39,7 @@ class Projects(private val feed: Feed) {
     fun byId(id: String): ProjectRow? = row("id", id)
     fun bySlug(slug: String): ProjectRow? = row("slug", slug)
 
-    /** A channel this work's viewer can't read answers as missing (spec/14). */
+    /** A channel this work's viewer can't read answers as missing (spec/15). */
     private fun row(column: String, value: String) = rawRow(column, value)?.takeIf { feed.access.visible(it.id) }
 
     private fun rawRow(column: String, value: String) =
@@ -86,7 +86,7 @@ class Projects(private val feed: Feed) {
     /** Every given field is written and `updatedAt` bumped, even when nothing changes. */
     fun update(reference: String, patch: Patch): ProjectRow = feed.op {
         val project = resolve(reference)
-        // Changing a channel needs Manage on it (spec/14). An agent's set_project_theme keeps what it
+        // Changing a channel needs Manage on it (spec/15). An agent's set_project_theme keeps what it
         // always had: a theme alone needs only Post from an agent.
         val missing = { notFound("no such project: ${reference.jsTrim()}") }
         val themeOnly = patch == Patch(theme = patch.theme) && patch.theme != null

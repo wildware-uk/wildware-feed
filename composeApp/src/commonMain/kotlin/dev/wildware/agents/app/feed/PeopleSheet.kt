@@ -127,7 +127,7 @@ private fun PersonActions(ui: FeedUi, person: PersonRow, team: TeamState, onDone
     var confirming by remember(person.id) { mutableStateOf(false) }
     val name = remember(person.id) { TextFieldState(person.name) }
     Panel {
-        // Which channels they can read and post in (server spec/14): your own, or anyone's for an admin.
+        // Which channels they can read and post in (server spec/15): your own, or anyone's for an admin.
         if (person.you || team.canManage) {
             ReachSummary(ui, person.id, agent = false)
             Spacer(Modifier.height(10.dp))

@@ -4,7 +4,7 @@ import kotlinx.coroutines.ThreadContextElement
 import kotlinx.coroutines.asContextElement
 
 /**
- * Who the work on this thread is shown to (spec/14): a person (`member:<membership id>`) or an
+ * Who the work on this thread is shown to (spec/15): a person (`member:<membership id>`) or an
  * agent (`agent:<agent id>`). Set once for each owner request (the guard, from the caller's key),
  * each agent request (its token) and each stream, the same way [Tenant] carries the team.
  *

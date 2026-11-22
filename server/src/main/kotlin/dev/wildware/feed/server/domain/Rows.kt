@@ -67,7 +67,7 @@ internal object Rows {
         put("board", json(rs, "board"))
         // Migration 053: the group (a project, in the app) this channel is in.
         str(rs, "groupId", "group_id")
-        // Migration 068: only those listed can see it (spec/14).
+        // Migration 068: only those listed can see it (spec/15).
         put("private", rs.getInt("private") == 1)
     }
 

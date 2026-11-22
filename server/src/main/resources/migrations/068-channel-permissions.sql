@@ -1,4 +1,4 @@
--- Migration 068: who may read, post in or manage each channel and project (spec/14). A row in
+-- Migration 068: who may read, post in or manage each channel and project (spec/15). A row in
 -- channel_access gives one person (member:<membership id>) or agent (agent:<agent id>) a level on a
 -- channel or on a project (a group of channels), which every channel in it follows unless the
 -- channel has its own row for them. No row means today's rule: everyone in the team posts, the

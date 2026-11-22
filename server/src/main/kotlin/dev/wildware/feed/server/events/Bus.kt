@@ -97,7 +97,7 @@ class Bus(capacity: Int = RING_CAPACITY, val boot: String = newBootId(), private
                     if (listener !in listeners) continue
                     if (listener.team != null && listener.team != event.team) continue
                     try {
-                        // A listener serves its own reader, never the publisher: it sees as the server does (spec/14).
+                        // A listener serves its own reader, never the publisher: it sees as the server does (spec/15).
                         Tenant.with(event.team) { dev.wildware.feed.server.db.Viewer.system { listener.handle(event) } }
                     } catch (e: Exception) {
                         System.err.println("event subscriber threw on ${event.type}: $e")

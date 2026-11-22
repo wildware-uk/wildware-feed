@@ -26,7 +26,7 @@ class Groups(private val feed: Feed) {
     fun byId(id: String): GroupRow? = row("id", id)
     fun bySlug(slug: String): GroupRow? = row("slug", slug)
 
-    /** A project this work's viewer can't see at all answers as missing (spec/14). */
+    /** A project this work's viewer can't see at all answers as missing (spec/15). */
     private fun row(column: String, value: String) = rawRow(column, value)?.takeIf { feed.access.groupVisible(it.id) }
 
     private fun rawRow(column: String, value: String) =
@@ -88,7 +88,7 @@ class Groups(private val feed: Feed) {
         val group = resolve(reference)
         feed.access.requireManageGroup(group.id) { notFound("no such group: ${reference.jsTrim()}") }
         val channels = db.query("SELECT id, slug FROM projects WHERE team_id = :team AND group_id = ?", group.id) { it.getString(1) to it.getString(2) }
-        // Its channels keep the access they had through it (spec/14); then its own rows go.
+        // Its channels keep the access they had through it (spec/15); then its own rows go.
         for ((id, _) in channels) feed.access.keepThroughMove(id, group.id)
         feed.access.forgetGroup(group.id)
         db.update("UPDATE projects SET group_id = NULL, updated_at = ? WHERE team_id = :team AND group_id = ?", feed.now(), group.id)
@@ -115,7 +115,7 @@ class Groups(private val feed: Feed) {
                 long(rs, "createdAt", "created_at")
                 long(rs, "updatedAt", "updated_at")
                 put("theme", json(rs, "theme"))
-                // Migration 068: only those listed can see it (spec/14).
+                // Migration 068: only those listed can see it (spec/15).
                 put("private", rs.getInt("private") == 1)
             }
         }

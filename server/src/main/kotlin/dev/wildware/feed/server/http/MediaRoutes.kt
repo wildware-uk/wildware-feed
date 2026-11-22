@@ -32,7 +32,7 @@ fun Route.mediaRoutes(app: App) {
     endpoint("/media/{id}/{variant}", HttpMethod.Get to {
         val save = call.request.queryParameters["download"] == "1"
         val id = call.parameters["id"].orEmpty()
-        // A file on a card in a channel this person can't read is missing (spec/14).
+        // A file on a card in a channel this person can't read is missing (spec/15).
         val card = app.db.mediaCard(id)
         if (card != null && app.feed.cards.find(card) == null) return@to call.mediaMiss()
         call.serveMedia(app, id, call.parameters["variant"].orEmpty(), save = save)
@@ -40,7 +40,7 @@ fun Route.mediaRoutes(app: App) {
     endpoint("/api/agent/media/{id}", HttpMethod.Get to {
         val id = call.parameters["id"].orEmpty()
         val agent = call.agentMayFetch(app) ?: return@to call.mediaMiss()
-        // The same rule as reading the card the file is on (issue #304, spec/14): any refusal is the same 404.
+        // The same rule as reading the card the file is on (issue #304, spec/15): any refusal is the same 404.
         val card = app.db.mediaCard(id)
         if (card == null || !Viewer.with(Viewer.agent(agent.id)) { app.feed.threads.mayFetch(agent.id, card) }) return@to call.mediaMiss()
         call.serveMedia(app, id, "original", attachedOnly = true)

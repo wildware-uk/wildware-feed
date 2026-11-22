@@ -33,7 +33,7 @@ import kotlin.test.fail
 /**
  * One team, one private channel (`vault`, in a private project), and a member and an agent with no
  * access to it trying every route the server has and every MCP tool, aimed at its things
- * (spec/14, the TeamLeakTest sweep for channels).
+ * (spec/15, the TeamLeakTest sweep for channels).
  *
  * Everything in the vault says "zebra"; nothing anywhere else does. Afterwards:
  *

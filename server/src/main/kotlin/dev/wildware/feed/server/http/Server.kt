@@ -292,7 +292,7 @@ fun Route.endpoint(path: String, vararg handlers: Pair<HttpMethod, suspend Routi
                     return@handle
                 }
             }
-            // Whoever is calling, as every read that hands out channel content sees them (spec/14).
+            // Whoever is calling, as every read that hands out channel content sees them (spec/15).
             val viewer = call.attributes.getOrNull(CallerKey)?.let { Viewer.member(it.person.id) }
             try {
                 if (viewer != null) withContext(Viewer.element(viewer)) { h() } else h()

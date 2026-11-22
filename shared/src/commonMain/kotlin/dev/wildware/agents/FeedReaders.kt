@@ -841,7 +841,7 @@ internal class PresenceReader(
 internal val MediaEvents = setOf("media.ready", "media.removed")
 
 /**
- * Who may see what changed (server spec/14): the event names nothing, so every reader that shows
+ * Who may see what changed (server spec/15): the event names nothing, so every reader that shows
  * channel content reads again, and what is now hidden leaves the screen.
  */
 internal const val AccessUpdated = "access.updated"

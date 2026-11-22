@@ -67,7 +67,7 @@ class ThreadReads(private val feed: Feed) {
     private fun open(agentId: String, card: CardRef): Opened {
         val me = AGENT + agentId
         val (thread, projectId) = subscriptions.threadAt(card)
-        // A channel the agent has no access to doesn't exist for it (spec/14).
+        // A channel the agent has no access to doesn't exist for it (spec/15).
         if (!ChannelAccess(db, feed.clock).canRead(me, projectId)) throw notFound("no such ${card.kind}: ${card.id}")
         val head = card(thread, projectId)
         val all = lines(thread)

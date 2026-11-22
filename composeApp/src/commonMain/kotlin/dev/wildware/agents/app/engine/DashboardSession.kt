@@ -152,7 +152,7 @@ class DashboardSession(
         mutableMembers.value = mutableMembers.value + (target to list)
     }
 
-    /** Permissions panels and reach summaries read so far (server spec/14). */
+    /** Permissions panels and reach summaries read so far (server spec/15). */
     private val mutableAccess = MutableStateFlow(dev.wildware.agents.app.feed.AccessState())
 
     private fun panel(target: String) = mutableAccess.value.panels[target] ?: dev.wildware.agents.app.feed.AccessView(target)

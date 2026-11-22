@@ -42,7 +42,7 @@ fun ToolRegistry.registerMediaTools(app: App) {
             it.getString(1) to it.getLong(2).let { v -> if (it.wasNull()) null else v }
         }
         if (update == null || update.second != null || update.first != agentId) throw notFound("no such update: $updateId")
-        // Adding to a card needs Post on its channel (spec/14).
+        // Adding to a card needs Post on its channel (spec/15).
         app.feed.access.requirePost(app.feed.updates.find(updateId)?.projectId ?: throw notFound("no such update: $updateId")) { notFound("no such update: $updateId") }
         val eligible = ids.filter { id ->
             app.db.one("SELECT agent_id, sha256 FROM media WHERE team_id = :team AND id = ?", id) { it.getString(1) to it.getString(2) }

@@ -1,4 +1,4 @@
-// Permissions (server spec/14): the owner makes a channel private from its Permissions panel, a
+// Permissions (server spec/15): the owner makes a channel private from its Permissions panel, a
 // member stops seeing it anywhere, the owner gives them Read, and they can read it but not post.
 import { expect, test } from '@playwright/test';
 import { Team } from '../lib/team.mjs';

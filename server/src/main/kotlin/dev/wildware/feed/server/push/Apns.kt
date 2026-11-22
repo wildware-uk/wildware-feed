@@ -218,7 +218,7 @@ class Apns(
                 Alert(message, "PAIRING", "dashboard", null, message.body, about = dev.wildware.feed.server.domain.AlertPrefs.About("pairing"), admins = true)
             }
             else -> null
-        // Nobody's phone hears about a channel they can't read, not even a critical alert (spec/14).
+        // Nobody's phone hears about a channel they can't read, not even a critical alert (spec/15).
         }?.takeIf { dev.wildware.feed.server.domain.ChannelAccess(app.db, app.clock).canRead(who, it.projectId) }
     }
 

@@ -22,7 +22,7 @@ import androidx.compose.ui.unit.dp
 import dev.wildware.agents.app.design.AgentTheme
 
 /**
- * Who may see a channel or a project (server spec/14), read when its Permissions panel opens, by
+ * Who may see a channel or a project (server spec/15), read when its Permissions panel opens, by
  * [accessTarget]. Levels are the server's words: "none", "read", "post", "manage".
  */
 @Immutable

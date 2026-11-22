@@ -37,7 +37,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-/** A channel's Permissions panel (server spec/14): who can see it, changing a level, the private switch. */
+/** A channel's Permissions panel (server spec/15): who can see it, changing a level, the private switch. */
 @OptIn(ExperimentalTestApi::class)
 class PermissionsPanelTest {
     private val events = mutableListOf<FeedEvent>()

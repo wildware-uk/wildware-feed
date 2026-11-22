@@ -30,7 +30,7 @@ fun Route.streamRoutes(app: App) {
             val bus = app.bus
             // An event about one person's own bell or follows (it names a memberId) goes only to them.
             val me = call.person.id
-            // Nor does one about a channel or project they can't see (spec/14). Listeners run as the
+            // Nor does one about a channel or project they can't see (spec/15). Listeners run as the
             // server's own work, so each stream asks as its own person.
             val viewer = dev.wildware.feed.server.db.Viewer.member(me)
             val access = dev.wildware.feed.server.domain.ChannelAccess(app.db, app.clock)

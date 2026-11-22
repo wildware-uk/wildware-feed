@@ -111,7 +111,7 @@ class DemoServer(private val now: () -> Long = { Clock.System.now().toEpochMilli
     private var accessLevels = mapOf<Pair<String, String>, String>()
     private var privateOnes = setOf<String>()
 
-    /** A channel's or project's Permissions panel, as `GET /api/{projects|groups}/{ref}/access` answers (server spec/14). */
+    /** A channel's or project's Permissions panel, as `GET /api/{projects|groups}/{ref}/access` answers (server spec/15). */
     private fun accessPanel(kind: String, ref: String): dev.wildware.agents.AccessPanel {
         val target = (if (kind == "groups") "group:" else "channel:") + ref
         val agents = (data.agentNames + renamed).entries.sortedBy { it.value.lowercase() }.map { (id, name) ->

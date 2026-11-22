@@ -37,7 +37,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * Per channel and per project permissions (migration 068, spec/14): the defaults are today's
+ * Per channel and per project permissions (migration 068, spec/15): the defaults are today's
  * access, a private channel is hidden from whoever isn't listed, Read lets you read but not post,
  * a project's setting reaches its channels unless a channel says otherwise, the team owner always
  * manages, every change is logged, and an agent with no access finds nothing.

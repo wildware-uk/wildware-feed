@@ -26,11 +26,11 @@ class Cards(private val feed: Feed) {
             "SELECT id, project_id, pinned, $status AS status, $statusAt AS status_at, $deleted AS deleted_at FROM ${card.table} WHERE team_id = :team AND id = ?",
             card.id,
         ) { CardRow(it.getString("id"), it.getString("project_id"), it.getInt("pinned") == 1, it.getString("status"), it.longOrNull("status_at"), it.longOrNull("deleted_at")) }
-            // A card in a channel this work's viewer can't read answers as missing (spec/14).
+            // A card in a channel this work's viewer can't read answers as missing (spec/15).
             ?.takeIf { feed.access.visible(it.projectId) }
     }
 
-    /** [resolve], for a write: the caller needs Post on the card's channel (spec/14). */
+    /** [resolve], for a write: the caller needs Post on the card's channel (spec/15). */
     fun resolveToWrite(card: CardRef): CardRow = resolve(card).also { row ->
         feed.access.requirePost(row.projectId) { notFound("no such ${card.kind}: ${card.id}") }
     }

@@ -1,4 +1,4 @@
-# 14. Permissions: who may read, post in and manage each channel and project
+# 15. Permissions: who may read, post in and manage each channel and project
 
 Migration 068. Code: `domain/ChannelAccess.kt` (the rules), `db/Viewer.kt` (who a piece of work is
 shown to), `http/AccessRoutes.kt` (the Permissions panel). Tests: `ChannelAccessTest`,

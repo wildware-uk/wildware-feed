@@ -21,7 +21,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
 /**
- * Who may read, post in and manage a channel or a project (spec/14): the Permissions panel's reads
+ * Who may read, post in and manage a channel or a project (spec/15): the Permissions panel's reads
  * and writes, what one person or agent can reach, and the log of changes.
  *
  * Anyone who can read a channel sees who else can. Changing it needs Manage there; agents never

@@ -147,7 +147,7 @@ private suspend fun ApplicationCall.mcp(app: App) {
             taken += limiter to key
         }
     }
-    // Every tool sees as this agent does (spec/14): channels it has no access to don't exist for it.
+    // Every tool sees as this agent does (spec/15): channels it has no access to don't exist for it.
     val answers = kotlinx.coroutines.withContext(dev.wildware.feed.server.db.Viewer.element(dev.wildware.feed.server.db.Viewer.agent(agent.id))) {
         requests.map { answer(app, agent, it) }
     }

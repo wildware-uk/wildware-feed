@@ -54,7 +54,7 @@ class Messages(private val feed: Feed) {
 
     class Quoted(val id: String, val author: String, val body: String, val truncated: Boolean, val userId: String? = null)
 
-    /** A message in a channel this work's viewer can't read answers as missing (spec/14). */
+    /** A message in a channel this work's viewer can't read answers as missing (spec/15). */
     fun find(id: String): MessageRow? =
         db.one("SELECT ${Rows.MESSAGE} FROM messages WHERE team_id = :team AND id = ?", id) { MessageRow(Rows.message(it)) }?.takeIf { feed.access.visible(it.projectId) }
 
@@ -121,7 +121,7 @@ class Messages(private val feed: Feed) {
             throw invalid("that update, task or message belongs to a different project")
         }
         val projectId = anchored ?: namedProject
-        // Posting needs Post on the channel (spec/14); one the author can't read is missing.
+        // Posting needs Post on the channel (spec/15); one the author can't read is missing.
         feed.access.requirePost(projectId) { notFound(if (requestId != null) "no such request: $requestId" else "no such project: ${input.project ?: input.updateId ?: input.replyTo ?: ""}") }
 
         if (answered != null && !sameThread(answered, updateId, anchor, requestId)) {
