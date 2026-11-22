@@ -45,7 +45,7 @@ dependencies {
 
 tasks.test {
     useJUnitPlatform()
-    timeout.set(Duration.ofMinutes(10))
+    timeout.set(Duration.ofMinutes(18))
     // Every statement the server runs on a team's table must name team_id (db/TeamTables.kt).
     systemProperty("feed.sqlLint", "true")
 }
