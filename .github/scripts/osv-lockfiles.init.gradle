@@ -13,7 +13,9 @@ allprojects {
         doLast {
             project.configurations.findAll { it.canBeResolved && it.name ==~ /(?i).*(runtimeclasspath|compileklibraries)/ }.each { c ->
                 try {
-                    c.resolve()
+                    // The dependency graph is all the lockfile needs; skipping the files
+                    // themselves keeps this fast and away from Android's artifact transforms.
+                    c.incoming.resolutionResult.allComponents
                 } catch (Exception e) {
                     // Some configurations only resolve on a Mac or with extra inputs; say so and go on.
                     logger.warn("osv: skipped ${project.path}:${c.name}: ${e.message?.readLines()?.first()}")
