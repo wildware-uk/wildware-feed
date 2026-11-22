@@ -291,6 +291,55 @@ class AssignWorkTest {
     }
 
     @Test
+    fun `an agent posts a to-do for a person in one call and hears when they mark it done`() = withTeam { client ->
+        setUp(client)
+        client.tool(scoutToken, "subscribe", args("channel" to "web"))
+        val posted = client.tool(roverToken, "post_update", args(
+            "channel" to "web", "title" to "Approve the TestFlight build", "body" to "Build 42 is in TestFlight.", "assignees" to listOf("Sam"),
+        ))
+        assertNull(posted.error(), posted.toString())
+        assertEquals("todo", posted.data()["status"]!!.jsonPrimitive.content)
+        assertEquals(listOf("Sam"), names(posted.data()["assignees"]))
+        val update = posted.data()["update"]!!.jsonObject["id"]!!.jsonPrimitive.content
+        // Sam is told, as a person is: the bell.
+        assertTrue(client.json(samKey, "GET", "/api/notifications")["notifications"]!!.jsonArray.any {
+            it.jsonObject["title"]!!.jsonPrimitive.content == "rover assigned you"
+        })
+        val before = Viewer.with(Viewer.agent(rover.id)) { app.work.unread(rover.id, 50) }.map { it.id }.toSet()
+
+        // Sam marks it done on the board: rover hears it in the thread, on its channel.
+        client.json(samKey, "POST", "/api/cards/update/$update/status", """{"status":"done"}""")
+        val heard = Viewer.with(Viewer.agent(rover.id)) { app.work.unread(rover.id, 50) }.filter { it.id !in before }
+        val line = heard.single()
+        assertEquals(Messages.STATUS_LINE, line.source)
+        assertTrue(line.body.startsWith("marked this done"), line.body)
+        assertContains(line.body, "@rover: Approve the TestFlight build is now done (assigned to Sam). Pick up whatever was waiting on it.")
+        // Scout follows web but waits on nothing here: it hears nothing. Nobody's bell rings for it.
+        val scoutHeard = Viewer.with(Viewer.agent(scout.id)) { app.work.unread(scout.id, 50) }
+        assertTrue(scoutHeard.none { it.id == line.id }, scoutHeard.toString())
+        assertTrue(client.json(ownerKey, "GET", "/api/notifications")["notifications"]!!.jsonArray.none { it.jsonObject["messageId"]?.jsonPrimitive?.content == line.id })
+        // Rover moving it itself says nothing to itself.
+        val lines = app.db.one("SELECT count(*) FROM messages WHERE team_id = :team AND source = 'status'") { it.getLong(1) }
+        client.tool(roverToken, "set_status", args("update_id" to update, "status" to "in_progress"))
+        assertEquals(lines, app.db.one("SELECT count(*) FROM messages WHERE team_id = :team AND source = 'status'") { it.getLong(1) })
+    }
+
+    @Test
+    fun `moving unassigned work leaves no line and a refused assignee leaves no card`() = withTeam { client ->
+        val post = setUp(client)
+        client.json(ownerKey, "POST", "/api/cards/message/$post/status", """{"status":"done"}""")
+        assertEquals(0L, app.db.one("SELECT count(*) FROM messages WHERE team_id = :team AND source IS NOT NULL") { it.getLong(1) })
+        // Rin can't read a private channel: the post is refused before it is made.
+        client.tool(roverToken, "create_project", args("name" to "Vault", "slug" to "vault"))
+        client.json(ownerKey, "PUT", "/api/projects/vault/access", """{"private":true}""")
+        client.json(ownerKey, "PUT", "/api/projects/vault/access/agent/${rover.id}", """{"level":"post"}""")
+        val updates = app.db.one("SELECT count(*) FROM updates WHERE team_id = :team") { it.getLong(1) }
+        val refused = client.tool(roverToken, "post_update", args("channel" to "vault", "body" to "Add the DNS record", "assignees" to listOf("Rin")))
+        assertEquals("forbidden", refused.error(), refused.toString())
+        assertEquals(updates, app.db.one("SELECT count(*) FROM updates WHERE team_id = :team") { it.getLong(1) })
+    }
+
+    @Test
     fun `the board filters by assigned to me unassigned and one assignee`() = withTeam { client ->
         setUp(client)
         val ids = (1..3).map { n ->

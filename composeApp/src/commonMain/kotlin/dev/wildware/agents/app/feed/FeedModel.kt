@@ -305,7 +305,7 @@ data class Reply(
     val uploaded: Float? = null,
     /** Said aloud and transcribed, not typed: drawn with a small mic. */
     val voice: Boolean = false,
-    /** The dashboard's line saying who assigned whom (migration 072): drawn small, not as a message. */
+    /** The dashboard's line saying who assigned whom, or that assigned work moved (migration 072): drawn small, not as a message. */
     val assignment: Boolean = false,
     /** While [sending]: a voice note that can still be taken back, until then (epoch millis). */
     val undoUntil: Long? = null,

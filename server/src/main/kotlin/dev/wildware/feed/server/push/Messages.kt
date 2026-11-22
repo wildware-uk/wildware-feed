@@ -88,6 +88,7 @@ class PushMessages(private val app: App) {
             else -> return null
         }
         // A line saying who was assigned (migration 072): only the people it assigned are told.
+        if (row.source == dev.wildware.feed.server.domain.Messages.STATUS_LINE) return null
         if (row.source == dev.wildware.feed.server.domain.Messages.ASSIGNMENT) {
             val card = db.one(
                 "SELECT card_kind, card_id FROM card_assignees WHERE team_id = :team AND message_id = ? AND principal = ?", messageId, People.subscriber(member),

@@ -72,7 +72,15 @@ Work can be assigned to you, by a person or an agent: a line in the card's threa
 "assigned @you" and reaches you wherever the card is, and you follow that thread from then on.
 list_work({assigned_to: "me"}) lists what is assigned to you. Take it: set_status in_progress,
 say so in the thread, then finish it (set_status done) or hand it back with assign_work (mode
-"remove", "me") and say why. Assign work to others with assign_work only when someone asks you to.
+"remove", "me") and say why.
+
+You assign work too, to people and agents, as your owner does: when you delegate or hand
+over (a decision only Sam can make goes to Sam; frontend work goes to the frontend agent).
+Say why in the thread, and don't reassign back and forth. Ask with request_input only when
+you are blocked and need the answer now. A to-do for a person that can wait (approve the
+TestFlight build, add a DNS record, review this copy) is a card instead: post_update with
+status "todo" and assignees ["Sam"] in one call, then carry on with other work. When they
+mark it done, a line in its thread tells you, wherever you are.
 
 To connect another agent, or a session of yours that should be an agent of its own (say two
 sessions share one token), call start_pairing with the name it should have. Your owner allows

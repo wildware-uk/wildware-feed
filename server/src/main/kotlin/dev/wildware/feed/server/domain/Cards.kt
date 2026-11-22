@@ -1,6 +1,7 @@
 package dev.wildware.feed.server.domain
 
 import dev.wildware.feed.server.db.Ulid
+import dev.wildware.feed.server.db.Viewer
 import dev.wildware.feed.server.db.longOrNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -78,6 +79,8 @@ class Cards(private val feed: Feed) {
         )
         val saved = find(card) ?: throw notFound("no such ${card.kind}: ${card.id}")
         announce(card, saved)
+        // Assigned work that moved: the agents waiting on it hear it in its thread (migration 072).
+        Viewer.currentOrNull?.principal?.let { by -> feed.assignees.moved(card, saved.status, by) }
         saved.status
     }
 

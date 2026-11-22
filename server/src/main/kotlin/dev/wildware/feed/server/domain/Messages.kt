@@ -53,6 +53,8 @@ class Messages(private val feed: Feed) {
          * source [ASSIGNMENT], which no client can set.
          */
         val assignment: Boolean = false,
+        /** The server's line saying assigned work moved (migration 072): source [STATUS_LINE]. */
+        val statusLine: Boolean = false,
     )
 
     class Page(val messages: List<MessageRow>, val cursor: String, val unread: Long, val markedRead: Boolean)
@@ -80,7 +82,11 @@ class Messages(private val feed: Feed) {
         val sendKey = input.sendKey?.takeIf { person != null }
         if (input.source != null && input.source !in SOURCES) throw invalid("source must be \"$VOICE\" or left out")
         if (input.source != null && person == null) throw invalid("only a person's message has a source")
-        val source = if (input.assignment) ASSIGNMENT else input.source
+        val source = when {
+            input.assignment -> ASSIGNMENT
+            input.statusLine -> STATUS_LINE
+            else -> input.source
+        }
         // A send tried again (its answer was lost on the way back): the first message, not a copy.
         sentAlready(person, sendKey)?.let { return@op it }
 
@@ -454,6 +460,12 @@ class Messages(private val feed: Feed) {
 
         /** A line the server writes in a card's thread when its assignees change (migration 072). */
         const val ASSIGNMENT = "assignment"
+
+        /** A line the server writes when assigned work moves, for the agents waiting on it (migration 072). */
+        const val STATUS_LINE = "status"
+
+        /** The server's own lines: they reach only the agents they name, and ring no bell unless they assign. */
+        val SYSTEM_SOURCES = listOf(ASSIGNMENT, STATUS_LINE)
         private val SOURCES = setOf(VOICE)
 
         /** The line agents read under a voice note's words. People never see it, and it is never stored. */

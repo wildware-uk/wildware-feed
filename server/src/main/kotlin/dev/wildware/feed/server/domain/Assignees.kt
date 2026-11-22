@@ -131,16 +131,7 @@ class Assignees(private val feed: Feed) {
         }
         val after = now.size - removed.size + added.size
         if (after > MAX) throw invalid("a card can have at most $MAX assignees (it would have $after)")
-        // Each one must be able to read the card's channel.
-        for (who in added) {
-            if (!feed.access.canRead(who.principal, row.projectId)) {
-                val channel = row.projectId?.let { id -> db.one("SELECT slug FROM projects WHERE team_id = :team AND id = ?", id) { it.getString(1) } }
-                throw forbidden(
-                    "${who.name} can't read ${channel?.let { "#$it" } ?: "this channel"}, so they can't be assigned work in it. " +
-                        "Someone who manages the channel can give them Read first.",
-                )
-            }
-        }
+        requireReaders(added, row.projectId)
         if (added.isEmpty() && removed.isEmpty()) {
             return@op Change(card, now, emptyList(), emptyList(), null, row.status)
         }
@@ -192,6 +183,70 @@ class Assignees(private val feed: Feed) {
         })
         feed.cards.find(card)?.let { feed.cards.announce(card, it) }
         Change(card, result, added, removed, line?.id, status)
+    }
+
+    /**
+     * Assigned work moved to [status], by [by]: a line in its thread for the agents waiting on it,
+     * those that assigned it and those assigned, never [by] itself. Nothing for a card nobody was
+     * assigned, or when no agent is waiting, so ordinary moves on the board stay quiet.
+     */
+    fun moved(card: CardRef, status: String?, by: String) {
+        if (card.kind !in WORKABLE) return
+        val rows = db.query("SELECT principal, assigned_by FROM card_assignees WHERE team_id = :team AND card_kind = ? AND card_id = ?", card.kind, card.id) {
+            it.getString(1) to it.getString(2)
+        }
+        if (rows.isEmpty()) return
+        val live = everyone().associateBy { it.principal }
+        val waiting = rows.flatMap { listOf(it.first, it.second) }.distinct()
+            .filter { it != by && it.startsWith(Viewer.AGENT) }.mapNotNull { live[it] }
+        if (waiting.isEmpty()) return
+        val row = feed.cards.find(card) ?: return
+        if (!row.projectId.let { p -> waiting.any { feed.access.canRead(it.principal, p) } }) return
+        val assignees = rows.mapNotNull { live[it.first] }
+        val said = when (status) {
+            null -> "took the work mark off this"
+            else -> "marked this ${status.replace('_', ' ')}"
+        }
+        val body = StringBuilder(said)
+            .append("\n\n").append(waiting.joinToString(", ") { "@" + it.name }).append(": ")
+            .append(quiet(cardTitle(card))).append(" is now ").append(status?.replace('_', ' ') ?: "not work")
+            .append(" (assigned to ").append(assignees.joinToString(", ") { quiet(it.name) }.ifEmpty { "nobody now" }).append(").")
+        if (status == "done") body.append(" Pick up whatever was waiting on it.")
+        feed.messages.post(
+            Messages.Post(
+                author = if (by.startsWith(Viewer.AGENT)) by else Messages.HUMAN,
+                body = body.toString(),
+                updateId = if (card.kind == "update") card.id else null,
+                replyTo = if (card.kind == "message") card.id else null,
+                userId = if (by.startsWith(Viewer.MEMBER)) by.removePrefix(Viewer.MEMBER) else null,
+                statusLine = true,
+            ),
+        )
+    }
+
+    /**
+     * The people and agents [names] would assign on a new card in [projectId], checked as [change]
+     * checks them, before anything is written: a post that would then be refused is never made.
+     */
+    fun precheck(projectId: String?, names: List<String>, actor: String): List<Who> {
+        val people = everyone()
+        val named = names.map { resolve(it, actor, people) }.distinctBy { it.principal }
+        if (named.size > MAX) throw invalid("a card can have at most $MAX assignees (it would have ${named.size})")
+        requireReaders(named, projectId)
+        return named
+    }
+
+    /** Each one must be able to read the card's channel. */
+    private fun requireReaders(who: List<Who>, projectId: String?) {
+        for (w in who) {
+            if (!feed.access.canRead(w.principal, projectId)) {
+                val channel = projectId?.let { id -> db.one("SELECT slug FROM projects WHERE team_id = :team AND id = ?", id) { it.getString(1) } }
+                throw forbidden(
+                    "${w.name} can't read ${channel?.let { "#$it" } ?: "this channel"}, so they can't be assigned work in it. " +
+                        "Someone who manages the channel can give them Read first.",
+                )
+            }
+        }
     }
 
     /** The line in the card's thread, written as [actor]: a person as themself, an agent as itself. */
@@ -258,7 +313,7 @@ class Assignees(private val feed: Feed) {
         }
 
         /** `@` in someone else's words must not @mention anyone: a zero-width space after it. */
-        private fun quiet(text: String) = text.replace("@", "@​")
+        internal fun quiet(text: String) = text.replace("@", "@​")
 
         /**
          * The line's words. The first line is what people see ("assigned @Rover and Sam"); the rest

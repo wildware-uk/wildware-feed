@@ -96,6 +96,10 @@ fun ToolRegistry.registerFeedTools(app: App) {
     }
 
     register("post_update") { call ->
+        // Assignees are checked before anything is posted (migration 072), so a refusal leaves no card behind.
+        call.texts("assignees")?.takeIf { it.isNotEmpty() }?.let { names ->
+            app.feed.assignees.precheck(app.feed.projects.resolve(call.requiredChannel()).id, names, call.author)
+        }
         val update = app.feed.updates.post(
             Updates.Post(
                 project = call.requiredChannel(),
@@ -114,10 +118,22 @@ fun ToolRegistry.registerFeedTools(app: App) {
             ),
         )
         val apps = if (call.list("apps").isNullOrEmpty()) emptyList() else FeedAttachments.appsOn(app.db, CardRef("update", update.id))
+        // A work state and assignees in the same call (migration 072): a to-do for someone, in one go.
+        val card = CardRef("update", update.id)
+        val status = call.text("status")?.let { app.feed.cards.setStatus(card, it) }
+        val assigned = call.texts("assignees")?.takeIf { it.isNotEmpty() }?.let {
+            app.feed.assignees.change(card, it, Assignees.MODE_ADD, call.author, app.teams.address())
+        }
+        val work = listOfNotNull(
+            (assigned?.status ?: status)?.let { " Marked ${it.replace('_', ' ')}." },
+            assigned?.assignees?.takeIf { it.isNotEmpty() }?.let { a -> " Assigned to ${a.joinToString(", ") { it.name }}." },
+        ).joinToString("")
         ToolResult.ok(
-            "Posted a ${update.level} update to project ${call.channel()} as agent \"${call.agent.name}\".",
+            "Posted a ${update.level} update to project ${call.channel()} as agent \"${call.agent.name}\".$work",
             buildJsonObject {
                 put("update", FeedViews.update(update))
+                if (status != null || assigned != null) put("status", assigned?.status ?: status)
+                assigned?.let { put("assignees", FeedViews.assignees(it.assignees)) }
                 if (apps.isNotEmpty()) put("apps", FeedViews.apps(apps))
                 refsView(app, CardRef("update", update.id), call.args)?.let { put("refs", it) }
                 blocksView(app, CardRef("update", update.id), call.args)?.let { put("blocks", it) }

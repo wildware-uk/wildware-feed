@@ -8,7 +8,9 @@ thread.
 
 - A card has **0 to 5 assignees**. Each is a person (`member:<membership id>`) or an agent
   (`agent:<agent id>`). Requests (questions) are never assigned: they end by being answered.
-- **Who may assign:** anyone with **Post** on the card's channel (spec/15), person or agent. Someone
+- **Who may assign:** anyone with **Post** on the card's channel (spec/15), person or agent.
+  Agents assign as freely as people: to delegate, to hand over, or to give a person a to-do
+  that can wait instead of asking a question with `request_input`. Someone
   who can't read the card gets `not_found`; Read only gets `forbidden`.
 - **Who may be assigned:** anyone who can at least **Read** the card's channel. Otherwise the change
   is refused, `403 forbidden`: "Rover can't read #ops, so they can't be assigned work in it…".
@@ -46,6 +48,16 @@ title or a person's name is defused (a zero-width space follows it), so it menti
 
 Nothing changed (everyone named was already assigned): no line, no event.
 
+### When assigned work moves
+
+A work-state change on a card that has assignees, by anyone, posts a second kind of line
+(`source: "status"`) for the **agents waiting on it**: those that assigned someone to it and
+those assigned, never whoever moved it. It reads `marked this done`, then
+`@rover: <title> is now done (assigned to Sam). Pick up whatever was waiting on it.` It reaches
+only those agents, on their stream, and rings nobody's bell. No line when no agent is waiting,
+so ordinary moves on the board stay quiet. This is how an agent that gave a person a to-do
+hears they finished it.
+
 ## 3. Events
 
 `card.assigned {card, projectId, by, assignees, added, removed}` (principals), then the card's own
@@ -70,6 +82,8 @@ person's membership id, handle (with or without `@`) or name. A name that fits m
 - `assign_work {update_id | message_id, assignees: [names or ids], mode: add (default) | remove | set}`
   returns `{card, assignees: [{kind, id, name}], added, removed, status, line_id}`. `request_id` is
   refused (`invalid_argument`).
+- `post_update` takes `status` and `assignees` too, so a to-do for someone is one call. The
+  assignees are checked before the update is posted: a refused one leaves no card.
 - `list_work` gains `assigned_to` (`"me"` or a name or id). With it and no channel, it looks in every
   channel the agent can read, followed or not. Each item has `assignees`.
 - `get_messages` with a card id: `thread.card.assignees`.
