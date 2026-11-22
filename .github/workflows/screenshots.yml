@@ -3,11 +3,17 @@ name: screenshots
 # Manual only: Mac minutes bill at ten times the Linux rate.
 on:
   workflow_dispatch:
+    inputs:
+      parts:
+        description: 'What to draw: all, or watch for only the Apple Watch app'
+        type: choice
+        options: [all, watch]
+        default: all
 
 jobs:
   screenshots:
     runs-on: macos-26
-    timeout-minutes: 60
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -22,6 +28,7 @@ jobs:
       - run: xcodegen generate --spec iosApp/project.yml
         timeout-minutes: 4
       - name: Boot an iPhone simulator
+        if: inputs.parts != 'watch'
         timeout-minutes: 6
         run: |
           id=$(xcrun simctl list devices available -j \
@@ -34,6 +41,7 @@ jobs:
           xcrun simctl status_bar "$id" override --time 9:41 --batteryState charged --batteryLevel 100 --cellularBars 4 --wifiBars 3
       # The first test build also builds the Compose framework, which takes a few minutes.
       - name: Draw the screenshots
+        if: inputs.parts != 'watch'
         timeout-minutes: 25
         run: |
           set -o pipefail
@@ -47,6 +55,7 @@ jobs:
           grep -q "TEST SUCCEEDED" test.log
       # After the iPhone's pictures, and allowed to fail: a stuck iPad simulator must not cost them.
       - name: Boot an iPad simulator
+        if: inputs.parts != 'watch'
         timeout-minutes: 12
         continue-on-error: true
         id: ipad
@@ -73,6 +82,54 @@ jobs:
             CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM= \
             | tee test-ipad.log | grep -E "error:|Test Case .*(passed|failed)|TEST (SUCCEEDED|FAILED)|\*\* " || true
           grep -q "TEST SUCCEEDED" test-ipad.log
+      # The watch app on its sample questions (WatchScreenshots.swift, debug builds only): the
+      # inbox, then a question. App Store Connect wants one of these because the app ships a watch app.
+      - name: Boot a watch simulator
+        id: watch
+        timeout-minutes: 12
+        continue-on-error: true
+        run: |
+          id=$(xcrun simctl list devices available -j \
+            | jq -r '[.devices[][] | select(.name | test("^Apple Watch Ultra"))] | last | .udid // empty')
+          [ -n "$id" ] || id=$(xcrun simctl list devices available -j \
+            | jq -r '[.devices[][] | select(.name | test("^Apple Watch Series"))] | last | .udid // empty')
+          [ -n "$id" ] || { echo "::error::no Apple Watch simulator on this runner"; exit 1; }
+          echo "Using $id"
+          echo "WATCH=$id" >> "$GITHUB_ENV"
+          xcrun simctl boot "$id"
+          xcrun simctl bootstatus "$id"
+      - name: Build the watch app
+        if: steps.watch.outcome == 'success'
+        id: watchbuild
+        timeout-minutes: 20
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project iosApp/Agents.xcodeproj \
+            -scheme AgentsWatch \
+            -configuration Debug \
+            -destination "id=$WATCH" \
+            -derivedDataPath build/watch \
+            CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM= \
+            | tee watch.log | grep -E "error:|\*\* " || true
+          grep -q "BUILD SUCCEEDED" watch.log
+      - name: Draw the watch app
+        if: steps.watchbuild.outcome == 'success'
+        timeout-minutes: 6
+        continue-on-error: true
+        run: |
+          app=$(find build/watch/Build/Products -path "*watchsimulator*" -name "AgentsWatch.app" | head -1)
+          echo "Installing $app"
+          xcrun simctl install "$WATCH" "$app"
+          mkdir -p screenshots
+          for pair in inbox:-screenshots question:-screenshots-question; do
+            xcrun simctl launch "$WATCH" dev.wildware.agents.watchkitapp "${pair#*:}"
+            sleep 10
+            xcrun simctl io "$WATCH" screenshot "screenshots/watch-${pair%%:*}.png"
+            xcrun simctl terminate "$WATCH" dev.wildware.agents.watchkitapp || true
+          done
+          ls -l screenshots/watch-*.png
       - if: always()
         uses: actions/upload-artifact@v4
         timeout-minutes: 5
@@ -82,3 +139,4 @@ jobs:
             screenshots
             test.log
             test-ipad.log
+            watch.log

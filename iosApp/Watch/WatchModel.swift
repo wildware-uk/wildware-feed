@@ -7,8 +7,13 @@ import WidgetKit
 final class WatchModel: ObservableObject {
     static let shared = WatchModel()
 
+    #if DEBUG
+    @Published private(set) var isLinked = WatchScreenshots.on || Dashboard.isLinked
+    @Published private(set) var summary: DashboardSummary? = WatchScreenshots.on ? WatchScreenshots.summary : nil
+    #else
     @Published private(set) var isLinked = Dashboard.isLinked
     @Published private(set) var summary: DashboardSummary?
+    #endif
     @Published private(set) var isLoading = false
     @Published var error: String?
 
@@ -22,6 +27,9 @@ final class WatchModel: ObservableObject {
     }
 
     func refresh() async {
+        #if DEBUG
+        if WatchScreenshots.on { return }
+        #endif
         guard let client = Dashboard.client() else {
             isLinked = false
             return

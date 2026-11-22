@@ -27,6 +27,18 @@ struct WatchRootView: View {
     @State private var stack = UUID()
 
     var body: some View {
+        #if DEBUG
+        if WatchScreenshots.question, let first = model.summary?.requests.first {
+            NavigationStack { RequestView(request: first) }.tint(Theme.accent)
+        } else {
+            root
+        }
+        #else
+        root
+        #endif
+    }
+
+    @ViewBuilder private var root: some View {
         if model.isLinked {
             NavigationStack { InboxView() }
                 .tint(Theme.accent)
