@@ -375,11 +375,15 @@ class Messages(private val feed: Feed) {
         val projects = LinkedHashSet(covered + messages.map { it.projectId ?: NO_PROJECT })
         val handed = messages.map { it.id }.toSet()
         var moved = 0L
+        val within = scope.reach.within
         for (projectId in projects) {
-            val to = if (since == null) {
+            // Read from the cursor, in a channel this read covered: everything up to [last] was handed.
+            val to = if (since == null && (within == null || projectId in within)) {
                 last
             } else {
-                val skipped = listUnread(agentId, mine, limit, scope, within = projectId).firstOrNull { it.id !in handed }
+                // Otherwise only up to the first line there it was not handed: from `since`, or a mention
+                // handed from a channel this read did not cover (whose other lines it never saw).
+                val skipped = listUnread(agentId, mine, limit, Scope(Subscriptions.Reach.Followed, agentId), within = projectId).firstOrNull { it.id !in handed }
                 minOf(last, skipped?.let { it.seq - 1 } ?: last)
             }
             if (to <= 0) continue

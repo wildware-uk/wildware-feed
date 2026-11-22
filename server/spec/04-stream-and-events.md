@@ -450,11 +450,16 @@ bridge need not be told its projects) and the owner (which alerts are raised).
   task or a live message in: exactly the old "worked in" set. No threads are seeded.
 - **Reach.** A message reaches an agent when it passes the @mention audience rule and:
   it is in a followed project, or in a followed thread, or names the agent. An agent that
-  follows no project hears none: only its threads and mentions. A `?project=` / `?channel=`
-  list only narrows what it follows to the channels named (and messages in no channel), for
-  messages, counts and frames alike; a mention of the agent still reaches it anywhere; `*` or no list is no narrowing, and an unknown name narrows to
-  nothing (the TS server used the list instead of the follows, still hearing followed
-  threads and mentions anywhere). Channels the owner removed the agent from are not heard
+  follows no project hears none: only its threads and mentions. A thread the agent follows
+  reaches it even in a channel it doesn't. A `?project=` / `?channel=` list only narrows the
+  channels it follows to those named (and messages in no channel), for messages, counts and
+  frames alike. It never hides a conversation the agent is in: a thread it follows (posting,
+  replying or an @mention follows one) and a mention of it still reach it anywhere, so an
+  owner's unmentioned reply in such a thread is pushed on a narrowed stream too. `*` or no
+  list is no narrowing, and an unknown name narrows its channels to nothing (the TS server
+  used the list instead of the follows, still hearing followed threads and mentions anywhere).
+  `get_messages` with `channel` is not a bridge: it reads only what reaches the agent in that
+  channel, plus mentions of it. Channels the owner removed the agent from are not heard
   (spec/12, migration 060). The same
   reach drives `get_messages` (without `project`), heartbeat counts, `open_tasks`
   (followed projects) and `list_work`.

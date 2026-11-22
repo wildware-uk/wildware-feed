@@ -13,7 +13,8 @@ import kotlinx.serialization.json.buildJsonObject
  * spec/04-stream-and-events.md §4.4-4.6).
  *
  * What reaches the agent is only what it follows on the server ([Subscriptions]): nothing from a
- * channel it does not follow. A bridge that names channels narrows that further ([within]), never widens it.
+ * channel it does not follow. A bridge that names channels narrows the channels further ([within]), never
+ * widens them, and never hides a thread the agent follows or a mention of it ([Subscriptions.Reach.bridge]).
  */
 class AgentWork(private val db: Database, private val bus: Bus, private val clock: () -> Long = System::currentTimeMillis) {
     data class Counts(val unreadMessages: Int, val openTasks: Int, val pendingApprovals: Int)
@@ -39,7 +40,7 @@ class AgentWork(private val db: Database, private val bus: Bus, private val cloc
      * pending requests everywhere. [within]: the channels a bridge named, which narrow all three.
      */
     fun countWork(agentId: String, within: List<String>? = null) = Counts(
-        unreadMessages = countUnread(agentId, Subscriptions.Reach(within)),
+        unreadMessages = countUnread(agentId, Subscriptions.Reach.bridge(within)),
         openTasks = countOpenWork(projectsForAgent(agentId).let { mine -> within?.let { w -> mine.filter { it in w } } ?: mine }),
         pendingApprovals = countPending(agentId, within),
     )
@@ -65,7 +66,7 @@ class AgentWork(private val db: Database, private val bus: Bus, private val cloc
      */
     fun reaches(agentId: String, messageId: String, within: List<String>? = null): Boolean {
         val args = mutableListOf<Any?>()
-        val where = unreadWhere(agentId, Subscriptions.Reach(within), args, oneMessage = true)
+        val where = unreadWhere(agentId, Subscriptions.Reach.bridge(within), args, oneMessage = true)
         args += messageId
         return db.one("SELECT 1 $where AND m.id = ?", *args.toTypedArray()) { 1 } != null
     }
@@ -98,7 +99,7 @@ class AgentWork(private val db: Database, private val bus: Bus, private val cloc
      */
     fun unread(agentId: String, limit: Int, within: List<String>? = null, backlog: Backlog? = null): List<Line> {
         val args = mutableListOf<Any?>()
-        var where = unreadWhere(agentId, Subscriptions.Reach(within), args)
+        var where = unreadWhere(agentId, Subscriptions.Reach.bridge(within), args)
         if (backlog != null) {
             where += """
               AND m.created_at >= ?

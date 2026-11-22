@@ -38,9 +38,10 @@ import kotlinx.serialization.json.jsonPrimitive
  * It hears what the agent follows on the server ([Subscriptions]), read afresh for each batch, so
  * a subscription, an unsubscribe, or the owner adding or removing the agent takes effect without
  * reconnecting. A `?project=` or `?channel=` list (bridges send one from their settings) only ever
- * narrows that: the stream hears just those channels of what the agent follows, so a bridge set up
- * for one channel never hears another's messages (a message that @mentions the agent still reaches
- * it, as everywhere), while an unsubscribe or the owner's removal still applies at once.
+ * narrows that: the stream hears just those of the channels the agent follows, so a bridge set up
+ * for one channel never hears another's channel-wide messages. A thread the agent follows and a
+ * message that @mentions it still reach it wherever they are, and an unsubscribe or the owner's
+ * removal still applies at once.
  * `*`, or no list, is no narrowing. A name that matches no channel narrows to nothing, never to all.
  */
 internal suspend fun ApplicationCall.agentStream(app: App, agent: Agents.Agent, token: String) {

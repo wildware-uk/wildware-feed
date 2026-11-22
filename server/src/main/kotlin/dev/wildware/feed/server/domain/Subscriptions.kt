@@ -19,9 +19,9 @@ import dev.wildware.feed.server.db.Ulid
  * - The owner can add an agent to a channel or a group, or remove it (migration 060). A removal
  *   sticks: posting there does not follow it again, and its own `subscribe` is refused, until the
  *   owner adds it back. An @mention still reaches it.
- * - A bridge may also name channels (`?project=`): then it hears only those of what the agent
- *   follows ([Reach.within]), so a bridge set up for one channel never hears another's messages
- *   (an @mention of the agent still reaches it, as a mention reaches it anywhere).
+ * - A bridge may also name channels (`?project=`): then it hears only those of the channels the
+ *   agent follows ([Reach.bridge]), so a bridge set up for one channel never hears another's
+ *   channel-wide messages. A thread it follows and an @mention of it still reach it anywhere.
  *
  * For each person it decides which alerts (phone push and the bell) are worth raising; each phone's
  * own alert preferences still decide whether that phone rings, see [hears]:
@@ -59,13 +59,21 @@ class Subscriptions(private val db: Database, private val clock: () -> Long = Sy
     /**
      * Which messages reach an agent, besides the @mention rule (a message naming agents reaches
      * only them): what it follows (channels, threads), of that only what is in [within] when that is
-     * given (the channels a bridge named, or get_messages reading one channel), and mentions of it
-     * anywhere. A followed message in no channel passes [within] only with [channelless].
+     * given (get_messages reading one channel), and mentions of it anywhere. With [threadsAnywhere]
+     * (a bridge that named channels, [bridge]) [within] narrows only the channels it follows, never
+     * the threads. A followed message in no channel passes [within] only with [channelless].
      */
-    data class Reach(val within: List<String>? = null, val channelless: Boolean = true) {
+    data class Reach(val within: List<String>? = null, val channelless: Boolean = true, val threadsAnywhere: Boolean = false) {
         companion object {
             /** What the agent follows, plus mentions of it. */
             val Followed = Reach()
+
+            /**
+             * What a bridge that named [within] hears: of the channels the agent follows, only those,
+             * but every thread it follows and every mention of it, wherever they are. A bridge's list
+             * narrows channel-wide traffic; it never hides a conversation the agent is in.
+             */
+            fun bridge(within: List<String>?) = Reach(within, threadsAnywhere = true)
         }
     }
 
@@ -144,14 +152,18 @@ class Subscriptions(private val db: Database, private val clock: () -> Long = Sy
             repeat(2) { args += agent(agentId) }
             HEARS_CHANNEL_SET
         }
-        val follows = "($hears OR " + followsThread(agentId, args, oneMessage) + ")"
         val within = reach.within
-        val narrowed = if (within == null) {
-            follows
-        } else {
-            args.addAll(within)
-            val inChannels = if (within.isEmpty()) "0 = 1" else "m.project_id IN (${within.joinToString(", ") { "?" }})"
-            "($follows AND (${if (reach.channelless) "m.project_id IS NULL OR " else ""}$inChannels))"
+        fun inChannels(): String {
+            args.addAll(within!!)
+            val named = if (within.isEmpty()) "0 = 1" else "m.project_id IN (${within.joinToString(", ") { "?" }})"
+            return "(${if (reach.channelless) "m.project_id IS NULL OR " else ""}$named)"
+        }
+        // Parameters go into [args] in the order their placeholders appear.
+        val narrowed = when {
+            within == null -> "($hears OR " + followsThread(agentId, args, oneMessage) + ")"
+            // A bridge's list narrows channel-wide traffic only: a thread the agent follows still reaches it.
+            reach.threadsAnywhere -> "(($hears AND " + inChannels() + ") OR " + followsThread(agentId, args, oneMessage) + ")"
+            else -> "(($hears OR " + followsThread(agentId, args, oneMessage) + ") AND " + inChannels() + ")"
         }
         // A message that @mentions the agent reaches it wherever it is, as a mention always has.
         return " AND ($narrowed OR " + namesReader(agentId, args, oneMessage) + ")"

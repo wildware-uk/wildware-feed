@@ -101,7 +101,7 @@ class SubscriptionStreamTest {
             assertEquals(joined, old.next(), "a mention reaches the agent anywhere")
             say("human", "Thanks, beta, go ahead", inP.id)
             assertEquals("Thanks, beta, go ahead", stream.next(), "a reply with no mention reaches the follower")
-            assertNull(old.next(500), "a bridge that named only q hears no followed thread in p")
+            assertEquals("Thanks, beta, go ahead", old.next(), "a followed thread reaches it even when its bridge named only q")
 
             say("human", "before beta follows", other.id)
             assertNull(stream.next(500))
@@ -180,6 +180,62 @@ class SubscriptionStreamTest {
         } finally {
             server.stop()
         }
+    }
+
+    @Test
+    fun `a bridge that names a channel still hears a thread the agent follows in another`() {
+        val app = App(config, Database.memory())
+        val server = FeedServer(app).start()
+        try {
+            val (agent, token) = app.agents.mint("worker")
+            val feed = app.feed
+            feed.projects.create("Home", null, null)
+            feed.projects.create("General", null, null)
+            tool(app, agent, "subscribe", buildJsonObject { put("channel", JsonPrimitive("home")) })
+            val bound = open(server, token, "?channel=home&client=bridge")
+
+            // The owner starts a thread in a channel the agent does not follow, naming it: it follows the thread.
+            val root = feed.messages.post(Messages.Post(author = "human", body = "@worker can you look at this?", project = "general"))
+            assertEquals("@worker can you look at this?", bound.next())
+            feed.messages.post(Messages.Post(author = "agent:${agent.id}", body = "on it", replyTo = root.id))
+
+            // A later reply with no mention still reaches it, although its bridge named only home.
+            val reply = feed.messages.post(Messages.Post(author = "human", body = "thanks, and one more thing", replyTo = root.id))
+            assertEquals("thanks, and one more thing", bound.next(), "a followed thread reaches a narrowed bridge")
+            assertEquals(setOf(reply.id), app.work.alreadyDelivered(agent.id, "bridge", listOf(reply.id)), "and its delivery is recorded")
+
+            // The rest of general is still not its business.
+            val other = feed.messages.post(Messages.Post(author = "human", body = "general chatter", project = "general"))
+            feed.messages.post(Messages.Post(author = "human", body = "a reply in someone else's thread", replyTo = other.id))
+            assertNull(bound.next(500), "channel-wide traffic outside the named channel stays out")
+            assertEquals(2, app.work.countWork(agent.id, listOf(feed.projects.resolve("home").id)).unreadMessages,
+                "the narrowed count holds the mention and the reply, nothing else")
+        } finally {
+            server.stop()
+        }
+    }
+
+    @Test
+    fun `reading one channel never marks unread lines in another as read`() {
+        val app = App(config, Database.memory())
+        val (agent, _) = app.agents.mint("worker")
+        val feed = app.feed
+        feed.projects.create("Home", null, null)
+        feed.projects.create("Work", null, null)
+        tool(app, agent, "subscribe", buildJsonObject { put("channel", JsonPrimitive("home")) })
+        tool(app, agent, "subscribe", buildJsonObject { put("channel", JsonPrimitive("work")) })
+        feed.messages.post(Messages.Post(author = "human", body = "work news", project = "work"))
+        feed.messages.post(Messages.Post(author = "human", body = "@worker over here", project = "work"))
+        feed.messages.post(Messages.Post(author = "human", body = "home news", project = "home"))
+
+        fun read(args: JsonObject) = structured(tool(app, agent, "get_messages", args))["messages"]!!.jsonArray
+            .map { it.jsonObject["body"]!!.jsonPrimitive.content }
+        // Reading home hands over the mention in work too, as a mention reaches it anywhere...
+        assertEquals(listOf("@worker over here", "home news"), read(buildJsonObject { put("channel", JsonPrimitive("home")) }))
+        // ...but the work line it was never handed is still unread. A cursor is a place in a channel,
+        // not a set of lines, so the mention after it comes again rather than the line before it being lost.
+        assertEquals(listOf("work news", "@worker over here"), read(JsonObject(emptyMap())))
+        assertEquals(emptyList(), read(JsonObject(emptyMap())))
     }
 
     @Test
