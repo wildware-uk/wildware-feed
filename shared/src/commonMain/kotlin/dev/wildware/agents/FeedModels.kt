@@ -32,7 +32,7 @@ data class ProjectView(
     val theme: ProjectTheme? = null,
     /** The project (a named group of channels) this channel is in, or null for none. */
     val groupId: String? = null,
-    /** Only the people and agents listed can see it (server migration 067). */
+    /** Only the people and agents listed can see it (server migration 068). */
     @kotlinx.serialization.SerialName("private") val isPrivate: Boolean = false,
 ) {
     val isArchived: Boolean get() = status == "archived"
@@ -50,7 +50,7 @@ data class GroupView(
     val createdAt: Long = 0,
     val updatedAt: Long = 0,
     val theme: ProjectTheme? = null,
-    /** Only the people and agents listed can see it, or any channel in it (server migration 067). */
+    /** Only the people and agents listed can see it, or any channel in it (server migration 068). */
     @kotlinx.serialization.SerialName("private") val isPrivate: Boolean = false,
 ) {
     val isArchived: Boolean get() = status == "archived"

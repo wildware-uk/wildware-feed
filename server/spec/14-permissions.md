@@ -1,6 +1,6 @@
 # 14. Permissions: who may read, post in and manage each channel and project
 
-Migration 067. Code: `domain/ChannelAccess.kt` (the rules), `db/Viewer.kt` (who a piece of work is
+Migration 068. Code: `domain/ChannelAccess.kt` (the rules), `db/Viewer.kt` (who a piece of work is
 shown to), `http/AccessRoutes.kt` (the Permissions panel). Tests: `ChannelAccessTest`,
 `ChannelAccessLeakTest`.
 
@@ -24,7 +24,7 @@ The level is the most specific of:
 4. else, when the channel **or its project is private**, `none`;
 5. else **today's rule**: admins `manage`; members and agents `post`.
 
-With no rows and nothing private, that is exactly the server before migration 067: nobody gains or
+With no rows and nothing private, that is exactly the server before migration 068: nobody gains or
 loses anything on deploy. Content in no channel (a feed post outside any channel) is everyone's.
 
 A project's own level (its panel) is its row, else `none` when it is private, else the default. A
@@ -81,7 +81,7 @@ own work inside a request (the next message `seq`, fan-out to other readers) mus
 it would have miscounted silently. SQLite needs the same rule in the queries anyway. The two new
 tables carry `team_id` and the team row policy like every other.
 
-## Data (migration 067)
+## Data (migration 068)
 
 - `projects.private`, `project_groups.private` (0 or 1, default 0): only those listed see it.
 - `channel_access`: `team_id`, `id`, `target_kind` (`channel` | `group`), `target_id`, `principal`,

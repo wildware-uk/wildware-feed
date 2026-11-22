@@ -13,7 +13,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 
 /**
- * Who may read, post in and manage each channel and project (migration 067, spec/14).
+ * Who may read, post in and manage each channel and project (migration 068, spec/14).
  *
  * A person (`member:<membership id>`) or an agent (`agent:<agent id>`) has one level on each
  * channel, the most specific that applies:

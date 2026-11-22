@@ -115,7 +115,7 @@ class Groups(private val feed: Feed) {
                 long(rs, "createdAt", "created_at")
                 long(rs, "updatedAt", "updated_at")
                 put("theme", json(rs, "theme"))
-                // Migration 067: only those listed can see it (spec/14).
+                // Migration 068: only those listed can see it (spec/14).
                 put("private", rs.getInt("private") == 1)
             }
         }
