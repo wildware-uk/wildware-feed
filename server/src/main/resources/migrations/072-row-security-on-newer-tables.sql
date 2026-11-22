@@ -1,0 +1,3 @@
+-- Migration 072: nothing on SQLite. Its twin, migrations-pg/072-row-security-on-newer-tables.sql,
+-- switches Postgres row security on for the tables added after it was first switched on. SQLite
+-- holds one team and has no row security.

@@ -148,5 +148,11 @@
   "name": "people-delete-their-account",
   "file": "071-people-delete-their-account.sql",
   "checksum": "868c1a4215250d6629ee4c3cb46bcacb40022c241bb0998e0bad1bb2b652d94d"
+ },
+ {
+  "version": 72,
+  "name": "row-security-on-newer-tables",
+  "file": "072-row-security-on-newer-tables.sql",
+  "checksum": "4cdad9807c49b4cd7248de31204ad5db5330fa1f09c615b58b13ef3862f6cf60"
  }
 ]

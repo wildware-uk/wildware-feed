@@ -495,5 +495,12 @@
   "file": "071-people-delete-their-account.sql",
   "rebuildsTables": false,
   "checksum": "5be94f6d9b3600ab5d00df92a8d7a4dddafcce0f5933d482b8f73bb4109328e1"
+ },
+ {
+  "version": 72,
+  "name": "row-security-on-newer-tables",
+  "file": "072-row-security-on-newer-tables.sql",
+  "rebuildsTables": false,
+  "checksum": "07dba67af2faaf557f463cfcae6d425acd812857d81867ae71c731185bd6bdf0"
  }
 ]

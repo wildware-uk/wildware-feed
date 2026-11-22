@@ -29,7 +29,9 @@ class App(val config: Config, val db: Database, val clock: () -> Long = System::
     private val strictBefore = dev.wildware.feed.server.db.Tenant.strict
 
     init {
-        config.rowSecurity?.let { on -> if (on != db.rowSecurity) dev.wildware.feed.server.db.TeamTables.setRowSecurity(db, on) }
+        // Every start, not only when it changes: a table a migration added since is switched on too.
+        // Tables already right are left alone.
+        config.rowSecurity?.let { on -> dev.wildware.feed.server.db.TeamTables.setRowSecurity(db, on) }
         dev.wildware.feed.server.http.OwnerCookie.hostOnly = config.multiTeam
         // With many teams, work that forgot to say its team fails, rather than landing in the home
         // team. (Config.load refuses many teams without Postgres.)
