@@ -104,6 +104,8 @@ object Icons {
         "M4 12H7", "M13 12H20", circle(10f, 12f, 2.5f),
         "M4 18H13", "M19 18H20", circle(16f, 18f, 2.5f),
     )
+    /** A speech bubble with a mark in it: feedback for the people who build the app. */
+    val Feedback = icon("feedback", "M21 15A2 2 0 0 1 19 17H7L3 21V5A2 2 0 0 1 5 3H19A2 2 0 0 1 21 5Z", "M12 7V11", "M12 14H12.01")
     val Lock = icon("lock", rect(4f, 11f, 16f, 10f, 2f), "M8 11V7A4 4 0 0 1 16 7V11")
     val Eye = icon("eye", EYE, circle(12f, 12f, 3f))
     val EyeOff = icon("eye-off", EYE, "M3 3 21 21")

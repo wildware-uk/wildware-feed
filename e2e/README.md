@@ -16,6 +16,7 @@ deletes it at the end, so files run side by side and a staging server stays clea
 | `cards` | Updates, pin, status, checklists and polls |
 | `requests` | An agent's questions: choice buttons, forms, text; Waiting on you |
 | `secrets` | An agent attaches a secret to its post; the owner reveals it in place, and the opening is audited |
+| `feedback` | The owner sends a feature request from the browser; an agent's feedback waits, the owner edits and sends it, the agent hears so (saved on the stack, which has no Sentry) |
 | `agents` | Pairing: Allow, Deny; a removed agent's token stops working |
 | `connect` | Connect an agent: copy the prompt, an agent asks to join at the address it names, Allow; nothing secret in it |
 | `settings` | Alerts on this device, sounds, dark mode |

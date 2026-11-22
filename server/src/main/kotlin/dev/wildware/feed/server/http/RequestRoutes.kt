@@ -37,6 +37,8 @@ fun Route.requestRoutes(app: App) {
             } else {
                 null
             }
+            // An agent's feedback (migration 067) is sent by an owner or an admin, and never with a secret in it.
+            app.feedback.checkAnswer(call.parameters["id"] ?: "", call.person, value)
             val request = app.requests.answer(call.parameters["id"] ?: "", value, call.person.id, shown)
             call.respondOwner(200, buildJsonObject { put("request", request.json) })
         },
@@ -44,6 +46,7 @@ fun Route.requestRoutes(app: App) {
     endpoint(
         "/api/requests/{id}",
         HttpMethod.Delete to {
+            app.feedback.checkDismiss(call.parameters["id"] ?: "", call.person)
             val request = app.requests.cancel(call.parameters["id"] ?: "", call.person.id)
             call.respondOwner(200, buildJsonObject { put("request", request.json) })
         },

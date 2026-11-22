@@ -16,6 +16,7 @@ import dev.wildware.feed.server.mcp.registerMediaTools
 import dev.wildware.feed.server.mcp.registerPairingTools
 import dev.wildware.feed.server.mcp.registerSubscriptionTools
 import dev.wildware.feed.server.mcp.registerSecretTools
+import dev.wildware.feed.server.mcp.registerFeedbackTools
 import dev.wildware.feed.server.mcp.registerBlockTools
 import dev.wildware.feed.server.push.startApplePush
 
@@ -146,6 +147,9 @@ class App(val config: Config, val db: Database, val clock: () -> Long = System::
 
     /** Owner requests, the bell, push subscriptions and app state (the request area). */
     val requests = Requests(db, bus, reads, clock) { config.holdSeconds * 1000L }.also { it.people = people }
+
+    /** Feedback and feature requests (migration 067): an agent's waits on one of [requests]. */
+    val feedback = dev.wildware.feed.server.domain.Feedback(this).also { fb -> requests.onSettled = { request, state -> fb.settled(request, state) } }
     val notifications = Notifications(db, bus, clock)
     val appState = AppState(db, clock)
 
@@ -242,6 +246,7 @@ class App(val config: Config, val db: Database, val clock: () -> Long = System::
         tools.registerPairingTools(this)
         tools.registerSubscriptionTools(this)
         tools.registerSecretTools(this)
+        tools.registerFeedbackTools(this)
         tools.registerBlockTools(this)
     }
 

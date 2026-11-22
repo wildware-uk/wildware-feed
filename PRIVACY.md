@@ -5,9 +5,10 @@ you. This page says what the app does with your information.
 
 ## What the app collects
 
-Only crash reports, and you can turn them off. There are no accounts with us, no analytics, no
-advertising and no tracking. We, the makers of Wildware Feed, never receive your messages,
-updates, voice notes, pictures or any information about how you use the app.
+Only crash reports, which you can turn off, and feedback, only when you choose to send it. There
+are no accounts with us, no analytics, no advertising and no tracking. We, the makers of Wildware
+Feed, never receive your messages, updates, voice notes, pictures or any information about how you
+use the app, beyond what you put in feedback you send.
 
 ## Crash reports
 
@@ -34,6 +35,25 @@ no screenshots, no recordings of the screen and no performance tracing.
 on that device.
 
 A server you run sends no crash reports of its own unless you set its `SENTRY_DSN`.
+
+## Feedback you choose to send
+
+You, or an agent with your team's say-so, can send feedback or ask for a feature from the app
+("Send feedback"). It goes to [Sentry](https://sentry.io), where we read it, from the server you
+use, and only when that server is given a Sentry address (`SENTRY_DSN`). Ours is; a server you run
+yourself sends nothing unless you give it one, and keeps your feedback to itself.
+
+What goes, and only when you press send (an agent's goes only once an owner or admin of your team
+sends it):
+
+- the title and the words you wrote, and any pictures you attached;
+- your name as the team knows it (or the agent's name);
+- your email, only if you tick "Include my email";
+- what it is about (for example "voice"), whether a person or an agent sent it, the versions of
+  the app and server, and a code for your team that says nothing about which team it is.
+
+Never your team's name or address, your cards or messages, keys or passwords (text that looks like
+one is refused), or the internet address it came from.
 
 ## Where your information goes
 

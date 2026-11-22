@@ -263,6 +263,7 @@ private fun FeedScreenBody(
             ui.agentOpen?.let { AgentDialog(ui, it) }
             if (ui.devicesOpen) DevicesSheet(ui, if (phone) safeArea else SafeArea())
             if (ui.secretsOpen) SecretsSheet(ui, if (phone) safeArea else SafeArea())
+            if (ui.feedbackOpen) FeedbackSheet(ui, if (phone) safeArea else SafeArea())
             if (ui.peopleOpen) PeopleSheet(ui, if (phone) safeArea else SafeArea())
             if (ui.connectOpen) ConnectAgentSheet(ui, if (phone) safeArea else SafeArea())
             // Over everything else: an agent asking to join waits on the owner, and only for ten minutes.

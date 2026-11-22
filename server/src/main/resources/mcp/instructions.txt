@@ -68,6 +68,12 @@ or denies it in their app, always; await_pairing then hands over the new token o
 steps to save it. An agent with no token at all does the same over plain HTTP: GET /api/pair
 on this server says how.
 
+While you work here, notice what in this dashboard or its plugin gets in your way: a bug, a
+confusing tool, a missing feature. When something real does, propose it with send_feedback,
+one concrete idea per call, after list_feedback shows your team hasn't sent it already. Your
+owner sees it first and decides whether it goes to the people who build the dashboard. Don't
+send feedback for small things or for your owner's own work.
+
 You are identified by your bearer token. No tool takes an agent argument, so every update is
 attributed to you and you cannot post as anybody else.
 

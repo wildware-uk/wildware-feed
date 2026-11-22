@@ -91,6 +91,11 @@ data class Config(
      * before it sends that server a key. [toString] leaves it out.
      */
     val localProofKey: String? = null,
+    /**
+     * Who sent feedback goes to, as the app and an agent's approval card name them (FEEDBACK_RECIPIENT,
+     * such as "Wildware"; server/spec/14-feedback.md). It goes to Sentry on SENTRY_DSN, or nowhere.
+     */
+    val feedbackRecipient: String? = null,
 ) {
     /** Many teams ([teamDomain] set). */
     val multiTeam: Boolean get() = teamDomain != null
@@ -298,6 +303,7 @@ data class Config(
                 behindCloudflare = behindCloudflare,
                 cloudflareRanges = cloudflareRanges,
                 cloudflareOriginSecret = originSecret,
+                feedbackRecipient = get("FEEDBACK_RECIPIENT")?.trim()?.takeIf { it.isNotEmpty() }?.take(60),
             )
         }
 

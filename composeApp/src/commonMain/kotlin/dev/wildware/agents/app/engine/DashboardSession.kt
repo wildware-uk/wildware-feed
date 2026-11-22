@@ -132,6 +132,7 @@ class DashboardSession(
 
     private val mutableDevices = MutableStateFlow(DeviceList())
     private val mutableSecrets = MutableStateFlow(SecretList())
+    private val mutableFeedback = MutableStateFlow(dev.wildware.agents.app.feed.FeedbackState())
 
     /** The people of the team, read when the session starts and when the People sheet opens. */
     private val mutableTeam = MutableStateFlow(dev.wildware.agents.app.feed.TeamState())
@@ -161,7 +162,7 @@ class DashboardSession(
         .stateIn(scope, SharingStarted.Eagerly, emptySet())
 
     /** What the state adds on top of the feed: settings, the post target, devices and the known agents. */
-    private data class Side(val extras: Extras, val postTarget: String?, val devices: Pair<DeviceList, dev.wildware.agents.app.feed.SecretList>, val known: List<dev.wildware.agents.AgentRecord>,
+    private data class Side(val extras: Extras, val postTarget: String?, val devices: Triple<DeviceList, dev.wildware.agents.app.feed.SecretList, dev.wildware.agents.app.feed.FeedbackState>, val known: List<dev.wildware.agents.AgentRecord>,
         val followsAndGroups: Pair<dev.wildware.agents.Follows, List<dev.wildware.agents.GroupView>>,
     )
 
@@ -234,10 +235,10 @@ class DashboardSession(
         dashboard.projects,
         dashboard.notifications,
         // What the owner follows rides with the projects (groups) whose levels it reads.
-        combine(combine(mutableAlerts, mutableRetention, mentionables, joining, combine(mutableConnections, mutableMembers, ::Pair)) { a, r, m, j, (c, mm) -> Extras(a, r, m, j, c, mm) }, lastProject, combine(mutableDevices, mutableSecrets, ::Pair), knownAgents,
+        combine(combine(mutableAlerts, mutableRetention, mentionables, joining, combine(mutableConnections, mutableMembers, ::Pair)) { a, r, m, j, (c, mm) -> Extras(a, r, m, j, c, mm) }, lastProject, combine(mutableDevices, mutableSecrets, mutableFeedback, ::Triple), knownAgents,
             combine(dashboard.followed, dashboard.groups, ::Pair), ::Side),
     ) { shown, everything, projects, notifications, (extras, postTarget, devicesAndSecrets, known, followsAndGroups) ->
-        val (devices, secrets) = devicesAndSecrets
+        val (devices, secrets, feedback) = devicesAndSecrets
         val (follows, groups) = followsAndGroups
         val alerts = extras.alerts
         val retention = extras.retention
@@ -246,7 +247,7 @@ class DashboardSession(
         val all = if (shown.current.slug == null) shown else mapper.map(everything, projects, emptyList(), emptyList(), null)
         // Parse what the feed will draw before handing it over, here off the UI thread, so a card
         // that scrolls into view (or arrives) finds its markdown ready instead of parsing mid-frame.
-        shown.copy(searchIndex = searchEntriesOf(all.sections), bell = mapper.bell(notifications), alerts = alerts, retention = retention, mentionable = mentionable, postTarget = postTarget, devices = devices, secrets = secrets, joining = extras.joining, connections = extras.connections, members = extras.members,
+        shown.copy(searchIndex = searchEntriesOf(all.sections), bell = mapper.bell(notifications), alerts = alerts, retention = retention, mentionable = mentionable, postTarget = postTarget, devices = devices, secrets = secrets, feedback = feedback, joining = extras.joining, connections = extras.connections, members = extras.members,
             agents = withOffline(shown.agents, known), follows = follows,
             groups = groups.map { ProjectGroup(it.id, it.slug, it.name, accent = it.theme?.accent, archived = it.isArchived) }).also { MarkdownCache.warm(markdownIn(it).asIterable()) }
     }.stateIn(scope, SharingStarted.Eagerly, mapper.map(feed.state.value, emptyList(), emptyList(), emptyList(), null))
@@ -476,6 +477,57 @@ class DashboardSession(
             if (refused.status == 404) SecretList(available = false) else before.copy(problem = "Couldn't read the secrets. ${refused.message}")
         } catch (failed: Throwable) {
             before.copy(problem = "Couldn't read the secrets. Check the connection and try again.")
+        }
+    }
+
+    /** Reads the team's feedback. A dashboard from before feedback answers 404: then there is no sheet to fill. */
+    private suspend fun loadFeedback() {
+        val before = mutableFeedback.value
+        mutableFeedback.value = try {
+            val list = client.feedback()
+            dev.wildware.agents.app.feed.FeedbackState(
+                items = list.feedback.map(::feedbackRow),
+                recipient = list.recipient,
+                sends = list.sends,
+                areas = list.areas,
+                loaded = true,
+            )
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (refused: DashboardException) {
+            if (refused.status == 404) dev.wildware.agents.app.feed.FeedbackState(loaded = true, available = false) else before.copy(problem = "Couldn't read the feedback. ${refused.message}")
+        } catch (failed: Throwable) {
+            before.copy(problem = "Couldn't read the feedback. Check the connection and try again.")
+        }
+    }
+
+    private fun feedbackRow(f: dev.wildware.agents.FeedbackItem): dev.wildware.agents.app.feed.FeedbackRow =
+        dev.wildware.agents.app.feed.FeedbackRow(
+            id = f.id,
+            kind = f.kind,
+            title = f.title,
+            body = f.body,
+            area = f.area,
+            status = f.status,
+            statusLabel = dev.wildware.agents.app.feed.feedbackStatusLabel(f.status),
+            who = if (f.author.kind == "agent") "${f.author.name} (agent)" else f.author.name,
+            time = mapper.relativeLabel(f.sentAt ?: f.createdAt),
+        )
+
+    private fun sendFeedback(draft: dev.wildware.agents.FeedbackDraft, done: (String?) -> Unit) {
+        scope.launch {
+            val problem = try {
+                client.sendFeedback(draft)
+                null
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (refused: DashboardException) {
+                refused.message ?: "The dashboard said no."
+            } catch (failed: Throwable) {
+                "Couldn't reach the dashboard. Check the connection and try again."
+            }
+            loadFeedback()
+            done(problem)
         }
     }
 
@@ -894,6 +946,8 @@ class DashboardSession(
             is FeedEvent.ClearNotifications -> dashboard.markNotificationsSeen(null)
             is FeedEvent.SetAlertPrefs -> saveAlerts(event.prefs)
             is FeedEvent.ReadMediaRetention -> scope.launch { loadRetention() }
+            is FeedEvent.ReadFeedback -> scope.launch { loadFeedback() }
+            is FeedEvent.SendFeedback -> sendFeedback(event.draft, event.done)
             is FeedEvent.ReadDevices -> scope.launch { loadDevices() }
             is FeedEvent.ReadSecrets -> scope.launch { loadSecrets(event.auditFor ?: mutableSecrets.value.auditFor) }
             is FeedEvent.AddSecret -> changeSecret(null, event.done) {
@@ -996,7 +1050,7 @@ class DashboardSession(
             is FeedEvent.LoadOlder -> scope.launch { runCatching { feed.loadOlder() } }
             is FeedEvent.RetrySend -> outbox.retryNow(event.outboxId)
             is FeedEvent.DropUnsent -> outbox.remove(event.outboxId)
-            is FeedEvent.ChooseStatus, is FeedEvent.Reply, is FeedEvent.OpenDetails, is FeedEvent.EditTags, is FeedEvent.CopyText, is FeedEvent.SelectText, is FeedEvent.CopyLink, is FeedEvent.MoveProject, is FeedEvent.SignOut, is FeedEvent.ToggleTheme -> Unit
+            is FeedEvent.ChooseStatus, is FeedEvent.Reply, is FeedEvent.OpenDetails, is FeedEvent.EditTags, is FeedEvent.FeedbackAbout, is FeedEvent.CopyText, is FeedEvent.SelectText, is FeedEvent.CopyLink, is FeedEvent.MoveProject, is FeedEvent.SignOut, is FeedEvent.ToggleTheme -> Unit
         }
     }
 

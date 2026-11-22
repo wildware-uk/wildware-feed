@@ -305,6 +305,7 @@ class Uploads(
         val ids = onDeleted + db.query(
             """SELECT id FROM media
                 WHERE team_id = :team AND update_id IS NULL AND message_id IS NULL AND request_id IS NULL AND task_id IS NULL
+                  AND feedback_id IS NULL
                   AND status IN ('ready', 'pending', 'failed')
                   AND created_at < ?
                   AND id NOT IN (${logoIds()})

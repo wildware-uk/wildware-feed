@@ -77,6 +77,8 @@ data class NewRequest(
     val refs: List<CardRef>? = null,
     /** Blocks drawn on the question (migration 057), as the agent wrote them. */
     val blocks: List<JsonElement>? = null,
+    /** The feedback this question asks the owner to send (migration 067); set by the server, never by an agent. */
+    val feedbackId: String? = null,
 )
 
 data class NewEmbed(val type: String, val data: JsonElement?, val sourceUrl: String?)
@@ -198,6 +200,12 @@ class Requests(
     /** Names people for "Sam already answered this" (migration 055); set by the app. */
     var people: People? = null
 
+    /**
+     * Told of every request once it is settled (answered, dismissed, withdrawn or timed out), on the
+     * settling thread and team, after `request.answered` is out. Feedback hangs off it (migration 067).
+     */
+    var onSettled: ((OwnerRequest, String) -> Unit)? = null
+
     /** A person answers (`POST /api/requests/:id/answer`); [by] is their membership. The first answer wins. */
     /** Which version of a question the person answering was shown: its editedAt, null when never edited. */
     data class Shown(val editedAt: Long?)
@@ -280,6 +288,8 @@ class Requests(
         val question = input.question?.let { requiredText(it, "question", QUESTION_MAX_LENGTH) }
         val detail = if (input.detailGiven) optionalText(input.detail, "detail", DETAIL_MAX_LENGTH) else null
         val optionsGiven = input.options != null
+        // A feedback question's buttons are the server's (migration 067): the first sends it.
+        if (optionsGiven && request.config?.containsKey("feedbackId") == true) throw invalid("a feedback question's buttons can't be changed")
         val newOptions = if (optionsGiven) assertOptions(request.kind, input.options) else null
         val options = if (optionsGiven) newOptions ?: request.options else request.options
 
@@ -410,6 +420,13 @@ class Requests(
             put("state", state)
             put("settledAt", Wire.isoOf(request.answeredAt ?: clock()))
         })
+        onSettled?.let { hook ->
+            try {
+                hook(request, state)
+            } catch (e: Exception) {
+                System.err.println("request settle hook failed for ${request.id}: $e")
+            }
+        }
         return request
     }
 
@@ -497,6 +514,7 @@ class Requests(
             if (kind == "secret") throw invalid("a secret request takes no default")
             config["default"] = JsonPrimitive(fallback)
         }
+        input.feedbackId?.let { config["feedbackId"] = JsonPrimitive(it) }
         if (kind == "secret") {
             config["secretName"] = JsonPrimitive(input.secretName ?: throw invalid("a secret request names the secret it asks for"))
         } else if (input.secretName != null) {

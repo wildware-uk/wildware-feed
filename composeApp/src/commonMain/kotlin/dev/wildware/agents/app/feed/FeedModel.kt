@@ -647,6 +647,8 @@ data class FeedState(
     val members: Map<String, MemberList> = emptyMap(),
     /** The dashboard's secrets, without values, read when the Secrets sheet opens. */
     val secrets: SecretList = SecretList(),
+    /** The team's feedback and feature requests, read when the Feedback sheet opens. */
+    val feedback: FeedbackState = FeedbackState(),
     /** Agents asking to join, oldest first: each waits on the owner to allow or deny it. */
     val joining: List<JoinRequest> = emptyList(),
     /** Projects: named groups of channels, by name. */
@@ -697,6 +699,36 @@ data class RetentionSettings(
     val saving: Boolean = false,
     val problem: String? = null,
     val saves: Int = 0,
+)
+
+/**
+ * The team's feedback, newest first, as the Feedback sheet shows it. [recipient] is who it goes to,
+ * in the dashboard's words; [sends] is false where the dashboard only saves it. [available] is false
+ * on a dashboard from before feedback.
+ */
+@Immutable
+data class FeedbackState(
+    val items: List<FeedbackRow> = emptyList(),
+    val recipient: String = "",
+    val sends: Boolean = false,
+    val areas: List<String> = emptyList(),
+    val loaded: Boolean = false,
+    val available: Boolean = true,
+    val problem: String? = null,
+)
+
+/** One item, ready to show: [status] as the dashboard has it, [statusLabel] in words. */
+@Immutable
+data class FeedbackRow(
+    val id: String,
+    val kind: String,
+    val title: String,
+    val body: String,
+    val area: String?,
+    val status: String,
+    val statusLabel: String,
+    val who: String,
+    val time: String,
 )
 
 /** The devices signed in as the owner: this one first, then the rest by when they were last used. */

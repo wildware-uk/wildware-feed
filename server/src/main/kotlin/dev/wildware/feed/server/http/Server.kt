@@ -134,6 +134,7 @@ fun Application.feed(app: App, placeOf: (ApplicationCall) -> Place = { Hosts.pla
         mediaRoutes(app)
         pairingRoutes(app)
         secretRoutes(app)
+        feedbackRoutes(app)
         oauthRoutes(app)
         ticketRoutes(app)
         adminRoutes(app)

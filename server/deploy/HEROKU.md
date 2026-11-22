@@ -82,6 +82,11 @@ comma-separated, while one is changed). `CONTROL_PLANE_ORIGIN` is the control pl
 the only page allowed to sign a browser in with a ticket. With `TEAM_DOMAIN` set the server needs
 Postgres and turns row security on by itself.
 
+Feedback (server/spec/14-feedback.md) goes to Sentry's user feedback on the same `SENTRY_DSN` as
+crash reports; without it, feedback is only saved on the server. `FEEDBACK_RECIPIENT` is the name
+the apps and an agent's approval card give the people it goes to (such as `Wildware`; unset, "the
+people who run this server").
+
 If `TEAM_DOMAIN` itself is another site (a marketing page), `ADMIN_HOST` names one more address that
 serves the admin API, such as `admin.<TEAM_DOMAIN>` (under `TEAM_DOMAIN` it must be a name no team
 may take). With Cloudflare in front of some addresses and not others, set `BEHIND_CLOUDFLARE=on`

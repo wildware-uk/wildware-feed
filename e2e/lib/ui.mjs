@@ -89,19 +89,42 @@ export async function tap(page, role, name, { button = 'left', scrollAt } = {}) 
     await page.waitForTimeout(250);
 }
 
-/** Types [text] into the box labelled [name]. */
-export async function typeInto(page, name, text) {
-    await tap(page, 'textbox', name);
-    await page.keyboard.type(text, { delay: 15 });
+/** What the box labelled [name] holds now: the tree mirrors it as the box's text. */
+async function boxText(page, name) {
+    const box = await find(page, 'textbox', name);
+    return box.evaluate((e) => e.textContent ?? '');
 }
 
-/** Replaces what the box labelled [name] holds with [text]. */
+/**
+ * Waits until the box labelled [name] holds exactly [want], so nothing is sent while the app is
+ * still catching up with the keys (a slow machine draws them late). It never types again: a key the
+ * app lost is a bug for people too, so the test fails and says what the box held instead.
+ */
+async function expectBox(page, name, want) {
+    // A password box shows dots: then it is right when there are as many dots as characters.
+    const shows = async () => {
+        const text = await boxText(page, name);
+        return /^[•●*]+$/.test(text) && want.length > 0 ? (text.length === want.length ? want : text) : text;
+    };
+    await expect.poll(shows, { timeout: 30_000, message: `the box "${name}" should hold what was typed (keys lost or never drawn)` }).toBe(want);
+}
+
+/** Types [text] into the box labelled [name], after what it holds; returns once the box shows it all. */
+export async function typeInto(page, name, text) {
+    const before = await boxText(page, name);
+    await tap(page, 'textbox', name);
+    await page.keyboard.type(text, { delay: 15 });
+    await expectBox(page, name, before + text);
+}
+
+/** Replaces what the box labelled [name] holds with [text]; returns once the box shows exactly that. */
 export async function replaceText(page, name, text) {
     await tap(page, 'textbox', name);
     await page.keyboard.press('Control+a');
-    // A key typed straight after select-all can be lost.
+    // A key typed straight after select-all can be lost (the select-all itself lands late).
     await page.waitForTimeout(250);
     await page.keyboard.type(text, { delay: 15 });
+    await expectBox(page, name, text);
 }
 
 /** The web app at [address], drawn and settled. */

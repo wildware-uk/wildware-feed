@@ -118,5 +118,11 @@
   "name": "secrets-shared-in-a-thread",
   "file": "066-secrets-shared-in-a-thread.sql",
   "checksum": "4b5efa61cbe0ad7903efd77fb2cb467fab9130de1a9567dc5b921a1c167187cf"
+ },
+ {
+  "version": 67,
+  "name": "feedback",
+  "file": "067-feedback.sql",
+  "checksum": "78e18c5d8327fccaec67e3afa9bbcf7dc3eb72c117c1a4c9108ae6a533816b17"
  }
 ]

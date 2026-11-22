@@ -21,6 +21,8 @@ object CrashReports {
         val dsn = env["SENTRY_DSN"]?.trim().orEmpty()
         if (dsn.isEmpty()) return false
         Sentry.init { options -> options.forCrashReports(dsn, env["SENTRY_ENVIRONMENT"]?.trim()?.ifEmpty { null } ?: "production") }
+        // Feedback someone chose to send goes to the same project's user feedback (server/spec/14-feedback.md).
+        FeedbackReports.useSentry()
         reporter = { error, method, route ->
             Sentry.captureException(error) { scope ->
                 scope.setTag("http.method", method)
@@ -50,6 +52,8 @@ object CrashReports {
         isSendClientReports = false
         logs.isEnabled = false
         beforeSend = SentryOptions.BeforeSendCallback { event, _ -> scrub(event) }
+        // Feedback keeps its words (they were sent on purpose) and loses the rest.
+        beforeSendFeedback = SentryOptions.BeforeSendCallback { event, _ -> FeedbackReports.scrub(event) }
         // Nothing records breadcrumbs on the server; any that appear could carry anything.
         beforeBreadcrumb = SentryOptions.BeforeBreadcrumbCallback { _, _ -> null }
     }

@@ -126,7 +126,7 @@ fun keyboardShortcuts(mac: Boolean, web: Boolean): List<ShortcutGroup> {
 /** Whether a sheet, menu, picker or dialog is over the feed. */
 internal val FeedUi.overlayOpen: Boolean
     get() = viewer != null || playing != null || commandOpen || bellOpen || alertsOpen || retentionOpen ||
-        devicesOpen || secretsOpen || peopleOpen || connectOpen || statusPick != null || menu != null || selecting != null ||
+        devicesOpen || secretsOpen || feedbackOpen || peopleOpen || connectOpen || statusPick != null || menu != null || selecting != null ||
         tagging != null || deleting != null || projectDialog != null || agentOpen != null || shortcutsOpen
 
 /** Closes whatever is on top of the feed; false when nothing was. */
@@ -144,6 +144,7 @@ internal fun FeedUi.closeTopOverlay(): Boolean {
         retentionOpen -> retentionOpen = false
         devicesOpen -> devicesOpen = false
         secretsOpen -> secretsOpen = false
+        feedbackOpen -> feedbackOpen = false
         peopleOpen -> peopleOpen = false
         connectOpen -> connectOpen = false
         projectDialog != null -> projectDialog = null
@@ -373,6 +374,11 @@ fun ShortcutsSheet(ui: FeedUi, safeArea: SafeArea, mac: Boolean = shortcutsUseCo
                 groups.forEach { group ->
                     SectionLabel(group.title, Modifier.padding(top = 14.dp, bottom = 6.dp))
                     group.shortcuts.forEach { ShortcutRow(it) }
+                }
+                // Something missing, or in the way? Say so from here too.
+                Row(Modifier.fillMaxWidth().padding(top = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Missing something, or something in the way?", Modifier.weight(1f), color = colors.textMuted, style = AgentTheme.type.body)
+                    AppButton("Send feedback", ButtonTone.Secondary, icon = Icons.Feedback) { ui.openFeedback(FeedbackCompose()) }
                 }
             }
         }

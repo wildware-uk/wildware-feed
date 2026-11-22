@@ -558,3 +558,4 @@ private suspend fun ApplicationCall.usageSince(app: App): Int {
         put("nextCursor", next?.let(::JsonPrimitive) ?: JsonNull)
     })
 }
+

@@ -577,6 +577,28 @@ class DashboardClient(
         http.delete("api/devices/${deviceId.encodeURLPathPart()}") { authorise() }.requireSuccess()
     }
 
+    // --- Feedback (server/spec/14-feedback.md) -----------------------------------------------
+
+    /** The team's feedback, newest first. A dashboard from before feedback answers 404. */
+    @Throws(Exception::class)
+    suspend fun feedback(): FeedbackList = http.get("api/feedback") { authorise() }.decoded()
+
+    /** Sends feedback or a feature request. A refusal is a [DashboardException] in the dashboard's own words. */
+    @Throws(Exception::class)
+    suspend fun sendFeedback(draft: FeedbackDraft): FeedbackItem =
+        http.post("api/feedback") {
+            authorise()
+            jsonBody(buildJsonObject {
+                put("kind", draft.kind)
+                if (draft.area != null) put("area", draft.area)
+                put("title", draft.title)
+                put("body", draft.body)
+                if (draft.card != null) put("card", buildJsonObject { put("kind", draft.card.kind); put("id", draft.card.id) })
+                if (draft.includeEmail) put("includeEmail", true)
+                if (draft.client != null) put("client", draft.client)
+            })
+        }.decoded<FeedbackBody>().feedback
+
     // --- Secrets (docs/SECRETS.md) ------------------------------------------------------------
 
     /** The dashboard's secrets, without values. A dashboard from before secrets answers 404. */

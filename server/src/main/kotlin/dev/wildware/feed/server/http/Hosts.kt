@@ -59,13 +59,15 @@ object Suspension {
         "/api/devices/sign-in", "/api/devices/sign-out", "/api/devices/ticket", "/auth/ticket", "/oauth/token", "/oauth/revoke",
         "/api/notifications/seen", "/api/notifications/cards-seen", "/api/notifications/handled", "/api/devices/current",
         "/setup", "/mcp",
+        // Feedback stays open: a suspended team may well have something to tell the product team.
+        "/api/feedback",
     )
 
     /** The MCP tools that only read (or keep an agent's own presence), allowed while suspended. */
     val READ_ONLY_TOOLS = setOf(
         "list_projects", "list_work", "list_tags", "get_card_fields", "get_messages", "await_request", "list_embed_types",
         "list_apps", "list_subscriptions", "list_secrets", "secret_url", "register_session", "heartbeat", "end_session",
-        "acknowledge", "await_pairing",
+        "acknowledge", "await_pairing", "list_feedback",
     )
 
     fun refuses(call: ApplicationCall): Boolean {

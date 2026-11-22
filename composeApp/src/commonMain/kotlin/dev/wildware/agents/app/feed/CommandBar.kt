@@ -244,6 +244,10 @@ private fun commandsFor(
         if (state.secrets.available && wanted("Secrets", "keys", "passwords", "tokens", "settings")) {
             add(Command("Actions", "Secrets", "Keys and passwords shared with agents", Icons.Lock, done { ui.secretsOpen = true }))
         }
+        if (wanted("Send feedback", "feedback", "feature request", "idea", "bug", "report a problem", "suggest")) {
+            add(Command("Actions", "Send feedback", "Tell the people who build this what's missing or in the way", Icons.Feedback, done { ui.openFeedback(FeedbackCompose()) }))
+            add(Command("Actions", "Feedback sent", "What your team has sent, and the answers", Icons.Feedback, done { ui.openFeedback() }))
+        }
         if (wanted("Switch theme", "dark", "light")) add(Command("Actions", "Switch light or dark", "", Icons.Moon, done { ui.emit(FeedEvent.ToggleTheme) }))
         if (sounds != null && wanted("Sounds", "mute", "quiet", "settings")) {
             val on = sounds.enabled.value

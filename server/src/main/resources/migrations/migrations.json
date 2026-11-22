@@ -460,5 +460,12 @@
   "file": "066-secrets-shared-in-a-thread.sql",
   "rebuildsTables": false,
   "checksum": "ec379fefc915b819bfb135197946cec3d6f0a484f715bfbf37352e4f5c26bd24"
+ },
+ {
+  "version": 67,
+  "name": "feedback",
+  "file": "067-feedback.sql",
+  "rebuildsTables": false,
+  "checksum": "49bd2e99dc8d95d81c87cc1f4f27a2f9719ab0c2193c1bbb7f75a81f4a310ac3"
  }
 ]

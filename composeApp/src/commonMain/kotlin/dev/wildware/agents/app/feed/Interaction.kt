@@ -138,6 +138,14 @@ sealed interface FeedEvent {
     data class SetAlertPrefs(val prefs: AlertPrefs?) : FeedEvent
     /** Read how long the dashboard keeps media again, after a read that failed. */
     data object ReadMediaRetention : FeedEvent
+    /** Read the team's feedback and feature requests, for the Feedback sheet. */
+    data object ReadFeedback : FeedEvent
+    /** Send feedback or a feature request. [done] hears null once sent, or why not. */
+    class SendFeedback(val draft: dev.wildware.agents.FeedbackDraft, val done: (String?) -> Unit = {}) : FeedEvent {
+        override fun toString() = "SendFeedback(${draft.kind})"
+    }
+    /** "Feedback…" on a card's menu: the Feedback sheet opens to write about that card. */
+    data class FeedbackAbout(val targetId: String) : FeedEvent
     /** Read the dashboard's secrets, without values, for the Secrets sheet; and one secret's audit when [auditFor] is set. */
     data class ReadSecrets(val auditFor: String? = null) : FeedEvent
     /** Add a secret. [done] hears null once stored, or why not. [toString] leaves the value out. */
@@ -357,6 +365,17 @@ data class ScreenPreview(
     val addingSecret: Boolean = false,
     /** A secret shown in the clear, for a screenshot of what Reveal looks like. */
     val revealedSecret: String? = null,
+    /** The Feedback sheet, open: on the team's list, or writing [feedbackCompose]. */
+    val feedbackOpen: Boolean = false,
+    val feedbackCompose: FeedbackCompose? = null,
+)
+
+/** The Feedback sheet's form, open: about [card] (shown as [cardLabel]) when it came from a card's menu. */
+@Immutable
+data class FeedbackCompose(
+    val card: dev.wildware.agents.FeedbackCard? = null,
+    val cardLabel: String? = null,
+    val area: String? = null,
 )
 
 /**
@@ -463,6 +482,36 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
     var devicesOpen by mutableStateOf(preview.devicesOpen)
     /** The Secrets sheet: what the dashboard keeps for agents, and who has used it. */
     var secretsOpen by mutableStateOf(preview.secretsOpen)
+
+    /** The Feedback sheet: what the team has sent the people who build the dashboard. */
+    var feedbackOpen by mutableStateOf(preview.feedbackOpen)
+    /** The Feedback sheet's form, when it is being written; null shows the list. */
+    var feedbackCompose by mutableStateOf(preview.feedbackCompose)
+
+    /** Opens the Feedback sheet, on its form ([compose]) or its list. */
+    fun openFeedback(compose: FeedbackCompose? = null) {
+        menu = null
+        alertsOpen = false
+        shortcutsOpen = false
+        feedbackCompose = compose
+        feedbackOpen = true
+    }
+
+    /** The card [targetId] as the server names it, and a few words to show for it. */
+    internal fun feedbackCardFor(targetId: String): FeedbackCompose {
+        for (item in state.sections.asSequence().flatMap { it.items }) {
+            val words: (String) -> String = { text -> dev.wildware.agents.PlainText.fromMarkdown(text).lineSequence().firstOrNull { it.isNotBlank() }.orEmpty().take(80) }
+            if (item.id == targetId) {
+                return when (item) {
+                    is FeedItem.Update -> FeedbackCompose(dev.wildware.agents.FeedbackCard("update", item.id), item.title.ifBlank { words(item.body) })
+                    is FeedItem.Post -> FeedbackCompose(dev.wildware.agents.FeedbackCard("message", item.id), words(item.body))
+                    is FeedItem.Question -> FeedbackCompose(dev.wildware.agents.FeedbackCard("request", item.id), item.prompt.take(80))
+                }
+            }
+            if (item is Threaded) item.replies.firstOrNull { it.id == targetId }?.let { return FeedbackCompose(dev.wildware.agents.FeedbackCard("message", it.id), words(it.body)) }
+        }
+        return FeedbackCompose()
+    }
 
     /** The People sheet: who is in the team, inviting, roles and removing. */
     var peopleOpen by mutableStateOf(preview.peopleOpen)
@@ -858,6 +907,10 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
         if (event is FeedEvent.OpenDetails) {
             detailsOpen += event.targetId
             menu = null
+            return
+        }
+        if (event is FeedEvent.FeedbackAbout) {
+            openFeedback(feedbackCardFor(event.targetId))
             return
         }
         if (event is FeedEvent.EditTags) {

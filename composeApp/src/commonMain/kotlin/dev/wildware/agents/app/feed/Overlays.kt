@@ -133,6 +133,7 @@ private fun menuRows(target: MenuTarget, phone: Boolean = false, save: ((List<Fi
     target.following?.let { following ->
         add(MenuRow(if (following) "Unfollow thread" else "Follow thread", if (following) Icons.BellOff else Icons.Bell, false, FeedEvent.FollowThread(target.id, !following)))
     }
+    add(MenuRow("Feedback…", Icons.Feedback, false, FeedEvent.FeedbackAbout(target.id)))
     if (target.deletable) add(MenuRow("Delete", Icons.Trash, true, FeedEvent.Delete(target.id)))
 }
 
@@ -587,6 +588,10 @@ fun ProjectsDrawer(ui: FeedUi, progress: EdgeProgress, widthPx: Float, safeArea:
                     close()
                     open()
                 }
+            }
+            SheetRow("Send feedback", Icons.Feedback, destructive = false) {
+                close()
+                ui.openFeedback(FeedbackCompose())
             }
             SheetRow(signOutLabel(LocalTeams.current, LocalDemo.current), Icons.SignOut, destructive = false) { ui.emit(FeedEvent.SignOut) }
         }

@@ -172,6 +172,9 @@ class TeamLeakTest {
         val shared = JsonArray(listOf(JsonPrimitive(if (lookAlike) "KEY_TWO" else "KEY_TWO_" + m.uppercase())))
         tool(team, t, "post_message", args("update_id" to update, "body" to "Key $m", "secrets" to shared)).let { assertTrue("\"isError\":true" !in it, it) }
         send(team, k, "POST", "/api/requests/$request/answer", """{"value":true}""")
+        // Feedback (migration 067): a person's, sent, and an agent's, waiting on its owner.
+        assertEquals(201, send(team, k, "POST", "/api/feedback", """{"kind":"feedback","area":"feed","title":"Feedback $m","body":"Words $m","card":{"kind":"update","id":"$update"}}""").status.value)
+        tool(team, t, "send_feedback", args("kind" to "feature_request", "title" to "Idea $m", "body" to "Idea $m", "update_id" to update)).let { assertTrue("\"isError\":true" !in it, it) }
         tool(team, t, "request_input", args("kind" to "text", "question" to "Name $m?", "project" to slug, "timeout_s" to 3600))
         send(team, k, "POST", "/api/messages", """{"project":"$slug","body":"Owner post $m"}""")
         send(team, k, "PUT", "/api/cards/update/$update/follow", """{"follow":true}""")
@@ -202,6 +205,7 @@ class TeamLeakTest {
             "project" to ids("projects"), "group" to ids("project_groups"), "tag" to ids("tags"), "device" to ids("owner_devices"),
             "agent" to ids("agents"), "invite" to ids("invites"), "person" to ids("memberships"), "pairing" to ids("agent_pairings"),
             "secret" to ids("secrets"), "media" to ids("media"), "view" to ids("app_views"), "session" to ids("sessions"),
+            "feedback" to ids("feedback"),
             "token" to team.tokens,
         )
     }
@@ -224,6 +228,7 @@ class TeamLeakTest {
             pattern.startsWith("/api/pair") -> "pairing"
             pattern.startsWith("/api/secrets") -> "secret"
             pattern.startsWith("/api/tags") -> "tag"
+            pattern.startsWith("/api/feedback") -> "feedback"
             pattern.contains("media") -> "media"
             else -> null
         }
@@ -248,7 +253,7 @@ class TeamLeakTest {
         return buildJsonObject {
             put("id", pick("update")); put("update_id", pick("update")); put("updateId", pick("update"))
             put("message_id", pick("message")); put("messageId", pick("message")); put("answers", pick("message"))
-            put("request_id", pick("request")); put("requestId", pick("request"))
+            put("request_id", pick("request")); put("requestId", pick("request")); put("feedbackId", pick("feedback")); put("feedback_id", pick("feedback"))
             put("project", pick("project")); put("projectId", pick("project")); put("channel", pick("project")); put("group", pick("group"))
             put("view_id", pick("view")); put("session_id", pick("session")); put("pairing_id", pick("pairing")); put("poll_secret", pick("token"))
             put("tag", pick("tag")); put("tagId", pick("tag")); put("media_ids", JsonArray(listOf(JsonPrimitive(pick("media")))))

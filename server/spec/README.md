@@ -40,6 +40,7 @@ for those parts are tagged `tsOnly`.
 | [09-web-frontend.md](09-web-frontend.md) | The five SvelteKit pages, their server loads and form actions, static assets, the service worker, what the browser calls, and options for serving the site from Kotlin |
 | [10-embedding.md](10-embedding.md) | What the server needs beyond plain code (native modules, ffmpeg, files, secrets, ports, proxy, service, agent setup) and what a desktop app hosting it would do about each |
 | [11-oauth.md](11-oauth.md) | OAuth 2.1 for MCP clients (Kotlin only): discovery metadata, client registration, the authorize page, tokens and refresh, and how an access token stands in for an agent token |
+| [14-feedback.md](14-feedback.md) | Feedback and feature requests (migration 067): people send, agents propose and their team approves, the admin API and the operator's channel |
 
 ## Rules that cut across every file
 

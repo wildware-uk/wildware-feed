@@ -52,6 +52,8 @@ object Access {
         "POST /api/apps/{view}/state" to M,
         "POST /api/cards/{kind}/{id}/blocks/{block}/check" to M,
         "POST /api/cards/{kind}/{id}/blocks/{block}/vote" to M,
+        "GET /api/feedback" to M,
+        "POST /api/feedback" to M,
 
         // Your own follows, bell and devices.
         "GET /api/cards/{kind}/{id}/followers" to M,
