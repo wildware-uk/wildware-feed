@@ -467,15 +467,39 @@ internal fun Modifier.sidebarGestures(
                 val slop = viewConfiguration.touchSlop
                 val touch = down.type != PointerType.Mouse
                 if (touch) {
-                    // A tap, or a scroll, is left to the row and the list: only a hold is ours.
-                    val early = withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis) {
-                        while (true) {
-                            val c = awaitPointerEvent(PointerEventPass.Initial).changes.firstOrNull { it.id == down.id } ?: return@withTimeoutOrNull Unit
-                            if (!c.pressed || c.isConsumed || (c.position - down.position).getDistance() > slop) return@withTimeoutOrNull Unit
+                    // A tap, or a scroll, is left to the row and the list: only a hold is ours. Whether
+                    // it was a hold is read from the events' own times, never from a timer, so a tap
+                    // always taps, however late this code runs; the timer only buzzes on time.
+                    val heldAt = down.uptimeMillis + viewConfiguration.longPressTimeoutMillis
+                    var buzzed = false
+                    while (true) {
+                        val event = if (buzzed) awaitPointerEvent(PointerEventPass.Initial)
+                        else withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis) { awaitPointerEvent(PointerEventPass.Initial) }
+                        if (event == null) {
+                            buzzed = true
+                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            continue
                         }
+                        val c = event.changes.firstOrNull { it.id == down.id } ?: return@awaitEachGesture
+                        if (c.isConsumed) return@awaitEachGesture
+                        val held = c.uptimeMillis >= heldAt
+                        val moved = (c.position - down.position).getDistance() > slop
+                        if (!c.pressed) {
+                            // Let go: a tap is the row's; after a hold, the menu, and the row isn't also tapped.
+                            if (held && !moved) {
+                                c.consume()
+                                menu(down.position)
+                            }
+                            return@awaitEachGesture
+                        }
+                        if (!held) {
+                            if (moved) return@awaitEachGesture
+                            continue
+                        }
+                        // Held: what follows is ours.
+                        c.consume()
+                        if (moved && canDrag) break
                     }
-                    if (early != null) return@awaitEachGesture
-                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                 } else if (!canDrag || !currentEvent.buttons.isPrimaryPressed) {
                     return@awaitEachGesture
                 }
