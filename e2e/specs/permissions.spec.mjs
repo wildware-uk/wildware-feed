@@ -2,7 +2,7 @@
 // member stops seeing it anywhere, the owner gives them Read, and they can read it but not post.
 import { expect, test } from '@playwright/test';
 import { Team } from '../lib/team.mjs';
-import { expectShown, nextResponse, openChannel, reload, screenText, signedIn, tap } from '../lib/ui.mjs';
+import { expectShown, has, nextResponse, openChannel, reload, screenText, signedIn, tap } from '../lib/ui.mjs';
 
 test.describe.configure({ mode: 'serial' });
 let team;
@@ -61,9 +61,9 @@ test('the owner gives the member Read, and they can read it but not post', async
     const page = await signedIn(browser, team.owner);
     await openPermissions(page, 'Vault');
     // The owner's own row can't be changed, so the first level choices are Sam's. (The web app's
-    // accessibility tree names tick boxes and chips as buttons, as the settings spec taps them.)
+    // accessibility tree names a tick box as a button, as the settings spec taps it; a chip may be a tab.)
     const saved = nextResponse(page, /^\/api\/projects\/[^/]+\/access\/member\/[^/]+$/, 'PUT');
-    await tap(page, 'button', 'Read');
+    await tap(page, (await has(page, 'button', 'Read')) ? 'button' : 'tab', 'Read');
     expect((await saved).status()).toBe(200);
     await expectShown(page, 'Read · Set here');
     await page.context().close();
