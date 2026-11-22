@@ -231,14 +231,14 @@ class SidebarArrangeTest {
     fun `a channel's menu offers everything to an owner`() = runDesktopComposeUiTest(1280, 900) {
         desktop()
         menuOn("website")
-        shows("Open", "Mark read", "Mute", "Move to project…", "Rename…", "Channel settings", "Copy link", "Archive")
+        shows("Open", "Mark read", "Mute", "Move to project…", "Rename…", "Channel settings", "Permissions…", "Copy link", "Archive")
     }
 
     @Test
     fun `a member's channel menu leaves out what only an admin may do`() = runDesktopComposeUiTest(1280, 900) {
         desktop(role = "member")
         menuOn("website")
-        shows("Open", "Mark read", "Mute", "Channel settings", "Copy link")
+        shows("Open", "Mark read", "Mute", "Channel settings", "Permissions…", "Copy link")
         hides("Move to project…", "Rename…", "Archive")
     }
 
@@ -246,7 +246,7 @@ class SidebarArrangeTest {
     fun `a project's menu`() = runDesktopComposeUiTest(1280, 900) {
         desktop()
         menuOn("Mobile")
-        shows("Rename…", "New channel here", "Collapse", "Mute all", "Project settings", "Delete project…")
+        shows("Rename…", "New channel here", "Collapse", "Mute all", "Project settings", "Permissions…", "Delete project…")
     }
 
     @Test

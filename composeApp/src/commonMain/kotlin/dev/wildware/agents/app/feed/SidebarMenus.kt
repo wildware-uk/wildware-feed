@@ -105,7 +105,8 @@ internal fun sideMenuRows(
             if (may && !p.archived) add(SideRow("Move to project…", Icons.Inbox) { ui.projectDialog = ProjectDialog.MoveChannel(p.id) })
             if (may) add(SideRow("Rename…", Icons.Pencil) { ui.projectDialog = ProjectDialog.Rename(p.id, group = false) })
             add(SideRow("Channel settings", Icons.Settings) { ui.projectDialog = ProjectDialog.Settings(p.id) })
-            // Permissions… goes here (the channel-permissions change adds it).
+            // Everyone who can see it: the panel is read-only without Manage (spec/15).
+            add(SideRow("Permissions…", Icons.Lock) { ui.projectDialog = ProjectDialog.Permissions(p.id) })
             add(SideRow("Copy link", Icons.Link) { copy(link(slug)); ui.toast = "Link copied" })
             if (may) add(SideRow(if (p.archived) "Unarchive" else "Archive", Icons.Inbox) { ui.emit(FeedEvent.ArchiveProject(slug, !p.archived)) })
         }
@@ -121,7 +122,7 @@ internal fun sideMenuRows(
                 add(SideRow("Mute all", Icons.BellOff) { ui.emit(FeedEvent.SetGroupNotify(g.id, g.slug, NotifyLevel.Muted)) })
             }
             add(SideRow("Project settings", Icons.Settings) { ui.projectDialog = ProjectDialog.GroupSettings(g.id) })
-            // Permissions… goes here (the channel-permissions change adds it).
+            add(SideRow("Permissions…", Icons.Lock) { ui.projectDialog = ProjectDialog.GroupPermissions(g.id) })
             if (may) add(SideRow("Delete project…", Icons.Trash, destructive = true) { ui.projectDialog = ProjectDialog.DeleteGroup(g.id) })
         }
         is SideTarget.Agent -> buildList {
