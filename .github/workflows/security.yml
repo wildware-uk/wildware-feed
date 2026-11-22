@@ -45,8 +45,10 @@ jobs:
           rm gitleaks.tar.gz
       - name: Scan the history for secrets
         timeout-minutes: 5
-        # --redact keeps any value it finds out of the log.
-        run: '"$RUNNER_TEMP/gitleaks" git . --redact --no-banner --exit-code 1'
+        # --redact keeps any value it finds out of the log. --log-opts=HEAD scans the history of
+        # the commit being checked only; by default gitleaks reads every fetched branch, so one
+        # unmerged branch could fail every other pull request and merge train.
+        run: '"$RUNNER_TEMP/gitleaks" git . --log-opts=HEAD --redact --no-banner --exit-code 1'
 
   # OSV-Scanner over every lockfile. The repo keeps no Gradle lockfiles, so this job writes
   # them first from the classpaths that ship (see .github/scripts/osv-lockfiles.init.gradle).
