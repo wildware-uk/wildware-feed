@@ -135,6 +135,7 @@ class ImageViewerTest {
             scroll(1f)
         }
         assertTrue(rect().width < fittedAt.width, "scrolling down zooms out: $fittedAt then ${rect()}")
+        onNodeWithText("1 / 3").assertExists()
         // From 100% the picture is bigger than the window both ways, so nothing holds it in the middle.
         onNodeWithContentDescription("Actual size").performClick()
         val before = rect()
@@ -147,6 +148,7 @@ class ImageViewerTest {
         }
         val after = rect()
         assertTrue(after.width > before.width * 1.1f, "zoomed in: $before then $after")
+        onNodeWithText("1 / 3").assertExists()
         assertTrue(near((at.x - after.left) / after.width, fx, 0.002f), "the point under the pointer stays put (x): $before then $after")
         assertTrue(near((at.y - after.top) / after.height, fy, 0.002f), "the point under the pointer stays put (y): $before then $after")
     }

@@ -75,13 +75,13 @@ class PolishTest {
     fun aCardsPicturesOpenAndSwipeFromOneToTheNext() = runDesktopComposeUiTest(1440, 900) {
         desktop(startAt = "u2")
         onNodeWithContentDescription("Picture 1 of 3", substring = true).performClick()
-        waitUntil { onAllNodes(hasText("1 of 3")).fetchSemanticsNodes().isNotEmpty() }
+        waitUntil { onAllNodes(hasText("1 / 3")).fetchSemanticsNodes().isNotEmpty() }
         onNodeWithContentDescription("Next picture").performClick()
-        waitUntil { onAllNodes(hasText("2 of 3")).fetchSemanticsNodes().isNotEmpty() }
+        waitUntil { onAllNodes(hasText("2 / 3")).fetchSemanticsNodes().isNotEmpty() }
         onNodeWithContentDescription("Green hills under a pale morning sky").performTouchInput {
             swipe(center, center - Offset(width * 0.6f, 0f), 250)
         }
-        waitUntil(timeoutMillis = 5_000) { onAllNodes(hasText("3 of 3")).fetchSemanticsNodes().isNotEmpty() }
+        waitUntil(timeoutMillis = 5_000) { onAllNodes(hasText("3 / 3")).fetchSemanticsNodes().isNotEmpty() }
     }
 
     @Test

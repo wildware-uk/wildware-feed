@@ -213,8 +213,8 @@ fun ImageViewer(gallery: Gallery, safeArea: SafeArea) {
                 .then(if (phone) Modifier else Modifier.padding(top = safeArea.top + BarHeight, bottom = HintHeight))
                 .offset { IntOffset(0, maxOf(drag.offsetPx, letGoAt).roundToInt()) },
             // A zoomed picture keeps its drags for panning; swiping on to the next waits until it is back to size.
-            // A mouse never drags the pages: the arrows and keys go through them.
-            userScrollEnabled = phone && !zoom.isZoomedIn,
+            // A touch screen on a computer swipes too; the wheel is the picture's, for zooming.
+            userScrollEnabled = !zoom.isZoomedIn,
             beyondViewportPageCount = 0,
         ) { at ->
             ViewerPage(images[at], zooms[at], phone, close = close, openMenu = { menuAt = it })
