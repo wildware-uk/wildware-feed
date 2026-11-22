@@ -221,6 +221,8 @@ class MediaTest : ParityTest() {
     fun `13 an agent fetches attached media, and every refusal is a 404`() = parity {
         val (_, card) = readyOnUpdate(Media.png(50, 50), "i.png", "image/png")
         val id = card["id"].s
+        // The Kotlin server hands an agent a file only where it may read the card (issue #304): beta hears the channel.
+        if (Parity.kotlin) beta.ok("subscribe", obj("channel" to project.slug))
         val got = call(HttpMethod.Get, "/api/agent/media/$id") { bearer(beta.token) }
         assertEquals(200, got.status.value)
         assertEquals("inline", got.headers[HttpHeaders.ContentDisposition])
