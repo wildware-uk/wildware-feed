@@ -1,10 +1,10 @@
-// Media: the owner attaches a picture, a sound and a video from the composer. Each uploads, posts and
+// Media: the owner attaches a picture, a sound and a video from the composer, or drops a file on it. Each uploads, posts and
 // shows in the feed; the picture opens in the viewer, and the sound and the video really play.
 // A picture's Save downloads the upload itself, under its own name.
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 import { Team } from '../lib/team.mjs';
-import { expectGone, expectShown, nextResponse, signedIn, tap, typeInto } from '../lib/ui.mjs';
+import { expectGone, expectShown, find, nextResponse, signedIn, tap, typeInto } from '../lib/ui.mjs';
 import { ffmpeg, openChannelSurely } from '../lib/cards-helpers.mjs';
 
 test.describe.configure({ mode: 'serial' });
@@ -150,4 +150,58 @@ test('a video: it uploads, posts, shows, and plays', async ({ browser }, info) =
     await page.waitForFunction(() => { const v = document.querySelector('video'); return v && v.currentTime > 0.5; }, null, { timeout: 20_000 });
     await page.keyboard.press('Escape');
     await page.waitForFunction(() => !document.querySelector('video'), null, { timeout: 5000 });
+});
+
+/**
+ * Drags [file] from the computer over the box labelled [box] and lets go there, as the browser does
+ * when a file is dragged in: dragenter and dragover, then drop, carrying the file. [between] runs
+ * while it hovers.
+ */
+async function dropOn(page, box, file, between = async () => {}) {
+    const at = await (await find(page, 'textbox', box)).boundingBox();
+    const where = { x: at.x + Math.min(at.width / 2, 40), y: at.y + at.height / 2 };
+    const name = file.split('/').pop();
+    await page.evaluate(([x, y, bytes, name]) => {
+        const data = new DataTransfer();
+        data.items.add(new File([Uint8Array.from(atob(bytes), (c) => c.charCodeAt(0))], name, { type: 'text/plain' }));
+        window.dragged = { data, x, y };
+        const target = document.elementFromPoint(x, y) ?? document.body;
+        for (const type of ['dragenter', 'dragover']) {
+            target.dispatchEvent(new DragEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y, dataTransfer: data }));
+        }
+    }, [where.x, where.y, readFileSync(file).toString('base64'), name]);
+    await between();
+    const opened = await page.evaluate(() => {
+        const { data, x, y } = window.dragged;
+        const target = document.elementFromPoint(x, y) ?? document.body;
+        // Not cancelled would mean the browser opens the file in place of the app.
+        return target.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, clientX: x, clientY: y, dataTransfer: data }));
+    });
+    expect(opened, 'the app takes the drop, so the browser does not open the file').toBe(false);
+}
+
+test('a file dropped on the message box attaches, uploads and posts', async ({ browser }, info) => {
+    const notes = info.outputPath('drop-notes.txt');
+    writeFileSync(notes, 'Dropped from the desktop\n');
+    const page = await inFreshChannel(browser, 'Drops');
+
+    await dropOn(page, 'Message', notes, () => expectShown(page, 'Drop to attach'));
+    await expectShown(page, 'Attached: drop-notes.txt');
+    await expectGone(page, 'Drop to attach');
+
+    await typeInto(page, 'Message', 'Notes by drag and drop');
+    const uploaded = nextResponse(page, '/api/media', 'POST', 30_000);
+    const posted = nextResponse(page, '/api/messages', 'POST', 30_000);
+    await tap(page, 'button', 'Send');
+    const upload = await uploaded;
+    expect(upload.status(), 'the upload').toBe(201);
+    const media = (await upload.json()).media;
+    const post = await posted;
+    expect(post.status(), 'the post').toBe(201);
+    expect(post.request().postData(), 'the post carries the upload').toContain(media.id);
+    await expectShown(page, 'Notes by drag and drop');
+    await expectShown(page, 'drop-notes.txt');
+
+    const read = await agent.call('get_messages', { project: 'drops' });
+    expect(read).toContain(media.id);
 });

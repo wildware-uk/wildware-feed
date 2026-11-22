@@ -668,7 +668,8 @@ fun Composer(
     }
     Column(modifier.fillMaxWidth()) {
     if (mentionChoices.isNotEmpty()) MentionList(mentionChoices, mentionSelected, pickMention)
-    Column(
+    // Files dropped anywhere on the card attach, as the paperclip does; a picture too.
+    Box(
         Modifier
             .fillMaxWidth()
             .lift(AgentTheme.elevation.raised, shape)
@@ -695,8 +696,8 @@ fun Composer(
                     }
                 }
             }
-            .padding(start = 6.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
     ) {
+    Column(Modifier.fillMaxWidth().padding(start = 6.dp, end = 6.dp, top = 4.dp, bottom = 4.dp)) {
         if (ui != null && tagProject != null) NewPostTagChips(ui, tagProject, Modifier.padding(start = 8.dp, top = 8.dp, bottom = 2.dp))
         AttachmentStrip(files, onRemove = { files.remove(it) }, Modifier.padding(start = 8.dp, top = 8.dp, bottom = 4.dp))
         refused?.let { MetaText(it, Modifier.padding(start = 8.dp, top = 4.dp), color = colors.error) }
@@ -770,6 +771,20 @@ fun Composer(
             }
         }
     }
+    if (hovering) DropHint(Modifier.matchParentSize())
+    }
+    }
+}
+
+/** Over the message box while files are dragged over it: says letting go attaches them. */
+@Composable
+private fun DropHint(modifier: Modifier) {
+    val colors = AgentTheme.colors
+    Box(modifier.background(colors.accentSoft.copy(alpha = 0.92f)), contentAlignment = Alignment.Center) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Paperclip, null, tint = colors.accent, modifier = Modifier.size(16.dp))
+            Text("Drop to attach", Modifier.padding(start = 8.dp), color = colors.accent, style = AgentTheme.type.label)
+        }
     }
 }
 

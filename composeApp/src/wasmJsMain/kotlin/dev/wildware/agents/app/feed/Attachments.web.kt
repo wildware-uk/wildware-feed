@@ -1,14 +1,12 @@
 package dev.wildware.agents.app.feed
 
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -24,65 +22,97 @@ import org.w3c.files.FileList
 import org.w3c.files.get
 
 /**
- * Files dragged from the computer onto the box. The page is one canvas, so the box listens on the
- * whole page and takes only a drop that lands inside it. A paste of files or a picture while the box
- * has focus lands here too, since a browser hands pasted files to the page's paste event.
+ * Files dragged from the computer onto the box. The page is one canvas, so one set of page-wide
+ * listeners ([WebDrops]) takes every drop and hands it to the box under the pointer. A paste of files
+ * or a picture lands in the box with the focus, since a browser hands pasted files to the page.
  */
 actual fun Modifier.fileDropTarget(onHover: (Boolean) -> Unit, onFiles: (List<PendingFile>) -> Unit): Modifier = composed {
-    var bounds by remember { mutableStateOf(Rect.Zero) }
-    var focused by remember { mutableStateOf(false) }
-    val hover by rememberUpdatedState(onHover)
-    val take by rememberUpdatedState(onFiles)
-    DisposableEffect(Unit) {
+    val zone = remember { WebDrops.Zone() }
+    SideEffect {
+        zone.hover = onHover
+        zone.take = onFiles
+    }
+    DisposableEffect(zone) {
+        WebDrops.add(zone)
+        onDispose { WebDrops.remove(zone) }
+    }
+    onGloballyPositioned { zone.bounds = it.boundsInWindow() }.onFocusChanged { zone.focused = it.hasFocus }
+}
+
+/** Every box on the page that takes files, and the page's own drag, drop and paste listeners. */
+private object WebDrops {
+    class Zone {
+        var bounds = Rect.Zero
+        var focused = false
+        var hover: (Boolean) -> Unit = {}
+        var take: (List<PendingFile>) -> Unit = {}
         var over = false
-        fun inside(e: DragEvent): Boolean {
-            val ratio = window.devicePixelRatio.toFloat()
-            return bounds.contains(androidx.compose.ui.geometry.Offset(e.clientX.toFloat() * ratio, e.clientY.toFloat() * ratio))
-        }
-        fun set(now: Boolean) {
-            if (now != over) {
-                over = now
-                hover(now)
+            set(now) {
+                if (now != field) {
+                    field = now
+                    hover(now)
+                }
             }
+    }
+
+    private val zones = mutableListOf<Zone>()
+
+    /** The box under the pointer; the one drawn last when two overlap (a panel over the feed). */
+    private fun under(e: DragEvent): Zone? {
+        val ratio = window.devicePixelRatio.toFloat()
+        val at = Offset(e.clientX.toFloat() * ratio, e.clientY.toFloat() * ratio)
+        return zones.lastOrNull { it.bounds.contains(at) }
+    }
+
+    private fun light(target: Zone?) = zones.toList().forEach { it.over = it === target }
+
+    private val dragOver: (Event) -> Unit = { e ->
+        val drag = e as DragEvent
+        if (drag.carriesFiles()) {
+            // Without this the browser opens the file in place of the app.
+            e.preventDefault()
+            light(under(drag))
         }
-        val dragOver: (Event) -> Unit = { e ->
-            val drag = e as DragEvent
-            if (drag.carriesFiles()) {
-                // Without this the browser opens the file in place of the app.
-                e.preventDefault()
-                set(inside(drag))
-            }
+    }
+    private val dragLeave: (Event) -> Unit = { e -> if ((e as DragEvent).relatedTarget == null) light(null) }
+    private val drop: (Event) -> Unit = { e ->
+        val drag = e as DragEvent
+        if (drag.carriesFiles()) {
+            e.preventDefault()
+            val target = under(drag)
+            light(null)
+            val list = drag.dataTransfer?.files
+            if (target != null && list != null) MainScope().launch { target.take(readAll(list)) }
         }
-        val dragLeave: (Event) -> Unit = { e -> if ((e as DragEvent).relatedTarget == null) set(false) }
-        val drop: (Event) -> Unit = { e ->
-            val drag = e as DragEvent
-            if (drag.carriesFiles()) {
-                e.preventDefault()
-                val hit = inside(drag)
-                set(false)
-                val list = drag.dataTransfer?.files
-                if (hit && list != null) MainScope().launch { take(readAll(list)) }
-            }
+    }
+    private val paste: (Event) -> Unit = { e ->
+        val list = (e as ClipboardEvent).clipboardData?.files
+        val target = zones.lastOrNull { it.focused }
+        if (target != null && list != null && list.length > 0) {
+            e.preventDefault()
+            MainScope().launch { target.take(readAll(list)) }
         }
-        val paste: (Event) -> Unit = { e ->
-            val list = (e as ClipboardEvent).clipboardData?.files
-            if (focused && list != null && list.length > 0) {
-                e.preventDefault()
-                MainScope().launch { take(readAll(list)) }
-            }
+    }
+
+    fun add(zone: Zone) {
+        if (zones.isEmpty()) {
+            document.addEventListener("dragover", dragOver)
+            document.addEventListener("dragleave", dragLeave)
+            document.addEventListener("drop", drop)
+            document.addEventListener("paste", paste)
         }
-        document.addEventListener("dragover", dragOver)
-        document.addEventListener("dragleave", dragLeave)
-        document.addEventListener("drop", drop)
-        document.addEventListener("paste", paste)
-        onDispose {
+        zones += zone
+    }
+
+    fun remove(zone: Zone) {
+        zones -= zone
+        if (zones.isEmpty()) {
             document.removeEventListener("dragover", dragOver)
             document.removeEventListener("dragleave", dragLeave)
             document.removeEventListener("drop", drop)
             document.removeEventListener("paste", paste)
         }
     }
-    onGloballyPositioned { bounds = it.boundsInWindow() }.onFocusChanged { focused = it.hasFocus }
 }
 
 private fun DragEvent.carriesFiles(): Boolean {
