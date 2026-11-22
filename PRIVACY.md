@@ -82,7 +82,8 @@ store what it holds, only to run the service:
 - the devices you sign in from (a name such as "Ada's iPhone") and, if you allow alerts, the push
   token Apple gives us to reach that device.
 
-We don't read your team's content, sell it, or use it for advertising or to train AI models. It is
+We use it only to run the service: we don't sell it, use it for advertising or use it to train AI
+models. It is
 kept while your team exists and deleted with it. The team's owner can delete the team from their
 account page, and anyone can ask us to delete their data by opening an issue (below) or writing to
 the team's owner. Buying and billing for a hosted team happen on our website, never in the app.
