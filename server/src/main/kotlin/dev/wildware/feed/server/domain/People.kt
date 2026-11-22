@@ -296,6 +296,68 @@ class People(
         find(target.id)!! to devices
     }
 
+    /** What deleting an account did: for each team it left, the devices that were signed out there. */
+    data class DeletedAccount(val accountId: String, val devicesByTeam: Map<String, List<String>>)
+
+    /**
+     * A person deletes their own account (App Store guideline 5.1.1(v)): here, and in every team on
+     * this server. Refused while they own any team: an owner first makes someone else an owner or
+     * deletes the team, so no team is left without one and none disappears under the people still in
+     * it. Otherwise each membership ends as [remove] ends one (devices signed out, invites
+     * withdrawn), their one-time codes go, and the account forgets its name, email and password. What
+     * they wrote stays, under [DELETED_NAME]. A row in account_deletions is the audit, and gives the
+     * control plane a hash of the email so it can forget it too. [password] is checked when the
+     * account has one.
+     */
+    fun deleteAccount(me: Person, password: String?): DeletedAccount {
+        requireActive(me)
+        // The slow password work happens before the write, so it never holds the database.
+        if (passwordHashOf(me) != null && (password == null || !verify(me, password))) {
+            throw DomainError("wrong_password", "That password is not right.", 400)
+        }
+        return Tenant.allTeams { db.transaction { _ -> eraseAccount(me.accountId) } }
+    }
+
+    private fun eraseAccount(accountId: String): DeletedAccount {
+        data class Membership(val id: String, val team: String, val role: String, val teamName: String)
+        val memberships = db.query(
+            "SELECT m.id, m.team_id, m.role, t.name FROM memberships AS m JOIN teams AS t ON t.id = m.team_id " +
+                "WHERE m.user_id = ? AND m.removed_at IS NULL ORDER BY m.seq",
+            accountId,
+        ) { Membership(it.getString(1), it.getString(2), it.getString(3), it.getString(4)) }
+        val owned = memberships.filter { it.role == Role.OWNER.wire }
+        if (owned.isNotEmpty()) {
+            val names = owned.joinToString(", ") { it.teamName }
+            throw DomainError(
+                "owner_must_hand_over",
+                "You own $names. Make someone else an owner, or delete the team, before you delete your account.",
+                409,
+            )
+        }
+        val now = clock()
+        val devices = linkedMapOf<String, List<String>>()
+        for (m in memberships) {
+            db.update("UPDATE memberships SET removed_at = ? WHERE team_id = ? AND id = ? AND removed_at IS NULL", now, m.team, m.id)
+            db.update(
+                "UPDATE invites SET revoked_at = ? WHERE team_id = ? AND created_by = ? AND accepted_at IS NULL AND revoked_at IS NULL",
+                now, m.team, m.id,
+            )
+            db.update("DELETE FROM auth_codes WHERE team_id = ? AND membership_id = ?", m.team, m.id)
+            devices[m.team] = db.query("SELECT id FROM owner_devices WHERE team_id = ? AND user_id = ?", m.team, m.id) { it.getString(1) }
+            db.update("DELETE FROM owner_devices WHERE team_id = ? AND user_id = ?", m.team, m.id)
+        }
+        val email = db.one("SELECT email FROM users WHERE id = ?", accountId) { it.getString(1) }
+        db.update(
+            "UPDATE users SET name = ?, email = NULL, email_verified_at = NULL, password_hash = NULL, deleted_at = ? WHERE id = ?",
+            DELETED_NAME, now, accountId,
+        )
+        db.update(
+            "INSERT INTO account_deletions (id, account_id, email_hash, teams, deleted_at) VALUES (?, ?, ?, ?, ?)",
+            Ulid.next(now), accountId, email?.let(::emailHash), memberships.joinToString(",") { it.team }, now,
+        )
+        return DeletedAccount(accountId, devices)
+    }
+
     /**
      * A person changes their own name, email or password. Email and password need the current
      * password. A new name gives a new @handle when it is free.
@@ -539,6 +601,13 @@ class People(
         const val HOME = "home"
 
         /** How a person follows things, beside `agent:<id>` (migration 052). */
+        /** What a deleted account is called, on everything it wrote. */
+        const val DELETED_NAME = "Deleted person"
+
+        /** How account_deletions names an email: SHA-256 of it in lower case, hex. The control plane hashes the same way. */
+        fun emailHash(email: String): String =
+            java.security.MessageDigest.getInstance("SHA-256").digest(email.trim().lowercase().toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
+
         fun subscriber(memberId: String) = "member:$memberId"
 
         /**

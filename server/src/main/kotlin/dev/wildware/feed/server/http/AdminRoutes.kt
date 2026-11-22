@@ -191,6 +191,7 @@ private suspend fun ApplicationCall.route(app: App, c: AdminCall, pattern: Strin
         c.method == "POST" && s.size == 3 && s[0] == "teams" && s[2] == "setup-links" -> { named("teams/{id}/setup-links"); setupLink(app, c, s[1]) }
         c.method == "POST" && s.size == 3 && s[0] == "teams" && s[2] == "sign-in-tickets" -> { named("teams/{id}/sign-in-tickets"); ticket(app, c, s[1]) }
         c.method == "POST" && s == listOf("memberships", "lookup") -> { named("memberships/lookup"); lookup(app, c) }
+        c.method == "GET" && s == listOf("account-deletions") -> { named("account-deletions"); accountDeletions(app) }
         else -> throw AdminError(404, "not_found", "No such admin route.")
     }
 }
@@ -488,6 +489,33 @@ private suspend fun ApplicationCall.lookup(app: App, c: AdminCall): Int {
         }
     }
     return ok(200, buildJsonObject { put("memberships", JsonArray(rows)) })
+}
+
+// ---- account deletions --------------------------------------------------------------------------------
+
+/**
+ * Accounts people deleted themselves (People.deleteAccount), oldest first, after the `after` seq the
+ * caller last saw: the control plane forgets each email too. Each carries the SHA-256 of the email
+ * in lower case (People.emailHash), never the email itself. `after` defaults to 0, `limit` is 1 to
+ * 500 (default 100); `next` is the seq to pass as `after` next time.
+ */
+private suspend fun ApplicationCall.accountDeletions(app: App): Int {
+    val q = request.queryParameters
+    val after = q["after"]?.let { it.toLongOrNull()?.takeIf { n -> n >= 0 } ?: throw bad("after is a seq this server gave, 0 or more.") } ?: 0L
+    val limit = q["limit"]?.let { it.toIntOrNull()?.takeIf { n -> n in 1..500 } ?: throw bad("limit is 1 to 500.") } ?: 100
+    val rows = app.db.query(
+        "SELECT seq, email_hash, deleted_at FROM account_deletions WHERE seq > ? ORDER BY seq LIMIT ?", after, limit,
+    ) { Triple(it.getLong(1), it.getString(2), it.getLong(3)) }
+    return ok(200, buildJsonObject {
+        put("deletions", JsonArray(rows.map { (seq, hash, at) ->
+            buildJsonObject {
+                put("seq", seq)
+                put("emailHash", hash?.let(::JsonPrimitive) ?: JsonNull)
+                put("deletedAt", Wire.isoOf(at))
+            }
+        }))
+        put("next", rows.lastOrNull()?.first ?: after)
+    })
 }
 
 // ---- usage ------------------------------------------------------------------------------------------

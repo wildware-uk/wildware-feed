@@ -81,6 +81,7 @@ object Access {
         // You, and the people of the team.
         "GET /api/me" to M,
         "PATCH /api/me" to M,
+        "DELETE /api/me" to M, // your own account; People.deleteAccount refuses an owner
         "GET /api/people" to M,
         "DELETE /api/people/{id}" to M, // leaving yourself; others by role (People.remove)
         "PATCH /api/people/{id}" to O,

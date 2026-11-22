@@ -488,5 +488,12 @@
   "file": "070-the-board.sql",
   "rebuildsTables": false,
   "checksum": "17ed9560b02ef80ee2899f7aeac10e71b7ecb742ea35217bee2ddf0e3f698b20"
+ },
+ {
+  "version": 71,
+  "name": "people-delete-their-account",
+  "file": "071-people-delete-their-account.sql",
+  "rebuildsTables": false,
+  "checksum": "5be94f6d9b3600ab5d00df92a8d7a4dddafcce0f5933d482b8f73bb4109328e1"
  }
 ]

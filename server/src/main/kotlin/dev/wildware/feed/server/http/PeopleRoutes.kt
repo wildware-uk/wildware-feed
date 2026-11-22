@@ -22,6 +22,14 @@ import kotlinx.serialization.json.put
  * The people of the team (migration 055, docs/TEAMS.md §5): you, everyone, roles, removing and
  * leaving, and invites. Who may do what is [Access] plus the rules in [People].
  */
+/** What DELETE /api/me needs in `confirm`, typed by the person: the app asks them to type it. */
+const val DELETE_ACCOUNT_CONFIRM = "DELETE"
+
+/** The server log's audit line for a deleted account, as the admin API writes its own: ids and a count, never a name or an email. */
+private object AccountLog {
+    fun deleted(accountId: String, teams: Collection<String>) = println("people: account deleted account=$accountId teams=${teams.size}")
+}
+
 fun Route.peopleRoutes(app: App) {
     fun changed() = app.bus.publish("people.updated", buildJsonObject { put("count", app.people.activeCount()) })
 
@@ -40,6 +48,24 @@ fun Route.peopleRoutes(app: App) {
             val me = if ("email" in body || "password" in body) Passwords.gate.run(update) else update()
             if ("name" in body) changed()
             call.respondOwner(200, buildJsonObject { put("person", personView(me, email = true)) })
+        },
+        HttpMethod.Delete to {
+            // Deleting your own account (App Store guideline 5.1.1(v)): typed confirmation, and the
+            // password when the account has one. An owner is refused until they hand the team on.
+            val body = call.jsonObjectBody()
+            val unknown = body.keys - setOf("confirm", "password")
+            if (unknown.isNotEmpty()) throw invalid("deleting your account takes confirm and password, not ${unknown.joinToString(", ")}")
+            if (body["confirm"].jsString != DELETE_ACCOUNT_CONFIRM) throw invalid("confirm must be \"$DELETE_ACCOUNT_CONFIRM\"")
+            val password = body["password"]?.takeIf { it !is JsonNull }?.let { it.jsString ?: throw invalid("password must be a string") }
+            val gone = Passwords.gate.run { app.people.deleteAccount(call.person, password) }
+            for ((team, devices) in gone.devicesByTeam) {
+                dev.wildware.feed.server.db.Tenant.with(team) {
+                    for (id in devices) app.bus.publish("device.revoked", buildJsonObject { put("deviceId", id) })
+                    changed()
+                }
+            }
+            AccountLog.deleted(gone.accountId, gone.devicesByTeam.keys)
+            call.respondOwner(200, buildJsonObject { put("deleted", true) })
         },
     )
 

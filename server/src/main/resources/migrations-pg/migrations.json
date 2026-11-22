@@ -142,5 +142,11 @@
   "name": "the-board",
   "file": "070-the-board.sql",
   "checksum": "a885111198d6ecdd4876f749ae91f2bd46d33a240bdd8dcfe2564309da7a2a64"
+ },
+ {
+  "version": 71,
+  "name": "people-delete-their-account",
+  "file": "071-people-delete-their-account.sql",
+  "checksum": "868c1a4215250d6629ee4c3cb46bcacb40022c241bb0998e0bad1bb2b652d94d"
  }
 ]

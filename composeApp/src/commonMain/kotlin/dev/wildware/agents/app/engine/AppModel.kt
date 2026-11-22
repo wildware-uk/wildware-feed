@@ -452,7 +452,7 @@ class AppModel(
         val key = team.key
         watcher = scope.launch {
             session.signedOut.first { it }
-            if (activeKey == key) signOut("This device was signed out on the dashboard. Sign in again to carry on.")
+            if (activeKey == key) signOut(session.signOutNotice ?: "This device was signed out on the dashboard. Sign in again to carry on.")
         }
     }
 

@@ -140,6 +140,7 @@ fun AlertSettingsSheet(ui: FeedUi, safeArea: SafeArea) {
             PeopleEntry(ui)
             ConnectAgentEntry(ui)
             FeedbackEntry(ui)
+            DeleteAccountGroup(ui)
         }
     }
 }

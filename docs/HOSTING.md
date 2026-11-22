@@ -552,6 +552,7 @@ makes no new link.
 | `POST /admin/teams/{id}/setup-links` | `{email}` | `201 {url, expiresAt}` for a member with no password yet; earlier setup links revoked | `404 no_such_member`, `409 already_set_up` |
 | `POST /admin/memberships/lookup` | `{email}` (a `POST`, so the email stays out of URLs and logs) | `200 {memberships: [{membershipId, role, team: {id, slug, name, address, suspended}}]}`: active memberships in teams not being deleted, of an account whose email was proved (below) | – |
 | `POST /admin/teams/{id}/sign-in-tickets` | `{email}` | `201 {ticket, expiresAt, address, membershipId}` | `404 no_such_member`, `404 no_such_team` |
+| `GET /admin/account-deletions?after=<seq>&limit=<n>` | – | `200 {deletions: [{seq, emailHash, deletedAt}], next}`: accounts people deleted themselves, oldest first, after `after` (default 0); `limit` 1 to 500 (default 100); pass `next` as `after` next time. `emailHash` is the hex SHA-256 of the email in lower case, or `null` for an account that had none. | `400 invalid_request` |
 
 **Only proved emails count across teams.** An email someone typed into the server (a profile
 change, accepting an invite) proves nothing: anyone can type anyone's address. An account's email
@@ -585,6 +586,15 @@ The control plane uses these as follows: sign-up sends `POST /admin/teams` with
 `Idempotency-Key: create-<its team id>` and `externalRef` set to that id; a lapsed team is suspended,
 a paid one resumed, extra logins become `PUT …/limits`; 30 days after lapsing it sends `DELETE` and
 reads until `404`; the app's hosted "Log in" is `memberships/lookup` then `sign-in-tickets`.
+
+**Deleting your own account** (App Store guideline 5.1.1(v)): a person calls `DELETE /api/me` with
+`{"confirm": "DELETE", "password": …}` on their team's address. It ends every membership that account
+has on the server, signs out all its devices, withdraws its invites and one-time codes, and blanks
+the account's name, email and password; what they wrote stays, under "Deleted person". It is refused
+(`409 owner_must_hand_over`) while they own any team: they make someone else an owner or delete the
+team first, so no team is left without an owner and none is deleted under the people still in it. A
+row in `account_deletions` is the audit, and the control plane reads them with
+`GET /admin/account-deletions` to forget the same email on its side.
 
 Error codes in one place: `400 invalid_request`; `401 bad_signature`, `stale_request`,
 `invalid_ticket`; `403 suspended` (team routes only); `404 no_such_team`, `no_such_member`;

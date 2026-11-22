@@ -251,6 +251,10 @@ class DashboardSession(
     /** This device's own key was revoked from its Devices sheet: it is signed out at once. */
     private val revokedHere = MutableStateFlow(false)
 
+    /** What the sign-in screen says when this session ends by the person's own doing, such as deleting their account. */
+    var signOutNotice: String? = null
+        private set
+
     /** Allow or Deny on its way, or refused, per pairing; decided ones are hidden until the stream says so. */
     private data class JoinStatus(val busy: Boolean = false, val error: String? = null, val done: Boolean = false)
     private val joinStatus = MutableStateFlow<Map<String, JoinStatus>>(emptyMap())
@@ -435,6 +439,11 @@ class DashboardSession(
                 if (event.personId == mutableTeam.value.me?.id) revokedHere.value = true
             }
             is FeedEvent.Rename -> changeTeam("me", "rename you") { client.rename(event.name.trim()) }
+            is FeedEvent.DeleteAccount -> changeTeam(dev.wildware.agents.app.feed.DeleteAccountBusy, "delete your account") {
+                client.deleteAccount(event.password)
+                signOutNotice = "Your account was deleted, and this device is signed out."
+                revokedHere.value = true
+            }
             else -> Unit
         }
     }
@@ -1070,7 +1079,7 @@ class DashboardSession(
             is FeedEvent.ProvideSecret -> changeNow(event.done) { client.provideSecret(event.questionId, event.value) }
             is FeedEvent.ProvideSecrets -> changeNow(event.done) { client.provideSecrets(event.questionId, event.values) }
             is FeedEvent.ReadPeople, is FeedEvent.InvitePerson, is FeedEvent.DismissInvite, is FeedEvent.RevokeInvite,
-            is FeedEvent.SetRole, is FeedEvent.RemovePerson, is FeedEvent.Rename -> handleTeam(event)
+            is FeedEvent.SetRole, is FeedEvent.RemovePerson, is FeedEvent.Rename, is FeedEvent.DeleteAccount -> handleTeam(event)
             is FeedEvent.RevokeDevice -> revokeDevice(event.deviceId)
             is FeedEvent.ReadConnections -> scope.launch { loadConnections(event.agentId) }
             is FeedEvent.ReadMembers -> scope.launch { loadMembers(event.slug, event.group) }

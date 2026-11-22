@@ -74,6 +74,8 @@ class FakeServer {
     /** `GET /api/me` and `GET /api/people`; null answers 404, a server from before teams. */
     var me: String? = null
     var people: String = """{"people":[]}"""
+    /** When set, `DELETE /api/me` is refused with this code, status and message. */
+    @Volatile var refuseDeleteAccount: Triple<String, Int, String>? = null
     /** Agents asking to join, as `GET /api/pairings` lists them. */
     var pairings = listOf<dev.wildware.agents.PairingView>()
     /** When set, Allow is refused with this error code, as a taken name is (409). */
@@ -198,6 +200,9 @@ class FakeServer {
                 path.startsWith("/api/pairings/") && path.endsWith("/approve") -> refuseApprove?.let {
                     ok("""{"error":"$it","message":"an agent is already called \"forge\"; choose another name"}""", HttpStatusCode.Conflict)
                 } ?: ok("{}")
+                request.method == HttpMethod.Delete && path == "/api/me" -> refuseDeleteAccount?.let { (code, status, message) ->
+                    ok("""{"error":"$code","message":"$message"}""", HttpStatusCode.fromValue(status))
+                } ?: ok("""{"deleted":true}""")
                 else -> ok("{}")
             }
         }

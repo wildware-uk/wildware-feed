@@ -249,6 +249,8 @@ sealed interface FeedEvent {
     data class RemovePerson(val personId: String) : FeedEvent
     /** Change your own name, as the team sees it. */
     data class Rename(val name: String) : FeedEvent
+    /** Delete your own account, everywhere on this dashboard; [password] when the account has one. The sheet has already asked. */
+    data class DeleteAccount(val password: String?) : FeedEvent
     /** Remove an agent: revoke it, so it and every app signed in as it stop working. The dialog has already asked. */
     data class RemoveAgent(val agentId: String, val done: (String?) -> Unit = {}) : FeedEvent
     /** Read the MCP clients signed in as this agent over OAuth, for its dialog. */

@@ -815,6 +815,21 @@ class DashboardClient(
         http.delete("api/people/${personId.encodeURLPathPart()}") { authorise() }.requireSuccess()
     }
 
+    /**
+     * Deletes your own account on this dashboard, in every team on it (App Store guideline 5.1.1(v)).
+     * [password] when the account has one. Refused for an owner: they hand the team on first.
+     */
+    @Throws(Exception::class)
+    suspend fun deleteAccount(password: String?) {
+        http.delete("api/me") {
+            authorise()
+            jsonBody(buildJsonObject {
+                put("confirm", "DELETE")
+                if (password != null) put("password", password)
+            })
+        }.requireSuccess()
+    }
+
     /** Changes your own name. */
     @Throws(Exception::class)
     suspend fun rename(name: String): Person = http.patch("api/me") {
