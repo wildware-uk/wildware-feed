@@ -106,6 +106,8 @@ targets:
         NSUserActivityTypes: [INSendMessageIntent]
         NSMicrophoneUsageDescription: Records the voice notes you send to your agents.
         NSSpeechRecognitionUsageDescription: Writes down what you say in a voice note, so your agents can read it.
+        # The share sheet's Save Image, for a picture from a card, crashes without it.
+        NSPhotoLibraryAddUsageDescription: Saves the pictures you choose to your photo library.
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
         CFBundleURLTypes:
