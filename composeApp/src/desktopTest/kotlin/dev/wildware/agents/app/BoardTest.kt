@@ -19,7 +19,16 @@ import androidx.compose.ui.test.performMouseInput
 import androidx.compose.ui.test.printToString
 import androidx.compose.ui.test.v2.runDesktopComposeUiTest
 import androidx.compose.ui.unit.dp
+import dev.wildware.agents.FeedSnapshot
+import dev.wildware.agents.MessagesSnapshot
+import dev.wildware.agents.UpdateView
+import dev.wildware.agents.UpdatesPage
 import dev.wildware.agents.app.session.AppPlatform
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.put
 import dev.wildware.agents.app.session.MemorySessionStore
 import dev.wildware.agents.app.session.SavedSession
 import dev.wildware.agents.app.design.AccessibilityPrefs
@@ -47,9 +56,9 @@ class BoardTest {
             """{"status":"$s","cards":[${columns.toMap()[s].orEmpty().joinToString(",")}],"more":false}"""
         }}],"autoRemoveDays":7}"""
 
-    private fun ComposeUiTest.app() {
+    private fun ComposeUiTest.app(width: Int = 1440, height: Int = 900) {
         val platform = AppPlatform.inMemory(engine = { server.engine() }, sessions = MemorySessionStore(SavedSession("https://dash.test", "key-1", "Test device")))
-        setContent { Box(Modifier.size(1440.dp, 900.dp)) { AgentsApp(platform, dark = true, accessibility = AccessibilityPrefs()) } }
+        setContent { Box(Modifier.size(width.dp, height.dp)) { AgentsApp(platform, dark = true, accessibility = AccessibilityPrefs()) } }
     }
 
     private fun ComposeUiTest.waitForNode(matcher: SemanticsMatcher): SemanticsNodeInteraction {
@@ -141,5 +150,34 @@ class BoardTest {
         waitForNode(hasContentDescription("Card options")).performClick()
         waitForNode(hasText("You can read this channel but not change it."))
         assertTrue(onAllNodes(hasText("Move to Done")).fetchSemanticsNodes().isEmpty())
+    }
+
+    @Test
+    fun clickingACardOpensItOnItsOwnWithoutPagingTheFeed() = runDesktopComposeUiTest(width = 1440, height = 900) {
+        // A card the feed never loaded: the board has it, the feed doesn't.
+        val json = Json { encodeDefaults = true; explicitNulls = false }
+        val old = UpdateView(id = "u-old", seq = 1, projectId = "p1", agentId = "a1", title = "Something from last month", body = "The old plan.", createdAt = FakeServer.now() - 40L * 24 * 3600_000)
+        val feed = json.encodeToJsonElement(FeedSnapshot.serializer(), FeedSnapshot(seq = 10, updates = UpdatesPage(listOf(old)), agentNames = server.agentNames)).jsonObject
+        val thread = json.encodeToJsonElement(MessagesSnapshot.serializer(), MessagesSnapshot(seq = 10, messages = emptyList())).jsonObject
+        server.threads["u-old"] = JsonObject(feed + thread + ("card" to buildJsonObject { put("kind", "update"); put("id", "u-old") })).toString()
+        server.board = board("todo" to listOf(card("u-old", "update", "todo", "Something from last month")))
+        app()
+        openBoard()
+        val pages = server.count("/api/snapshot/updates")
+        waitForNode(hasTestTag("board-card-u-old")).performClick()
+        waitForNode(hasText("Back to feed"))
+        waitForNode(hasText("The old plan."))
+        assertTrue(onAllNodes(hasTestTag("board-column-todo")).fetchSemanticsNodes().isEmpty(), "the board steps aside")
+        assertEquals(1, server.count("/api/threads/u-old"), "read once, by itself")
+        assertEquals(pages, server.count("/api/snapshot/updates"), "no feed page was read to find it")
+    }
+
+    @Test
+    fun allFourColumnsFitBesideTheSidebarAndTheRailAt1280Wide() = runDesktopComposeUiTest(width = 1280, height = 1000) {
+        app(1280, 1000)
+        openBoard()
+        val done = waitForNode(hasTestTag("board-column-done")).fetchSemanticsNode().boundsInRoot
+        val width = onRoot().fetchSemanticsNode().boundsInRoot.width
+        assertTrue(done.width > 0 && done.right <= width, "Done is on screen: $done in $width")
     }
 }

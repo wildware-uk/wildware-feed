@@ -170,7 +170,7 @@ private fun BoardHeader(ui: FeedUi, board: BoardState, scope: BoardScope, compac
         BoardScope.Everything -> "BOARD  ·  EVERYTHING" to "All channels"
     }
     var menuOpen by remember { mutableStateOf(false) }
-    Column(Modifier.fillMaxWidth().padding(horizontal = if (compact) 16.dp else 36.dp, vertical = if (compact) 8.dp else 20.dp)) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = if (compact) 16.dp else 20.dp, vertical = if (compact) 8.dp else 20.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 MetaText(over, style = type.overline)
@@ -269,8 +269,9 @@ private fun DesktopColumns(ui: FeedUi, board: BoardState, drag: BoardDrag, open:
             .fillMaxSize()
             .onGloballyPositioned { drag.origin = it.positionInRoot() },
     ) {
-        val gap = 12.dp
-        val side = 36.dp
+        // All four columns fit beside the sidebar and the agents rail at 1280 wide.
+        val gap = 10.dp
+        val side = 20.dp
         val fit = (maxWidth - side * 2 - gap * 3) / 4
         val width = if (fit < ColumnMin) ColumnMin else fit
         val scroll = rememberScrollState()
@@ -589,4 +590,4 @@ internal fun boardKey(ui: FeedUi, e: KeyEvent, open: (BoardCard) -> Unit): Boole
 }
 
 /** Narrower than this, the columns scroll sideways rather than squeeze. */
-private val ColumnMin = 240.dp
+private val ColumnMin = 168.dp
