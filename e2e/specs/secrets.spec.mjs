@@ -4,7 +4,7 @@
 // all in, checks one with Show, and saves them together. Every value is made up.
 import { expect, test } from '@playwright/test';
 import { Team } from '../lib/team.mjs';
-import { expectShown, find, nextResponse, screenText, signedIn, tap, typeInto } from '../lib/ui.mjs';
+import { expectGone, expectShown, find, nextResponse, screenText, signedIn, tap, typeInto } from '../lib/ui.mjs';
 import { mcp, openChannelSurely } from '../lib/cards-helpers.mjs';
 
 const value = 'sk-test-NOT-REAL-e2e-3a7f';
@@ -95,7 +95,8 @@ test('an agent asks for two secrets on one card and the owner saves both with Sh
     const response = await saved;
     expect(response.status(), 'saving both').toBe(200);
     expect(await response.text()).not.toContain(keySecret);
-    await expectShown(page, 'only hears which names are ready');
+    // Answered, the card leaves the feed.
+    await expectGone(page, question);
 
     const settled = await asking;
     expect(settled).toMatchObject({ state: 'answered', request_id: id, response: { kind: 'secret', value: ['AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY'] } });
