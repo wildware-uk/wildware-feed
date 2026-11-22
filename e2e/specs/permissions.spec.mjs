@@ -37,7 +37,7 @@ test('the owner makes the channel private from its Permissions panel', async ({ 
     await openPermissions(page, 'Vault');
     await expectShown(page, 'Sam Member');
     const saved = nextResponse(page, /^\/api\/projects\/[^/]+\/access$/, 'PUT');
-    await tap(page, 'checkbox', 'Only people and agents listed can see this');
+    await tap(page, 'button', 'Only people and agents listed can see this');
     expect((await saved).status()).toBe(200);
     const panel = await team.owner.ok('GET', '/api/projects/vault/access');
     expect(panel.private).toBe(true);
@@ -60,9 +60,10 @@ test('the member no longer sees it: not in the list, the feed or the API', async
 test('the owner gives the member Read, and they can read it but not post', async ({ browser }) => {
     const page = await signedIn(browser, team.owner);
     await openPermissions(page, 'Vault');
-    // The owner's own row can't be changed, so the first level choices are Sam's.
+    // The owner's own row can't be changed, so the first level choices are Sam's. (The web app's
+    // accessibility tree names tick boxes and chips as buttons, as the settings spec taps them.)
     const saved = nextResponse(page, /^\/api\/projects\/[^/]+\/access\/member\/[^/]+$/, 'PUT');
-    await tap(page, 'tab', 'Read');
+    await tap(page, 'button', 'Read');
     expect((await saved).status()).toBe(200);
     await expectShown(page, 'Read · Set here');
     await page.context().close();
