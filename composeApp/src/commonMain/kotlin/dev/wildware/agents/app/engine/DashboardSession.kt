@@ -111,6 +111,9 @@ class DashboardSession(
     /** The board, read while it is on screen and again whenever something on it may have moved. */
     private val board = BoardWatch(client, actions, scope, dashboard.boardChanges, clock)
 
+    /** The Assign picker while it is open; a save reads the board again. */
+    private val assign = AssignWatch(client, scope) { board.reread() }
+
     private val mutableAlerts = MutableStateFlow(AlertSettings())
 
     /** Which moments make which sound. Touched only on [soundThread]. */
@@ -338,7 +341,7 @@ class DashboardSession(
         shown.copy(searchIndex = searchEntriesOf(all.sections), lone = all.lone, bell = mapper.bell(notifications), alerts = alerts, retention = retention, mentionable = mentionable, postTarget = postTarget, devices = devices, secrets = secrets, feedback = feedback, joining = extras.joining, connections = extras.connections, members = extras.members, access = extras.access,
             agents = withOffline(shown.agents, known), follows = follows,
             groups = groups.map { ProjectGroup(it.id, it.slug, it.name, accent = it.theme?.accent, archived = it.isArchived, position = it.position) }).also { MarkdownCache.warm(markdownIn(it).asIterable()) }
-    }.let { feed -> combine(feed, board.state) { shown, onBoard -> shown.copy(board = onBoard) } }
+    }.let { feed -> combine(feed, board.state, assign.state) { shown, onBoard, assigning -> shown.copy(board = onBoard, assign = assigning) } }
         .stateIn(scope, SharingStarted.Eagerly, mapper.map(feed.state.value, emptyList(), emptyList(), emptyList(), null))
 
     /** True once the dashboard has stopped taking this device's key. */
@@ -1048,6 +1051,13 @@ class DashboardSession(
             is FeedEvent.BoardShowRemoved -> board.showRemoved(event.show)
             is FeedEvent.BoardAutoRemove -> board.setAutoRemove(event.days)
             is FeedEvent.BoardMore -> board.more(event.status)
+            is FeedEvent.BoardAssigned -> board.filter(event.filter)
+            is FeedEvent.Assign -> cardRef(event.targetId)?.takeIf { it.kind != CardKinds.Request }?.let { card ->
+                assign.open(card, (state.value.item(event.targetId) as? dev.wildware.agents.app.feed.Threaded)?.title.orEmpty())
+            }
+            is FeedEvent.AssignCard -> assign.open(CardRef(event.kind, event.id), event.title)
+            is FeedEvent.SaveAssignees -> assign.save(event.principals)
+            is FeedEvent.CloseAssign -> assign.close()
             is FeedEvent.Pin -> cardRef(event.targetId)?.let { actions.pin(it, event.pinned) }
             is FeedEvent.SetField -> cardRef(event.targetId)?.let { actions.setField(it, event.name, event.value) }
             is FeedEvent.OpenThread -> dashboard.markRead(event.cardId)

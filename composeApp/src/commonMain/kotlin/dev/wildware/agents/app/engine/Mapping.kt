@@ -448,6 +448,7 @@ internal class FeedMapper(
                 sending = line.sending,
                 uploaded = line.uploaded,
                 voice = line.message.isVoice,
+                assignment = line.message.source == "assignment",
                 undoUntil = line.undoUntil,
                 questions = line.questions.map { it.toQuestion(agents, project, index) },
                 undelivered = undelivered(line),

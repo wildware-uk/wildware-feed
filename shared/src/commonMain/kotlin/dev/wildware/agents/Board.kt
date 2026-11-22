@@ -48,6 +48,8 @@ data class BoardCardView(
     val removedBy: String? = null,
     /** The viewer may change its work state: Post on its channel. */
     val canMove: Boolean = true,
+    /** Who it is assigned to (server migration 072), oldest first. */
+    val assignees: List<AssigneeView> = emptyList(),
 )
 
 @Serializable
@@ -69,10 +71,11 @@ sealed interface BoardScope {
 
 /**
  * The board for [scope]. With [column], only that column's next page after [after]. [removed] also
- * lists the finished cards taken off the board, marked as removed.
+ * lists the finished cards taken off the board, marked as removed. [assigned] keeps the cards
+ * assigned to "me", to nobody ("none"), or to one person or agent (a principal or a name).
  */
 @Throws(Exception::class)
-suspend fun DashboardClient.board(scope: BoardScope, removed: Boolean = false, column: String? = null, after: String? = null, limit: Int = 50): BoardSnapshot =
+suspend fun DashboardClient.board(scope: BoardScope, removed: Boolean = false, column: String? = null, after: String? = null, limit: Int = 50, assigned: String? = null): BoardSnapshot =
     http.get("api/board") {
         authorise()
         when (scope) {
@@ -83,6 +86,7 @@ suspend fun DashboardClient.board(scope: BoardScope, removed: Boolean = false, c
         if (removed) parameter("removed", "1")
         if (column != null) parameter("column", column)
         if (after != null) parameter("after", after)
+        if (assigned != null) parameter("assigned", assigned)
         parameter("limit", limit)
     }.decoded()
 
@@ -102,6 +106,52 @@ suspend fun DashboardClient.setBoardAutoRemove(days: Int?): Int? =
         authorise()
         jsonBodyOf(buildJsonObject { put("autoRemoveDays", days) })
     }.decoded<BoardSettingBody>().autoRemoveDays
+
+/**
+ * A card's assignee (server migration 072): a person or an agent. [principal] is `member:<id>` or
+ * `agent:<id>`; [kind] is "person" or "agent". [canRead] is whether they can read the card's channel,
+ * on a candidate (only those can be assigned).
+ */
+@Serializable
+data class AssigneeView(
+    val principal: String = "",
+    val kind: String = "agent",
+    val id: String = "",
+    val name: String = "",
+    val handle: String? = null,
+    val canRead: Boolean = true,
+)
+
+/** A card's assignees, and everyone who could be, as `GET /api/cards/{kind}/{id}/assignees` answers. */
+@Serializable
+data class CardAssignees(
+    val card: CardRef,
+    val assignees: List<AssigneeView> = emptyList(),
+    val candidates: List<AssigneeView> = emptyList(),
+    val max: Int = 5,
+)
+
+@Serializable
+internal data class AssignAnswer(val assignees: List<AssigneeView> = emptyList())
+
+/** Who [card] is assigned to, and who could be. */
+@Throws(Exception::class)
+suspend fun DashboardClient.cardAssignees(card: CardRef): CardAssignees =
+    http.get("api/cards/${card.kind.encodeURLPathPart()}/${card.id.encodeURLPathPart()}/assignees") { authorise() }.decoded()
+
+/**
+ * Makes [card]'s assignees exactly [principals] (mode "set"), or adds ("add") or takes off ("remove")
+ * them. Answers who is assigned now.
+ */
+@Throws(Exception::class)
+suspend fun DashboardClient.assignCard(card: CardRef, principals: List<String>, mode: String): List<AssigneeView> =
+    http.post("api/cards/${card.kind.encodeURLPathPart()}/${card.id.encodeURLPathPart()}/assignees") {
+        authorise()
+        jsonBodyOf(buildJsonObject {
+            put("assignees", kotlinx.serialization.json.JsonArray(principals.map { kotlinx.serialization.json.JsonPrimitive(it) }))
+            put("mode", mode)
+        })
+    }.decoded<AssignAnswer>().assignees
 
 private fun HttpRequestBuilder.jsonBodyOf(body: JsonObject) {
     contentType(ContentType.Application.Json)

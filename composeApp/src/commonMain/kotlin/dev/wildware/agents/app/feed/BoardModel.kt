@@ -50,6 +50,8 @@ data class BoardCard(
     val removedByAge: Boolean = false,
     /** The viewer may change its work state. */
     val canMove: Boolean = true,
+    /** Who it is assigned to, oldest first (server migration 072). */
+    val assignees: List<Assignee> = emptyList(),
 ) {
     /** What a screen reader says for it. */
     val spoken: String
@@ -58,6 +60,7 @@ data class BoardCard(
             if (status == WorkStatus.Cancelled) "cancelled" else null,
             channel?.let { "in $it" },
             who?.let { if (whoMore > 0) "$it and $whoMore more on it" else "$it on it" },
+            assignees.takeIf { it.isNotEmpty() }?.let { a -> "assigned to " + a.joinToString(", ") { it.name } },
             "$age in ${boardColumnOf(status).label}",
             "$waiting waiting".takeIf { waiting > 0 },
             "removed from the board".takeIf { removed },
@@ -84,6 +87,10 @@ data class BoardState(
     val columns: List<BoardColumn> = BoardStatuses.map { BoardColumn(it) },
     val autoRemoveDays: Int? = 7,
     val showRemoved: Boolean = false,
+    /** Which cards show by who they are assigned to. */
+    val assigned: AssignedFilter = AssignedFilter.All,
+    /** Everyone seen assigned on this board, for its filter chips. */
+    val assignees: List<Assignee> = emptyList(),
     val loaded: Boolean = false,
     val loading: Boolean = false,
     val problem: String? = null,

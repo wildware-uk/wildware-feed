@@ -69,6 +69,11 @@ class FakeServer {
     var notifications = listOf<NotificationView>()
     /** `GET /api/board`, as the dashboard answers it (migration 070). */
     @Volatile var board: String = """{"columns":[],"autoRemoveDays":7}"""
+    /** `GET /api/cards/{kind}/{id}/assignees` (migration 072): who it is assigned to, and who could be. */
+    @Volatile var assignees: String = """{"card":{"kind":"message","id":"m-post"},"assignees":[],"candidates":[""" +
+        """{"principal":"member:founder","kind":"person","id":"founder","name":"Shaun","handle":"shaun","canRead":true},""" +
+        """{"principal":"agent:a1","kind":"agent","id":"a1","name":"forge","canRead":true},""" +
+        """{"principal":"agent:a2","kind":"agent","id":"a2","name":"lumen","canRead":false}],"max":5}"""
     /** Questions answered lately, as a team's `GET /api/snapshot/requests` lists them (migration 055). */
     var answered = listOf<RequestView>()
     /** `GET /api/me` and `GET /api/people`; null answers 404, a server from before teams. */
@@ -261,7 +266,8 @@ class FakeServer {
             "/api/notifications" -> ok(json.encodeToString(NotificationsSnapshot.serializer(), NotificationsSnapshot(
                 seq, notifications = notifications, unseen = notifications.count { it.seenAt == null },
             )))
-            else -> threads[path.removePrefix("/api/threads/")]?.takeIf { path.startsWith("/api/threads/") }?.let { ok(it) }
+            else -> (if (Regex("^/api/cards/[a-z]+/[^/]+/assignees$").matches(path)) ok(assignees) else null)
+                ?: threads[path.removePrefix("/api/threads/")]?.takeIf { path.startsWith("/api/threads/") }?.let { ok(it) }
                 ?: ok("""{"error":"not_found"}""", HttpStatusCode.NotFound)
         }
     }

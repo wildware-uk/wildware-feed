@@ -52,6 +52,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isAltPressed
 import androidx.compose.ui.input.key.isCtrlPressed
 import androidx.compose.ui.input.key.isMetaPressed
 import androidx.compose.ui.input.key.isShiftPressed
@@ -202,7 +203,27 @@ private fun BoardHeader(ui: FeedUi, board: BoardState, scope: BoardScope, compac
             }
             if (board.showRemoved) Chip("Showing removed", selected = true) { ui.emit(FeedEvent.BoardShowRemoved(false)) }
         }
+        AssignedChips(ui, board)
         board.problem?.let { MetaText(it, Modifier.padding(top = 8.dp), color = colors.error) }
+    }
+}
+
+/** Filter by who it is assigned to: me, nobody, or one of those seen on the board. A chosen chip again shows everything. */
+@Composable
+private fun AssignedChips(ui: FeedUi, board: BoardState) {
+    val pick = { f: AssignedFilter -> ui.emit(FeedEvent.BoardAssigned(if (board.assigned == f) AssignedFilter.All else f)) }
+    val me = ui.state.team.me?.id
+    Row(
+        Modifier.padding(top = 8.dp).horizontalScroll(rememberScrollState()).semantics { testTag = "board-assigned-filters" },
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Chip("Assigned to me", selected = board.assigned == AssignedFilter.Mine) { pick(AssignedFilter.Mine) }
+        Chip("Unassigned", selected = board.assigned == AssignedFilter.Nobody) { pick(AssignedFilter.Nobody) }
+        board.assignees.filter { it.principal != "member:$me" }.forEach { a ->
+            val f = AssignedFilter.One(a)
+            Chip(a.name, selected = board.assigned == f) { pick(f) }
+        }
     }
 }
 
@@ -360,7 +381,9 @@ private fun BoardCardItem(ui: FeedUi, card: BoardCard, multi: Boolean, drag: Boa
             .semantics(mergeDescendants = true) {
                 contentDescription = card.spoken + if (unread > 0) ", $unread unread" else ""
                 testTag = "board-card-${card.id}"
-                customActions = moves.map { s ->
+                customActions = listOfNotNull(
+                    CustomAccessibilityAction("Assign…") { ui.emit(FeedEvent.AssignCard(card.kind, card.id, card.title)); true }.takeIf { card.canMove },
+                ) + moves.map { s ->
                     CustomAccessibilityAction("Move to ${s.label}") { ui.emit(FeedEvent.BoardMove(card.kind, card.id, s)); true }
                 } + listOfNotNull(
                     CustomAccessibilityAction(if (card.removed) "Put back on the board" else "Remove from board") {
@@ -437,7 +460,9 @@ private fun BoardCardFace(
         Spacer(Modifier.height(6.dp))
         Row(Modifier.padding(end = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             if (multi && card.channel != null) MetaText("# ${card.channel}", Modifier.widthIn(max = 120.dp), color = colors.textMuted)
-            card.who?.let { who ->
+            if (card.assignees.isNotEmpty()) {
+                AssigneeAvatars(card.assignees)
+            } else card.who?.let { who ->
                 MetaText(if (card.whoMore > 0) "$who +${card.whoMore}" else who, Modifier.weight(1f, fill = false), color = colors.textMuted)
             }
             Spacer(Modifier.weight(1f))
@@ -504,6 +529,10 @@ private fun BoardCardMenu(ui: FeedUi, card: BoardCard, open: (BoardCard) -> Unit
             Text(card.title, Modifier.padding(horizontal = 16.dp, vertical = 8.dp).semantics { heading() }, color = colors.text, style = AgentTheme.type.label, maxLines = 2, overflow = TextOverflow.Ellipsis)
             MenuRow("Open") { close(); open(card) }
             if (card.canMove) {
+                MenuRow("Assign…") {
+                    close()
+                    ui.emit(FeedEvent.AssignCard(card.kind, card.id, card.title))
+                }
                 BoardStatuses.filter { it != boardColumnOf(card.status) }.forEach { s ->
                     MenuRow("Move to ${s.label}", dot = colors.status(s)) {
                         close()
@@ -579,6 +608,10 @@ internal fun boardKey(ui: FeedUi, e: KeyEvent, open: (BoardCard) -> Unit): Boole
         Key.DirectionLeft -> firstFrom(col - 1, -1) || true
         Key.DirectionRight -> firstFrom(col + 1, 1) || true
         Key.Enter, Key.NumPadEnter -> run { open(current); true }
+        Key.A -> {
+            if (current.canMove && !e.isShiftPressed && !e.isAltPressed) ui.emit(FeedEvent.AssignCard(current.kind, current.id, current.title))
+            true
+        }
         Key.Delete, Key.Backspace -> {
             if (current.canMove && boardColumnOf(current.status) == WorkStatus.Done && !current.removed) {
                 ui.emit(FeedEvent.BoardRemove(current.kind, current.id, true))

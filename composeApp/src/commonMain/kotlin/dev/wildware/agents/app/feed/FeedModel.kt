@@ -305,6 +305,8 @@ data class Reply(
     val uploaded: Float? = null,
     /** Said aloud and transcribed, not typed: drawn with a small mic. */
     val voice: Boolean = false,
+    /** The dashboard's line saying who assigned whom (migration 072): drawn small, not as a message. */
+    val assignment: Boolean = false,
     /** While [sending]: a voice note that can still be taken back, until then (epoch millis). */
     val undoUntil: Long? = null,
     /** Questions an agent asked under this reply. They are answered right here, as well as at the top. */
@@ -691,6 +693,8 @@ data class FeedState(
     val lone: FeedItem? = null,
     /** The board, while it is on screen: the work in the selected channels, a column per state. */
     val board: BoardState = BoardState(),
+    /** The Assign picker, while open (server migration 072). */
+    val assign: AssignState? = null,
 ) {
     fun item(id: String): FeedItem? = sections.firstNotNullOfOrNull { s -> s.items.firstOrNull { it.id == id } }
 }

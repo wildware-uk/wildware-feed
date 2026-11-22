@@ -101,6 +101,7 @@ fun InlineThread(
                 if (ui != null) {
                     val following = ui.following(item)
                     FollowAction(following, labelled = true) { ui.emit(FeedEvent.FollowThread(item.id, !following)) }
+                    if (item is FeedItem.Update || item is FeedItem.Post) AssignAction { ui.emit(FeedEvent.Assign(item.id)) }
                 }
             }
         }
@@ -154,6 +155,23 @@ fun FollowAction(following: Boolean, labelled: Boolean = false, onClick: () -> U
     ) {
         Icon(if (following) Icons.Bell else Icons.BellOff, null, tint = tint, modifier = Modifier.size(if (labelled) 15.dp else 18.dp))
         if (labelled) Text(if (following) "Following" else "Follow", Modifier.padding(start = 6.dp), color = tint, style = AgentTheme.type.label)
+    }
+}
+
+/** "Assign…" in a card's thread: who is doing the work. */
+@Composable
+private fun AssignAction(onClick: () -> Unit) {
+    val colors = AgentTheme.colors
+    val shape = AgentTheme.shapes.pill
+    Row(
+        Modifier
+            .clip(shape)
+            .pressable("Assign…", shape, labelIsShown = true, onClick = onClick)
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.People, null, tint = colors.textMuted, modifier = Modifier.size(15.dp))
+        Text("Assign…", Modifier.padding(start = 6.dp), color = colors.textMuted, style = AgentTheme.type.label)
     }
 }
 

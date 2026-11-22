@@ -7,6 +7,7 @@ import dev.wildware.agents.CardRef
 import dev.wildware.agents.DashboardClient
 import dev.wildware.agents.DashboardException
 import dev.wildware.agents.OwnerActions
+import dev.wildware.agents.app.feed.AssignedFilter
 import dev.wildware.agents.app.feed.BoardCard
 import dev.wildware.agents.app.feed.BoardColumn
 import dev.wildware.agents.app.feed.BoardState
@@ -69,12 +70,27 @@ class BoardWatch(
             extra.clear()
             afters.clear()
             more.clear()
-            mutable.value = BoardState(scope = scope, showRemoved = mutable.value.showRemoved, autoRemoveDays = mutable.value.autoRemoveDays)
+            mutable.value = BoardState(scope = scope, showRemoved = mutable.value.showRemoved, autoRemoveDays = mutable.value.autoRemoveDays, assigned = mutable.value.assigned)
         }
         live = this.scope.launch {
             load()
             changes.debounce(ReReadMillis).collect { load() }
         }
+    }
+
+    /** Keeps only the cards assigned to me, to nobody, or to one person or agent; [AssignedFilter.All] for every card. */
+    fun filter(filter: AssignedFilter) {
+        if (mutable.value.assigned == filter) return
+        first = emptyMap()
+        extra.clear()
+        // The cards another filter showed go at once; the read fills the columns again.
+        publish(mutable.value.copy(assigned = filter))
+        scope.launch { load() }
+    }
+
+    /** Reads the board again now, after a change made beside it (an assignment). */
+    fun reread() {
+        if (mutable.value.scope != null && live != null) scope.launch { load() }
     }
 
     fun showRemoved(on: Boolean) {
@@ -135,7 +151,7 @@ class BoardWatch(
         mutable.value = board.copy(columns = board.columns.map { if (it.status == column.status) it.copy(loadingMore = true) else it })
         scope.launch {
             try {
-                val page = client.board(boardScope, removed = board.showRemoved, column = column.status.wire, after = after, limit = Page)
+                val page = client.board(boardScope, removed = board.showRemoved, column = column.status.wire, after = after, limit = Page, assigned = board.assigned.wire)
                 val read = page.columns.firstOrNull() ?: return@launch
                 afters[column.status] = read.after
                 extra[column.status] = extra[column.status].orEmpty() + read.cards
@@ -158,18 +174,19 @@ class BoardWatch(
     private suspend fun load() {
         val boardScope = mutable.value.scope ?: return
         val showRemoved = mutable.value.showRemoved
+        val assigned = mutable.value.assigned
         // A re-read covers as many cards as are showing, so a page read further down stays.
         val showing = BoardStatuses.maxOf { (first[it]?.size ?: 0) + (extra[it]?.size ?: 0) }.coerceIn(Page, MaxRead)
         mutable.value = mutable.value.copy(loading = true)
         val read: BoardSnapshot = try {
-            client.board(boardScope, removed = showRemoved, limit = showing)
+            client.board(boardScope, removed = showRemoved, limit = showing, assigned = assigned.wire)
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (failed: Throwable) {
             mutable.value = mutable.value.copy(loading = false, loaded = true, problem = problemOf(failed, "read the board"))
             return
         }
-        if (mutable.value.scope != boardScope) return
+        if (mutable.value.scope != boardScope || mutable.value.assigned != assigned) return
         first = read.columns.associate { statusOf(it.status) to it.cards }
         extra.clear()
         read.columns.forEach { c -> afters[statusOf(c.status)] = c.after; more[statusOf(c.status)] = c.more }
@@ -179,7 +196,9 @@ class BoardWatch(
         moving.entries.removeAll { (id, status) -> all[id]?.let { statusOf(it.status) == status } ?: true || now() - (movedAt[id] ?: 0) > GiveUpMillis }
         movedAt.keys.retainAll(moving.keys)
         removing.entries.removeAll { (id, removed) -> all[id]?.removed == removed || (removed && all[id] == null) }
-        publish(mutable.value.copy(autoRemoveDays = read.autoRemoveDays, loaded = true, loading = false, problem = null))
+        // Everyone seen assigned here stays a filter chip, even once a filter hides their cards.
+        val seen = (mutable.value.assignees + read.columns.flatMap { c -> c.cards.flatMap { it.assignees } }.map(::assigneeOf)).distinctBy { it.principal }
+        publish(mutable.value.copy(autoRemoveDays = read.autoRemoveDays, loaded = true, loading = false, problem = null, assignees = seen))
     }
 
     /** The board as read, with the owner's moves and removals still on their way laid over it. */
@@ -211,6 +230,7 @@ class BoardWatch(
             who = who?.name?.ifBlank { null }, whoIsAgent = who?.kind != "person", whoMore = (v.on.size - 1).coerceAtLeast(0),
             age = boardAge(now() - (v.statusAt ?: v.createdAt)), waiting = v.waiting, replies = v.replies,
             removed = v.removed, removedByAge = v.removedBy == "age", canMove = v.canMove,
+            assignees = v.assignees.map(::assigneeOf),
         )
     }
 

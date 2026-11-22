@@ -216,7 +216,10 @@ class DemoServer(private val now: () -> Long = { Clock.System.now().toEpochMilli
             "api/devices/current/alert-prefs" -> ok("""{"prefs":$alertPrefs}""")
             "api/board" -> ok(json.encodeToString(boardOf(request)))
             "api/settings/board" -> ok("""{"autoRemoveDays":${boardDays ?: "null"}}""")
-            else -> agentsPath(path)?.let { (kind, slug) ->
+            else -> Regex("^api/cards/([a-z]+)/([^/]+)/assignees$").find(path)?.let { m ->
+                val card = CardRef(m.groupValues[1], m.groupValues[2])
+                ok(json.encodeToString(dev.wildware.agents.CardAssignees(card, assignedTo(card.id), assignable())))
+            } ?: agentsPath(path)?.let { (kind, slug) ->
                 ok("""{"agents":${json.encodeToString(members(kind, slug))}}""")
             } ?: accessPath(path)?.takeIf { it.third == null }?.let { (kind, ref) ->
                 ok(json.encodeToString(accessPanel(kind, ref)))
@@ -416,6 +419,14 @@ class DemoServer(private val now: () -> Long = { Clock.System.now().toEpochMilli
             boardRemoved = boardRemoved - card.id
             ok("{}")
         }
+        "assignees" -> {
+            val wanted = (input["assignees"] as? kotlinx.serialization.json.JsonArray)?.map { it.jsonPrimitive.content }.orEmpty()
+            val everyone = assignable()
+            assigned = assigned + (card.id to wanted.mapNotNull { w -> everyone.firstOrNull { it.principal == w || it.name.equals(w, ignoreCase = true) }?.principal }.distinct().take(5))
+            if (card.kind == CardKinds.Message) messages = messages.map { if (it.id == card.id && it.status == null) it.copy(status = "todo", statusAt = now()) else it }
+            if (card.kind == CardKinds.Update) updates = updates.map { if (it.id == card.id && it.status == null) it.copy(status = "todo", statusAt = now()) else it }
+            ok("""{"assignees":${json.encodeToString(assignedTo(card.id))}}""")
+        }
         "board" -> {
             val removed = input["removed"]?.jsonPrimitive?.booleanOrNull ?: true
             boardRemoved = if (removed) boardRemoved + card.id else boardRemoved - card.id
@@ -488,6 +499,19 @@ class DemoServer(private val now: () -> Long = { Clock.System.now().toEpochMilli
 
     private fun JsonObject.text(key: String): String? = (this[key] as? JsonPrimitive)?.takeIf { it !is JsonNull }?.contentOrNull
 
+    /** Who each card is assigned to, by card id: principals, oldest first. */
+    private var assigned = mapOf<String, List<String>>()
+
+    /** Everyone the demo can assign: you, then its agents. */
+    private fun assignable(): List<dev.wildware.agents.AssigneeView> =
+        listOf(dev.wildware.agents.AssigneeView("member:founder", "person", "founder", "You", "you")) +
+            data.agents(now()).map { a -> dev.wildware.agents.AssigneeView("agent:${a.agentId}", "agent", a.agentId, renamed[a.agentId] ?: a.name) }
+
+    private fun assignedTo(cardId: String): List<dev.wildware.agents.AssigneeView> {
+        val everyone = assignable().associateBy { it.principal }
+        return assigned[cardId].orEmpty().mapNotNull { everyone[it] }
+    }
+
     /** The board's finished cards taken off it, and the demo's auto-remove age (it never removes by age). */
     private var boardRemoved = setOf<String>()
     private var boardDays: Int? = 7
@@ -497,6 +521,7 @@ class DemoServer(private val now: () -> Long = { Clock.System.now().toEpochMilli
         val channel = request.url.parameters["channel"]?.let { slug -> projects.firstOrNull { it.slug == slug }?.id }
         val group = request.url.parameters["group"]?.let { slug -> groups.firstOrNull { it.slug == slug }?.id }
         val showRemoved = request.url.parameters["removed"] == "1"
+        val only = request.url.parameters["assigned"]?.let { if (it == "me") "member:founder" else it }
         fun inScope(projectId: String?) = when {
             channel != null -> projectId == channel
             group != null -> projects.any { it.id == projectId && it.groupId == group }
@@ -511,6 +536,7 @@ class DemoServer(private val now: () -> Long = { Clock.System.now().toEpochMilli
                 title = u.title?.takeIf { it.isNotBlank() } ?: u.body.lineSequence().first(), author = "agent:${u.agentId}",
                 on = listOf(dev.wildware.agents.BoardWho("agent", u.agentId, names[u.agentId] ?: "An agent")),
                 removed = u.id in boardRemoved,
+                assignees = assignedTo(u.id),
             )
         } + messages.filter { it.status != null && inScope(it.projectId) }.map { m ->
             dev.wildware.agents.BoardCardView(
@@ -520,7 +546,14 @@ class DemoServer(private val now: () -> Long = { Clock.System.now().toEpochMilli
                 title = m.body.lineSequence().first().take(140), author = m.author,
                 on = listOfNotNull(m.agentId?.let { dev.wildware.agents.BoardWho("agent", it, names[it] ?: "An agent") } ?: dev.wildware.agents.BoardWho("person", "you", "You")),
                 removed = m.id in boardRemoved,
+                assignees = assignedTo(m.id),
             )
+        }.filter { c ->
+            when (only) {
+                null -> true
+                "none" -> c.assignees.isEmpty()
+                else -> c.assignees.any { it.principal == only }
+            }
         }
         val columns = listOf("todo", "in_progress", "blocked", "done").map { status ->
             val here = cards.filter { (if (it.status == "cancelled") "done" else it.status) == status && (showRemoved || !it.removed) }

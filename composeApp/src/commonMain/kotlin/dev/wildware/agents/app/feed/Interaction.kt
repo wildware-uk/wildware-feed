@@ -173,6 +173,16 @@ sealed interface FeedEvent {
     data class BoardAutoRemove(val days: Int?) : FeedEvent
     /** Read the next page of one column. */
     data class BoardMore(val status: WorkStatus) : FeedEvent
+    /** Keep only the board's cards assigned to me, to nobody, or to one person or agent. */
+    data class BoardAssigned(val filter: AssignedFilter) : FeedEvent
+    /** "Assign…" on a card in the feed or its thread: the picker opens for it. */
+    data class Assign(val targetId: String) : FeedEvent
+    /** "Assign…" on a board card, or A on a focused one: the picker opens for it. */
+    data class AssignCard(val kind: String, val id: String, val title: String) : FeedEvent
+    /** The picker's Save: the card's assignees become exactly these (`member:<id>` / `agent:<id>`). */
+    data class SaveAssignees(val principals: List<String>) : FeedEvent
+    /** The picker closes without saving. */
+    data object CloseAssign : FeedEvent
     /** Save which alerts this device gets; null is every alert. */
     data class SetAlertPrefs(val prefs: AlertPrefs?) : FeedEvent
     /** Read how long the dashboard keeps media again, after a read that failed. */
