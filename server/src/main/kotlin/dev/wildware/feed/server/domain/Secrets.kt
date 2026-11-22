@@ -219,38 +219,170 @@ class Secrets(
     }
 
     /**
-     * The owner answers a `request_secret`: the value is stored under the name the agent asked for
-     * (replacing it if there is one), the asking agent may now read it, and the request is settled
-     * with the name only. The request row never sees the value.
+     * One input on a `request_secret` card (`fields`): the name its value is stored under, what the
+     * owner reads above the box ([label]) and under it ([hint]), whether the box takes several lines,
+     * and whether it may be left empty. None of it is ever a value.
+     */
+    data class Field(
+        val name: String,
+        val label: String? = null,
+        val hint: String? = null,
+        val multiline: Boolean = false,
+        val optional: Boolean = false,
+    ) {
+        fun json(): JsonObject = buildJsonObject {
+            put("name", name)
+            label?.let { put("label", it) }
+            hint?.let { put("hint", it) }
+            if (multiline) put("multiline", true)
+            if (optional) put("optional", true)
+        }
+    }
+
+    /**
+     * The owner answers a `request_secret` that asks for one secret: the value is stored under the
+     * name the agent asked for (replacing it if there is one), the asking agent may now read it, and
+     * the request is settled with the name only. The request row never sees the value.
      */
     fun provide(requests: Requests, requestId: String, value: ByteArray, note: String?, actor: Actor, by: String = People.FOUNDER): Secret {
-        sealer()
-        val request = requests.find(requestId) ?: throw notFound("no such request: $requestId")
-        if (request.kind != "secret") throw invalid("request $requestId is not asking for a secret")
-        val name = (request.config?.get("secretName") as? JsonPrimitive)?.content ?: throw invalid("request $requestId names no secret")
-        checkValue(value)
-        val existing = byName(name)
+        val request = secretRequest(requests, requestId)
+        val fields = fieldsOf(request)
+        if (fields.size != 1) {
+            throw invalid("request $requestId asks for ${fields.size} secrets: send them together, as values by name")
+        }
+        return provideAll(requests, requestId, mapOf(fields.single().name to value), note, actor, by).single()
+    }
+
+    /**
+     * The owner answers a `request_secret` with every value its card asked for, by name: each is
+     * stored as its own secret (new, or replacing one the asking agent may already read), shared
+     * with the asking agent, and audited. All of it is checked first and all of it is written in one
+     * transaction, so a bad value saves none of them. An optional field left out or empty is
+     * skipped. The request is settled with the names saved, never a value.
+     */
+    fun provideAll(
+        requests: Requests,
+        requestId: String,
+        values: Map<String, ByteArray>,
+        note: String?,
+        actor: Actor,
+        by: String = People.FOUNDER,
+    ): List<Secret> {
+        val sealer = sealer()
+        val request = secretRequest(requests, requestId)
+        val fields = fieldsOf(request)
+        val asked = fields.mapTo(HashSet()) { it.name }
+        values.keys.firstOrNull { it !in asked }?.let { throw invalid("request $requestId does not ask for $it") }
+        val given = fields.mapNotNull { field ->
+            val value = values[field.name]?.takeIf { it.isNotEmpty() }
+            when {
+                value != null -> field.name to value
+                field.optional -> null
+                else -> throw invalid("${field.name} is needed: fill it in, or dismiss the request")
+            }
+        }
+        if (given.isEmpty()) throw invalid("fill in at least one secret, or dismiss the request")
+        val skipped = fields.map { it.name }.filter { name -> given.none { it.first == name } }
+        for ((_, value) in given) checkValue(value)
+        val cleanNote = optionalText(note, "note", NOTE_MAX)
+        val existing = given.associate { (name, _) -> name to byName(name) }
         // Answering never shares an existing secret with a new reader: the asker must already be one.
-        if (existing != null && !mayRead(existing, request.agentId)) {
-            throw conflict("a secret named $name already exists and is not shared with the agent asking: share it, or answer with another name")
+        for ((name, secret) in existing) {
+            if (secret != null && !mayRead(secret, request.agentId)) {
+                throw conflict("a secret named $name already exists and is not shared with the agent asking: share it, or answer with another name")
+            }
         }
         // Claim the request first (this also times it out if it is past due), so a value is only
         // stored for a request that was still waiting.
-        val claimed = requests.claimSecret(requestId, name, by)
-        val secret = try {
-            if (existing == null) {
-                create(name, value, note, allAgents = false, agentIds = listOf(request.agentId), actor = actor)
-            } else {
-                change(existing.id, actor, value = value, noteGiven = note != null, note = note)
+        val claimed = if (request.config?.get("secretFields") != null) {
+            requests.claimSecrets(requestId, given.map { it.first }, skipped, by)
+        } else {
+            requests.claimSecret(requestId, given.single().first, by)
+        }
+        val now = clock()
+        val written = try {
+            val sealed = given.map { (name, value) ->
+                val id = existing[name]?.id ?: Ulid.next(now)
+                Triple(name, id, sealer.seal(id, value) to value.size)
             }
+            db.transaction {
+                for ((name, id, seal) in sealed) {
+                    val (held, size) = seal
+                    val was = existing[name]
+                    if (was == null) {
+                        db.update(
+                            "INSERT INTO secrets (team_id, id, name, note, all_agents, key_id, wrapped_key, sealed, bytes, created_by, created_at, updated_at) " +
+                                "VALUES (:team, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                            id, name, cleanNote, false, held.keyId, held.wrappedKey, held.sealed, size, by(actor), now, now,
+                        )
+                        db.update("INSERT INTO secret_agents (team_id, secret_id, agent_id) VALUES (:team, ?, ?)", id, request.agentId)
+                        audit(id, name, "created", actor, scopeText(false, listOf(request.agentId)))
+                    } else {
+                        db.update(
+                            "UPDATE secrets SET key_id = ?, wrapped_key = ?, sealed = ?, bytes = ?, updated_at = ?, note = coalesce(?, note) WHERE team_id = :team AND id = ?",
+                            held.keyId, held.wrappedKey, held.sealed, size, now, cleanNote, id,
+                        )
+                        audit(id, name, "value_changed", actor, null)
+                        // Once the owner has changed it, it is the owner's, and the URLs already out are worthless.
+                        if (actor.kind == "owner") db.update("UPDATE secrets SET created_by = 'owner' WHERE team_id = :team AND id = ?", id)
+                        db.update("DELETE FROM secret_grants WHERE team_id = :team AND secret_id = ? AND used_at IS NULL", id)
+                    }
+                    audit(id, name, "provided", actor, "for request $requestId")
+                }
+            }
+            sealed.map { (name, id, _) -> Triple(name, id, existing[name] == null) }
         } catch (e: Throwable) {
             // Nothing stored, so the agent must not hear "saved": the request waits again.
             requests.releaseSecret(claimed)
             throw e
         }
-        audit(secret.id, name, "provided", actor, "for request $requestId")
+        for ((_, id, created) in written) changed(id, if (created) "created" else "changed")
         requests.announceSecret(claimed)
-        return secret
+        return written.map { (_, id, _) -> find(id)!! }
+    }
+
+    /** The inputs [request] asks for: its `fields`, or the one secret it names. */
+    fun fieldsOf(request: OwnerRequest): List<Field> {
+        val config = request.config
+        val listed = config?.get("secretFields") as? JsonArray
+        if (listed != null) {
+            return listed.map { element ->
+                val o = element as JsonObject
+                Field(
+                    name = (o["name"] as JsonPrimitive).content,
+                    label = (o["label"] as? JsonPrimitive)?.content,
+                    hint = (o["hint"] as? JsonPrimitive)?.content,
+                    multiline = (o["multiline"] as? JsonPrimitive)?.content == "true",
+                    optional = (o["optional"] as? JsonPrimitive)?.content == "true",
+                )
+            }
+        }
+        val name = (config?.get("secretName") as? JsonPrimitive)?.content ?: throw invalid("request ${request.id} names no secret")
+        return listOf(Field(name))
+    }
+
+    private fun secretRequest(requests: Requests, requestId: String): OwnerRequest {
+        val request = requests.find(requestId) ?: throw notFound("no such request: $requestId")
+        if (request.kind != "secret") throw invalid("request $requestId is not asking for a secret")
+        return request
+    }
+
+    /**
+     * `request_secret` with `fields`: 1 to [FIELDS_MAX] inputs, each a name [checkRequestable]
+     * allows, no name twice, and short words around each box.
+     */
+    fun checkRequestableFields(agentId: String, fields: List<Field>): List<Field> {
+        if (fields.isEmpty()) throw invalid("fields needs at least one secret")
+        if (fields.size > FIELDS_MAX) throw invalid("at most $FIELDS_MAX secrets in one request")
+        val clean = fields.mapIndexed { i, field ->
+            field.copy(
+                name = checkRequestable(agentId, field.name),
+                label = optionalText(field.label, "fields[$i].label", LABEL_MAX),
+                hint = optionalText(field.hint, "fields[$i].hint", HINT_MAX),
+            )
+        }
+        clean.groupBy { it.name }.entries.firstOrNull { it.value.size > 1 }?.let { throw invalid("${it.key} is asked for twice") }
+        return clean
     }
 
     /** `request_secret` asks only for a new name, or for one the agent may already read. */
@@ -560,6 +692,10 @@ class Secrets(
         const val NOTE_MAX = 500
         const val LIVE_GRANTS_MAX = 20
         const val AGENT_SECRETS_MAX = 50
+        /** The most secrets one `request_secret` card asks for. */
+        const val FIELDS_MAX = 10
+        const val LABEL_MAX = 100
+        const val HINT_MAX = 500
         const val SWEEP_INTERVAL_MS = 60_000L
         private const val SPENT_KEPT_MS = 24 * 60 * 60_000L
         private val NAME = Regex("^[A-Za-z_][A-Za-z0-9_.-]{0,99}$")

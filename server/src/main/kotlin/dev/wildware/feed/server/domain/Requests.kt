@@ -73,6 +73,11 @@ data class NewRequest(
     val embeds: List<NewEmbed>? = null,
     /** For kind "secret" (`request_secret`): the name the value will be stored under. */
     val secretName: String? = null,
+    /**
+     * For kind "secret" asked with `fields`: every secret the one card asks for, checked by
+     * [Secrets.checkRequestableFields]. [secretName] is then the first one's name, for older apps.
+     */
+    val secretFields: List<Secrets.Field>? = null,
     /** Other cards the question points at (migration 056), shown inside it. */
     val refs: List<CardRef>? = null,
     /** Blocks drawn on the question (migration 057), as the agent wrote them. */
@@ -252,12 +257,26 @@ class Requests(
      * or time it out), but nobody is told yet. Then [announceSecret] once the value is stored, or
      * [releaseSecret] if storing it failed.
      */
-    fun claimSecret(requestId: String, name: String, by: String = People.FOUNDER): JsonObject {
+    fun claimSecret(requestId: String, name: String, by: String = People.FOUNDER): JsonObject =
+        claimSecrets(requestId, JsonPrimitive(name), name, by)
+
+    /**
+     * [claimSecret] for a request that asked with `fields`: the answer is [saved], the names stored
+     * (never a value), with [skipped], the optional ones the owner left empty.
+     */
+    fun claimSecrets(requestId: String, saved: List<String>, skipped: List<String>, by: String = People.FOUNDER): JsonObject =
+        claimSecrets(requestId, JsonArray(saved.map(::JsonPrimitive)), saved.joinToString(", "), by, skipped)
+
+    private fun claimSecrets(requestId: String, value: JsonElement, said: String, by: String, skipped: List<String>? = null): JsonObject {
         val request = expireIfDue(toAnswer(requestId))
         if (request.kind != "secret") throw invalid("request $requestId is not asking for a secret")
         if (request.state != "pending") throw settledAlready(request)
-        val answer = buildJsonObject { put("kind", "secret"); put("value", name) }
-        return decide(request.id, "approved", name, jsonText(answer), clock(), by) ?: throw settledAlready(mustFind(request.id))
+        val answer = buildJsonObject {
+            put("kind", "secret")
+            put("value", value)
+            if (skipped != null) put("skipped", JsonArray(skipped.map(::JsonPrimitive)))
+        }
+        return decide(request.id, "approved", said, jsonText(answer), clock(), by) ?: throw settledAlready(mustFind(request.id))
     }
 
     fun announceSecret(claimed: JsonObject): OwnerRequest = settle(claimed, "answered")
@@ -529,7 +548,8 @@ class Requests(
         input.feedbackId?.let { config["feedbackId"] = JsonPrimitive(it) }
         if (kind == "secret") {
             config["secretName"] = JsonPrimitive(input.secretName ?: throw invalid("a secret request names the secret it asks for"))
-        } else if (input.secretName != null) {
+            input.secretFields?.let { fields -> config["secretFields"] = JsonArray(fields.map { it.json() }) }
+        } else if (input.secretName != null || input.secretFields != null) {
             throw invalid("secretName is for a secret request")
         }
         if (input.min != null || input.max != null) {

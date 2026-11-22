@@ -13,7 +13,7 @@ The agent hands the ticket to `curl`, and `curl` puts the coat straight into a f
 | Who gives | Who gets | How |
 |---|---|---|
 | Owner, in the app | Agent | `secret_url(name)` returns a single-use URL. The agent runs `curl -fsS <url> -o .env.local` (or `export X="$(curl -fsS <url>)"`). |
-| Agent asks the owner | Agent | `request_secret(name, question)` shows a masked box in the app. The agent learns only that `name` is ready, then uses `secret_url`. |
+| Agent asks the owner | Agent | `request_secret(name, question)` shows a masked box in the app. The agent learns only that `name` is ready, then uses `secret_url`. With `fields: [{name, label?, hint?, multiline?, optional?}]` (1 to 10) it asks for several on one card with one Save all: each is stored as its own secret, all or none, and the agent learns the names saved. |
 | Agent | Owner | `create_secret_upload(name)` returns a single-use URL. The agent runs `curl -fsS -T file <url>`, then attaches it to its reply (below). |
 | Agent, in a thread | Owner | `post_message` or `post_update` with `secrets: ["NAME"]`. The owner sees a locked chip and opens it in place (below). |
 
@@ -112,12 +112,24 @@ Owner (device key):
   to that update or message (owner or admin; see "Sharing in a thread").
 - `GET /api/secrets/audit[?secret=<id>]` lists the audit, newest first.
 - `POST /api/requests/<id>/secret` `{value, note?}` answers a `request_secret`. The ordinary
-  answer route refuses that kind, so its value never sits on the request row.
+  answer route refuses that kind, so its value never sits on the request row. A request asked
+  with `fields` is answered with `{values: {NAME: value, ...}}` instead: every field that is not
+  optional, checked first and written in one transaction, so a bad one saves none. The request
+  settles with `value` the names saved and `skipped` the optional ones left empty.
 
 Agent (URL from a tool, no other auth):
 
 - `GET /api/agent/secret/<token>` returns the bytes once.
 - `PUT` or `POST /api/agent/secret/<token>` stores the body once (at most 64 KiB).
+
+## Typing a secret in the app
+
+Every box a secret is typed into (an agent's request, Settings → Secrets, sign-in passwords) is a
+password box with an eye. The eye shows what was typed, so the owner can check it, and turns itself
+off when the box loses the cursor, after 30 seconds, and when the app leaves the front. The box
+stays a password box while shown: no copying out, no suggestions or learned words, and a screen
+reader says only that it is a secret field. A value is never in a log, an analytics event or a
+crash report (crash reports drop every error message and every tap, `CrashScrub`).
 
 ## Limits, and what is not covered yet
 

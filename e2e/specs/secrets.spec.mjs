@@ -1,9 +1,10 @@
 // Secrets in a thread: an agent attaches a secret to its post by name, and the owner opens it right
 // there in the browser, without going to Settings. The value is never in the post, and the opening
-// is in the secret's audit. The value is made up.
+// is in the secret's audit. And an agent asks for several secrets on one card: the owner fills them
+// all in, checks one with Show, and saves them together. Every value is made up.
 import { expect, test } from '@playwright/test';
 import { Team } from '../lib/team.mjs';
-import { expectShown, nextResponse, screenText, signedIn, tap } from '../lib/ui.mjs';
+import { expectShown, find, nextResponse, screenText, signedIn, tap, typeInto } from '../lib/ui.mjs';
 import { mcp, openChannelSurely } from '../lib/cards-helpers.mjs';
 
 const value = 'sk-test-NOT-REAL-e2e-3a7f';
@@ -48,4 +49,59 @@ test('an agent shares a secret in a thread and the owner reveals it in place', a
     expect(entries.map((e) => e.action)).toEqual(['revealed', 'shared', 'created']);
     expect(entries[0].detail).toContain(`in update ${posted.update.id}`);
     expect(JSON.stringify(entries)).not.toContain(value);
+});
+
+test('an agent asks for two secrets on one card and the owner saves both with Show on for one', async ({ browser }) => {
+    const { enabled } = await team.owner.ok('GET', '/api/secrets');
+    test.skip(!enabled, 'this server has no SECRETS_KEY');
+    const keyId = 'AKIA-NOT-REAL-e2e-0001';
+    const keySecret = 'not-real-e2e-secret-0002';
+    await agent.call('create_project', { name: 'Keys' });
+
+    // request_secret holds the call open until someone answers, so it isn't awaited here.
+    const question = 'The AWS keys for the deploy, please';
+    const asking = mcp(agent, 'request_secret', {
+        project: 'keys', question,
+        fields: [
+            { name: 'AWS_ACCESS_KEY_ID', label: 'Access key id' },
+            { name: 'AWS_SECRET_ACCESS_KEY', label: 'Secret access key', hint: 'Shown once when you make the key' },
+        ],
+    });
+    let id;
+    await expect.poll(async () => {
+        const res = await team.owner.api('GET', '/api/snapshot/requests');
+        id = (res.json?.requests ?? []).find((r) => r.question === question)?.id;
+        return id;
+    }, { message: 'the secret request' }).toBeTruthy();
+
+    const page = await signedIn(browser, team.owner);
+    await openChannelSurely(page, 'Keys');
+    await expectShown(page, question);
+    await expectShown(page, 'AWS_ACCESS_KEY_ID');
+    await expectShown(page, 'AWS_SECRET_ACCESS_KEY');
+
+    await typeInto(page, 'Value of AWS_ACCESS_KEY_ID, hidden as you type', keyId);
+    // The first box's eye: what was typed shows until the box loses the cursor.
+    const eye = await find(page, 'button', 'Show secret');
+    const box = await eye.boundingBox();
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+    await expectShown(page, 'Hide secret');
+    await typeInto(page, 'Value of AWS_SECRET_ACCESS_KEY, hidden as you type', keySecret);
+    // Moving to the second box hid the first again: both eyes say Show.
+    await expect.poll(async () => page.getByRole('button', { name: 'Show secret', exact: true }).count(), { timeout: 10_000 }).toBe(2);
+
+    const saved = nextResponse(page, `/api/requests/${id}/secret`);
+    await tap(page, 'button', /^Save all/);
+    const response = await saved;
+    expect(response.status(), 'saving both').toBe(200);
+    expect(await response.text()).not.toContain(keySecret);
+    await expectShown(page, 'only hears which names are ready');
+
+    const settled = await asking;
+    expect(settled).toMatchObject({ state: 'answered', request_id: id, response: { kind: 'secret', value: ['AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY'] } });
+    expect(JSON.stringify(settled)).not.toContain(keyId);
+    expect(JSON.stringify(settled)).not.toContain(keySecret);
+    const listed = await mcp(agent, 'list_secrets');
+    expect(listed.secrets.map((s) => s.name)).toEqual(expect.arrayContaining(['AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY']));
+    expect(await screenText(page)).not.toContain(keySecret);
 });

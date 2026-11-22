@@ -1,6 +1,7 @@
 package dev.wildware.agents.app.engine
 
 import dev.wildware.agents.app.feed.PickBounds
+import dev.wildware.agents.app.feed.SecretAsk
 import dev.wildware.agents.CardRefView
 import dev.wildware.agents.CardKinds
 import dev.wildware.agents.HumanAuthor
@@ -394,6 +395,8 @@ internal class FeedMapper(
             picks = if (kind == QuestionKind.MultiChoice) pickBounds(config, options.size) else PickBounds(),
             critical = request.priority == "critical",
             secretName = config?.secretName?.takeIf { kind == QuestionKind.Secret },
+            secretFields = config?.secretFields?.takeIf { kind == QuestionKind.Secret }.orEmpty()
+                .map { SecretAsk(it.name, it.label, it.hint, it.multiline, it.optional) },
             // As the website does: a choice question opens on the agent's default, when it is one of the options.
             preset = config?.defaultValue?.takeIf { kind == QuestionKind.Choice && it in options },
             unsent = index.refused(id)?.let(::unsent),

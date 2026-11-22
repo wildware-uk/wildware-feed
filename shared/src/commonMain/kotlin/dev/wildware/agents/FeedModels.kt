@@ -338,6 +338,11 @@ data class RequestConfig(
     val optionMedia: Map<String, String>? = null,
     /** A secret question (request_secret): the name its value will be kept under. */
     val secretName: String? = null,
+    /**
+     * A secret question that asks for several (request_secret with `fields`): one box each, saved
+     * together. Null for a question that asks for the one [secretName].
+     */
+    val secretFields: List<SecretFieldView>? = null,
 )
 
 /** A question an agent is stopped on. [seq] is queue order: the longest blocked first. */

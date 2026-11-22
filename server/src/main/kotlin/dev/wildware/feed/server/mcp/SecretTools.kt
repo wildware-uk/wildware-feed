@@ -3,11 +3,14 @@ package dev.wildware.feed.server.mcp
 import dev.wildware.feed.server.App
 import dev.wildware.feed.server.domain.NewRequest
 import dev.wildware.feed.server.domain.Secrets
+import dev.wildware.feed.server.domain.invalid
+import dev.wildware.feed.server.domain.jsBoolean
 import dev.wildware.feed.server.domain.jsNumber
 import dev.wildware.feed.server.domain.jsString
 import dev.wildware.feed.server.http.Wire
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.put
 
 /**
@@ -65,7 +68,23 @@ fun ToolRegistry.registerSecretTools(app: App) {
 
     register("request_secret") { call ->
         val a = call.args
-        val name = app.secrets.checkRequestable(call.agent.id, a["name"].jsString!!)
+        val listed = a["fields"] as? JsonArray
+        val single = a["name"].jsString
+        if (listed != null && single != null) throw invalid("pass name for one secret or fields for several, not both")
+        val fields = listed?.let { list ->
+            app.secrets.checkRequestableFields(call.agent.id, list.map { item ->
+                val o = item.jsonObject
+                Secrets.Field(
+                    name = o["name"].jsString!!,
+                    label = o["label"].jsString,
+                    hint = o["hint"].jsString,
+                    multiline = o["multiline"].jsBoolean == true,
+                    optional = o["optional"].jsBoolean == true,
+                )
+            })
+        }
+        val name = fields?.first()?.name
+            ?: app.secrets.checkRequestable(call.agent.id, single ?: throw invalid("name the secret you need, or list several in fields"))
         val input = NewRequest(
             kind = "secret",
             question = a["question"].jsString!!,
@@ -76,6 +95,7 @@ fun ToolRegistry.registerSecretTools(app: App) {
             timeoutS = a["timeout_s"].jsNumber,
             priority = a["priority"].jsString,
             secretName = name,
+            secretFields = fields,
         )
         requestResult(app.requests.requestInput(call.agent.id, input), app.db)
     }

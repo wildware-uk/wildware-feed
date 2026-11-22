@@ -209,6 +209,60 @@ class SecretRoutesTest {
     }
 
     @Test
+    fun `request_secret asks for several secrets in one card and the agent hears which names were saved`() = withApp { c ->
+        val transcript = StringBuilder()
+        val first = "AKIA-NOT-REAL-route-0001"
+        val second = "not-real-route-secret-0002"
+        fun field(name: String, optional: Boolean = false) = buildJsonObject { put("name", name); put("label", "The $name"); if (optional) put("optional", true) }
+        val asked = c.tool("request_secret", buildJsonObject {
+            put("question", "The AWS keys for the deploy, please")
+            put("fields", kotlinx.serialization.json.JsonArray(listOf(field("AWS_ACCESS_KEY_ID"), field("AWS_SECRET_ACCESS_KEY"), field("AWS_SESSION_TOKEN", optional = true))))
+            put("timeout_s", 60)
+        }).also { transcript.append(it) }.data()
+        assertEquals("pending", asked.s("state"))
+        val requestId = asked.s("request_id")
+        val config = c.app.requests.find(requestId)!!.config!!
+        assertEquals("AWS_ACCESS_KEY_ID", config.s("secretName"))
+        assertEquals(3, config["secretFields"]!!.jsonArray.size)
+
+        // One value can't answer a card with several boxes, and a missing required one saves nothing.
+        assertEquals(400, owner("POST", "/api/requests/$requestId/secret", c.key, """{"value":"$first"}""").status.value)
+        assertEquals(400, owner("POST", "/api/requests/$requestId/secret", c.key, """{"values":{"AWS_ACCESS_KEY_ID":"$first"}}""").status.value)
+        assertTrue(c.app.secrets.list().isEmpty())
+
+        val answered = owner("POST", "/api/requests/$requestId/secret", c.key, """{"values":{"AWS_ACCESS_KEY_ID":"$first","AWS_SECRET_ACCESS_KEY":"$second","AWS_SESSION_TOKEN":""}}""")
+        assertEquals(200, answered.status.value, answered.bodyAsText())
+        val body = answered.bodyAsText()
+        assertFalse(body.contains(first) || body.contains(second))
+        assertEquals(listOf("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"), body.json()["secrets"]!!.jsonArray.map { it.jsonObject.s("name") })
+
+        val done = c.tool("await_request", buildJsonObject { put("request_id", requestId) }).also { transcript.append(it) }
+        assertEquals("answered", done.data().s("state"))
+        val response = done.data()["response"]!!.jsonObject
+        assertEquals(listOf("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"), response["value"]!!.jsonArray.map { it.jsonPrimitive.content })
+        assertEquals(listOf("AWS_SESSION_TOKEN"), response["skipped"]!!.jsonArray.map { it.jsonPrimitive.content })
+        assertTrue(transcript.contains("saved 2 secret(s)"), transcript.toString())
+
+        val url = c.tool("secret_url", buildJsonObject { put("name", "AWS_SECRET_ACCESS_KEY") }).also { transcript.append(it) }.data().s("url")
+        assertEquals(second, client.get(url.removePrefix("https://feed.example.com")).bodyAsText())
+        assertFalse(transcript.contains(first) || transcript.contains(second))
+    }
+
+    @Test
+    fun `request_secret takes name or fields and checks the fields`() = withApp { c ->
+        fun list(vararg names: String) = kotlinx.serialization.json.JsonArray(names.map { n -> buildJsonObject { put("name", n) } })
+        suspend fun failed(args: JsonObject) = c.tool("request_secret", args)["isError"]?.jsonPrimitive?.content == "true"
+        assertTrue(failed(buildJsonObject { put("question", "?") }), "neither")
+        assertTrue(failed(buildJsonObject { put("question", "?"); put("name", "A"); put("fields", list("B")) }), "both")
+        assertTrue(failed(buildJsonObject { put("question", "?"); put("fields", list()) }), "none listed")
+        assertTrue(failed(buildJsonObject { put("question", "?"); put("fields", list(*Array(11) { "K$it" })) }), "eleven")
+        assertTrue(failed(buildJsonObject { put("question", "?"); put("fields", list("A", "A")) }), "twice")
+        assertTrue(failed(buildJsonObject { put("question", "?"); put("fields", kotlinx.serialization.json.JsonArray(listOf(buildJsonObject { put("label", "no name") }))) }), "no name")
+        assertFalse(failed(buildJsonObject { put("question", "?"); put("fields", list(*Array(10) { "K$it" })) }), "ten")
+        assertFalse(failed(buildJsonObject { put("question", "?"); put("name", "OLD_STYLE") }), "the old single name")
+    }
+
+    @Test
     fun `a download link can't upload, an upload link can't download, and links are rate limited`() = withApp { c ->
         c.app.secrets.create("K", value.toByteArray(), null, true, emptyList(), dev.wildware.feed.server.domain.Secrets.Actor.SERVER)
         val read = c.tool("secret_url", buildJsonObject { put("name", "K") }).data().s("url").removePrefix("https://feed.example.com")

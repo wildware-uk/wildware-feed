@@ -940,70 +940,107 @@ private fun AnswerField(field: FormField?, enabled: Boolean, onSend: (String) ->
  * what to do and what to do it to in one go.
  */
 /**
- * An agent asks for a secret: a masked box, and the name it will be kept under. The value goes to
- * the dashboard at once and is never queued, kept or shown to the agent, which hears only that it
- * is ready. Offline, it says so and keeps nothing.
+ * An agent asks for one secret, or several on one card: a masked box for each, named by the agent
+ * and showing the name it will be kept under, and one button that saves them all. The values go to
+ * the dashboard at once and are never queued, kept or shown to the agent, which hears only which
+ * names are ready. The dashboard saves all of them or none. Offline, it says so and keeps nothing.
  */
 @Composable
 private fun SecretAnswer(item: FeedItem.Question, ui: FeedUi?, dismiss: () -> Unit) {
     val colors = AgentTheme.colors
     val shape = AgentTheme.shapes.medium
     val bg = colors.surface.copy(alpha = if (colors.isDark) 0.6f else 0.85f)
+    val several = item.secretFields.isNotEmpty()
+    val asks = if (several) item.secretFields else listOf(SecretAsk(item.secretName ?: "a secret"))
     // Not saveable: a half-typed value must never land in the platform's saved state.
-    val value = remember { androidx.compose.foundation.text.input.TextFieldState() }
+    val values = remember(asks) { asks.map { androidx.compose.foundation.text.input.TextFieldState() } }
     var sending by remember { mutableStateOf(false) }
     var problem by remember { mutableStateOf<String?>(null) }
     var saved by remember { mutableStateOf(false) }
-    DisposableEffect(Unit) { onDispose { value.clearText() } }
-    val name = item.secretName ?: "a secret"
+    DisposableEffect(values) { onDispose { values.forEach { it.clearText() } } }
+    val ready = asks.indices.all { i -> asks[i].optional || values[i].text.isNotEmpty() } && values.any { it.text.isNotEmpty() }
     val send = {
-        if (value.text.isNotEmpty() && !sending && ui != null) {
+        if (ready && !sending && ui != null) {
             sending = true
             problem = null
-            ui.emit(FeedEvent.ProvideSecret(item.id, value.text.toString()) { failed ->
+            val done: (String?) -> Unit = { failed ->
                 sending = false
                 problem = failed
                 if (failed == null) {
                     saved = true
-                    value.clearText()
+                    values.forEach { it.clearText() }
                 }
-            })
+            }
+            val event = if (several) {
+                FeedEvent.ProvideSecrets(item.id, asks.indices.filter { values[it].text.isNotEmpty() }.associate { asks[it].name to values[it].text.toString() }, done)
+            } else {
+                FeedEvent.ProvideSecret(item.id, values.single().text.toString(), done)
+            }
+            ui.emit(event)
         }
     }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Lock, null, tint = colors.textMuted, modifier = Modifier.size(14.dp))
-            MetaText("Kept as ", Modifier.padding(start = 6.dp), color = colors.textMuted)
-            Text(name, color = colors.text, style = AgentTheme.type.code, maxLines = 1)
+        if (!several) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Lock, null, tint = colors.textMuted, modifier = Modifier.size(14.dp))
+                MetaText("Kept as ", Modifier.padding(start = 6.dp), color = colors.textMuted)
+                Text(asks.single().name, color = colors.text, style = AgentTheme.type.code, maxLines = 1)
+            }
         }
         if (saved) {
-            MetaText("Saved. ${item.agent.name} only hears that it is ready.", color = colors.textMuted)
+            MetaText(
+                if (several) "Saved. ${item.agent.name} only hears which names are ready." else "Saved. ${item.agent.name} only hears that it is ready.",
+                color = colors.textMuted,
+            )
             return@Column
         }
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .clip(shape)
-                .background(bg)
-                .border(1.dp, colors.border, shape)
-                .padding(horizontal = 14.dp, vertical = 2.dp),
-        ) {
-            TextInput(
-                value,
-                label = "Value of $name, hidden as you type",
-                placeholder = "Paste or type it",
-                modifier = Modifier.fillMaxWidth(),
-                secret = true,
-                enabled = !sending,
-                onSubmit = send,
-            )
+        asks.forEachIndexed { i, ask ->
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                if (several) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Lock, null, tint = colors.textMuted, modifier = Modifier.size(14.dp))
+                        ask.label?.let { MetaText(it, Modifier.padding(start = 6.dp, end = 6.dp), color = colors.text) }
+                        Text(ask.name, Modifier.padding(start = if (ask.label == null) 6.dp else 0.dp), color = colors.textMuted, style = AgentTheme.type.code, maxLines = 1)
+                        if (ask.optional) MetaText(" · optional", color = colors.textMuted)
+                    }
+                }
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(shape)
+                        .background(bg)
+                        .border(1.dp, colors.border, shape)
+                        .padding(start = 14.dp, end = 4.dp, top = 2.dp, bottom = 2.dp),
+                ) {
+                    TextInput(
+                        values[i],
+                        label = "Value of ${ask.name}, hidden as you type",
+                        placeholder = if (ask.multiline) "Paste it whole, every line" else "Paste or type it",
+                        modifier = Modifier.fillMaxWidth(),
+                        secret = true,
+                        enabled = !sending,
+                        // Enter in the last box saves; in any other it moves on, as a form does.
+                        onSubmit = if (i == asks.lastIndex) send else null,
+                    )
+                }
+                ask.hint?.let { MetaText(it, color = colors.textMuted) }
+            }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            AppButton(if (sending) "Saving…" else "Save secret", ButtonTone.Waiting, icon = Icons.Lock, enabled = !sending && value.text.isNotEmpty(), onClick = send)
+            val label = when {
+                sending -> "Saving…"
+                several -> "Save all"
+                else -> "Save secret"
+            }
+            AppButton(label, ButtonTone.Waiting, icon = Icons.Lock, enabled = !sending && ready, onClick = send)
             AppButton("Not now", ButtonTone.Secondary, enabled = !sending, onClick = dismiss)
         }
         Text(
-            problem ?: "Stored encrypted. ${item.agent.name} only learns it is ready.",
+            problem ?: if (several) {
+                "Each is stored encrypted as its own secret, all or none. ${item.agent.name} only learns which are ready."
+            } else {
+                "Stored encrypted. ${item.agent.name} only learns it is ready."
+            },
             color = if (problem != null) colors.error else colors.textMuted,
             style = AgentTheme.type.meta,
         )

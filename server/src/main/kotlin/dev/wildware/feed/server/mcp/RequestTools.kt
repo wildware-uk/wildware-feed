@@ -142,6 +142,12 @@ private fun answeredSummary(result: RequestResult, byName: String? = null): Stri
     val value = result.response!!["value"]!!
     val who = byName ?: "Your owner"
     if (result.request.kind == "secret") {
+        if (value is JsonArray) {
+            val skipped = (result.response!!["skipped"] as? JsonArray).orEmpty()
+            val left = if (skipped.isEmpty()) "" else " They left ${skipped.joinToString(", ") { jsonStringifyJs(it) }} empty."
+            return "$who saved ${value.size} secret(s): ${value.joinToString(", ") { jsonStringifyJs(it) }}.$left " +
+                "Fetch each with secret_url into a file; never print a value."
+        }
         return "$who saved the secret ${jsonStringifyJs(value)}. Fetch it with secret_url into a file; never print its value."
     }
     return "$who answered: ${describe(value)}"

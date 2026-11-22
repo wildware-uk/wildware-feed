@@ -117,11 +117,21 @@ fun Route.secretRoutes(app: App) {
         "/api/requests/{id}/secret",
         HttpMethod.Post to {
             val body = call.jsonObjectBody()
-            val value = valueOf(body) ?: throw invalid("value is required")
-            val secret = secrets.provide(app.requests, call.parameters["id"].orEmpty(), value, body.optionalString("note"), call.owner(app), call.person.id)
+            val id = call.parameters["id"].orEmpty()
+            val note = body.optionalString("note")
+            // `values` answers every secret the card asked for at once, by name; `value` answers one.
+            val values = valuesOf(body)
+            val saved = if (values != null) {
+                if ("value" in body) throw invalid("send value for one secret or values for several, not both")
+                secrets.provideAll(app.requests, id, values, note, call.owner(app), call.person.id)
+            } else {
+                listOf(secrets.provide(app.requests, id, valueOf(body) ?: throw invalid("value is required"), note, call.owner(app), call.person.id))
+            }
+            val names = agentNames(app)
             call.respondOwner(200, buildJsonObject {
-                put("secret", secrets.ownerJson(secret, agentNames(app)))
-                put("request", app.requests.find(call.parameters["id"].orEmpty())?.json ?: JsonNull)
+                put("secret", secrets.ownerJson(saved.first(), names))
+                put("secrets", JsonArray(saved.map { secrets.ownerJson(it, names) }))
+                put("request", app.requests.find(id)?.json ?: JsonNull)
             })
         },
     )
@@ -215,6 +225,14 @@ private fun valueOf(body: JsonObject): ByteArray? {
     val raw = body["value"] ?: return null
     if (raw is JsonNull) return null
     return (raw.jsString ?: throw invalid("value must be a string")).toByteArray(Charsets.UTF_8)
+}
+
+/** `values`: each secret's value by its name, as text. Null when the body has none. */
+private fun valuesOf(body: JsonObject): Map<String, ByteArray>? {
+    val raw = body["values"] ?: return null
+    if (raw is JsonNull) return null
+    val o = raw as? JsonObject ?: throw invalid("values must be an object of secret values by name")
+    return o.mapValues { (name, v) -> (v.jsString ?: throw invalid("the value of $name must be a string")).toByteArray(Charsets.UTF_8) }
 }
 
 private fun JsonObject.optionalString(key: String): String? {

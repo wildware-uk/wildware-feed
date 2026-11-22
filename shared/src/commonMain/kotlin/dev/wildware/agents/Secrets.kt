@@ -52,6 +52,20 @@ class RevealedSecret(val value: String, val encoding: String = "utf8") {
     override fun toString() = "RevealedSecret(${value.length} characters, $encoding)"
 }
 
+/**
+ * One box on a question that asks for several secrets: the [name] its value is kept under, the
+ * agent's [label] above it and [hint] under it, whether it takes several lines, and whether it may
+ * be left empty. Never a value.
+ */
+@Serializable
+data class SecretFieldView(
+    val name: String,
+    val label: String? = null,
+    val hint: String? = null,
+    val multiline: Boolean = false,
+    val optional: Boolean = false,
+)
+
 /** Who may use a secret: every agent, or the named ones. */
 data class SecretScope(val allAgents: Boolean, val agentIds: List<String>)
 

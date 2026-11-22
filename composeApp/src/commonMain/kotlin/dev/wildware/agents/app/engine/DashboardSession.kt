@@ -1046,6 +1046,7 @@ class DashboardSession(
             is FeedEvent.RevealSharedSecret -> revealSharedSecret(event.secret, event.copy, event.result)
             // Straight to the dashboard, never the outbox: a secret is never written to this device's disk.
             is FeedEvent.ProvideSecret -> changeNow(event.done) { client.provideSecret(event.questionId, event.value) }
+            is FeedEvent.ProvideSecrets -> changeNow(event.done) { client.provideSecrets(event.questionId, event.values) }
             is FeedEvent.ReadPeople, is FeedEvent.InvitePerson, is FeedEvent.DismissInvite, is FeedEvent.RevokeInvite,
             is FeedEvent.SetRole, is FeedEvent.RemovePerson, is FeedEvent.Rename -> handleTeam(event)
             is FeedEvent.RevokeDevice -> revokeDevice(event.deviceId)

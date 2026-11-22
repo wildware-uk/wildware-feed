@@ -29,6 +29,27 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.clickable
+import androidx.compose.material3.Icon
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import kotlinx.coroutines.delay
 import dev.wildware.agents.app.design.gesture.LocalSwipeGuard
 import dev.wildware.agents.app.design.gesture.guardsSwipes
 
@@ -47,8 +68,22 @@ object Typing {
 }
 
 /**
+ * How a secret box shows what was typed. Off by default; the owner turns it on with the eye to
+ * check what they typed, and it turns itself off again: when the box loses the cursor, after
+ * [ShownForMillis], and when the app leaves the front (another app, the app switcher, a locked
+ * screen), so a value never stays on screen unwatched.
+ */
+object SecretReveal {
+    const val ShownForMillis = 30_000L
+    const val ShowLabel = "Show secret"
+    const val HideLabel = "Hide secret"
+}
+
+/**
  * A bare text input in the theme's type and colours, for the app's own boxes to wrap. [label] is
- * what a screen reader calls it; [placeholder] shows while it is empty.
+ * what a screen reader calls it; [placeholder] shows while it is empty. A [secret] input is masked
+ * and has an eye that shows the typed text for a moment ([SecretReveal]); either way it stays a
+ * password box: no copying out, no suggestions, and a screen reader never reads it out.
  *
  * Enter sends a one-line input. A multi-line input sends on Cmd+Enter or Ctrl+Enter, and Enter
  * starts a new line, as in a chat app.
@@ -82,9 +117,25 @@ fun TextInput(
     val input = remember { Any() }
     if (guard != null) DisposableEffect(guard) { onDispose { guard.focus(input, false) } }
     DisposableEffect(input) { onDispose { Typing.focus(input, false) } }
+    var shown by remember { mutableStateOf(false) }
+    var focused by remember { mutableStateOf(false) }
+    val focus = remember { FocusRequester() }
+    if (secret) {
+        // Back off: after a while, and whenever the app is not in front and watched.
+        if (shown) LaunchedEffect(Unit) { delay(SecretReveal.ShownForMillis); shown = false }
+        val inFront = LocalWindowInfo.current.isWindowFocused
+        val lifecycle by LocalLifecycleOwner.current.lifecycle.currentStateFlow.collectAsState()
+        val resumed = lifecycle.isAtLeast(Lifecycle.State.RESUMED)
+        LaunchedEffect(inFront, resumed, shown) { if (shown && (!inFront || !resumed)) shown = false }
+    }
     val decorated = modifier
         .then(if (guard != null) Modifier.guardsSwipes(guard, input) else Modifier)
-        .onFocusChanged { Typing.focus(input, it.isFocused) }
+        .focusRequester(focus)
+        .onFocusChanged {
+            Typing.focus(input, it.isFocused)
+            if (focused && !it.isFocused) shown = false
+            focused = it.isFocused
+        }
         .defaultMinSize(minHeight = MinTouchTarget)
         .then(keys)
         .semantics { contentDescription = label }
@@ -97,6 +148,7 @@ fun TextInput(
         }
     }
     if (secret) {
+        val eye = if (shown) SecretReveal.HideLabel else SecretReveal.ShowLabel
         BasicSecureTextField(
             state = state,
             modifier = decorated,
@@ -105,9 +157,33 @@ fun TextInput(
             // A password keyboard: no suggestions, nothing learned. Passing Default would replace that.
             keyboardOptions = if (keyboard == KeyboardOptions.Default) KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrectEnabled = false) else keyboard,
             onKeyboardAction = { onSubmit?.invoke() },
-            textObfuscationMode = TextObfuscationMode.Hidden,
+            // Still a secure field when shown: copying and cutting stay off, so it never reaches the clipboard.
+            textObfuscationMode = if (shown) TextObfuscationMode.Visible else TextObfuscationMode.Hidden,
             cursorBrush = SolidColor(colors.accent),
-            decorator = { inner -> decorator(inner) },
+            decorator = { inner ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.weight(1f)) { decorator(inner) }
+                    val shape = AgentTheme.shapes.small
+                    Box(
+                        Modifier
+                            .padding(start = 4.dp)
+                            .clip(shape)
+                            .touchTarget()
+                            // The eye never takes the cursor from its box, and showing puts the cursor
+                            // there: so leaving the box, by any way, is what hides it again.
+                            .focusProperties { canFocus = false }
+                            // Only what the eye does and whether the box is shown: never what is in it.
+                            .semantics { contentDescription = eye; stateDescription = if (shown) "Shown" else "Hidden" }
+                            .clickable(enabled = enabled, role = Role.Button, onClickLabel = eye) {
+                                shown = !shown
+                                if (shown && !focused) runCatching { focus.requestFocus() }
+                            },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(if (shown) Icons.EyeOff else Icons.Eye, contentDescription = null, tint = colors.textMuted, modifier = Modifier.size(18.dp))
+                    }
+                }
+            },
         )
     } else {
         BasicTextField(

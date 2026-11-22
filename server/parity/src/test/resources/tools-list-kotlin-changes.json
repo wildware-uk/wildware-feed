@@ -1842,5 +1842,82 @@
   "why": "Per channel and per project permissions (spec/15): an agent may have Read, Post or no access, and a channel it can't see answers not_found.",
   "replace": "t\" (none\nnamed, or more than one), \"forbidden\" (your owner removed you from it).",
   "with": "t\" (none\nnamed, or more than one), \"forbidden\" (your owner removed you from it).\n\nA channel or project you have no access to answers not_found."
+ },
+ {
+  "tool": "request_secret",
+  "path": [
+   "description"
+  ],
+  "why": "Several secrets in one request: request_secret takes fields, one card with a masked box for each and one Save all button, every value its own secret.",
+  "replace": "Arguments: name and question are required.\n- name: what it will be stored as, like STRIPE_TEST_KEY. It must be new, or one already\n  shared with you (then the answer replaces its value).\n",
+  "with": "Arguments: question, and either name (one secret) or fields (several).\n- name: what it will be stored as, like STRIPE_TEST_KEY. It must be new, or one already\n  shared with you (then the answer replaces its value).\n- fields: when one job needs several secrets (a key and its secret, a username and its\n  password), ask for them all at once: up to 10, each { name, label?, hint?, multiline?,\n  optional? }. Your owner sees ONE card with a masked box for each and one Save all\n  button, and each value is stored as its own secret under its name, as name would be.\n  label is the words above a box, hint the line under it, multiline a box for several\n  lines (a private key), optional a box they may leave empty. Ask for related secrets\n  together like this, never one request after another.\n"
+ },
+ {
+  "tool": "request_secret",
+  "path": [
+   "description"
+  ],
+  "why": "Several secrets in one request: request_secret takes fields, one card with a masked box for each and one Save all button, every value its own secret.",
+  "replace": "On \"answered\", response.value is the secret's NAME, never its value. A\n\"timeout\"",
+  "with": "On \"answered\", response.value is the secret's NAME, never its value. With fields it\nis the list of names saved, and response.skipped lists the optional ones left empty.\nNothing is saved unless all of it is. A\n\"timeout\""
+ },
+ {
+  "tool": "request_secret",
+  "path": [
+   "inputSchema",
+   "required"
+  ],
+  "why": "Several secrets in one request: request_secret takes fields, one card with a masked box for each and one Save all button, every value its own secret.",
+  "was": [
+   "name",
+   "question"
+  ],
+  "now": [
+   "question"
+  ]
+ },
+ {
+  "tool": "request_secret",
+  "path": [
+   "inputSchema",
+   "properties",
+   "fields"
+  ],
+  "why": "Several secrets in one request: request_secret takes fields, one card with a masked box for each and one Save all button, every value its own secret.",
+  "now": {
+   "description": "Several secrets in one request, instead of name: up to 10, each { name, label?, hint?, multiline?, optional? }. Your owner fills them all in on one card and saves them together; each is stored as its own secret.",
+   "type": "array",
+   "minItems": 1,
+   "maxItems": 10,
+   "items": {
+    "type": "object",
+    "properties": {
+     "name": {
+      "type": "string",
+      "maxLength": 100,
+      "description": "The secret's name, like AWS_SECRET_ACCESS_KEY: 1-100 letters, digits, _ . or -, starting with a letter or _. Each name once."
+     },
+     "label": {
+      "description": "The words above its box, like \"Secret access key\". Up to 100 characters. Never put a secret here.",
+      "type": "string"
+     },
+     "hint": {
+      "description": "One line under its box: where to find it, what it looks like. Up to 500 characters. Never put a secret here.",
+      "type": "string"
+     },
+     "multiline": {
+      "description": "A box for several lines, like a private key.",
+      "type": "boolean"
+     },
+     "optional": {
+      "description": "Your owner may leave it empty; then it is not saved, and response.skipped names it.",
+      "type": "boolean"
+     }
+    },
+    "required": [
+     "name"
+    ]
+   }
+  }
  }
 ]

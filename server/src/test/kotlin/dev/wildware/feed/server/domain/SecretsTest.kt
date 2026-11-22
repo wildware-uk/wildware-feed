@@ -9,6 +9,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
+import kotlin.test.assertFails
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
@@ -228,6 +229,136 @@ class SecretsTest {
         assertContentEquals("second".toByteArray(), secrets.reveal(stored.id, "reveal", owner))
         assertTrue(actions(stored.id).contains("provided"))
         assertNoValueInEvents()
+    }
+
+    // ---- several secrets in one request (`fields`) ---------------------------------------------
+
+    private val keyId = "AKIA-NOT-REAL-0000".toByteArray()
+    private val keySecret = "not-a-real-secret-key-1111".toByteArray()
+
+    private fun askForPair(agentId: String, vararg extra: Secrets.Field) = requests.create(
+        agentId,
+        NewRequest(
+            kind = "secret", question = "The AWS keys?", secretName = "AWS_ACCESS_KEY_ID",
+            secretFields = secrets.checkRequestableFields(
+                agentId,
+                listOf(Secrets.Field("AWS_ACCESS_KEY_ID", label = "Access key id"), Secrets.Field("AWS_SECRET_ACCESS_KEY", hint = "Shown once in the console", multiline = true)) + extra,
+            ),
+        ),
+    ).first
+
+    @Test
+    fun `one request asks for several secrets and saving it stores each one, shared with the asker and audited`() = runBlocking<Unit> {
+        val (alpha, _) = agents.mint("alpha")
+        val asked = askForPair(alpha.id, Secrets.Field("AWS_SESSION_TOKEN", optional = true))
+        assertEquals(listOf("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN"), secrets.fieldsOf(asked).map { it.name })
+        assertEquals(Secrets.Field("AWS_SECRET_ACCESS_KEY", hint = "Shown once in the console", multiline = true), secrets.fieldsOf(asked)[1])
+
+        val saved = secrets.provideAll(
+            requests, asked.id,
+            mapOf("AWS_ACCESS_KEY_ID" to keyId, "AWS_SECRET_ACCESS_KEY" to keySecret, "AWS_SESSION_TOKEN" to ByteArray(0)),
+            null, owner,
+        )
+        assertEquals(listOf("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"), saved.map { it.name })
+        for (secret in saved) {
+            assertEquals(listOf(alpha.id), secret.agentIds)
+            assertEquals(listOf("created", "provided"), actions(secret.id))
+        }
+        assertContentEquals(keyId, secrets.redeemRead(tokenOf(secrets.issueRead(alpha, "AWS_ACCESS_KEY_ID").url)))
+        assertContentEquals(keySecret, secrets.redeemRead(tokenOf(secrets.issueRead(alpha, "AWS_SECRET_ACCESS_KEY").url)))
+
+        val settled = requests.awaitRequest(asked.id, alpha.id)
+        assertEquals("answered", settled.state)
+        assertEquals("""["AWS_ACCESS_KEY_ID","AWS_SECRET_ACCESS_KEY"]""", settled.response!!["value"].toString())
+        assertEquals("""["AWS_SESSION_TOKEN"]""", settled.response!!["skipped"].toString())
+        val row = db.one("SELECT decided_value, answer, config FROM approvals WHERE id = ?", asked.id) { listOf(it.getString(1), it.getString(2), it.getString(3)) }!!
+        assertTrue(row.none { cell -> cell != null && (cell.contains(String(keyId)) || cell.contains(String(keySecret))) }, "the request row holds no value")
+        assertEquals("conflict", assertFailsWith<DomainError> { secrets.provideAll(requests, asked.id, mapOf("AWS_ACCESS_KEY_ID" to keyId, "AWS_SECRET_ACCESS_KEY" to keySecret), null, owner) }.code)
+        assertNoValueInEvents()
+    }
+
+    @Test
+    fun `a bad value or a taken name in one field saves none of them and the request waits`() = runBlocking<Unit> {
+        val (alpha, _) = agents.mint("alpha")
+        val (beta, _) = agents.mint("beta")
+        val asked = askForPair(alpha.id)
+        fun nothingSaved() {
+            assertTrue(secrets.list().none { it.name.startsWith("AWS_") }, "nothing was stored")
+            assertEquals("pending", requests.find(asked.id)!!.state)
+        }
+
+        val tooBig = ByteArray(Secrets.VALUE_MAX_BYTES + 1) { 'x'.code.toByte() }
+        assertEquals("too_large", assertFailsWith<DomainError> { secrets.provideAll(requests, asked.id, mapOf("AWS_ACCESS_KEY_ID" to keyId, "AWS_SECRET_ACCESS_KEY" to tooBig), null, owner) }.code)
+        nothingSaved()
+        assertEquals("invalid_argument", assertFailsWith<DomainError> { secrets.provideAll(requests, asked.id, mapOf("AWS_ACCESS_KEY_ID" to keyId), null, owner) }.code)
+        nothingSaved()
+        assertEquals("invalid_argument", assertFailsWith<DomainError> { secrets.provideAll(requests, asked.id, mapOf("AWS_ACCESS_KEY_ID" to keyId, "AWS_SECRET_ACCESS_KEY" to keySecret, "EXTRA" to keyId), null, owner) }.code)
+        nothingSaved()
+        // The one-value route can't answer half of it.
+        assertEquals("invalid_argument", assertFailsWith<DomainError> { secrets.provide(requests, asked.id, keyId, null, owner) }.code)
+        nothingSaved()
+
+        // Somebody else's secret takes the second name after the agent asked: the first isn't saved either.
+        secrets.create("AWS_SECRET_ACCESS_KEY", "theirs".toByteArray(), null, allAgents = false, agentIds = listOf(beta.id), actor = owner)
+        assertEquals("conflict", assertFailsWith<DomainError> { secrets.provideAll(requests, asked.id, mapOf("AWS_ACCESS_KEY_ID" to keyId, "AWS_SECRET_ACCESS_KEY" to keySecret), null, owner) }.code)
+        assertTrue(secrets.list().none { it.name == "AWS_ACCESS_KEY_ID" })
+        assertEquals("pending", requests.find(asked.id)!!.state)
+        assertEquals(listOf(beta.id), secrets.list().single().agentIds)
+    }
+
+    @Test
+    fun `a write that fails inside the transaction rolls every secret back`() = runBlocking<Unit> {
+        val (alpha, _) = agents.mint("alpha")
+        val asked = askForPair(alpha.id)
+        // A clock that fails on its sixth reading: inside the transaction, once the first secret is
+        // written and audited and the second is being written.
+        var readings = 0
+        var armed = false
+        val failing = Secrets(db, bus, SecretBox(keyA), tokenSecret, { "https://feed.example.com" }) {
+            if (armed && ++readings == 6) error("the disk is full")
+            now
+        }
+        armed = true
+        assertFails { failing.provideAll(requests, asked.id, mapOf("AWS_ACCESS_KEY_ID" to keyId, "AWS_SECRET_ACCESS_KEY" to keySecret), null, owner) }
+        assertTrue(readings >= 6, "it failed inside the transaction")
+        assertTrue(secrets.list().isEmpty(), "the first secret was rolled back too")
+        assertTrue(secrets.audit().isEmpty())
+        assertEquals(0L, db.one("SELECT count(*) FROM secret_agents WHERE team_id = :team") { it.getLong(1) })
+        assertEquals("pending", requests.find(asked.id)!!.state)
+        armed = false
+        assertEquals(2, secrets.provideAll(requests, asked.id, mapOf("AWS_ACCESS_KEY_ID" to keyId, "AWS_SECRET_ACCESS_KEY" to keySecret), null, owner).size)
+    }
+
+    @Test
+    fun `fields are checked when the agent asks`() {
+        val (alpha, _) = agents.mint("alpha")
+        val (beta, _) = agents.mint("beta")
+        fun refused(fields: List<Secrets.Field>) = assertFailsWith<DomainError> { secrets.checkRequestableFields(alpha.id, fields) }.code
+        assertEquals("invalid_argument", refused(emptyList()))
+        assertEquals("invalid_argument", refused((0..Secrets.FIELDS_MAX).map { Secrets.Field("K$it") }))
+        assertEquals("invalid_argument", refused(listOf(Secrets.Field("A"), Secrets.Field("A"))))
+        assertEquals("invalid_argument", refused(listOf(Secrets.Field("not a name"))))
+        assertEquals("invalid_argument", refused(listOf(Secrets.Field("A", label = "x".repeat(Secrets.LABEL_MAX + 1)))))
+        assertEquals("invalid_argument", refused(listOf(Secrets.Field("A", hint = "x".repeat(Secrets.HINT_MAX + 1)))))
+        secrets.create("THEIRS", value, null, allAgents = false, agentIds = listOf(beta.id), actor = owner)
+        assertEquals("conflict", refused(listOf(Secrets.Field("MINE"), Secrets.Field("THEIRS"))))
+        assertEquals(Secrets.FIELDS_MAX, secrets.checkRequestableFields(alpha.id, (1..Secrets.FIELDS_MAX).map { Secrets.Field(" K$it ") }).size)
+        assertEquals("K1", secrets.checkRequestableFields(alpha.id, listOf(Secrets.Field(" K1 "))).single().name)
+    }
+
+    @Test
+    fun `another team can't answer a request for several secrets`() = runBlocking<Unit> {
+        val (alpha, _) = agents.mint("alpha")
+        val asked = askForPair(alpha.id)
+        db.update("INSERT INTO teams (id, slug, name, created_at) VALUES ('other', 'other', 'Other', 1)")
+        val answer = mapOf("AWS_ACCESS_KEY_ID" to keyId, "AWS_SECRET_ACCESS_KEY" to keySecret)
+        dev.wildware.feed.server.db.Tenant.with("other") {
+            assertEquals("not_found", assertFailsWith<DomainError> { secrets.provideAll(requests, asked.id, answer, null, owner) }.code)
+            assertTrue(secrets.list().isEmpty())
+        }
+        assertEquals("pending", requests.find(asked.id)!!.state)
+        assertTrue(secrets.list().isEmpty())
+        assertEquals(2, secrets.provideAll(requests, asked.id, answer, null, owner).size)
     }
 
     @Test

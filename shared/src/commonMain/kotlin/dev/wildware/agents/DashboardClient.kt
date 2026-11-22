@@ -718,6 +718,19 @@ class DashboardClient(
         }.requireSuccess()
     }
 
+    /**
+     * Answers a request_secret that asked for several ([RequestConfig.secretFields]): every value
+     * by name, at once. The dashboard saves all of them or none; an optional one may be left out.
+     * Never queued: it goes now or not at all.
+     */
+    @Throws(Exception::class)
+    suspend fun provideSecrets(requestId: String, values: Map<String, String>) {
+        http.post("api/requests/${requestId.encodeURLPathPart()}/secret") {
+            authorise()
+            jsonBody(buildJsonObject { put("values", buildJsonObject { for ((name, value) in values) put(name, value) }) })
+        }.requireSuccess()
+    }
+
     // ---- people (a team, on a server with migration 055) ---------------------------------------
 
     /** Who this device belongs to, and whether the team has more than one person. Null on a server from before teams. */

@@ -186,6 +186,13 @@ sealed interface FeedEvent {
     class ProvideSecret(val questionId: String, val value: String, val done: (String?) -> Unit = {}) : FeedEvent {
         override fun toString() = "ProvideSecret($questionId)"
     }
+    /**
+     * Answer an agent's request for several secrets ([FeedItem.Question.secretFields]): every value
+     * by name, saved together or not at all. Sent at once, never queued. [toString] leaves the values out.
+     */
+    class ProvideSecrets(val questionId: String, val values: Map<String, String>, val done: (String?) -> Unit = {}) : FeedEvent {
+        override fun toString() = "ProvideSecrets($questionId, ${values.keys.joinToString()})"
+    }
     /** Read the devices signed in as the owner, for the Devices sheet. */
     data object ReadDevices : FeedEvent
     /** Revoke a device's key, so it can't read or answer anything more. The sheet has already asked. */

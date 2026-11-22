@@ -110,6 +110,19 @@ data class ProjectGroup(
     val archived: Boolean = false,
 )
 
+/**
+ * One box on a question that asks for several secrets: the [name] its value is kept under, the
+ * agent's [label] and [hint], whether it takes several lines, and whether it may be left empty.
+ */
+@Immutable
+data class SecretAsk(
+    val name: String,
+    val label: String? = null,
+    val hint: String? = null,
+    val multiline: Boolean = false,
+    val optional: Boolean = false,
+)
+
 /** A picture already posted into a project, offered as its logo. */
 @Immutable
 data class LogoChoice(val mediaId: String, val image: Attachment)
@@ -519,6 +532,11 @@ sealed interface FeedItem {
         val critical: Boolean = false,
         /** For a [QuestionKind.Secret]: the name the value will be stored under. */
         val secretName: String? = null,
+        /**
+         * For a [QuestionKind.Secret] that asks for several: a box for each, saved together. Empty
+         * when it asks for the one [secretName].
+         */
+        val secretFields: List<SecretAsk> = emptyList(),
         /** Other cards the question points at, drawn small inside it: the reply with the video it asks about. */
         val refs: List<LinkedCard> = emptyList(),
         /**
