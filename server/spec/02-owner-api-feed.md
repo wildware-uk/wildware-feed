@@ -396,7 +396,7 @@ Body (lenient): `status` must be `null` or one of `todo, in_progress, blocked, d
 1. kind `request` → 400 `a request cannot be marked as work` (only `update`, `message`, `:65`).
 2. Resolve (404).
 3. Same as current → no write, no event.
-4. Else `SET status = ?, status_at = now` (also when clearing to null) (`src/db/cards.ts:190-205`), announce.
+4. Else `SET status = ?, status_at = now` (also when clearing to null) (`src/db/cards.ts:190-205`), announce. Since migration 070 the same write clears `board_hidden_at` and `board_kept_at` (§6.6): a new state puts the card back on the board.
 
 Anyone may move any card. Response `200 {"card":{...},"status": string|null}`.
 
@@ -445,6 +445,16 @@ Body (lenient): `name` string (else 400 `name must be a string`); `value` string
 8. Upsert on (card, slug): new row, or update `name, value, author, updated_at` keeping `id, seq, createdAt` (`src/db/fields.ts:70-84`). Announce + `fields.changed`.
 
 Response `200 {"card":{...},"fields":[all fields on the card, by seq],"set":bool}`.
+
+### 6.6 The board (migration 070, Kotlin server only)
+
+`GET /api/board?channel=<ref>|group=<ref>&removed=1&column=<state>&after=<cursor>&limit=<n>` (member). Cards with a work state, a column per state: `todo`, `in_progress`, `blocked`, `done` (`done` also holds `cancelled`). `channel` is one channel, `group` every channel of a project, neither every channel the viewer can read; a hidden channel or project answers 404, and hidden channels never appear. Each column lists its newest move first (`COALESCE(status_at, created_at)`, then id), `limit` (default 50, at most 200) at a time, with `more` and an `after` cursor; `column` + `after` reads one column's next page. A Done card leaves the board when it was removed (`board_hidden_at`) or when `COALESCE(board_kept_at, status_at, created_at)` is older than the team's auto-remove age; `removed=1` lists those too, marked `removed` with `removedBy` `"someone"` or `"age"`.
+
+Response `200 {"columns":[{"status","cards":[Card],"more","after"}],"autoRemoveDays": int|null}`. A card: `card {kind,id}`, `projectId`, `channel {slug,name}`, `status`, `statusAt`, `createdAt`, `movedAt`, `title` (an update's title, else the first line), `author`, `on` (who is on it: agents with a `thinking` acknowledgement, else the update's agent, the last agent to reply, or the person who wrote it; `{kind,id,name}`), `replies`, `lastReplyAt`, `waiting` (pending requests on it or in its thread), `removed`, `removedBy`, `canMove` (Post on its channel).
+
+`POST /api/cards/[kind]/[id]/board` (member, Post on the channel): body `removed` boolean (else 400). Only `update`/`message` cards whose status is `done` or `cancelled` (else 400). `true` sets `board_hidden_at = now`; `false` clears it and sets `board_kept_at = now`, so the age counts again from then. Announces the card. Response `200 {"card":{...},"removed":bool}`. Nothing is deleted.
+
+`GET /api/settings/board` (member) answers `{"autoRemoveDays": int|null}`; `PUT` (admin) takes `autoRemoveDays` 1, 3, 7 or 30, or `null` for never (else 400), kept per team in `server_settings` (`board.auto_remove_days`), and publishes `board.settings {autoRemoveDays}`. The default is 7.
 
 ---
 
