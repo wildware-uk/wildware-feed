@@ -1,0 +1,40 @@
+# Findings gitleaks reports that are not secrets. One line per finding: commit:file:rule:line.
+# Add a line only after checking the value is a test fixture, and say why above it.
+
+# CrashScrubTest.kt: a made-up token the crash scrubber test must remove
+1e36a2b472e6ae55102f9c2c706f1150b0b69696:composeApp/src/desktopTest/kotlin/dev/wildware/agents/app/crash/CrashScrubTest.kt:generic-api-key:22
+782a7f255aef6ba90051c85ff63c2a21e2d647a9:composeApp/src/desktopTest/kotlin/dev/wildware/agents/app/crash/CrashScrubTest.kt:generic-api-key:22
+
+# FakeLocalServerHost.kt: the fake agent token of a test double
+c6d6fc09ea3fb1a5185c223acc3ef82cb9a6393c:composeApp/src/desktopTest/kotlin/dev/wildware/agents/app/local/FakeLocalServerHost.kt:generic-api-key:44
+e1cb56a3e100eae764b4d7f1bbf3e659a038a25f:composeApp/src/desktopTest/kotlin/dev/wildware/agents/app/local/FakeLocalServerHost.kt:generic-api-key:44
+f45d4da2c295d858d48263c7c3d089d550be8d93:composeApp/src/desktopTest/kotlin/dev/wildware/agents/app/local/FakeLocalServerHost.kt:generic-api-key:44
+
+# 01-config-and-auth.md: a published test vector in the server spec
+8b6ebf741c99d4c98f0827032bd86c10c0e8f4f7:server/spec/01-config-and-auth.md:generic-api-key:540
+
+# CrashReportsTest.kt: made-up secrets the crash report test must strip
+1e36a2b472e6ae55102f9c2c706f1150b0b69696:server/src/test/kotlin/dev/wildware/feed/server/CrashReportsTest.kt:generic-api-key:48
+1e36a2b472e6ae55102f9c2c706f1150b0b69696:server/src/test/kotlin/dev/wildware/feed/server/CrashReportsTest.kt:generic-api-key:53
+782a7f255aef6ba90051c85ff63c2a21e2d647a9:server/src/test/kotlin/dev/wildware/feed/server/CrashReportsTest.kt:generic-api-key:48
+782a7f255aef6ba90051c85ff63c2a21e2d647a9:server/src/test/kotlin/dev/wildware/feed/server/CrashReportsTest.kt:generic-api-key:53
+
+# HomeMoveTest.kt: a test-only server key
+517f3c067b65d5d78e2069413d1751cdd2a0c7de:server/src/test/kotlin/dev/wildware/feed/server/http/HomeMoveTest.kt:generic-api-key:36
+89ac4428b0f709fa8d35b4e4f94e5002fa00dbb1:server/src/test/kotlin/dev/wildware/feed/server/http/HomeMoveTest.kt:generic-api-key:36
+
+# ManyTeamsTest.kt: a test-only server key
+cfaa765ca6c296571fd6e559603067e2e9f50ded:server/src/test/kotlin/dev/wildware/feed/server/http/ManyTeamsTest.kt:generic-api-key:32
+e1c21b2b139c162965fb0db2173af496cb478c21:server/src/test/kotlin/dev/wildware/feed/server/http/ManyTeamsTest.kt:generic-api-key:32
+
+# S3ClientIntegrationTest.kt: an object name in a storage test, not a key
+391e91dd71edc6a1813f8ddea03cda544a11b3a0:server/src/test/kotlin/dev/wildware/feed/server/media/S3ClientIntegrationTest.kt:generic-api-key:97
+72008996ee9680c9bc9049ddcad77dc69d3da77e:server/src/test/kotlin/dev/wildware/feed/server/media/S3ClientIntegrationTest.kt:generic-api-key:101
+cb248c89769168ebbfdf64518f0488ca280e2c3c:server/src/test/kotlin/dev/wildware/feed/server/media/S3ClientIntegrationTest.kt:generic-api-key:101
+
+# PushTest.kt: PEM armour around a key the test generates at run time
+01b215a7f2282af649ef04c26907e1da5ce7a637:server/src/test/kotlin/dev/wildware/feed/server/push/PushTest.kt:private-key:79
+02915ffe23cda21e3490e8813f7a2fcf6d41763c:server/src/test/kotlin/dev/wildware/feed/server/push/PushTest.kt:private-key:95
+3684d6bb70ad6b05c810088a6c2962aa961348c3:server/src/test/kotlin/dev/wildware/feed/server/push/PushTest.kt:private-key:79
+566d992af0380b3abb9e04387a9184f6bef1e4f6:server/src/test/kotlin/dev/wildware/feed/server/push/PushTest.kt:private-key:79
+8cc7905cfa58aa60cb1249339f82753310e1f62c:server/src/test/kotlin/dev/wildware/feed/server/push/PushTest.kt:private-key:95

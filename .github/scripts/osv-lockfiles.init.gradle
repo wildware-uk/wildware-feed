@@ -1,0 +1,24 @@
+// Used by the security workflow, never by a normal build.
+//
+// The repo keeps no Gradle lockfiles, so OSV-Scanner has nothing to read for the Kotlin side.
+// This init script turns dependency locking on for every project and adds `osvResolveAll`,
+// which resolves the classpaths that ship: every runtime classpath (server, desktop, Android,
+// web, tests) and the Kotlin/Native libraries the iOS app links. Build tools such as Android
+// lint stay out, so a finding here is about code we run or ship. Run with `--write-locks` and Gradle leaves a
+// gradle.lockfile in each project listing the exact versions, which OSV-Scanner then checks.
+allprojects {
+    dependencyLocking { lockAllConfigurations() }
+    tasks.register("osvResolveAll") {
+        notCompatibleWithConfigurationCache("walks the configurations when it runs")
+        doLast {
+            project.configurations.findAll { it.canBeResolved && it.name ==~ /(?i).*(runtimeclasspath|compileklibraries)/ }.each { c ->
+                try {
+                    c.resolve()
+                } catch (Exception e) {
+                    // Some configurations only resolve on a Mac or with extra inputs; say so and go on.
+                    logger.warn("osv: skipped ${project.path}:${c.name}: ${e.message?.readLines()?.first()}")
+                }
+            }
+        }
+    }
+}

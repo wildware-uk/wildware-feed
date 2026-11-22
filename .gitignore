@@ -10,3 +10,7 @@ DerivedData/
 __pycache__/
 *.jks
 *.keystore
+
+# The security workflow writes Gradle lockfiles to scan; the repo does not keep them.
+gradle.lockfile
+settings-gradle.lockfile
