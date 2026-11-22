@@ -232,14 +232,15 @@ class SidebarArrangeTest {
         desktop()
         menuOn("website")
         shows("Open", "Mark read", "Mute", "Move to project…", "Rename…", "Channel settings", "Permissions…", "Copy link", "Archive")
+        hides("View permissions")
     }
 
     @Test
     fun `a member's channel menu leaves out what only an admin may do`() = runDesktopComposeUiTest(1280, 900) {
         desktop(role = "member")
         menuOn("website")
-        shows("Open", "Mark read", "Mute", "Channel settings", "Permissions…", "Copy link")
-        hides("Move to project…", "Rename…", "Archive")
+        shows("Open", "Mark read", "Mute", "Channel settings", "View permissions", "Copy link")
+        hides("Move to project…", "Rename…", "Archive", "Permissions…")
     }
 
     @Test
@@ -253,8 +254,8 @@ class SidebarArrangeTest {
     fun `a member's project menu`() = runDesktopComposeUiTest(1280, 900) {
         desktop(role = "member")
         menuOn("Mobile")
-        shows("Collapse", "Mute all", "Project settings")
-        hides("Rename…", "New channel here", "Delete project…")
+        shows("Collapse", "Mute all", "Project settings", "View permissions")
+        hides("Rename…", "New channel here", "Delete project…", "Permissions…")
     }
 
     @Test
