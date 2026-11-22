@@ -684,6 +684,8 @@ data class FeedState(
      * thread ([FeedEvent.OpenAlone]). Never in [sections]; [item] doesn't find it.
      */
     val lone: FeedItem? = null,
+    /** The board, while it is on screen: the work in the selected channels, a column per state. */
+    val board: BoardState = BoardState(),
 ) {
     fun item(id: String): FeedItem? = sections.firstNotNullOfOrNull { s -> s.items.firstOrNull { it.id == id } }
 }

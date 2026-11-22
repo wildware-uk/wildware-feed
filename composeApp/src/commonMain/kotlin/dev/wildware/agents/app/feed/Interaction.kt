@@ -161,6 +161,18 @@ sealed interface FeedEvent {
     data class ChooseStatus(val targetId: String, val current: WorkStatus?) : FeedEvent
     /** Set a card's work state, or null for "Not work". */
     data class SetStatus(val targetId: String, val status: WorkStatus?) : FeedEvent
+    /** The board is on screen for [scope], or (null) put away: the dashboard reads it while it shows. */
+    data class ShowBoard(val scope: dev.wildware.agents.BoardScope?) : FeedEvent
+    /** Move a card on the board to [status]'s column: the same work-state change as [SetStatus]. */
+    data class BoardMove(val kind: String, val id: String, val status: WorkStatus) : FeedEvent
+    /** Take a finished card off the board for the whole team, or ([removed] false) put it back. */
+    data class BoardRemove(val kind: String, val id: String, val removed: Boolean) : FeedEvent
+    /** Show the cards taken off the board too, to put one back. */
+    data class BoardShowRemoved(val show: Boolean) : FeedEvent
+    /** How many days a finished card stays on the board: 1, 3, 7 or 30, or null for never. */
+    data class BoardAutoRemove(val days: Int?) : FeedEvent
+    /** Read the next page of one column. */
+    data class BoardMore(val status: WorkStatus) : FeedEvent
     /** Save which alerts this device gets; null is every alert. */
     data class SetAlertPrefs(val prefs: AlertPrefs?) : FeedEvent
     /** Read how long the dashboard keeps media again, after a read that failed. */
@@ -415,6 +427,9 @@ data class ScreenPreview(
     /** The Feedback sheet, open: on the team's list, or writing [feedbackCompose]. */
     val feedbackOpen: Boolean = false,
     val feedbackCompose: FeedbackCompose? = null,
+    /** The board in the main pane instead of the feed, widened to project [boardGroup] (an id) when set. */
+    val boardOpen: Boolean = false,
+    val boardGroup: String? = null,
 )
 
 /** The Feedback sheet's form, open: about [card] (shown as [cardLabel]) when it came from a card's menu. */
@@ -493,6 +508,46 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
     }
     var refreshing by mutableStateOf(false)
     var filter by mutableStateOf(preview.filter)
+
+    /** The board shows in the main pane instead of the feed. */
+    var boardOpen by mutableStateOf(preview.boardOpen)
+
+    /** A project (group id) the board was widened to; picking a channel or All in the sidebar clears it. */
+    var boardGroup by mutableStateOf(preview.boardGroup)
+
+    /** The board card the keyboard is on. */
+    var boardFocus by mutableStateOf<String?>(null)
+
+    /** A board card's menu, open: open it, move it, take it off the board. */
+    var boardMenu by mutableStateOf<BoardCard?>(null)
+
+    /** Where the board looks: the project chosen on it, else the sidebar's channel, else everything. */
+    val boardScope: dev.wildware.agents.BoardScope
+        get() = boardScopeFor(state.current.slug, boardGroup?.let { id -> state.groups.firstOrNull { it.id == id } })
+
+    /** Feed to board, or back. */
+    fun toggleBoard() {
+        menu = null
+        boardMenu = null
+        boardOpen = !boardOpen
+    }
+
+    /** Shows the board for project [groupId] (null: the sidebar's selection). */
+    fun showBoard(groupId: String? = null) {
+        menu = null
+        boardGroup = groupId
+        boardOpen = true
+    }
+
+    /**
+     * Opens a board card's thread on its own ([openAlone]): read by itself with its thread, without
+     * paging the feed down to it. The board steps aside for it; the feed stays where it was.
+     */
+    internal fun openBoardCard(card: BoardCard) {
+        boardMenu = null
+        boardOpen = false
+        openAlone(card.id)
+    }
     var showArchived by mutableStateOf(false)
     var commandOpen by mutableStateOf(preview.command != null)
 
@@ -1083,6 +1138,8 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
                 threadId = null
                 aloneId = null
                 cursor = null
+                boardGroup = null
+                boardFocus = null
                 askedProject = AskedProject(event.slug)
             }
             else -> Unit

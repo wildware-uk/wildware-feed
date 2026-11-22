@@ -550,10 +550,20 @@ class Dashboard internal constructor(
      */
     val clearedNotices: SharedFlow<List<String>> = mutableCleared.asSharedFlow()
 
+    private val mutableBoardChanges = MutableSharedFlow<Unit>(extraBufferCapacity = 1, onBufferOverflow = kotlinx.coroutines.channels.BufferOverflow.DROP_OLDEST)
+
+    /**
+     * Something that can move a card on the board happened: a card made, changed or removed, a
+     * question asked or settled, an agent starting to think, the board's own setting, who can see
+     * what. The board reads itself again when it hears this.
+     */
+    val boardChanges: SharedFlow<Unit> = mutableBoardChanges.asSharedFlow()
+
     private fun readers(): List<FeedReader> = listOf(requests, presence, bell, joining, follows) + feeds.values.flatMap { it.readers }
 
     private suspend fun receive(event: StreamEvent) {
         if (event.type == ClearedEvent) clearedTags(event)?.let { mutableCleared.tryEmit(it) }
+        if (event.type in BoardEvents) mutableBoardChanges.tryEmit(Unit)
         requests.receive(event)
         presence.receive(event)
         bell.receive(event)
@@ -1143,3 +1153,9 @@ internal class ThreadIndex(val snapshot: MessagesSnapshot) {
 /** When a card last had something happen: posted, a reply, or its work state changing. */
 internal fun lastActivityAt(createdAt: Long, replies: List<MessageView>, statusAt: Long?): Long =
     maxOf(createdAt, replies.maxOfOrNull { it.createdAt } ?: createdAt, statusAt ?: createdAt)
+
+/** The live events that can change what the board shows. */
+internal val BoardEvents = setOf(
+    "update.created", "update.updated", "update.deleted", "message.created", "message.updated", "message.deleted",
+    "request.created", "request.updated", "request.answered", "ack.updated", "board.settings", "project.updated", AccessUpdated, StreamEvent.Resync,
+)

@@ -335,7 +335,8 @@ private fun DesktopColumns(ui: FeedUi, showRail: Boolean, startAt: String?) {
         Column(Modifier.weight(1f).fillMaxHeight()) {
         // Red, above the feed, until it is answered, read or put away: a page made visible.
         CriticalBanner(ui)
-        Box(Modifier.weight(1f).fillMaxWidth()) {
+        // The board takes the feed's place; the feed keeps where it was scrolled to for coming back.
+        if (ui.boardOpen) BoardPane(ui, Modifier.weight(1f).fillMaxWidth()) else Box(Modifier.weight(1f).fillMaxWidth()) {
             LazyColumn(
                 Modifier.fillMaxSize().closesComposer(ui).listActions(refresh, toTop, null),
                 state = list,
@@ -443,72 +444,78 @@ private fun PhoneFeed(ui: FeedUi, safeArea: SafeArea, startAt: String?, widthPx:
                 onCommit = {},
             ),
     ) {
-        PullToRefreshBox(
-            isRefreshing = ui.refreshing,
-            onRefresh = refresh,
-            state = pull,
-            modifier = Modifier.fillMaxSize(),
-            indicator = {
-                PullToRefreshDefaults.Indicator(
-                    state = pull,
-                    isRefreshing = ui.refreshing,
-                    modifier = Modifier.align(Alignment.TopCenter).padding(top = safeArea.top),
-                    containerColor = colors.surfaceRaised,
-                    color = colors.accent,
-                )
-            },
-        ) {
-            LazyColumn(
-                Modifier.fillMaxSize().closesComposer(ui).listActions(refresh, toTop, openDrawer),
-                state = list,
-                contentPadding = remember(safeArea, state.current.slug == null) {
-                    safeContentPadding(safeArea, horizontal = 16.dp, top = 8.dp, bottom = 96.dp + if (state.current.slug == null) PickerRoom else 0.dp)
-                },
-            ) {
-                item(key = "bar") { PhoneTopBar(state, onProjects = openDrawer, onTapBar = toTop, onSearch = { ui.commandOpen = true }, onBell = { ui.bellOpen = !ui.bellOpen }, onAccount = { ui.alertsOpen = true }) }
-                item(key = "header") { FeedHeader(ui, compact = true, Modifier.padding(top = 12.dp, bottom = 16.dp)) }
-                feedItems(ui, Density.Compact, list)
-            }
-            LoadOlderWhenNearEnd(ui, list)
-            ScrollToRevealed(ui, list, itemsBefore = 2)
-            FollowRepliedCard(ui, list, itemsBefore = 2)
-            ScrollToTopWhenAsked(ui, list)
-        }
         // The thread screen shows a card open on its own; closing it puts the card away.
         LaunchedEffect(ui) {
             snapshotFlow { ui.phoneThreadOpen }.collect { open -> if (!open && ui.aloneId != null) ui.closeAlone() }
         }
-        // Tapping the status bar area scrolls to the top, as it does across iOS.
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .height(safeArea.top)
-                .pointerInput(Unit) { detectTapGestures { toTop() } }
-                .clearAndSetSemantics { },
-        )
-        HoldArrivalsWhileAway(ui, list)
-        NewOrBackToTop(ui, list, scrolledPast = 4, Modifier.align(Alignment.TopCenter).padding(top = safeArea.top + 8.dp), toTop)
-        val target = if (state.current.slug == null) ui.postProject else state.current
-        // Only the slug is captured, so a new engine state doesn't redraw the composer.
-        val postTo = if (state.current.slug == null) target?.slug else null
-        if (target != null) Column(
-            Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .background(bottomFade(colors.background))
-                .padding(start = 12.dp, end = 12.dp, top = 18.dp)
-                .safePadding(safeArea, bottom = 6.dp),
-        ) {
-            if (state.current.slug == null) PostToPicker(ui, target, Modifier.padding(bottom = 6.dp, start = 4.dp))
-            Composer(
-                focus = ui.composerFocus,
-                placeholder = "Message ${target.name}…",
-                onSend = { text, files -> ui.emit(FeedEvent.Post(text, files, project = postTo, tags = ui.takePostTags(target.id))) },
-                onSendVoice = { text, files, voice -> ui.emit(FeedEvent.Post(text, files, project = postTo, tags = ui.takePostTags(target.id), voice = voice)) },
-                draftKey = "project:${target.slug}",
-                tagProject = target.id,
-                compact = true,
+        if (ui.boardOpen) {
+            BoardPane(ui, Modifier.fillMaxSize().safePadding(safeArea, top = 0.dp, bottom = 0.dp), phone = true) {
+                PhoneTopBar(state, onProjects = openDrawer, onTapBar = {}, onSearch = { ui.commandOpen = true }, onBell = { ui.bellOpen = !ui.bellOpen }, onAccount = { ui.alertsOpen = true })
+            }
+        } else {
+            PullToRefreshBox(
+                isRefreshing = ui.refreshing,
+                onRefresh = refresh,
+                state = pull,
+                modifier = Modifier.fillMaxSize(),
+                indicator = {
+                    PullToRefreshDefaults.Indicator(
+                        state = pull,
+                        isRefreshing = ui.refreshing,
+                        modifier = Modifier.align(Alignment.TopCenter).padding(top = safeArea.top),
+                        containerColor = colors.surfaceRaised,
+                        color = colors.accent,
+                    )
+                },
+            ) {
+                LazyColumn(
+                    Modifier.fillMaxSize().closesComposer(ui).listActions(refresh, toTop, openDrawer),
+                    state = list,
+                    contentPadding = remember(safeArea, state.current.slug == null) {
+                        safeContentPadding(safeArea, horizontal = 16.dp, top = 8.dp, bottom = 96.dp + if (state.current.slug == null) PickerRoom else 0.dp)
+                    },
+                ) {
+                    item(key = "bar") { PhoneTopBar(state, onProjects = openDrawer, onTapBar = toTop, onSearch = { ui.commandOpen = true }, onBell = { ui.bellOpen = !ui.bellOpen }, onAccount = { ui.alertsOpen = true }) }
+                    item(key = "header") { FeedHeader(ui, compact = true, Modifier.padding(top = 12.dp, bottom = 16.dp)) }
+                    feedItems(ui, Density.Compact, list)
+                }
+                LoadOlderWhenNearEnd(ui, list)
+                ScrollToRevealed(ui, list, itemsBefore = 2)
+                FollowRepliedCard(ui, list, itemsBefore = 2)
+                ScrollToTopWhenAsked(ui, list)
+            }
+            // Tapping the status bar area scrolls to the top, as it does across iOS.
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(safeArea.top)
+                    .pointerInput(Unit) { detectTapGestures { toTop() } }
+                    .clearAndSetSemantics { },
             )
+            HoldArrivalsWhileAway(ui, list)
+            NewOrBackToTop(ui, list, scrolledPast = 4, Modifier.align(Alignment.TopCenter).padding(top = safeArea.top + 8.dp), toTop)
+            val target = if (state.current.slug == null) ui.postProject else state.current
+            // Only the slug is captured, so a new engine state doesn't redraw the composer.
+            val postTo = if (state.current.slug == null) target?.slug else null
+            if (target != null) Column(
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .background(bottomFade(colors.background))
+                    .padding(start = 12.dp, end = 12.dp, top = 18.dp)
+                    .safePadding(safeArea, bottom = 6.dp),
+            ) {
+                if (state.current.slug == null) PostToPicker(ui, target, Modifier.padding(bottom = 6.dp, start = 4.dp))
+                Composer(
+                    focus = ui.composerFocus,
+                    placeholder = "Message ${target.name}…",
+                    onSend = { text, files -> ui.emit(FeedEvent.Post(text, files, project = postTo, tags = ui.takePostTags(target.id))) },
+                    onSendVoice = { text, files, voice -> ui.emit(FeedEvent.Post(text, files, project = postTo, tags = ui.takePostTags(target.id), voice = voice)) },
+                    draftKey = "project:${target.slug}",
+                    tagProject = target.id,
+                    compact = true,
+                )
+            }
         }
         ui.phoneThread?.let { PhoneThreadScreen(ui, it, widthPx, safeArea) }
         ProjectsDrawer(ui, ui.drawer, drawerWidthPx, safeArea)

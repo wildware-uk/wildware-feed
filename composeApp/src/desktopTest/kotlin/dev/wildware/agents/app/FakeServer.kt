@@ -67,6 +67,8 @@ class FakeServer {
         LiveAgentView(agentId = "a1", name = "forge", lastHeartbeatAt = now(), host = "build-box", cwd = "/work/garden-game", model = "claude-opus-5-5"),
     )
     var notifications = listOf<NotificationView>()
+    /** `GET /api/board`, as the dashboard answers it (migration 070). */
+    @Volatile var board: String = """{"columns":[],"autoRemoveDays":7}"""
     /** Questions answered lately, as a team's `GET /api/snapshot/requests` lists them (migration 055). */
     var answered = listOf<RequestView>()
     /** `GET /api/me` and `GET /api/people`; null answers 404, a server from before teams. */
@@ -237,6 +239,7 @@ class FakeServer {
             "/api/messages" -> ok(json.encodeToString(MessagesSnapshot.serializer(), MessagesSnapshot(seq = seq, messages = messages, reactions = reactions, media = messageMedia)))
             "/api/snapshot/requests" -> ok(json.encodeToString(RequestsSnapshot.serializer(), RequestsSnapshot(seq, requests = requests, answered = answered)))
             "/api/me" -> me?.let { ok(it) } ?: ok("""{"error":"not_found"}""", HttpStatusCode.NotFound)
+            "/api/board" -> ok(board)
             "/api/people" -> ok(people)
             "/api/invites" -> ok("""{"invites":[]}""")
             "/api/devices/current/alert-prefs" -> ok(alertPrefs)

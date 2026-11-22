@@ -214,6 +214,8 @@ class DemoServer(private val now: () -> Long = { Clock.System.now().toEpochMilli
                 ),
             )
             "api/devices/current/alert-prefs" -> ok("""{"prefs":$alertPrefs}""")
+            "api/board" -> ok(json.encodeToString(boardOf(request)))
+            "api/settings/board" -> ok("""{"autoRemoveDays":${boardDays ?: "null"}}""")
             else -> agentsPath(path)?.let { (kind, slug) ->
                 ok("""{"agents":${json.encodeToString(members(kind, slug))}}""")
             } ?: accessPath(path)?.takeIf { it.third == null }?.let { (kind, ref) ->
@@ -240,6 +242,10 @@ class DemoServer(private val now: () -> Long = { Clock.System.now().toEpochMilli
                 accessLevels = if (level == null) accessLevels - (target to principal) else accessLevels + ((target to principal) to level)
             }
             return ok(json.encodeToString(accessPanel(kind, ref)))
+        }
+        if (path == "api/settings/board") {
+            boardDays = input["autoRemoveDays"]?.takeIf { it !is JsonNull }?.jsonPrimitive?.content?.toIntOrNull()
+            return ok("""{"autoRemoveDays":${boardDays ?: "null"}}""")
         }
         return when {
             path == "api/messages" && method == HttpMethod.Post -> {
@@ -405,8 +411,15 @@ class DemoServer(private val now: () -> Long = { Clock.System.now().toEpochMilli
         }
         "status" -> {
             val status = input.text("status")
-            messages = messages.map { if (it.id == card.id) it.copy(status = status) else it }
+            messages = messages.map { if (it.id == card.id) it.copy(status = status, statusAt = now()) else it }
+            updates = updates.map { if (it.id == card.id) it.copy(status = status, statusAt = now()) else it }
+            boardRemoved = boardRemoved - card.id
             ok("{}")
+        }
+        "board" -> {
+            val removed = input["removed"]?.jsonPrimitive?.booleanOrNull ?: true
+            boardRemoved = if (removed) boardRemoved + card.id else boardRemoved - card.id
+            ok("""{"removed":$removed}""")
         }
         "tags" -> {
             val word = input.text("tag") ?: return bad("tag is required")
@@ -474,6 +487,47 @@ class DemoServer(private val now: () -> Long = { Clock.System.now().toEpochMilli
     }
 
     private fun JsonObject.text(key: String): String? = (this[key] as? JsonPrimitive)?.takeIf { it !is JsonNull }?.contentOrNull
+
+    /** The board's finished cards taken off it, and the demo's auto-remove age (it never removes by age). */
+    private var boardRemoved = setOf<String>()
+    private var boardDays: Int? = 7
+
+    /** The board, from the demo's cards with a work state, as the dashboard's `GET /api/board` gives it. */
+    private fun boardOf(request: HttpRequestData): dev.wildware.agents.BoardSnapshot {
+        val channel = request.url.parameters["channel"]?.let { slug -> projects.firstOrNull { it.slug == slug }?.id }
+        val group = request.url.parameters["group"]?.let { slug -> groups.firstOrNull { it.slug == slug }?.id }
+        val showRemoved = request.url.parameters["removed"] == "1"
+        fun inScope(projectId: String?) = when {
+            channel != null -> projectId == channel
+            group != null -> projects.any { it.id == projectId && it.groupId == group }
+            else -> true
+        }
+        val names = data.agentNames + renamed
+        val cards = updates.filter { it.status != null && inScope(it.projectId) }.map { u ->
+            dev.wildware.agents.BoardCardView(
+                card = CardRef(CardKinds.Update, u.id), projectId = u.projectId,
+                channel = projects.firstOrNull { it.id == u.projectId }.let { dev.wildware.agents.BoardChannel(it?.slug, it?.name) },
+                status = u.status!!, statusAt = u.statusAt, createdAt = u.createdAt, movedAt = u.statusAt ?: u.createdAt,
+                title = u.title?.takeIf { it.isNotBlank() } ?: u.body.lineSequence().first(), author = "agent:${u.agentId}",
+                on = listOf(dev.wildware.agents.BoardWho("agent", u.agentId, names[u.agentId] ?: "An agent")),
+                removed = u.id in boardRemoved,
+            )
+        } + messages.filter { it.status != null && inScope(it.projectId) }.map { m ->
+            dev.wildware.agents.BoardCardView(
+                card = CardRef(CardKinds.Message, m.id), projectId = m.projectId,
+                channel = projects.firstOrNull { it.id == m.projectId }.let { dev.wildware.agents.BoardChannel(it?.slug, it?.name) },
+                status = m.status!!, statusAt = m.statusAt, createdAt = m.createdAt, movedAt = m.statusAt ?: m.createdAt,
+                title = m.body.lineSequence().first().take(140), author = m.author,
+                on = listOfNotNull(m.agentId?.let { dev.wildware.agents.BoardWho("agent", it, names[it] ?: "An agent") } ?: dev.wildware.agents.BoardWho("person", "you", "You")),
+                removed = m.id in boardRemoved,
+            )
+        }
+        val columns = listOf("todo", "in_progress", "blocked", "done").map { status ->
+            val here = cards.filter { (if (it.status == "cancelled") "done" else it.status) == status && (showRemoved || !it.removed) }
+            dev.wildware.agents.BoardColumnView(status, here.sortedByDescending { it.movedAt })
+        }
+        return dev.wildware.agents.BoardSnapshot(columns, boardDays)
+    }
 
     private fun MockRequestHandleScope.ok(body: String, status: HttpStatusCode = HttpStatusCode.OK) =
         respond(body, status, headersOf(HttpHeaders.ContentType, "application/json"))

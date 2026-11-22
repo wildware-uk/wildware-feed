@@ -212,6 +212,13 @@ private fun commandsFor(
         if (ui.canGoBack && wanted("Go back", "back", "history")) add(Command("Actions", "Go back", "Where you were before", Icons.Back, done { ui.goBack() }, keys = if (shortcutsUseCommand) "⌘[" else "Alt+←"))
         if (ui.canGoForward && wanted("Go forward", "forward", "history")) add(Command("Actions", "Go forward", "Where you went next", Icons.ChevronRight, done { ui.goForward() }, keys = if (shortcutsUseCommand) "⌘]" else "Alt+→"))
         if (wanted("Mark all read")) add(Command("Actions", "Mark all read", "Clear every unread badge", Icons.Check, done { ui.emit(FeedEvent.MarkAllRead) }))
+        if (ui.boardOpen && wanted("Feed", "board")) add(Command("Actions", "Feed", "Back to the feed", Icons.Inbox, done { ui.toggleBoard() }, keys = "${cmd}B"))
+        if (!ui.boardOpen && wanted("Board", "kanban", "work")) {
+            add(Command("Actions", "Board", "The work in ${if (state.current.slug == null) "every channel" else state.current.name}, a column per state", Icons.Grip, done { ui.showBoard() }, keys = "${cmd}B"))
+        }
+        if (q.isNotEmpty()) state.groups.filter { !it.archived && wanted("Board ${it.name}", "kanban") }.forEach { g ->
+            add(Command("Actions", "Board: ${g.name}", "The work in every channel of ${g.name}", Icons.Grip, done { ui.showBoard(g.id) }))
+        }
         if (wanted("New channel", "create channel")) {
             add(Command("Actions", "New channel", "Make a channel to post and work in", Icons.Plus, done { ui.projectDialog = ProjectDialog.New }))
         }

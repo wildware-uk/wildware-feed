@@ -108,6 +108,9 @@ class DashboardSession(
     private val actions = OwnerActions(outbox)
     private val mapper = FeedMapper(client.serverUrl, clock)
 
+    /** The board, read while it is on screen and again whenever something on it may have moved. */
+    private val board = BoardWatch(client, actions, scope, dashboard.boardChanges, clock)
+
     private val mutableAlerts = MutableStateFlow(AlertSettings())
 
     /** Which moments make which sound. Touched only on [soundThread]. */
@@ -331,7 +334,8 @@ class DashboardSession(
         shown.copy(searchIndex = searchEntriesOf(all.sections), lone = all.lone, bell = mapper.bell(notifications), alerts = alerts, retention = retention, mentionable = mentionable, postTarget = postTarget, devices = devices, secrets = secrets, feedback = feedback, joining = extras.joining, connections = extras.connections, members = extras.members, access = extras.access,
             agents = withOffline(shown.agents, known), follows = follows,
             groups = groups.map { ProjectGroup(it.id, it.slug, it.name, accent = it.theme?.accent, archived = it.isArchived, position = it.position) }).also { MarkdownCache.warm(markdownIn(it).asIterable()) }
-    }.stateIn(scope, SharingStarted.Eagerly, mapper.map(feed.state.value, emptyList(), emptyList(), emptyList(), null))
+    }.let { feed -> combine(feed, board.state) { shown, onBoard -> shown.copy(board = onBoard) } }
+        .stateIn(scope, SharingStarted.Eagerly, mapper.map(feed.state.value, emptyList(), emptyList(), emptyList(), null))
 
     /** True once the dashboard has stopped taking this device's key. */
     val signedOut: StateFlow<Boolean> = combine(dashboard.status, revokedHere) { status, revoked -> revoked || status == StreamStatus.SignedOut }
@@ -987,6 +991,7 @@ class DashboardSession(
         val at = clock()
         when (event) {
             is FeedEvent.SetStatus -> sounds { soundRules.touched(event.targetId, at) }
+            is FeedEvent.BoardMove -> sounds { soundRules.touched(event.id, at) }
             else -> Unit
         }
         // A new answer replaces one the dashboard refused: the refused one is not sent as well.
@@ -1028,6 +1033,12 @@ class DashboardSession(
             is FeedEvent.Delete -> cardRef(event.targetId)?.let { actions.delete(it) }
             is FeedEvent.Tag -> cardRef(event.targetId)?.let { actions.tag(it, event.tag, event.on, event.create) }
             is FeedEvent.SetStatus -> cardRef(event.targetId)?.let { actions.setStatus(it, event.status?.wire) }
+            is FeedEvent.ShowBoard -> board.show(event.scope)
+            is FeedEvent.BoardMove -> board.move(event.kind, event.id, event.status)
+            is FeedEvent.BoardRemove -> board.remove(event.kind, event.id, event.removed)
+            is FeedEvent.BoardShowRemoved -> board.showRemoved(event.show)
+            is FeedEvent.BoardAutoRemove -> board.setAutoRemove(event.days)
+            is FeedEvent.BoardMore -> board.more(event.status)
             is FeedEvent.Pin -> cardRef(event.targetId)?.let { actions.pin(it, event.pinned) }
             is FeedEvent.SetField -> cardRef(event.targetId)?.let { actions.setField(it, event.name, event.value) }
             is FeedEvent.OpenThread -> dashboard.markRead(event.cardId)

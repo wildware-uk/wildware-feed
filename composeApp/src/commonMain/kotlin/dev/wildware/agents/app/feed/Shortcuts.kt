@@ -87,6 +87,7 @@ fun keyboardShortcuts(mac: Boolean, web: Boolean): List<ShortcutGroup> {
                 Shortcut("${cmd}1 … ${cmd}9", "Channel 1 to 9, as the sidebar lists them"),
                 Shortcut("$shift" + "F10  or  Menu", "Menu for the channel, project or agent in focus"),
                 Shortcut("$cmd$shift↑  $cmd$shift↓", "Move the channel or project in focus up or down"),
+                Shortcut("${cmd}B", "Board or feed"),
             ) + (if (web) emptyList() else listOf(Shortcut("$cmd${shift}1 … $cmd${shift}9", "Team 1 to 9, as the team switcher lists them"))) + listOf(
                 Shortcut("G then H", "All channels"),
                 Shortcut("G then W", "Waiting on you"),
@@ -115,6 +116,15 @@ fun keyboardShortcuts(mac: Boolean, web: Boolean): List<ShortcutGroup> {
             ),
         ),
         ShortcutGroup(
+            "The board",
+            listOf(
+                Shortcut("↑  ↓  ←  →", "Move between cards"),
+                Shortcut("$cmd$shift←  $cmd$shift→", "Move the card a column"),
+                Shortcut("Enter", "Open the card's thread"),
+                Shortcut("Delete", "Remove a Done card from the board"),
+            ),
+        ),
+        ShortcutGroup(
             "Writing",
             listOf(
                 Shortcut(if (mac) "⌘↵" else "Ctrl+Enter", "Send"),
@@ -128,7 +138,7 @@ fun keyboardShortcuts(mac: Boolean, web: Boolean): List<ShortcutGroup> {
 /** Whether a sheet, menu, picker or dialog is over the feed. */
 internal val FeedUi.overlayOpen: Boolean
     get() = viewer != null || playing != null || commandOpen || bellOpen || alertsOpen || retentionOpen ||
-        devicesOpen || secretsOpen || feedbackOpen || peopleOpen || connectOpen || statusPick != null || menu != null || selecting != null ||
+        devicesOpen || secretsOpen || feedbackOpen || peopleOpen || connectOpen || statusPick != null || menu != null || selecting != null || boardMenu != null ||
         tagging != null || deleting != null || projectDialog != null || agentOpen != null || shortcutsOpen
 
 /** Closes whatever is on top of the feed; false when nothing was. */
@@ -141,6 +151,7 @@ internal fun FeedUi.closeTopOverlay(): Boolean {
         shortcutsOpen -> shortcutsOpen = false
         bellOpen -> bellOpen = false
         statusPick != null -> statusPick = null
+        boardMenu != null -> boardMenu = null
         tagging != null -> tagging = null
         alertsOpen -> alertsOpen = false
         retentionOpen -> retentionOpen = false
@@ -247,6 +258,7 @@ internal class FeedKeys(private val ui: FeedUi, private val mac: Boolean = short
             e.command && !e.isAltPressed && e.isShiftPressed && digit(e) != null && teams?.web == false ->
                 teams?.numbered(digit(e)!!)?.let { teams?.switchTo(it); true } ?: false
             e.command && !e.isShiftPressed && e.key == Key.N -> run { ui.focusComposer(); true }
+            e.command && !e.isShiftPressed && !e.isAltPressed && e.key == Key.B -> run { ui.toggleBoard(); true }
             else -> false
         }
     }
