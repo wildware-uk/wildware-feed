@@ -679,6 +679,11 @@ data class FeedState(
     val groups: List<ProjectGroup> = emptyList(),
     /** The people of the team, and you among them. */
     val team: TeamState = TeamState(),
+    /**
+     * The card open on its own: one the feed on screen hasn't paged to, read by itself with its
+     * thread ([FeedEvent.OpenAlone]). Never in [sections]; [item] doesn't find it.
+     */
+    val lone: FeedItem? = null,
 ) {
     fun item(id: String): FeedItem? = sections.firstNotNullOfOrNull { s -> s.items.firstOrNull { it.id == id } }
 }

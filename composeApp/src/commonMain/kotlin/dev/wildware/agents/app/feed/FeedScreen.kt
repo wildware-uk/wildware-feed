@@ -359,6 +359,8 @@ private fun DesktopColumns(ui: FeedUi, showRail: Boolean, startAt: String?) {
             // Only the slug is captured, so a new engine state doesn't redraw the composer.
             val postTo = if (state.current.slug == null) target?.slug else null
             if (target != null) DesktopComposer(ui, target, postTo, picking = state.current.slug == null, Modifier.align(Alignment.BottomCenter))
+            // A card the feed hadn't paged to, open on its own over the feed, which stays where it was.
+            AloneView(ui, FeedMaxWidth)
         }
         }
         if (showRail) {
@@ -471,6 +473,10 @@ private fun PhoneFeed(ui: FeedUi, safeArea: SafeArea, startAt: String?, widthPx:
             ScrollToRevealed(ui, list, itemsBefore = 2)
             FollowRepliedCard(ui, list, itemsBefore = 2)
             ScrollToTopWhenAsked(ui, list)
+        }
+        // The thread screen shows a card open on its own; closing it puts the card away.
+        LaunchedEffect(ui) {
+            snapshotFlow { ui.phoneThreadOpen }.collect { open -> if (!open && ui.aloneId != null) ui.closeAlone() }
         }
         // Tapping the status bar area scrolls to the top, as it does across iOS.
         Box(

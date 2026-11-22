@@ -163,6 +163,7 @@ internal class FeedMapper(
             tags = feed.tags.map { it.toCardTag() },
             critical = criticalNotices(inScope, feed),
             logoChoices = media.take(10).map { LogoChoice(it.id, image(it)) },
+            lone = feed.lone?.toItem(agents, ::project, index),
         )
     }
 
@@ -242,7 +243,7 @@ internal class FeedMapper(
         fun refused(requestId: String): OutboxItem? = refused[requestId]
 
         init {
-            feed.allCards.forEach { card ->
+            (feed.allCards + listOfNotNull(feed.lone)).forEach { card ->
                 val own = (card as? PostCard)?.post?.let(::listOf).orEmpty()
                 (own + card.replies).forEach { lines[it.message.id] = card.id to it }
             }

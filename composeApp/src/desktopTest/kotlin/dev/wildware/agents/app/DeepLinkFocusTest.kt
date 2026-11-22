@@ -25,13 +25,12 @@ import dev.wildware.agents.app.feed.FeedItem
 import dev.wildware.agents.app.feed.FeedScreen
 import dev.wildware.agents.app.feed.Highlighted
 import kotlin.test.Test
-import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * A link to a card (a notification, a widget, search) finds it as the website does: through a reply
- * to its card, by reading older pages (five at most), and rings it for a moment. When it can't, it
- * says so instead of doing nothing.
+ * A link to a card (a notification, a widget, search) finds it: through a reply to its card, and
+ * rings it for a moment. One the feed hasn't loaded opens on its own, with no older page read; when
+ * the dashboard has no such card, it says so instead of doing nothing.
  */
 @OptIn(ExperimentalTestApi::class)
 class DeepLinkFocusTest {
@@ -73,39 +72,27 @@ class DeepLinkFocusTest {
     }
 
     @Test
-    fun aCardNotLoadedYetIsFoundByReadingOlderPages() = runComposeUiTest {
+    fun aCardNotLoadedOpensOnItsOwnWithoutReadingOlderPages() = runComposeUiTest {
         state = state.copy(hasMore = true)
         val old = fix.copy(id = "u-old", title = "Something from last month", replies = emptyList(), unreadReplies = 0)
         desktop { e ->
-            if (e is FeedEvent.LoadOlder) {
-                state = state.copy(sections = state.sections + state.sections.last().copy(label = "Last month", items = listOf(old)), hasMore = false)
+            // The engine reads the card by itself and hands it back.
+            if (e is FeedEvent.OpenAlone) {
+                state = state.copy(lone = old)
+                e.result("u-old")
             }
         }
         navigator.open("agent-dashboard", "u-old")
-        waitUntil(timeoutMillis = 5_000) { onAllNodes(hasText("Something from last month") and ringed, useUnmergedTree = false).fetchSemanticsNodes().isNotEmpty() || onAllNodes(ringed).fetchSemanticsNodes().isNotEmpty() }
-        assertEquals(1, events.count { it is FeedEvent.LoadOlder })
+        waitUntil(timeoutMillis = 5_000) { onAllNodes(hasText("Something from last month")).fetchSemanticsNodes().isNotEmpty() }
+        onNodeWithText("Back to feed").assertExists()
+        assertTrue(events.any { it is FeedEvent.OpenAlone && it.id == "u-old" }, "got $events")
+        assertTrue(events.none { it is FeedEvent.LoadOlder }, "no page is read to find it")
     }
 
     @Test
-    fun atMostFivePagesAreReadThenItSaysSo() = runComposeUiTest {
+    fun aCardTheDashboardDoesNotHaveSaysSo() = runComposeUiTest {
         state = state.copy(hasMore = true)
-        var page = 0
-        desktop { e ->
-            if (e is FeedEvent.LoadOlder) {
-                page++
-                val filler = fix.copy(id = "u-page-$page", title = "Page $page", replies = emptyList(), unreadReplies = 0)
-                state = state.copy(sections = state.sections + state.sections.last().copy(label = "Older $page", items = listOf(filler)))
-            }
-        }
-        navigator.open("agent-dashboard", "u-gone")
-        mainClock.advanceTimeBy(12_000)
-        waitUntil(timeoutMillis = 5_000) { onAllNodes(hasText("Couldn't find what that link pointed at", substring = true)).fetchSemanticsNodes().isNotEmpty() }
-        assertEquals(5, events.count { it is FeedEvent.LoadOlder })
-    }
-
-    @Test
-    fun withNothingOlderItSaysSoAtOnce() = runComposeUiTest {
-        desktop()
+        desktop { e -> if (e is FeedEvent.OpenAlone) e.result(null) }
         navigator.open("agent-dashboard", "u-gone")
         waitUntil(timeoutMillis = 5_000) { onAllNodes(hasText("Couldn't find what that link pointed at", substring = true)).fetchSemanticsNodes().isNotEmpty() }
         assertTrue(events.none { it is FeedEvent.LoadOlder })

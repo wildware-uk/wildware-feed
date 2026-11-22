@@ -204,9 +204,9 @@ internal fun FollowNavigation(ui: FeedUi, navigator: AppNavigator?) {
 
 /**
  * Shows [open]'s project, then its card with the thread open, as the website follows `?focus=`. The id
- * may be a reply or a question asked in a thread: its card is shown. A card not loaded yet is looked
- * for in older pages, [MaxOlderPages] at most. Found, it is opened if folded ([unfold]), scrolled to
- * and ringed for a moment; not found, the feed says so rather than seeming to do nothing.
+ * may be a reply or a question asked in a thread: its card is shown. A card the feed has loaded is
+ * opened if folded ([unfold]), scrolled to and ringed for a moment. One it hasn't is never paged down
+ * to: it opens on its own ([FeedUi.openAlone]), the feed left where it is; not found, the feed says so.
  */
 internal suspend fun FeedUi.goTo(open: OpenCard, unfold: (String) -> Unit = {}) {
     menu = null
@@ -216,29 +216,13 @@ internal suspend fun FeedUi.goTo(open: OpenCard, unfold: (String) -> Unit = {}) 
     drawer.snap(false)
     if (open.project != state.current.slug) emit(FeedEvent.SelectProject(open.project))
     val id = open.cardId ?: return
-    var pages = 0
+    // Each look is a change in the feed: a project arriving, its first read landing. Never a page more.
     val item = withTimeoutOrNull(CardWaitMillis) {
-        // Each look is a change in the feed: a project arriving, a page read. Not found yet, it reads
-        // one older page; it gives up when there is nothing older, or once the last allowed page is in.
-        snapshotFlow { Look(cardFor(id), state.current.slug == open.project && state.loaded, state.hasMore, state.loading, state.sections.sumOf { it.items.size }) }
-            .first { look ->
-                when {
-                    look.card != null -> true
-                    !look.here || look.loading -> false
-                    !look.more || pages >= MaxOlderPages -> true
-                    else -> {
-                        pages++
-                        emit(FeedEvent.LoadOlder)
-                        false
-                    }
-                }
-            }
+        snapshotFlow { Look(cardFor(id), state.current.slug == open.project && state.loaded, state.loading) }
+            .first { look -> look.card != null || look.here && !look.loading }
             .card
     }
-    if (item == null) {
-        missingLink = true
-        return
-    }
+    if (item == null) return openAlone(id, unfold)
     unfold(item.id)
     reveal(item.id)
     highlighted = item.id
@@ -263,14 +247,8 @@ internal suspend fun FeedUi.openLinked(link: LinkedCard, unfold: (String) -> Uni
     focusedReply = link.id
 }
 
-/**
- * One look for a linked card: found yet, the right feed showing, whether there is more to read, and
- * how many cards are in (so a page that arrives without the card still counts as a new look).
- */
-private data class Look(val card: FeedItem?, val here: Boolean, val more: Boolean, val loading: Boolean, val cards: Int)
-
-/** How many older pages a link reads looking for its card, as the website does. */
-internal const val MaxOlderPages = 5
+/** One look for a linked card: found yet, and the right feed showing with its first read in. */
+private data class Look(val card: FeedItem?, val here: Boolean, val loading: Boolean)
 
 /** How long a linked card wears its ring. */
 internal const val RingMillis = 4_000L

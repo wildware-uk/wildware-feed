@@ -443,6 +443,13 @@ data class FeedSnapshot(
     val people: List<Person>? = null,
 )
 
+/**
+ * `GET /api/threads/{id}`: one card and its whole thread, read on its own. [card] is the card the
+ * id was in (a reply's id names its card); [feed] holds the update (none for a post) with its
+ * tags, fields and apps; [thread] the messages, a post first, as `GET /api/messages` gives them.
+ */
+class CardThread(val card: CardRef, val feed: FeedSnapshot, val thread: MessagesSnapshot)
+
 /** `GET /api/messages`: every thread in scope, oldest first. */
 @Serializable
 data class MessagesSnapshot(

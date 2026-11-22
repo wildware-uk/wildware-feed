@@ -171,11 +171,16 @@ data class FeedState(
      * saying who answered. Only those answered since the oldest card read, so they sit among them.
      */
     val answered: List<RequestCard> = emptyList(),
+    /**
+     * The card open on its own ([Feed.openAlone]): one the feed hasn't paged to, read with its
+     * thread by itself; or the feed's own card when it holds that one. Never among [cards].
+     */
+    val lone: FeedCard? = null,
 ) {
     /** Every card, pinned first, in order. */
     val allCards: List<FeedCard> get() = pinned + cards
 
-    fun card(id: String): FeedCard? = allCards.firstOrNull { it.id == id }
+    fun card(id: String): FeedCard? = allCards.firstOrNull { it.id == id } ?: lone?.takeIf { it.id == id }
 
     companion object {
         internal fun empty(slug: String?) =
@@ -690,7 +695,7 @@ internal class FeedContext(
 class Feed internal constructor(
     val projectSlug: String?,
     private val dashboard: Dashboard,
-    client: DashboardClient,
+    private val client: DashboardClient,
     private val scope: CoroutineScope,
     pageSize: Int,
 ) {
@@ -737,11 +742,182 @@ class Feed internal constructor(
     internal fun receive(event: StreamEvent) {
         timeline.receive(event)
         threads.receive(event)
+        if (aloneRead != null && (event.type == StreamEvent.Resync || mentionsAlone(event.payload, 0))) rereadAlone()
+    }
+
+    // --- A card on its own ------------------------------------------------------------------
+
+    /** The card open on its own, by id; null when none is. */
+    private var aloneId: String? = null
+
+    /** That card and its thread as read by itself; null while this feed holds the card. */
+    private var aloneRead: CardThread? = null
+    private var aloneReading = false
+    private var aloneStale = false
+    private var aloneIndex: ThreadIndex? = null
+    private var aloneIndexFrom: Pair<CardThread, ThreadIndex>? = null
+
+    /** The thread lines of the card on its own as last built, for marking it read. */
+    private var aloneComments: List<MessageView>? = null
+
+    /**
+     * Opens the card [id] is (or is in: a reply's id names its card) on its own, in [FeedState.lone]:
+     * the card this feed holds, else the card and its thread read by themselves. Never pages the
+     * feed. Answers the card's id, or null when the dashboard has no such card for this viewer.
+     */
+    @Throws(Exception::class)
+    suspend fun openAlone(id: String): String? = withContext(scope.coroutineContext) {
+        heldCardOf(id)?.let { held ->
+            aloneId = held
+            aloneRead = null
+            dashboard.changed()
+            return@withContext held
+        }
+        val read = client.thread(id) ?: return@withContext null
+        aloneId = read.card.id
+        aloneRead = read
+        dashboard.changed()
+        read.card.id
+    }
+
+    /** Puts the card on its own away again. */
+    fun closeAlone() {
+        scope.launch {
+            if (aloneId == null) return@launch
+            aloneId = null
+            aloneRead = null
+            aloneIndex = null
+            aloneIndexFrom = null
+            aloneComments = null
+            dashboard.changed()
+        }
+    }
+
+    /** The card in this feed that is [id] or holds it as a line. */
+    private fun heldCardOf(id: String): String? {
+        val shown = mutableState.value
+        shown.allCards.firstOrNull { it.id == id }?.let { return it.id }
+        return shown.allCards.firstOrNull { card -> card.replies.any { it.message.id == id } }?.id
+    }
+
+    /** Whether a live event names the card on its own or a line in its thread, anywhere in its payload. */
+    private fun mentionsAlone(element: kotlinx.serialization.json.JsonElement?, depth: Int): Boolean {
+        val read = aloneRead ?: return false
+        return when (element) {
+            is kotlinx.serialization.json.JsonPrimitive -> element.isString && (element.content == read.card.id || read.thread.messages.any { it.id == element.content })
+            is kotlinx.serialization.json.JsonObject -> depth < 3 && element.values.any { mentionsAlone(it, depth + 1) }
+            is kotlinx.serialization.json.JsonArray -> depth < 3 && element.any { mentionsAlone(it, depth + 1) }
+            else -> false
+        }
+    }
+
+    /** Reads the card on its own again, once at a time; a change meanwhile reads it once more after. */
+    private fun rereadAlone() {
+        if (aloneReading) {
+            aloneStale = true
+            return
+        }
+        val id = aloneId ?: return
+        aloneReading = true
+        scope.launch {
+            try {
+                do {
+                    aloneStale = false
+                    val read = runCatching { client.thread(id) }
+                    if (aloneId != id || aloneRead == null) break
+                    read.onSuccess { found ->
+                        // Gone, or hidden from here now: it closes.
+                        if (found == null) aloneId = null
+                        aloneRead = found
+                        dashboard.changed()
+                    }
+                } while (aloneStale)
+            } finally {
+                aloneReading = false
+            }
+        }
+    }
+
+    /**
+     * The thread index for the card on its own: what was read with it, with this feed's own lines
+     * over it (newer, and the owner's replies still on their way).
+     */
+    private fun aloneIndexOf(read: CardThread, feed: ThreadIndex): ThreadIndex {
+        aloneIndex?.takeIf { aloneIndexFrom?.let { it.first === read && it.second === feed } == true }?.let { return it }
+        val own = read.thread
+        val live = feed.snapshot
+        val liveIds = live.messages.mapTo(HashSet()) { it.id }
+        val merged = MessagesSnapshot(
+            seq = maxOf(own.seq, live.seq),
+            messages = (own.messages.filter { it.id !in liveIds } + live.messages).sortedBy { it.createdAt },
+            acks = own.acks.filter { it.messageId !in liveIds } + live.acks,
+            media = own.media + live.media,
+            embeds = own.embeds + live.embeds,
+            deliveries = own.deliveries.filter { it.messageId !in liveIds } + live.deliveries,
+            reactions = own.reactions.filter { it.messageId !in liveIds } + live.reactions,
+            refs = own.refs + live.refs,
+            blocks = own.blocks + live.blocks,
+            secrets = own.secrets + live.secrets,
+        )
+        return ThreadIndex(merged).also {
+            aloneIndex = it
+            aloneIndexFrom = read to feed
+        }
+    }
+
+    /** The card on its own, built as the feed builds its own. Null when the read holds no such card. */
+    private fun aloneCard(read: CardThread, context: FeedContext, feed: ThreadIndex): FeedCard? {
+        val index = aloneIndexOf(read, feed)
+        val marks = context.readMarks
+        val ref = read.card
+        val tagsById = (timeline.tags + read.feed.tags.orEmpty()).associateBy { it.id }
+        val tags = read.feed.cardTags.orEmpty().filter { it.card == ref }.mapNotNull { tagsById[it.tagId] }
+        val fields = read.feed.cardFields.orEmpty().filter { it.card == ref }
+        val apps = read.feed.cardApps.orEmpty().filter { it.card == ref }
+        fun projectName(id: String?) = id?.let { context.projectsById[it]?.name }
+        return when (ref.kind) {
+            CardKinds.Update -> {
+                val update = read.feed.updates.items.firstOrNull { it.id == ref.id } ?: return null
+                val comments = index.byUpdate[update.id].orEmpty()
+                aloneComments = comments
+                marks.seed(update.id, comments)
+                val blocks = context.blocks(ref, update.blocks)
+                UpdateCard(
+                    update = if (blocks === update.blocks) update else update.copy(blocks = blocks),
+                    agentName = read.feed.agentNames?.get(update.agentId) ?: context.agentName(update.agentId),
+                    projectName = projectName(update.projectId),
+                    isNew = false,
+                    activityAt = lastActivityAt(update.createdAt, comments, update.statusAt),
+                    replies = comments.map { line(it, context, index) },
+                    unread = marks.unread(update.id, comments),
+                    tags = tags,
+                    fields = fields,
+                    apps = apps,
+                )
+            }
+            CardKinds.Message -> {
+                val post = index.byId[ref.id] ?: return null
+                val comments = index.byReply[post.id].orEmpty()
+                aloneComments = comments
+                marks.seed(post.id, comments)
+                PostCard(
+                    post = line(post, context, index),
+                    projectName = projectName(post.projectId),
+                    activityAt = lastActivityAt(post.createdAt, comments, post.statusAt),
+                    replies = comments.map { line(it, context, index) },
+                    unread = marks.unread(post.id, comments),
+                    tags = tags,
+                    fields = fields,
+                    apps = apps,
+                )
+            }
+            else -> null
+        }
     }
 
     internal fun projects(): List<ProjectView> = timeline.projects
     internal fun groups(): List<GroupView> = timeline.groups
-    internal fun agentNames(): Map<String, String> = timeline.agentNames
+    internal fun agentNames(): Map<String, String> = aloneRead?.feed?.agentNames.orEmpty() + timeline.agentNames
 
     // --- Building cards ---------------------------------------------------------------------
 
@@ -824,6 +1000,7 @@ class Feed internal constructor(
             timeline.items.any { it.id == cardId } -> index.byUpdate[cardId].orEmpty()
             index.byId[cardId]?.isPost == true -> index.byReply[cardId].orEmpty()
             index.byRequest.containsKey(cardId) -> index.byRequest[cardId].orEmpty()
+            cardId == aloneId -> aloneComments
             else -> null
         }
     }
@@ -847,8 +1024,7 @@ class Feed internal constructor(
 
     private fun appsOn(card: CardRef): List<AppView> = timeline.cardApps.filter { it.card == card }
 
-    private fun line(message: MessageView, context: FeedContext): ThreadLine {
-        val index = indexed()
+    private fun line(message: MessageView, context: FeedContext, index: ThreadIndex = indexed()): ThreadLine {
         return ThreadLine(
             message = message,
             authorName = context.authorName(message.author),
@@ -929,6 +1105,9 @@ class Feed internal constructor(
             .filter { oldest == null || (it.answeredAt ?: 0) >= oldest }
             .map { context.requestCard(it, this) }
 
+        // The card on its own: this feed's own when it holds it, else the one read by itself.
+        val lone = aloneId?.let { id -> all.firstOrNull { it.id == id } ?: aloneRead?.let { aloneCard(it, context, index) } }
+
         mutableState.value = FeedState(
             projectSlug = projectSlug,
             project = project,
@@ -944,6 +1123,7 @@ class Feed internal constructor(
             hasMore = timeline.hasMore,
             tags = timeline.tags,
             answered = answered,
+            lone = lone,
         )
     }
 }

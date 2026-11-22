@@ -309,6 +309,7 @@ internal class FeedKeys(private val ui: FeedUi, private val mac: Boolean = short
     private fun escape(): Boolean {
         if (ui.closeTopOverlay()) return true
         if (ui.composerOpen) return run { ui.closeComposer(); true }
+        if (ui.aloneId != null) return run { ui.closeAlone(); true }
         if (ui.threadId != null) return run {
             ui.threadId = null
             ui.phoneThreadOpen = false

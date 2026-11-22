@@ -122,6 +122,20 @@ class DashboardClient(
             if (taskId != null) parameter("task", taskId)
         }.decoded()
 
+    /**
+     * One card and its whole thread, by the card's id or a reply's: for opening a card the feed
+     * hasn't paged to, without paging. Null when there is no such card, or it is hidden from here.
+     */
+    @Throws(Exception::class)
+    suspend fun thread(id: String): CardThread? {
+        val response = http.get("api/threads/${id.encodeURLPathPart()}") { authorise() }
+        if (response.status.value == 404) return null
+        response.requireSuccess()
+        val body = json.parseToJsonElement(response.bodyAsText()) as? kotlinx.serialization.json.JsonObject ?: return null
+        val card = body["card"]?.let { json.decodeFromJsonElement(CardRef.serializer(), it) } ?: return null
+        return CardThread(card, json.decodeFromJsonElement(FeedSnapshot.serializer(), body), json.decodeFromJsonElement(MessagesSnapshot.serializer(), body))
+    }
+
     /** Every question waiting on the owner, oldest first. */
     @Throws(Exception::class)
     suspend fun waitingRequests(): RequestsSnapshot = http.get("api/snapshot/requests") { authorise() }.decoded()

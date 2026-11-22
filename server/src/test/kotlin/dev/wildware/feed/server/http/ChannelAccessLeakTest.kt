@@ -156,6 +156,8 @@ class ChannelAccessLeakTest {
             paths = listOf("update", "message", "request").flatMap { kind -> v[kind].orEmpty().map { pattern.replace("{kind}", kind).replace("{id}", it) } }
         }
         if ("/access/{kind}/{id}" in pattern) sub("kind", listOf("member", "agent"))
+        // A thread read takes a card's id or a reply's: try every update and message of the vault.
+        if (pattern.startsWith("/api/threads")) sub("id", v["update"].orEmpty() + v["message"].orEmpty())
         val idKind = when {
             pattern.startsWith("/api/messages") -> "message"
             pattern.startsWith("/api/updates") -> "update"

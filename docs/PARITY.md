@@ -75,7 +75,7 @@ It doesn't, beyond oldest first.
 | 33 | Load older | Done | Button, pages of 50 | Yes, auto at end | Yes, auto | — | — |
 | 34 | New-card / bump animation | Done | Enter animation, FLIP slide, bump ring (`bumps.svelte.ts`) | Yes: new cards fade in, moved cards slide (animateItem); a card that moves on wears a fading accent ring for 1.4 s | Yes | Off with reduced motion | P2 |
 | 35 | Empty feed | Done | "Nothing here yet…" | Yes, loading vs empty vs filtered (`FeedScreen.kt` EmptyFeed) | Yes | — | — |
-| 36 | Deep link / focus to card | Done | `?focus=id`, ring 4 s, loads up to 5 pages, "Could not find…" (`Timeline.svelte:159-310,753-763`) | Yes: finds the card, loads up to 5 older pages, rings it 4 s, unfolds it, or says it can't (#64) | Yes | — | P1 |
+| 36 | Deep link / focus to card | Done | `?focus=id`, ring 4 s, loads up to 5 pages, "Could not find…" (`Timeline.svelte:159-310,753-763`) | Yes: a loaded card is scrolled to, ringed 4 s and unfolded; one not loaded opens on its own, read by itself with its thread (`GET /api/threads/{id}`), never paging the feed; or it says it can't (#64) | Yes | — | P1 |
 | 37 | Pull to refresh | Done | — | Yes | F5 / Cmd-R | App only | — |
 | 38 | Connection status | Done | Live/Reconnecting dot in header | Yes in feed header (`Panels.kt` LinkBadge) | Yes | — | — |
 | 39 | Offscreen skipping (perf) | Done | `content-visibility:auto` (`app.css:441-457`) | LazyColumn (inherent) | LazyColumn; PR #5 memoises | — | — |

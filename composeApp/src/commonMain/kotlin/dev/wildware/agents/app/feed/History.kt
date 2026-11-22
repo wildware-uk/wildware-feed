@@ -71,7 +71,12 @@ internal fun FeedUi.show(place: Place) {
     if (thread == null) {
         threadId = null
         phoneThreadOpen = false
+        aloneId = null
+    } else if (cardFor(thread) == null && place.project == this.place.project) {
+        // A thread the feed hasn't paged to (one that was open on its own) opens on its own again.
+        if (aloneId != thread) openAlone(thread)
     } else {
+        aloneId = null
         openThread(thread, phone = isPhone)
         reveal(thread)
     }

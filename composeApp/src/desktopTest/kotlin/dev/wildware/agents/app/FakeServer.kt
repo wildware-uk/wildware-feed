@@ -98,6 +98,12 @@ class FakeServer {
     var revealed = """{"value":"sk-test-NOT-REAL-0000","encoding":"utf8"}"""
     var seq = 10L
 
+    /** Whether the first page says there are older updates. Older pages (`GET /api/snapshot/updates`) come back empty and say there are no more. */
+    var hasMore = false
+
+    /** `GET /api/threads/{id}` answers, by the id asked for, as JSON; any other id is a 404. */
+    val threads: MutableMap<String, String> = Collections.synchronizedMap(mutableMapOf())
+
     /** `GET /api/summary` answers 401, as a dashboard that signed this device out does. */
     @Volatile var summaryRefused = false
 
@@ -208,10 +214,11 @@ class FakeServer {
                     projects = projects,
                     groups = groups,
                     tags = emptyList(), cardTags = emptyList(), cardFields = emptyList(), cardApps = emptyList(),
-                    updates = UpdatesPage(updates.filter { slug == null || it.projectId == projectId }, null, false),
+                    updates = UpdatesPage(updates.filter { slug == null || it.projectId == projectId }, if (hasMore) "1" else null, hasMore),
                     agentNames = agentNames,
                 )))
             }
+            "/api/snapshot/updates" -> ok(json.encodeToString(FeedSnapshot.serializer(), FeedSnapshot(seq = seq, updates = UpdatesPage(emptyList(), null, false))))
             // The small summary a team that isn't open is asked for: the questions waiting there.
             "/api/summary" -> if (summaryRefused) ok("""{"error":"unauthenticated","message":"Sign in again."}""", HttpStatusCode.Unauthorized)
             else ok(json.encodeToString(dev.wildware.agents.DashboardSummary.serializer(), dev.wildware.agents.DashboardSummary(
@@ -246,7 +253,8 @@ class FakeServer {
             "/api/notifications" -> ok(json.encodeToString(NotificationsSnapshot.serializer(), NotificationsSnapshot(
                 seq, notifications = notifications, unseen = notifications.count { it.seenAt == null },
             )))
-            else -> ok("""{"error":"not_found"}""", HttpStatusCode.NotFound)
+            else -> threads[path.removePrefix("/api/threads/")]?.takeIf { path.startsWith("/api/threads/") }?.let { ok(it) }
+                ?: ok("""{"error":"not_found"}""", HttpStatusCode.NotFound)
         }
     }
 

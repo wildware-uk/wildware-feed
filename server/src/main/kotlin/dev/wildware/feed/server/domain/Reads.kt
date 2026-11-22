@@ -83,6 +83,20 @@ class Reads(private val db: Database, private val clock: () -> Long = System::cu
         val hasMore = rows.size > pageLimit
         val updates = if (hasMore) rows.take(pageLimit) else rows
         val ids = updates.map { it.str("id")!! }
+        val items = dressed(updates, ids)
+        val nextCursor = if (hasMore && updates.isNotEmpty()) JsonPrimitive(updates.last()["seq"].toString()) else JsonNull
+        return UpdatesPage(
+            buildJsonObject {
+                put("items", JsonArray(items))
+                put("nextCursor", nextCursor)
+                put("hasMore", hasMore)
+            },
+            ids,
+        )
+    }
+
+    /** Updates as a page carries them: each with its pictures, embeds, reactions, refs, blocks and secrets. */
+    private fun dressed(updates: List<JsonObject>, ids: List<String>): List<JsonObject> {
         val reactions = reactionsFor("update", ids)
         val media = mediaForMany("update_id", ids)
         val embeds = embedsForMany("update_id", ids)
@@ -103,15 +117,55 @@ class Reads(private val db: Database, private val clock: () -> Long = System::cu
             )
             update.plus(*extra.toTypedArray())
         }
-        val nextCursor = if (hasMore && updates.isNotEmpty()) JsonPrimitive(updates.last()["seq"].toString()) else JsonNull
-        return UpdatesPage(
-            buildJsonObject {
-                put("items", JsonArray(items))
-                put("nextCursor", nextCursor)
-                put("hasMore", hasMore)
+        return items
+    }
+
+    /** A live update this viewer may read, by id; null when it is missing, deleted or in a channel hidden from them. */
+    private fun liveUpdate(id: String): JsonObject? =
+        db.one("SELECT ${Rows.UPDATE} FROM updates WHERE team_id = :team AND id = ? AND deleted_at IS NULL", id) { Rows.update(it) }
+            ?.takeIf { access.visible(it.str("projectId")) }
+
+    /**
+     * One card and its whole thread, by the card's id or the id of a reply in it, for opening a card
+     * the feed hasn't paged to: `{card, updates, agentNames, cardTags, cardFields, cardApps}` and then
+     * what `GET /api/messages` gives for that thread. Null (a 404) when there is no such card, it was
+     * deleted, it sits in a channel hidden from this viewer, or the id is in a question's discussion.
+     */
+    fun cardThread(id: String): List<Pair<String, JsonElement>>? {
+        val update = liveUpdate(id)
+        val (kind, cardId) = when {
+            update != null -> "update" to id
+            else -> {
+                val message = messageById(id)?.takeIf { it["deletedAt"] is JsonNull } ?: return null
+                val updateId = message.str("updateId")
+                val replyTo = message.str("replyTo")
+                when {
+                    updateId != null -> "update" to updateId
+                    replyTo != null -> "message" to replyTo
+                    message.str("requestId") != null || message.str("taskId") != null -> return null
+                    else -> "message" to id
+                }
+            }
+        }
+        val card = if (kind == "update") (update ?: liveUpdate(cardId) ?: return null) else null
+        if (kind == "message" && messageById(cardId)?.takeIf { it["deletedAt"] is JsonNull } == null) return null
+        val thread = messagesPage(if (kind == "update") ThreadQuery(updateId = cardId) else ThreadQuery(replyTo = cardId))
+        val scope = CardScope(update = listOfNotNull(card?.let { cardId }), message = listOfNotNull(cardId.takeIf { kind == "message" }), request = emptyList())
+        return listOf(
+            "card" to buildJsonObject {
+                put("kind", kind)
+                put("id", cardId)
             },
-            ids,
-        )
+            "updates" to buildJsonObject {
+                put("items", JsonArray(if (card == null) emptyList() else dressed(listOf(card), listOf(cardId))))
+                put("nextCursor", JsonNull)
+                put("hasMore", false)
+            },
+            "agentNames" to agentNames(),
+            "cardTags" to JsonArray(cardTags(scope)),
+            "cardFields" to JsonArray(cardFields(scope)),
+            "cardApps" to JsonArray(cardApps(scope)),
+        ) + thread
     }
 
     // ---- messages -------------------------------------------------------------------------------

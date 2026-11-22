@@ -174,7 +174,11 @@ fun InReplyTo(context: String, threadId: String?, modifier: Modifier = Modifier)
                     .padding(start = 8.dp)
                     .clip(shape)
                     .pressable("Open thread", shape, labelIsShown = true) {
-                        if (isPhone) {
+                        if (ui.cardFor(threadId) == null) {
+                            // Not in the feed on screen: on its own, rather than scrolling off to find it.
+                            ui.openAlone(threadId)
+                            return@pressable
+                        } else if (isPhone) {
                             ui.openThread(threadId, phone = true)
                         } else {
                             // Desktop threads sit under their card: scroll there, every reply showing.

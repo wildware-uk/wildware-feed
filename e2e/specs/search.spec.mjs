@@ -1,5 +1,5 @@
 // Search everything (the "Search" button or Ctrl+K): finds cards, posts and replies by a word,
-// and opening a result shows it, even from another channel. Search runs in the app over what it
+// and opening a result shows it, even from another channel (on its own, over the channel on screen). Search runs in the app over what it
 // has loaded, so the server's part is having the things to find.
 import { expect, test } from '@playwright/test';
 import { Team } from '../lib/team.mjs';
@@ -69,6 +69,29 @@ test("a reply in a card's thread is found too, and opening it shows the thread",
     await expectShown(page, 'The pomegranate numbers come next week');
     // Opening a reply opens its card's thread, ready to answer.
     expect(await has(page, 'textbox', 'Reply', 5000)).toBe(true);
+});
+
+// A card the channel on screen doesn't hold opens on its own, read by itself with its thread: the
+// feed under it is never paged or switched to find it, and "Back to feed" leaves it as it was.
+test("another channel's card opens on its own, quickly, and Back to feed leaves the channel as it was", async ({ browser }) => {
+    const page = await inChannel(browser, 'Beta');
+    await expectShown(page, 'Remember the walrus meeting on Thursday');
+    await tap(page, 'button', 'Search everything. Shortcut Command K');
+    await typeInto(page, SEARCH, 'kumquat');
+    await expectShown(page, /FOUND\nQuarterly kumquat report\. Card · builder · Alpha/);
+    const asked = Date.now();
+    await page.keyboard.press('Enter');
+    await expectGone(page, SEARCH);
+    // On its own: the card, its reply, and the way back, within a few seconds.
+    await find(page, 'button', 'Back to feed', 5000);
+    await expectShown(page, 'Sales are up in the north.', 5000);
+    await expectShown(page, 'The pomegranate numbers come next week', 5000);
+    expect(Date.now() - asked).toBeLessThan(5000);
+    await tap(page, 'button', 'Back to feed');
+    await expectGone(page, 'Sales are up in the north.');
+    // Still Beta, as it was: its own post, and no Alpha card dragged in.
+    await expectShown(page, 'Remember the walrus meeting on Thursday');
+    await expectGone(page, 'Quarterly kumquat report');
 });
 
 test('a word nothing has finds nothing', async ({ browser }) => {

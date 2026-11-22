@@ -13,7 +13,7 @@ deletes it at the end, so files run side by side and a staging server stays clea
 | `arrange` | Drag a channel into a project with the mouse; the channel menu's Move to project; both stick after a reload |
 | `permissions` | Make a channel private from its Permissions panel; a member stops seeing it (list, feed, API); give them Read: they read it and can't post; the change log |
 | `messages` | Replies, threads, @mentions, reactions, edit and delete; a reply further down takes the feed to the top with its card |
-| `search` | Search everything finds messages and cards |
+| `search` | Search everything finds messages and cards; one from another channel opens on its own, quickly, and Back to feed leaves the channel as it was |
 | `media` | Picture, sound and video: upload, post, view and play; Save downloads a picture's original |
 | `cards` | Updates, pin, status, checklists and polls |
 | `requests` | An agent's questions: choice buttons, forms, text; Waiting on you |

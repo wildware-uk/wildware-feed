@@ -327,7 +327,8 @@ class DashboardSession(
         val all = if (shown.current.slug == null) shown else mapper.map(everything, projects, emptyList(), emptyList(), null)
         // Parse what the feed will draw before handing it over, here off the UI thread, so a card
         // that scrolls into view (or arrives) finds its markdown ready instead of parsing mid-frame.
-        shown.copy(searchIndex = searchEntriesOf(all.sections), bell = mapper.bell(notifications), alerts = alerts, retention = retention, mentionable = mentionable, postTarget = postTarget, devices = devices, secrets = secrets, feedback = feedback, joining = extras.joining, connections = extras.connections, members = extras.members, access = extras.access,
+        // A card on its own is held by the every-channel feed, whichever feed is on screen.
+        shown.copy(searchIndex = searchEntriesOf(all.sections), lone = all.lone, bell = mapper.bell(notifications), alerts = alerts, retention = retention, mentionable = mentionable, postTarget = postTarget, devices = devices, secrets = secrets, feedback = feedback, joining = extras.joining, connections = extras.connections, members = extras.members, access = extras.access,
             agents = withOffline(shown.agents, known), follows = follows,
             groups = groups.map { ProjectGroup(it.id, it.slug, it.name, accent = it.theme?.accent, archived = it.isArchived, position = it.position) }).also { MarkdownCache.warm(markdownIn(it).asIterable()) }
     }.stateIn(scope, SharingStarted.Eagerly, mapper.map(feed.state.value, emptyList(), emptyList(), emptyList(), null))
@@ -1071,7 +1072,11 @@ class DashboardSession(
             is FeedEvent.ReadReach -> scope.launch { loadReach(event.id, event.agent) }
             is FeedEvent.RevokeConnection -> revokeConnection(event.agentId, event.connectionId)
             is FeedEvent.SetMediaRetention -> saveRetention(event.setting)
-            is FeedEvent.SelectProject -> select(event.slug)
+            is FeedEvent.SelectProject -> {
+                // Another channel puts away a card open on its own: the screen did already.
+                dashboard.everything.closeAlone()
+                select(event.slug)
+            }
             is FeedEvent.CreateProject -> changeNow(event.done) {
                 val made = client.createProject(event.name.trim(), event.description?.trim())
                 event.groupId?.let { client.setProjectGroup(made.slug, it) }
@@ -1155,6 +1160,18 @@ class DashboardSession(
                 scope.launch { runCatching { dashboard.refresh() } }
             }
             is FeedEvent.LoadOlder -> scope.launch { runCatching { feed.loadOlder() } }
+            // Read by the every-channel feed, which hears every channel, so its thread stays live wherever the owner is.
+            is FeedEvent.OpenAlone -> scope.launch {
+                val id = try {
+                    dashboard.everything.openAlone(event.id)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Throwable) {
+                    null
+                }
+                event.result(id)
+            }
+            is FeedEvent.CloseAlone -> dashboard.everything.closeAlone()
             is FeedEvent.RetrySend -> outbox.retryNow(event.outboxId)
             is FeedEvent.DropUnsent -> outbox.remove(event.outboxId)
             is FeedEvent.ChooseStatus, is FeedEvent.Reply, is FeedEvent.OpenDetails, is FeedEvent.EditTags, is FeedEvent.FeedbackAbout, is FeedEvent.CopyText, is FeedEvent.SelectText, is FeedEvent.CopyLink, is FeedEvent.Quote, is FeedEvent.SignOut, is FeedEvent.ToggleTheme -> Unit
@@ -1211,19 +1228,25 @@ class DashboardSession(
 
     private fun request(id: String): RequestCard? = requests().firstOrNull { it.id == id }
 
-    private fun allLines(): List<ThreadLine> = latest.allCards.flatMap { card ->
+    private fun allLines(): List<ThreadLine> = (latest.allCards + listOfNotNull(alone)).flatMap { card ->
         card.replies + ((card as? dev.wildware.agents.PostCard)?.post?.let(::listOf) ?: emptyList())
     } + latest.waiting.flatMap { it.discussion }
+
+    /** The card open on its own, if one is: the every-channel feed holds it. */
+    private val alone: dev.wildware.agents.FeedCard? get() = dashboard.everything.state.value.lone
+
+    /** A card by id: in the feed on screen, or the one open on its own. */
+    private fun cardById(id: String): dev.wildware.agents.FeedCard? = latest.card(id) ?: alone?.takeIf { it.id == id }
 
     /** What card or line an id names, as the server's write calls want it. */
     private fun cardRef(id: String): CardRef? =
         // A line still in the outbox has no id on the dashboard yet: nothing can be done to it there.
-        if (id.startsWith(DraftPrefix)) null else latest.card(id)?.card
+        if (id.startsWith(DraftPrefix)) null else cardById(id)?.card
             ?: request(id)?.card
             ?: allLines().firstOrNull { it.message.id == id }?.let { CardRef(CardKinds.Message, id) }
 
     private fun reactionsOn(id: String): List<ReactionView> =
-        latest.card(id)?.reactions ?: request(id)?.request?.reactions
+        cardById(id)?.reactions ?: request(id)?.request?.reactions
             ?: allLines().firstOrNull { it.message.id == id }?.reactions.orEmpty()
 
     /** The answer as the server takes it for this kind of question. */

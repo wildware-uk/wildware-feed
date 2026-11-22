@@ -5,6 +5,7 @@ import dev.wildware.feed.server.domain.Js
 import dev.wildware.feed.server.domain.Reads
 import dev.wildware.feed.server.domain.invalid
 import dev.wildware.feed.server.domain.jsTrim
+import dev.wildware.feed.server.domain.notFound
 import io.ktor.http.HttpMethod
 import io.ktor.http.Parameters
 import io.ktor.server.routing.Route
@@ -76,6 +77,16 @@ fun Route.readRoutes(app: App, lastSeq: () -> Long) {
         HttpMethod.Get to {
             val query = threadQuery(call.request.queryParameters)
             stamped { reads.messagesPage(query) }
+        },
+    )
+
+    // One card and its thread, by its id or a reply's: how the apps open a card the feed hasn't paged
+    // to, on its own, instead of reading every page down to it. Hidden or missing is a 404.
+    endpoint(
+        "/api/threads/{id}",
+        HttpMethod.Get to {
+            val id = call.parameters["id"].orEmpty()
+            stamped { reads.cardThread(id) ?: throw notFound("no such card: $id") }
         },
     )
 

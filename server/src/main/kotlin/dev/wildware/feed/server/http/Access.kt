@@ -24,6 +24,7 @@ object Access {
         "GET /api/snapshot/requests" to M,
         "GET /api/snapshot/agents" to M,
         "GET /api/messages" to M,
+        "GET /api/threads/{id}" to M,
         "GET /api/projects/{reference}/tags" to M,
         "GET /api/stream" to M,
         "GET /media/{id}/{variant}" to M,

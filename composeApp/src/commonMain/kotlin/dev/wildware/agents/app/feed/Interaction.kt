@@ -141,6 +141,17 @@ sealed interface FeedEvent {
     data class SelectProject(val slug: String?) : FeedEvent
     data object Refresh : FeedEvent
     data object LoadOlder : FeedEvent
+
+    /**
+     * Open card [id], or the card a reply [id] is in, on its own: read by itself with its thread,
+     * without paging the feed down to it. [result] gets the card's id, or null when there is none.
+     */
+    data class OpenAlone(val id: String, val result: (String?) -> Unit) : FeedEvent {
+        override fun toString() = "OpenAlone($id)"
+    }
+
+    /** The card on its own was put away. */
+    data object CloseAlone : FeedEvent
     data class RetrySend(val outboxId: String) : FeedEvent
     /** A row under the bell was opened: that one is seen (the screen goes to its card itself). */
     data class OpenNotification(val id: String) : FeedEvent
@@ -604,10 +615,15 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
         runCatching { composerFocus.requestFocus() }
     }
 
-    /** Shows a search result: scrolls to its card, and opens the thread for a card or reply. */
+    /**
+     * Shows a search result. One in the feed on screen is scrolled to, its thread open for a card or
+     * reply. One the feed on screen doesn't hold (another channel's, or older than it has read) opens
+     * on its own instead, the feed left where it is.
+     */
     fun openResult(hit: SearchEntry) {
-        if (state.current.slug != null && state.current.slug != hit.projectSlug) emit(FeedEvent.SelectProject(null))
         val thread = hit.threadId
+        if (thread != null && cardFor(thread) == null) return openAlone(hit.id)
+        if (state.current.slug != null && state.current.slug != hit.projectSlug) emit(FeedEvent.SelectProject(null))
         reveal(thread ?: hit.id)
         if (thread == null) return
         openThread(thread, phone = isPhone)
@@ -642,6 +658,63 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
     /** Scrolls the feed to card [id], waiting for it to load if it isn't yet. */
     fun reveal(id: String) {
         revealing = Reveal(id, ++revealSerial)
+    }
+
+    /**
+     * The card open on its own, by id: one the feed on screen hadn't paged to, read by itself. The
+     * feed stays where it was under it. On a phone it shows in the thread screen; wider, over the feed.
+     */
+    var aloneId by mutableStateOf<String?>(null)
+    private var aloneAsked = 0L
+
+    /** The card open on its own: the feed's copy once the feed has it, else the one read by itself. */
+    val alone: Threaded? get() = aloneId?.let { cardOrLone(it) as? Threaded }
+
+    /** Card [id] in the feed on screen, or the card open on its own. */
+    fun cardOrLone(id: String): FeedItem? = state.item(id) ?: state.lone?.takeIf { it.id == id }
+
+    /**
+     * Opens card [id], or the card the reply [id] is in, on its own: read by itself with its
+     * thread, rather than paging the feed down to it. The feed doesn't move. Not found, the feed says so.
+     */
+    fun openAlone(id: String, unfold: (String) -> Unit = {}) {
+        missingLink = false
+        val asked = ++aloneAsked
+        emit(FeedEvent.OpenAlone(id) { cardId ->
+            if (asked != aloneAsked) return@OpenAlone
+            if (cardId == null) {
+                missingLink = true
+                return@OpenAlone
+            }
+            unfold(cardId)
+            expandedThreads.add(cardId)
+            if (cardId != id) focusedReply = id
+            // The thread first, then the card on its own: whatever watches the phone's thread screen
+            // never sees the card without it.
+            openThread(cardId, phone = isPhone)
+            aloneId = cardId
+            emit(FeedEvent.OpenThread(cardId))
+        })
+    }
+
+    /** Puts the card on its own away: back to the feed, just as it was. */
+    fun closeAlone() {
+        val id = aloneId ?: return
+        aloneAsked++
+        aloneId = null
+        if (threadId == id) threadId = null
+        emit(FeedEvent.CloseAlone)
+    }
+
+    /** "Show in feed": the card on its own, once the feed has it too, shown there instead. */
+    fun showAloneInFeed() {
+        val id = aloneId ?: return
+        if (state.item(id) == null) return
+        aloneId = null
+        emit(FeedEvent.CloseAlone)
+        if (isPhone) phoneThreadOpen = false
+        reveal(id)
+        highlighted = id
     }
 
     /**
@@ -714,7 +787,7 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
     /** 0 while the phone thread is in place; rises towards 1 as it is swiped away. */
     val threadBack = EdgeProgress(0f)
 
-    val thread: Threaded? get() = threadId?.let { state.item(it) as? Threaded }
+    val thread: Threaded? get() = threadId?.let { cardOrLone(it) as? Threaded }
     val phoneThread: Threaded? get() = if (phoneThreadOpen) thread else null
 
     /** Drags sent to the dashboard and not back yet, laid over what it says so a drop lands at once. */
@@ -1008,6 +1081,7 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
             is FeedEvent.Pin -> pinnedHere[event.targetId] = event.pinned
             is FeedEvent.SelectProject -> {
                 threadId = null
+                aloneId = null
                 cursor = null
                 askedProject = AskedProject(event.slug)
             }
