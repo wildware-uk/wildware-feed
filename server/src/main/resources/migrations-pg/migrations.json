@@ -136,5 +136,11 @@
   "name": "channels-and-projects-keep-their-order",
   "file": "069-channels-and-projects-keep-their-order.sql",
   "checksum": "8f587f9d234b6c5f94c822dfd013e6584944673261e59e44032c120129c16874"
+ },
+ {
+  "version": 70,
+  "name": "the-board",
+  "file": "070-the-board.sql",
+  "checksum": "a885111198d6ecdd4876f749ae91f2bd46d33a240bdd8dcfe2564309da7a2a64"
  }
 ]

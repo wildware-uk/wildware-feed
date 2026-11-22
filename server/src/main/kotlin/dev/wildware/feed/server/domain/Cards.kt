@@ -71,7 +71,11 @@ class Cards(private val feed: Feed) {
         if (status != null && status !in STATUSES) throw invalid("status must be one of: ${STATUSES.joinToString(", ")}")
         val row = resolveToWrite(card)
         if (row.status == status) return@op row.status
-        db.update("UPDATE ${card.table} SET status = ?, status_at = ? WHERE team_id = :team AND id = ?", status, feed.now(), card.id)
+        // A new work state starts the card afresh on the board: back on it, and its age counted from now.
+        db.update(
+            "UPDATE ${card.table} SET status = ?, status_at = ?, board_hidden_at = NULL, board_kept_at = NULL WHERE team_id = :team AND id = ?",
+            status, feed.now(), card.id,
+        )
         val saved = find(card) ?: throw notFound("no such ${card.kind}: ${card.id}")
         announce(card, saved)
         saved.status

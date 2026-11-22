@@ -118,6 +118,10 @@ class ChannelAccessLeakTest {
         assertEquals(201, send(null, "PUT", "/api/upload/$uploadToken", "zebra notes.", "text/plain").status.value)
         tool(scout, "attach_media", args("update_id" to update, "media_ids" to JsonArray(listOf(JsonPrimitive(latest(app, "media"))))))
         send(ownerKey, "POST", "/api/messages", """{"project":"vault","body":"zebra owner post"}""")
+        // A finished card taken off the board (migration 070).
+        val finished = latest(app, "messages", "project_id = '$vault'")
+        assertEquals(200, send(ownerKey, "POST", "/api/cards/message/$finished/status", """{"status":"done"}""").status.value)
+        assertEquals(200, send(ownerKey, "POST", "/api/cards/message/$finished/board", """{"removed":true}""").status.value)
         assertEquals(200, send(ownerKey, "PUT", "/api/cards/update/$update/follow", """{"following":true}""").status.value)
         send(ownerKey, "POST", "/api/messages", """{"project":"vault","body":"@other zebra for you"}""")
         // And the rest of the team's ordinary life, in web, where everyone is.
@@ -187,6 +191,7 @@ class ChannelAccessLeakTest {
             put("tag", pick("tag")); put("tagId", pick("tag")); put("media_ids", JsonArray(listOf(JsonPrimitive(pick("media")))))
             put("mediaIds", JsonArray(listOf(JsonPrimitive(pick("media"))))); put("projects", JsonArray(listOf(JsonPrimitive("vault"))))
             put("name", "Field"); put("body", "hello"); put("emoji", "👍"); put("on", true); put("status", "done"); put("state", "done")
+            put("removed", true); put("autoRemoveDays", 7)
             put("value", true); put("kind", "confirm"); put("question", "q?"); put("level", "read"); put("follow", true); put("following", true); put("pinned", true)
             put("private", false); put("item", "1"); put("done", true); put("options", JsonArray(listOf(JsonPrimitive("a"))))
             put("ids", JsonArray(listOf(JsonPrimitive(pick("update")))))

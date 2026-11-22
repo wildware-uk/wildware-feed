@@ -481,5 +481,12 @@
   "file": "069-channels-and-projects-keep-their-order.sql",
   "rebuildsTables": false,
   "checksum": "291b6c1b2a88ecd5becc9c0154d529b59fc00cc39ad165c9d8db1c4af4f77d27"
+ },
+ {
+  "version": 70,
+  "name": "the-board",
+  "file": "070-the-board.sql",
+  "rebuildsTables": false,
+  "checksum": "17ed9560b02ef80ee2899f7aeac10e71b7ecb742ea35217bee2ddf0e3f698b20"
  }
 ]

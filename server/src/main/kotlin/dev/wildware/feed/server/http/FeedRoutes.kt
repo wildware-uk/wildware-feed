@@ -17,6 +17,9 @@ import dev.wildware.feed.server.domain.jsBoolean
 import dev.wildware.feed.server.domain.jsString
 import dev.wildware.feed.server.domain.jsTrim
 import dev.wildware.feed.server.domain.Cards
+import dev.wildware.feed.server.domain.Board
+import dev.wildware.feed.server.domain.board
+import dev.wildware.feed.server.domain.Js
 import io.ktor.http.HttpMethod
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.RoutingContext
@@ -188,6 +191,48 @@ fun Route.feedRoutes(app: App) {
         "/api/settings/media-retention",
         HttpMethod.Get to { call.respondOwner(200, app.retention.settings().json()) },
         HttpMethod.Put to { call.respondOwner(200, app.retention.set(call.lenientObjectBody()).json()) },
+    )
+
+    // The board (migration 070): cards with a work state, a column per state, in a channel, a
+    // project (group) or everything the viewer can read.
+    endpoint(
+        "/api/board",
+        HttpMethod.Get to {
+            val params = call.request.queryParameters
+            val board = app.feed.board
+            val scope = board.scope(params["channel"], params["group"])
+            val asked = Js.number(params["limit"] ?: "")
+            val limit = if (Js.isInteger(asked) && asked > 0) minOf(asked, Board.PAGE_MAX.toDouble()).toInt() else Board.PAGE
+            val column = params["column"]?.takeIf { it.isNotEmpty() }
+            val removed = params["removed"] == "1" || params["removed"] == "true"
+            call.respondOwner(200, board.read(scope, column, Board.Cursor.parse(params["after"]), limit, removed))
+        },
+    )
+
+    endpoint(
+        "/api/cards/{kind}/{id}/board",
+        HttpMethod.Post to {
+            val removed = call.lenientObjectBody()["removed"].jsBoolean ?: throw invalid("removed must be true or false")
+            val card = card()
+            val result = app.feed.board.setRemoved(card, removed)
+            call.respondOwner(200, buildJsonObject { put("card", card.json); put("removed", result) })
+        },
+    )
+
+    // How long a finished card stays on the board: 1, 3, 7 or 30 days, or null for never. The team's.
+    endpoint(
+        "/api/settings/board",
+        HttpMethod.Get to { call.respondOwner(200, buildJsonObject { put("autoRemoveDays", app.feed.board.autoRemoveDays()) }) },
+        HttpMethod.Put to {
+            val raw = call.lenientObjectBody()["autoRemoveDays"]
+            val days = when {
+                raw == null -> throw invalid("autoRemoveDays is required: 1, 3, 7 or 30, or null for never")
+                raw is JsonNull -> null
+                raw is JsonPrimitive && !raw.isString && raw.content.toIntOrNull() != null -> raw.content.toInt()
+                else -> throw invalid("autoRemoveDays must be 1, 3, 7 or 30, or null for never")
+            }
+            call.respondOwner(200, buildJsonObject { put("autoRemoveDays", app.feed.board.setAutoRemoveDays(days)) })
+        },
     )
 
     endpoint(
