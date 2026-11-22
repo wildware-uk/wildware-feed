@@ -188,6 +188,8 @@ fun SignInScreen(
     hosted: dev.wildware.agents.HostedLoginFlow? = null,
     /** Signs in to the team "Log in" picked and opens it. */
     joinHosted: (suspend (team: dev.wildware.agents.HostedTeam, device: String) -> Unit)? = null,
+    /** Whether "Log in" may link to the website that makes hosted teams; false in the Apple apps. */
+    linksToSignUp: Boolean = true,
     /** Where "Log in" starts; screenshots set it to show a later step or a problem. */
     hostedState: HostedState = remember { HostedState() },
     signIn: suspend (server: String, password: String, device: String) -> Unit,
@@ -408,7 +410,7 @@ fun SignInScreen(
                     })
                 }
                 choice == SignInChoice.LogIn && hosted != null && joinHosted != null ->
-                    HostedLoginForm(hosted, hostedState, device.text.toString(), joinHosted, tryDemo)
+                    HostedLoginForm(hosted, hostedState, device.text.toString(), joinHosted, tryDemo, linksToSignUp)
                 here -> {
                     LabelledField(
                         "Name for this device", device, problem.takeIf { it?.field == Field.Device }?.message,

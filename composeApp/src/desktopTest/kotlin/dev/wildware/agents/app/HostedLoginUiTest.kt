@@ -43,8 +43,8 @@ class HostedLoginUiTest {
         scope.cancel()
     }
 
-    private fun ComposeUiTest.app() {
-        val platform = AppPlatform.inMemory(engine = { server.engine() }, sessions = sessions, deviceName = "Ada's iPhone")
+    private fun ComposeUiTest.app(linksToSignUp: Boolean = true) {
+        val platform = AppPlatform.inMemory(engine = { server.engine() }, sessions = sessions, deviceName = "Ada's iPhone", linksToSignUp = linksToSignUp)
         val model = AppModel(platform, scope, accountService = "https://account.test")
         setContent {
             Box(Modifier.size(390.dp, 844.dp)) {
@@ -182,6 +182,28 @@ class HostedLoginUiTest {
         click("Use a different email")
         waitFor("Email me a code")
         waitUntil(timeoutMillis = 10_000) { account.open.isEmpty() }
+    }
+
+    @Test
+    fun anAppleAppOffersNoWayToTheSignUpWebsite() = runDesktopComposeUiTest(width = 390, height = 844) {
+        // App Store guideline 3.1.1: no link to buying a hosted team outside the App Store.
+        account.teams = emptyList()
+        app(linksToSignUp = false)
+        waitFor("Email me a code")
+        waitFor("Try a demo")
+        assertTrue(absent("Make a team"))
+        emailACode()
+        typeCode("123456")
+        waitFor("This email isn't in a team yet. Ask a team's owner to invite you.")
+        assertTrue(absent("Make a team"))
+        assertTrue(absent("website"))
+        waitFor("Use a different email")
+    }
+
+    @Test
+    fun theOtherAppsStillOfferTheSignUpWebsite() = runDesktopComposeUiTest(width = 390, height = 844) {
+        app()
+        waitFor("New here? Make a team")
     }
 
     @Test

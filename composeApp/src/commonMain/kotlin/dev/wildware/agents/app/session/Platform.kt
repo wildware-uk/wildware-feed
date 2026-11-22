@@ -54,6 +54,11 @@ class AppPlatform(
      * its own while it runs, which covers questions and replies only.
      */
     val pushAlerts: Boolean = false,
+    /**
+     * Whether sign-in may link to the website where hosted teams are made and paid for. False in the
+     * iPhone and iPad app: App Store guideline 3.1.1 allows no link to buying outside the App Store.
+     */
+    val linksToSignUp: Boolean = true,
     /** A server this app can run itself ("This computer"), or null where it can't (phones). */
     val localServer: dev.wildware.agents.app.local.LocalServerHost? = null,
     /** "Send crash reports", in a build that sends them (`CrashReporting.start`); null in any other. */
@@ -107,7 +112,11 @@ class AppPlatform(
             filePicker: FilePicker? = null,
             media: MediaHandler? = null,
             postTarget: TextStore = MemoryTextStore(),
-        ) = AppPlatform(sessions, MemoryTextStore(), MemoryOutboxStorage(), engine, deviceName, imageCacheDir = null, filePicker = filePicker, media = media, postTarget = postTarget)
+            linksToSignUp: Boolean = true,
+        ) = AppPlatform(
+            sessions, MemoryTextStore(), MemoryOutboxStorage(), engine, deviceName, imageCacheDir = null,
+            filePicker = filePicker, media = media, postTarget = postTarget, linksToSignUp = linksToSignUp,
+        )
     }
 }
 

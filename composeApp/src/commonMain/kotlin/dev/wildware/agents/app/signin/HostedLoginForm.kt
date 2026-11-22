@@ -130,6 +130,8 @@ internal fun HostedLoginForm(
     /** Signs this device in to the team and opens its feed. */
     join: suspend (team: HostedTeam, device: String) -> Unit,
     tryDemo: (() -> Unit)?,
+    /** Whether to offer the website that makes hosted teams. False in the Apple apps (guideline 3.1.1). */
+    linksToSignUp: Boolean = true,
 ) {
     val colors = AgentTheme.colors
     val scope = rememberCoroutineScope()
@@ -249,8 +251,10 @@ internal fun HostedLoginForm(
                 onClick = sendCode,
             )
             Spacer(Modifier.height(10.dp))
-            AppButton("New here? Make a team", ButtonTone.Quiet, modifier = Modifier.fillMaxWidth(), enabled = !state.busy) {
-                runCatching { uri.openUri(flow.signUpPage) }
+            if (linksToSignUp) {
+                AppButton("New here? Make a team", ButtonTone.Quiet, modifier = Modifier.fillMaxWidth(), enabled = !state.busy) {
+                    runCatching { uri.openUri(flow.signUpPage) }
+                }
             }
             if (tryDemo != null) {
                 Spacer(Modifier.height(18.dp))
@@ -308,10 +312,14 @@ internal fun HostedLoginForm(
             SentTo(flow.email ?: state.email.text.toString(), enabled = !state.busy, onChange = startOver, label = "SIGNED IN AS")
             Spacer(Modifier.height(18.dp))
             if (teams.isEmpty()) {
-                Banner("This email isn't in a team yet. Make one on the website, or ask a team's owner to invite you.", isError = false)
-                Spacer(Modifier.height(22.dp))
-                AppButton("Make a team on the website", ButtonTone.Primary, modifier = Modifier.fillMaxWidth()) {
-                    runCatching { uri.openUri(flow.signUpPage) }
+                if (linksToSignUp) {
+                    Banner("This email isn't in a team yet. Make one on the website, or ask a team's owner to invite you.", isError = false)
+                    Spacer(Modifier.height(22.dp))
+                    AppButton("Make a team on the website", ButtonTone.Primary, modifier = Modifier.fillMaxWidth()) {
+                        runCatching { uri.openUri(flow.signUpPage) }
+                    }
+                } else {
+                    Banner("This email isn't in a team yet. Ask a team's owner to invite you.", isError = false)
                 }
                 Spacer(Modifier.height(10.dp))
                 AppButton("Use a different email", ButtonTone.Quiet, modifier = Modifier.fillMaxWidth(), onClick = startOver)

@@ -192,6 +192,7 @@ fun AgentsApp(
                         startWith = if (joinWith != null) SignInChoice.Host else null,
                         hosted = model.hostedLogin,
                         joinHosted = model::joinHostedTeam,
+                        linksToSignUp = platform.linksToSignUp,
                     )
                     if (screen.adding) AddingTeamBack(safeArea, model::cancelAddingTeam)
                 }

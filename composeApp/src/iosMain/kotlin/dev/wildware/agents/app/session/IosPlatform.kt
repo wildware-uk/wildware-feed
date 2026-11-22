@@ -74,6 +74,8 @@ fun iosPlatform(
         cardFolds = IosTextStore(cardFolds),
         postTarget = IosTextStore(postTarget),
         pushAlerts = true,
+        // No link to the website that sells hosted teams (App Store guideline 3.1.1).
+        linksToSignUp = false,
         crashReports = dev.wildware.agents.app.crash.CrashReporting.setting,
         liveActivities = LiveActivities.status,
         notices = IosSystemNotices,
