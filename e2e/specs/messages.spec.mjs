@@ -251,3 +251,19 @@ test('the owner deletes their own message: it is gone from the screen and the se
     const left = await listMessages(team.owner, 'project=alpha');
     expect(left.filter((m) => m.body === 'Ignore this, wrong channel' && !m.deleted_at)).toEqual([]);
 });
+
+// An agent the owner @mentions in a thread reads all of it: the post that started the thread named
+// nobody, so it never reached the agent, but get_messages with the mention's id hands it over.
+test('an agent @mentioned in a thread reads the whole thread, from the post that started it', async () => {
+    await team.owner.ok('POST', '/api/projects', { name: 'Gamma' });
+    const { message: root } = await team.owner.ok('POST', '/api/messages', { project: 'gamma', body: 'Here is the launcher for the new teammate' });
+    await team.owner.ok('POST', '/api/messages', { replyTo: root.id, body: 'It needs the usual flags' });
+    const { message: ask } = await team.owner.ok('POST', '/api/messages', { replyTo: root.id, body: '@reviewer can you start a teammate with it' });
+    const got = await expectAgentGets(reviewer, 'can you start a teammate');
+    expect(got.thread).toEqual({ kind: 'message', id: root.id });
+    const read = await toolJson(reviewer, 'get_messages', { message_id: ask.id });
+    expect(read.messages.map((m) => m.body)).toEqual([
+        'Here is the launcher for the new teammate', 'It needs the usual flags', '@reviewer can you start a teammate with it',
+    ]);
+    expect(read.thread).toMatchObject({ kind: 'message', id: root.id, channel: 'gamma' });
+});

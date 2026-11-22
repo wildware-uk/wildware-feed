@@ -24,6 +24,7 @@ class Feed(val db: Database, val bus: Bus, val clock: () -> Long) {
     val cards = Cards(this)
     val updates = Updates(this)
     val messages = Messages(this)
+    val threads = ThreadReads(this)
     val tags = Tags(this)
     val fields = Fields(this)
     val embedTypes = EmbedTypes(this)

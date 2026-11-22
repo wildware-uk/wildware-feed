@@ -658,6 +658,14 @@ then `resolveCard`: missing or deleted → `not_found` `no such <kind>: <id>` (`
   + attachment notes on following lines.
 - Extra content blocks: images/files (section 6), after the text block.
 - `guarded` (async) wrapper.
+- Kotlin server: `message_id`, `update_id` or `request_id` (one) reads a whole thread instead
+  (spec/04 §4.9). Summary `The whole thread: <the post and N replies | the update and N comments |
+  the question and N lines of discussion>, oldest first. Your read cursor did not move.`, then
+  lines for `earlier` and `withheld` when above zero, then attachment notes (the update's own
+  first, `update <id>: …`). On an ordinary read, a line that @mentions the agent in a thread it
+  was not in has `thread: {kind, id}` and adds a summary line `message <id> @mentions you in a
+  thread you were not in: call get_messages with message_id <id> to read all of it, files included.`
+  (no braces: clients find the JSON at the first `{` after the summary).
 
 ### 7.23 `acknowledge` — `src/mcp/tools/acknowledge.ts`
 

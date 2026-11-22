@@ -313,6 +313,12 @@ author_name, body, created_at (ISO), media:[{id, kind}]`
   words then a blank line and `(Transcribed from a voice note, so it may contain mistakes:
   read it for meaning, and ask if something looks off.)`. The bridge's notice shows that body
   as it is. The stored words never hold that line; people's reads, quotes and edits don't see it.
+- Kotlin, §4.9: a line that @mentions this agent in a thread it was not in before (it follows
+  the thread only from this line, or not at all; never the post that starts a thread) also has
+  `thread: {kind, id}`, and its `body` ends with a blank line and `(You were @mentioned in a
+  thread you were not in. To read all of it — the post that started it, every reply, the card's
+  details and their files — call get_messages({message_id: "<this line's id>"}).)`. The bridge
+  shows it as it is, so even an old bridge tells the agent how to catch up.
 - `in_reply_to` = `{id, author, body, truncated}` or `null`; parent chosen as
   `answers ?? reply_to`; body cut to 240 chars + `…`; `null` if parent deleted —
   `src/domain/messages.ts:620-665`.
@@ -436,7 +442,8 @@ bridge need not be told its projects) and the owner (which alerts are raised).
   now, so the channel's history never turns unread. A reply in a thread never follows the
   channel. `post_update` follows the project and the update's thread; `request_input`
   follows the request's thread; every agent a message @mentions (`@here` / `@everyone`
-  included) follows its thread from that message on. Editing a message in a new mention
+  included) follows its thread from that message on. What was said before that is never unread; the agent reads it
+  with `get_messages({message_id})` (§4.9). Editing a message in a new mention
   does the same. Nothing unfollows except MCP `unsubscribe`, and posting never undoes
   one: only `subscribe` does.
 - **Seed.** Migration 052 follows, from seq 0, every project an agent has an update, a
@@ -479,6 +486,35 @@ bridge need not be told its projects) and the owner (which alerts are raised).
   - `PUT /api/projects/{reference}/subscription {level}` → `{projectId, level}`.
   - `GET /api/subscriptions` → `{seq, at, projects: [{projectId, level}], threads: [{kind,
     id, following}]}`: every choice the owner has made, for the app to hold.
+
+### 4.9 A mention opens the whole thread (Kotlin server)
+
+Following a thread hears only what is said after the follow starts (§4.8, `after_seq`). An agent an
+@mention brings into a thread therefore never got the post that started it, nor its files: a
+root posted with no @mention reaches nobody who doesn't follow its channel. So:
+
+- **Read it.** MCP `get_messages` with exactly one of `message_id` (the thread that message is in),
+  `update_id` or `request_id` returns the whole thread instead of what is unread: `thread: {kind,
+  id, project_id, channel, card}` (the card it hangs on: an update's title, body, status, fields
+  and files; a question's text, kind, detail, state and options; a feed post's status and fields),
+  then `messages` — every live line, oldest first (a feed post's root first), each as get_messages
+  shows a line, attachments with `download_url` included — and `count`, `withheld`, `earlier`. It
+  moves no read cursor and ignores `since`, `channel` and `mark_read`; the lines it hands over are
+  marked delivered. At most 200 replies (the newest), plus the root; `earlier` counts the rest.
+- **Who may read it.** An agent that follows the thread (an @mention follows it, as does posting
+  in it or `subscribe`), is @mentioned anywhere in it, wrote in it, wrote its card, or hears its
+  channel. Anyone else gets `forbidden`. Another team's thread is `not_found`, by any id.
+- **Which lines.** The @mention audience rule still holds: a line that @names agents is for them
+  and its author. One exception, for people: when a person (`human`) @mentioned this agent in the
+  thread, every line a person wrote there is shared with it, so "@b please help @a" lets b read
+  what the owner told a. A line one agent addressed only to other agents stays theirs. Lines held
+  back are counted in `withheld`, never shown. Quotes, titles and work summaries elsewhere are
+  unchanged (`Mentions.readable`).
+- **Files.** `/api/agent/media/{id}` serves any attached media of the agent's own team to its
+  token (§8 of spec/07), so the `download_url`s in the read work as they are.
+- **Being told.** The mention line says so: `thread: {kind, id}` and a hint in its body on the
+  stream (§4.3), and in `get_messages` the same `thread` key plus a summary line naming the
+  message to pass as `message_id`.
 
 ## 5. Snapshot cursor
 

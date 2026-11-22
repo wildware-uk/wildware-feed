@@ -5,6 +5,7 @@ import dev.wildware.feed.server.Config
 import dev.wildware.feed.server.db.Database
 import dev.wildware.feed.server.domain.Agents
 import dev.wildware.feed.server.domain.Messages
+import dev.wildware.feed.server.domain.ThreadReads
 import dev.wildware.feed.server.domain.Updates
 import dev.wildware.feed.server.domain.feed
 import kotlinx.coroutines.runBlocking
@@ -93,9 +94,11 @@ class SubscriptionStreamTest {
                 feed.messages.post(Messages.Post(author = author, body = body, updateId = updateId))
 
             say("human", "not for beta", inP.id)
-            say("agent:${alpha.id}", "@beta can you check this?", inP.id)
-            assertEquals("@beta can you check this?", stream.next())
-            assertEquals("@beta can you check this?", old.next(), "a mention reaches the agent anywhere")
+            val mention = say("agent:${alpha.id}", "@beta can you check this?", inP.id)
+            // New to the thread, so it also says how to read what came before (spec/04 §4.9).
+            val joined = "@beta can you check this?\n\n" + ThreadReads.threadHint(mention.id)
+            assertEquals(joined, stream.next())
+            assertEquals(joined, old.next(), "a mention reaches the agent anywhere")
             say("human", "Thanks, beta, go ahead", inP.id)
             assertEquals("Thanks, beta, go ahead", stream.next(), "a reply with no mention reaches the follower")
             assertNull(old.next(500), "a bridge that named only q hears no followed thread in p")

@@ -31,7 +31,11 @@ object Attachments {
 
     fun isTextMime(mime: String) = mime.startsWith("text/") || mime in TEXT_MIMES || Regex("\\+(json|xml|yaml)$").containsMatchIn(mime)
 
-    class Result(val blocks: List<JsonElement>, val notes: List<String>, val views: Map<String, List<JsonObject>>)
+    class Result(
+        val blocks: List<JsonElement>, val notes: List<String>, val views: Map<String, List<JsonObject>>,
+        /** What is left of the inline budget, and how many images went, for a read that goes on to more cards. */
+        val budgetLeft: Long = 0, val imagesSent: Int = 0,
+    )
 
     private class Item(
         val id: String, val kind: String, val mime: String, val bytes: Long, val filename: String?, val status: String, val variants: List<String>,
@@ -44,14 +48,17 @@ object Attachments {
         return if (base.isEmpty()) null else "$base/api/agent/media/$mediaId"
     }
 
-    fun forMessages(app: App, messageIds: List<String>): Result {
+    fun forMessages(app: App, messageIds: List<String>): Result = forCards(app, "message", messageIds)
+
+    /** [forMessages] for cards of [kind] (`message` or `update`), sharing one budget across them all. */
+    fun forCards(app: App, kind: String, cardIds: List<String>, budgetLeft: Long = MAX_INLINE_BYTES, imagesSent: Int = 0): Result {
         val blocks = mutableListOf<JsonElement>()
         val notes = mutableListOf<String>()
         val views = LinkedHashMap<String, List<JsonObject>>()
-        var images = 0
-        var budget = MAX_INLINE_BYTES
-        for (messageId in messageIds) {
-            val attached = app.reads.mediaFor("message_id", messageId).map { m ->
+        var images = imagesSent
+        var budget = budgetLeft
+        for (cardId in cardIds) {
+            val attached = app.reads.mediaFor("${kind}_id", cardId).map { m ->
                 fun s(k: String) = (m[k] as? JsonPrimitive)?.takeIf { it.isString }?.content
                 Item(s("id")!!, s("kind")!!, s("mime")!!, (m["bytes"] as? JsonPrimitive)?.longOrNull ?: 0, s("filename"), s("status")!!,
                     m["variants"]!!.jsonArray.map { it.jsonPrimitive.content },
@@ -61,7 +68,7 @@ object Attachments {
             val sent = mutableListOf<String>()
             val skipped = mutableListOf<String>()
             val seen = mutableListOf<JsonObject>()
-            views[messageId] = seen
+            views[cardId] = seen
             for (item in attached) {
                 item.removedAfterDays?.let { days ->
                     skipped += "${item.id} (${item.kind}, removed after $days days)"
@@ -130,9 +137,9 @@ object Attachments {
                 else "${sent.size} attachments are included below (${sent.joinToString(", ")})"
             }
             if (skipped.isNotEmpty()) parts += "not shown: ${skipped.joinToString("; ")}"
-            notes += "message $messageId: ${parts.joinToString("; ")}."
+            notes += "$kind $cardId: ${parts.joinToString("; ")}."
         }
-        return Result(blocks, notes, views)
+        return Result(blocks, notes, views, budget, images)
     }
 
     private fun hint(app: App, id: String) = downloadUrl(app, id)?.let { " — fetch it with your bearer token at $it" } ?: ""

@@ -6,6 +6,7 @@ import dev.wildware.feed.server.domain.AgentWork
 import dev.wildware.feed.server.domain.Agents
 import dev.wildware.feed.server.domain.Messages
 import dev.wildware.feed.server.domain.Subscriptions
+import dev.wildware.feed.server.domain.ThreadReads
 import dev.wildware.feed.server.events.AppEvent
 import io.ktor.server.application.ApplicationCall
 import kotlinx.coroutines.Dispatchers
@@ -267,11 +268,19 @@ internal fun messageItem(app: App, m: AgentWork.Line, agentId: String): JsonObje
         val authorName = app.work.authorName(m.author, m.userId)
         put("author_name", str(authorName))
         if (m.author == "human" && authorName != null) put("author_user_id", JsonPrimitive(m.userId))
-        // A voice note's words carry a line saying so, which the bridge's notice shows as it is.
-        put("body", JsonPrimitive(Messages.forAgents(m.body, m.source)))
+        // A voice note's words carry a line saying so, which the bridge's notice shows as it is. So does
+        // an @mention in a thread the agent was not in: the line on how to read the rest of it, since the
+        // post that started it never reached the agent (spec/04 §4.9).
+        val hint = ThreadReads.hint(app.db, agentId, m.id, m.seq, m.updateId, m.requestId, m.replyTo, m.taskId)
+        put("body", JsonPrimitive(Messages.forAgents(m.body, m.source) + (hint?.let { "\n\n$it" } ?: "")))
         m.source?.let { put("source", JsonPrimitive(it)) }
         put("created_at", JsonPrimitive(Wire.isoOf(m.createdAt)))
         put("media", JsonArray(media))
+        if (hint != null) {
+            Subscriptions.threadOf(m.id, m.updateId, m.requestId, m.replyTo, m.taskId)?.let { t ->
+                put("thread", buildJsonObject { put("kind", JsonPrimitive(t.kind)); put("id", JsonPrimitive(t.id)) })
+            }
+        }
     }
 }
 

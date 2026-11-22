@@ -19,6 +19,7 @@ import dev.wildware.feed.server.domain.GroupRow
 import dev.wildware.feed.server.domain.groups
 import dev.wildware.feed.server.domain.ReactionRow
 import dev.wildware.feed.server.domain.Subscriptions
+import dev.wildware.feed.server.domain.ThreadReads
 import dev.wildware.feed.server.domain.UpdateRow
 import dev.wildware.feed.server.domain.Updates
 import dev.wildware.feed.server.domain.feed
@@ -249,6 +250,8 @@ fun ToolRegistry.registerFeedTools(app: App) {
 
     register("get_messages") { call ->
         val messages = app.feed.messages
+        // A thread named: the whole of it, from the post that started it (spec/04 §4.9).
+        if (listOf("message_id", "update_id", "request_id").any { !call.text(it).isNullOrBlank() }) return@register readThread(app, call)
         val page = messages.read(call.agent.id, call.text("since"), call.channel(), call.args["mark_read"].jsBoolean)
         // Read is handed over: the owner's app shows a line nobody was handed as "Not delivered".
         app.work.markDelivered(call.agent.id, null, page.messages.map { it.id })
@@ -262,32 +265,14 @@ fun ToolRegistry.registerFeedTools(app: App) {
             page.unread == 0L -> "$count new message${plural(count)}, oldest first."
             else -> "$count new message${plural(count)}, oldest first. ${page.unread} still unread; call again for the rest."
         }
-        val summary = if (count == 0 || attachments.notes.isEmpty()) read else read + "\n" + attachments.notes.joinToString("\n")
+        // A mention in a thread the agent was not in: say how to read the rest of it.
+        val joined = page.messages.filter { ThreadReads.hint(app.db, call.agent.id, it) != null }
+        val joinedIds = joined.map { it.id }.toSet()
+        val notes = attachments.notes + joined.map { "message ${it.id} @mentions you in a thread you were not in: call get_messages with message_id ${it.id} to read all of it, files included." }
+        val summary = if (count == 0 || notes.isEmpty()) read else read + "\n" + notes.joinToString("\n")
         ToolResult.ok(summary, buildJsonObject {
             put("messages", JsonArray(page.messages.map { message ->
-                val parent = messages.quoted(message, call.author)
-                val name = messages.authorName(message.author, message.userId)
-                buildJsonObject {
-                    FeedViews.message(message).forEach { (k, v) -> put(k, v) }
-                    // A voice note: the words as said, then a line saying they were transcribed.
-                    message.source?.let {
-                        put("body", Messages.forAgents(message.body, it))
-                        put("source", it)
-                    }
-                    if (name != null) put("author_name", name)
-                    // On a team, which person (migration 055); a team of one adds nothing.
-                    if (name != null && message.author == Messages.HUMAN) put("author_user_id", message.userId)
-                    if (parent != null) {
-                        put("in_reply_to", buildJsonObject {
-                            put("id", parent.id); put("author", parent.author)
-                            if (parent.author == Messages.HUMAN) messages.authorName(parent.author, parent.userId)?.let { put("author_name", it) }
-                            put("body", parent.body); put("truncated", parent.truncated)
-                        })
-                    }
-                    attachments.views[message.id]?.let { put("attachments", JsonArray(it)) }
-                    refs[message.id]?.let { put("refs", JsonArray(it.map(FeedViews::ref))) }
-                    shared[message.id]?.let { list -> put("secrets", JsonArray(list.map { JsonPrimitive(it.name) })) }
-                }
+                messageView(app, call, message, attachments, refs, shared, hint = message.id in joinedIds)
             }))
             put("count", count)
             put("cursor", page.cursor)
@@ -357,6 +342,101 @@ fun ToolRegistry.registerFeedTools(app: App) {
             put("on", on)
         })
     }
+}
+
+/** One message as get_messages hands it to an agent: who wrote it, what it answers, its files, refs and secrets. */
+private fun messageView(
+    app: App, call: ToolCall, message: MessageRow, attachments: Attachments.Result,
+    refs: Map<String, List<JsonObject>>, shared: Map<String, List<CardSecrets.Shared>>, hint: Boolean = false,
+): JsonObject {
+    val messages = app.feed.messages
+    val parent = messages.quoted(message, call.author)
+    val name = messages.authorName(message.author, message.userId)
+    return buildJsonObject {
+        FeedViews.message(message).forEach { (k, v) -> put(k, v) }
+        // A voice note: the words as said, then a line saying they were transcribed.
+        message.source?.let {
+            put("body", Messages.forAgents(message.body, it))
+            put("source", it)
+        }
+        if (name != null) put("author_name", name)
+        // On a team, which person (migration 055); a team of one adds nothing.
+        if (name != null && message.author == Messages.HUMAN) put("author_user_id", message.userId)
+        if (parent != null) {
+            put("in_reply_to", buildJsonObject {
+                put("id", parent.id); put("author", parent.author)
+                if (parent.author == Messages.HUMAN) messages.authorName(parent.author, parent.userId)?.let { put("author_name", it) }
+                put("body", parent.body); put("truncated", parent.truncated)
+            })
+        }
+        attachments.views[message.id]?.let { put("attachments", JsonArray(it)) }
+        refs[message.id]?.let { put("refs", JsonArray(it.map(FeedViews::ref))) }
+        shared[message.id]?.let { list -> put("secrets", JsonArray(list.map { JsonPrimitive(it.name) })) }
+        // A mention in a thread it was not in: the thread to read for the rest.
+        if (hint) Subscriptions.threadOf(message)?.let { t -> put("thread", buildJsonObject { put("kind", t.kind); put("id", t.id) }) }
+    }
+}
+
+/**
+ * `get_messages` with `message_id`, `update_id` or `request_id`: the whole thread (spec/04 §4.9). The
+ * card it hangs on, then the post that started it and every reply, oldest first, with their files.
+ * It moves no read cursor: what is unread stays unread.
+ */
+private fun readThread(app: App, call: ToolCall): ToolResult {
+    val card = Cards.oneCard(update = call.text("update_id"), message = call.text("message_id"), request = call.text("request_id"))
+    val read = app.feed.threads.read(call.agent.id, card)
+    val ids = read.messages.map { it.id }
+    // Read is handed over, as for any get_messages: the owner's app shows a line nobody was handed as "Not delivered".
+    app.work.markDelivered(call.agent.id, null, ids.filter { id -> read.messages.first { it.id == id }.author != call.author })
+    // The update's own files first, then the lines', in one budget.
+    val onCard = if (read.card.kind == "update") Attachments.forCards(app, "update", listOf(read.card.id)) else null
+    val attachments = if (onCard == null) Attachments.forMessages(app, ids)
+    else Attachments.forCards(app, "message", ids, onCard.budgetLeft, onCard.imagesSent)
+    val refs = CardRefs(app.db, app.clock).summaries("message", ids, reader = call.author)
+    val shared = CardSecrets(app.db, app.clock).on("message", ids)
+    val c = read.card
+    val slug = c.projectId?.let { id -> app.db.one("SELECT slug FROM projects WHERE team_id = :team AND id = ?", id) { it.getString(1) } }
+    val count = read.messages.size
+    val what = when (c.kind) {
+        "update" -> "the update and $count comment${plural(count)}"
+        "request" -> "the question and $count line${plural(count)} of discussion"
+        else -> if (count <= 1) "the post, with no replies yet" else "the post and ${count - 1} repl${if (count - 1 == 1) "y" else "ies"}"
+    }
+    val lines = mutableListOf("The whole thread: $what, oldest first. Your read cursor did not move.")
+    if (read.earlier > 0) lines += "${read.earlier} older repl${if (read.earlier == 1) "y is" else "ies are"} left out: the thread is longer than ${ThreadReads.LIMIT}."
+    if (read.withheld > 0) lines += "${read.withheld} line${plural(read.withheld)} addressed only to other agents ${if (read.withheld == 1) "is" else "are"} not shown."
+    val notes = (onCard?.notes.orEmpty()) + attachments.notes
+    val author = app.feed.messages.authorName(c.author)
+    return ToolResult.ok((lines + notes).joinToString("\n"), buildJsonObject {
+        put("thread", buildJsonObject {
+            put("kind", read.thread.kind)
+            put("id", read.thread.id)
+            put("project_id", c.projectId)
+            put("channel", slug)
+            put("card", buildJsonObject {
+                put("kind", c.kind)
+                put("id", c.id)
+                put("author", c.author)
+                if (author != null) put("author_name", author)
+                if (c.kind == "update") { put("title", c.title); put("body", c.body) }
+                if (c.kind == "request") {
+                    put("question", c.title)
+                    c.request?.let { r ->
+                        put("request_kind", r.kind); put("detail", r.detail); put("state", r.state)
+                        r.options?.let { o -> put("options", JsonArray(o.map(::JsonPrimitive))) }
+                    }
+                }
+                put("status", c.status)
+                c.createdAt?.let { put("created_at", Wire.isoOf(it)) }
+                put("fields", JsonArray(read.fields.map(FeedViews::field)))
+                onCard?.views?.get(c.id)?.let { put("attachments", JsonArray(it)) }
+            })
+        })
+        put("messages", JsonArray(read.messages.map { messageView(app, call, it, attachments, refs, shared) }))
+        put("count", count)
+        put("withheld", read.withheld)
+        put("earlier", read.earlier)
+    }, (onCard?.blocks.orEmpty()) + attachments.blocks)
 }
 
 private fun plural(n: Int) = if (n == 1) "" else "s"

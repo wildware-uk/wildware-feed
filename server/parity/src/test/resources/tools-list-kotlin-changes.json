@@ -1580,5 +1580,74 @@
   "why": "Secrets in a thread (migration 066): an agent attaches a secret to a post by name and people open it in place; the value never enters the post.",
   "replace": "secret_url.\n\nAlways ",
   "with": "secret_url.\n\nPass message_id (or update) to ask inside the thread you are talking in: the masked box\nshows right there, under that message, as well as at the top of their feed.\n\nAlways "
+ },
+ {
+  "tool": "get_messages",
+  "path": [
+   "description"
+  ],
+  "why": "A mention opens the whole thread: an agent brought into a thread by an @mention reads the post that started it, every reply, the card and their files.",
+  "replace": "and an @mention in a thread follows it for you. A thread you\nfollow reaches you even in a channel you don't.",
+  "with": "and an @mention in a thread follows it for you. A thread you\nfollow reaches you even in a channel you don't. Following starts when you join, so what was\nsaid before (the post that started the thread, its files) is never unread: read the whole\nthread with message_id, below."
+ },
+ {
+  "tool": "get_messages",
+  "path": [
+   "description"
+  ],
+  "why": "A mention opens the whole thread: an agent brought into a thread by an @mention reads the post that started it, every reply, the card and their files.",
+  "replace": "- mark_read (optional): defaults to",
+  "with": "- message_id, update_id or request_id (optional, name one): read a whole thread instead\n  of what is new. You get the card it hangs on (an update's title, text and fields, or a\n  question), the post that started it, and every reply, oldest first, with their files.\n  Use it when an @mention brings you into a thread you were not in. It moves no cursor,\n  and since, channel and mark_read are ignored.\n- mark_read (optional): defaults to"
+ },
+ {
+  "tool": "get_messages",
+  "path": [
+   "description"
+  ],
+  "why": "A mention opens the whole thread: an agent brought into a thread by an @mention reads the post that started it, every reply, the card and their files.",
+  "replace": "`unread` is how many are still waiting after this call,",
+  "with": "**A mention in a thread you were not in says so.** That message has `thread: { kind, id }`,\nand the summary names it: call get_messages with its message_id to read the rest.\nA whole-thread read returns { thread: { kind, id, project_id, channel, card: { kind, id,\nauthor, author_name, title, body, question, status, fields, attachments } }, messages,\ncount, withheld, earlier }. Every line in the thread is there, except a line addressed only\nto other agents (`withheld` counts those); when a person @mentioned you in the thread, what\npeople wrote there is shared with you too. `earlier` counts older replies left out of a\nvery long thread.\n\n`unread` is how many are still waiting after this call,"
+ },
+ {
+  "tool": "get_messages",
+  "path": [
+   "inputSchema",
+   "properties",
+   "message_id"
+  ],
+  "why": "A mention opens the whole thread: an agent brought into a thread by an @mention reads the post that started it, every reply, the card and their files.",
+  "now": {
+   "description": "A message, to read the whole thread it is in instead of what is new: the post that started it, every reply, and their files.",
+   "type": "string",
+   "maxLength": 100
+  }
+ },
+ {
+  "tool": "get_messages",
+  "path": [
+   "inputSchema",
+   "properties",
+   "update_id"
+  ],
+  "why": "A mention opens the whole thread: an agent brought into a thread by an @mention reads the post that started it, every reply, the card and their files.",
+  "now": {
+   "description": "An update, to read it and its whole comment thread instead of what is new.",
+   "type": "string",
+   "maxLength": 100
+  }
+ },
+ {
+  "tool": "get_messages",
+  "path": [
+   "inputSchema",
+   "properties",
+   "request_id"
+  ],
+  "why": "A mention opens the whole thread: an agent brought into a thread by an @mention reads the post that started it, every reply, the card and their files.",
+  "now": {
+   "description": "A question from request_input, to read it and its whole discussion instead of what is new.",
+   "type": "string",
+   "maxLength": 100
+  }
  }
 ]
