@@ -49,7 +49,13 @@ fun agentsImageLoader(context: PlatformContext, engine: () -> HttpClientEngine, 
  * caller, which knows what the picture is for.
  */
 @Composable
-fun AttachmentImage(attachment: Attachment, modifier: Modifier, contentScale: ContentScale = ContentScale.Crop) {
+fun AttachmentImage(
+    attachment: Attachment,
+    modifier: Modifier,
+    contentScale: ContentScale = ContentScale.Crop,
+    /** Told the loaded picture's size in pixels, for the viewer when the dashboard didn't measure it. */
+    onLoaded: ((androidx.compose.ui.geometry.Size) -> Unit)? = null,
+) {
     // Removed by the owner's media retention: say so where it was, and never ask for it.
     attachment.removedAfterDays?.let { days ->
         RemovedMediaTile(days, modifier)
@@ -85,5 +91,6 @@ fun AttachmentImage(attachment: Attachment, modifier: Modifier, contentScale: Co
         contentScale = contentScale,
         placeholder = ColorPainter(AgentTheme.colors.surfaceSunken),
         error = ColorPainter(AgentTheme.colors.surfaceSunken),
+        onSuccess = onLoaded?.let { told -> { state -> told(state.painter.intrinsicSize) } },
     )
 }

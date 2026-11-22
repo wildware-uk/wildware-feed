@@ -690,6 +690,9 @@ internal class FeedMapper(
             aspect = aspect,
             url = serverUrl.trimEnd('/') + "/" + media.path(variant),
             original = original(media),
+            fullUrl = if ("original" in media.variants) url(media, "original") else null,
+            width = w?.takeIf { it > 0 },
+            height = h?.takeIf { it > 0 },
         )
     }
 

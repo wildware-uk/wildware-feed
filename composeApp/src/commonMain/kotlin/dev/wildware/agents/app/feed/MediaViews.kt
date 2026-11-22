@@ -114,7 +114,8 @@ class ToastAction(val forText: String, val label: String, val run: () -> Unit)
 internal object MediaSaves {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
-    fun save(files: List<FileAttachment>, handler: MediaHandler?, auth: MediaAuth?, ui: FeedUi?) {
+    /** [reveal]: show the last one in its folder once saved, where the device can. */
+    fun save(files: List<FileAttachment>, handler: MediaHandler?, auth: MediaAuth?, ui: FeedUi?, reveal: Boolean = false) {
         if (handler == null || files.isEmpty()) return
         ui?.toast = if (files.size == 1) "Saving ${files[0].name}…" else "Saving ${files.size} files…"
         scope.launch {
@@ -132,6 +133,7 @@ internal object MediaSaves {
             if (files.size > 1) said = "Saved ${files.size} files. $said"
             ui?.toast = said
             val last = files.last()
+            if (reveal && handler.showsSavedFiles && handler.showSaved(last)) return@launch
             if (handler.showsSavedFiles) {
                 ui?.toastAction = ToastAction(said, "Show in folder") { if (!handler.showSaved(last)) ui?.toast = "Couldn't open the folder" }
             }

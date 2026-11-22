@@ -8,10 +8,12 @@ import androidx.compose.ui.viewinterop.WebElementView
 import io.ktor.client.engine.HttpClientEngine
 import kotlinx.browser.document
 import kotlinx.browser.window
+import kotlinx.coroutines.await
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import org.w3c.dom.HTMLAnchorElement
+import kotlin.js.Promise
 import org.w3c.dom.HTMLButtonElement
 import org.w3c.dom.HTMLDivElement
 import org.w3c.dom.events.Event
@@ -200,4 +202,47 @@ private object BrowserMediaHandler : MediaHandler {
         link.remove()
         return "Downloading ${file.name}"
     }
+
+    /** Where the browser has ClipboardItem (Chrome, Edge, Safari, recent Firefox); elsewhere the button is hidden. */
+    override val copiesImages: Boolean by lazy { clipboardTakesImages() }
+
+    override suspend fun copyImage(url: String, auth: MediaAuth?): String {
+        writeImageToClipboard(url).await<JsAny?>()
+        return "Picture copied"
+    }
+
+    override val openPictureLabel: String get() = "Open in new tab"
+
+    override suspend fun openPicture(url: String, mime: String, auth: MediaAuth?): String {
+        window.open(url, "_blank", "noopener")
+        return "Opened in a new tab"
+    }
 }
+
+private fun clipboardTakesImages(): Boolean =
+    js("typeof ClipboardItem !== 'undefined' && !!navigator.clipboard && typeof navigator.clipboard.write === 'function'")
+
+/**
+ * Puts the picture at [url] on the clipboard as a PNG. The item is made at once, with the picture
+ * still loading inside it, because Safari only lets a click write to the clipboard straight away.
+ * A picture that isn't a PNG is redrawn as one, which every browser can paste.
+ */
+private fun writeImageToClipboard(url: String): Promise<JsAny?> = js(
+    """navigator.clipboard.write([new ClipboardItem({ 'image/png': fetch(url, { credentials: 'include' })
+        .then(function (r) { if (!r.ok) throw new Error('the dashboard answered ' + r.status); return r.blob(); })
+        .then(function (blob) {
+            if (blob.type === 'image/png') return blob;
+            return createImageBitmap(blob).then(function (bitmap) {
+                var canvas = document.createElement('canvas');
+                canvas.width = bitmap.width;
+                canvas.height = bitmap.height;
+                canvas.getContext('2d').drawImage(bitmap, 0, 0);
+                return new Promise(function (done, failed) {
+                    canvas.toBlob(function (png) { if (png) done(png); else failed(new Error('it could not be made a PNG')); }, 'image/png');
+                });
+            });
+        }) })])"""
+)
+
+/** No grab hand here: the pointing hand says the picture can be moved. */
+internal actual val panCursor: androidx.compose.ui.input.pointer.PointerIcon = androidx.compose.ui.input.pointer.PointerIcon.Hand

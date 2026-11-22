@@ -51,6 +51,10 @@ import io.ktor.http.isSuccess
 import io.ktor.utils.io.jvm.javaio.toInputStream
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.awt.datatransfer.DataFlavor
+import java.awt.datatransfer.Transferable
+import java.awt.datatransfer.UnsupportedFlavorException
+import java.awt.image.BufferedImage
 import java.io.File
 import androidx.compose.runtime.rememberCoroutineScope
 
@@ -383,6 +387,12 @@ class DesktopMediaHandler(
     private val downloads: File = defaultDownloads(),
     /** Shows a saved file in its folder ([SavedFiles.reveal]). */
     private val reveal: (File) -> Boolean = { SavedFiles.reveal(it) },
+    /** Puts something on the system clipboard. */
+    private val clipboard: (Transferable) -> Unit = { java.awt.Toolkit.getDefaultToolkit().systemClipboard.setContents(it, null) },
+    /** Opens a picture in the computer's own picture viewer ([SavedFiles.open]). */
+    private val openFile: (File) -> Boolean = { SavedFiles.open(it) },
+    /** Where a picture opened elsewhere is kept while it is looked at. */
+    private val pictures: File = File(System.getProperty("java.io.tmpdir"), "wildware-feed-pictures"),
 ) : MediaHandler {
     override suspend fun open(item: Playable, auth: MediaAuth?): String = "Plays in the app"
 
@@ -405,6 +415,56 @@ class DesktopMediaHandler(
     override fun showSaved(file: FileAttachment): Boolean {
         val target = saved[file.id]?.takeIf { it.exists() } ?: return false
         return reveal(target)
+    }
+
+    override val copiesImages: Boolean get() = true
+
+    /**
+     * Copies the picture itself, as an image any app can paste: decoded here (WebP too) and put on
+     * the clipboard as an image, which the system offers as PNG.
+     */
+    override suspend fun copyImage(url: String, auth: MediaAuth?): String {
+        val bytes = fetch(url, auth)
+        val image = withContext(Dispatchers.Default) { PictureBytes.toBufferedImage(bytes) } ?: error("it isn't a picture this computer can read")
+        clipboard(ImageSelection(image))
+        return "Picture copied"
+    }
+
+    override val openPictureLabel: String get() = "Open in default app"
+
+    /**
+     * Opens the picture in the computer's own viewer. Only a picture, checked by decoding it, and
+     * named for what it is (".png" and so on, never the name it was sent with), so the computer
+     * hands it to its picture viewer and never runs it.
+     */
+    override suspend fun openPicture(url: String, mime: String, auth: MediaAuth?): String {
+        val ext = PictureBytes.extension(mime) ?: error("only pictures open in another app")
+        val bytes = fetch(url, auth)
+        withContext(Dispatchers.Default) { PictureBytes.toBufferedImage(bytes) } ?: error("it isn't a picture this computer can read")
+        val target = withContext(Dispatchers.IO) {
+            pictures.mkdirs()
+            File(pictures, "picture-${Integer.toHexString(url.hashCode())}.$ext").also { it.writeBytes(bytes) }
+        }
+        return if (openFile(target)) "Opened in your picture viewer" else "Couldn't open a picture viewer"
+    }
+
+    private suspend fun fetch(url: String, auth: MediaAuth?): ByteArray = withContext(Dispatchers.IO) {
+        HttpClient(engine()).use { http ->
+            http.prepareGet(url) { auth.headersFor(url).forEach { (name, value) -> header(name, value) } }.execute { response ->
+                if (!response.status.isSuccess()) error("the dashboard answered ${response.status.value}")
+                val out = java.io.ByteArrayOutputStream()
+                response.bodyAsChannel().toInputStream().use { input ->
+                    val buffer = ByteArray(64 * 1024)
+                    while (true) {
+                        val n = input.read(buffer)
+                        if (n < 0) break
+                        out.write(buffer, 0, n)
+                        if (out.size() > PictureBytes.MaxBytes) error("it is too big to copy")
+                    }
+                }
+                out.toByteArray()
+            }
+        }
     }
 
     private suspend fun download(url: String, auth: MediaAuth?, target: File) = withContext(Dispatchers.IO) {
@@ -446,5 +506,47 @@ class DesktopMediaHandler(
             while (candidate.exists()) candidate = File(folder, "$stem ($n)$ext").also { n++ }
             return candidate
         }
+    }
+}
+
+/** The four-way move cursor over a picture a drag moves. */
+internal actual val panCursor: androidx.compose.ui.input.pointer.PointerIcon =
+    androidx.compose.ui.input.pointer.PointerIcon(java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.MOVE_CURSOR))
+
+/** A picture on the clipboard, as an image. */
+internal class ImageSelection(val image: java.awt.Image) : Transferable {
+    override fun getTransferDataFlavors(): Array<DataFlavor> = arrayOf(DataFlavor.imageFlavor)
+
+    override fun isDataFlavorSupported(flavor: DataFlavor): Boolean = flavor == DataFlavor.imageFlavor
+
+    override fun getTransferData(flavor: DataFlavor): Any = if (flavor == DataFlavor.imageFlavor) image else throw UnsupportedFlavorException(flavor)
+}
+
+/** Reading a picture's bytes on a computer. */
+internal object PictureBytes {
+    /** Bigger than this is no picture to copy or open (a 100-megapixel PNG is about this). */
+    const val MaxBytes = 200L * 1024 * 1024
+
+    /** The file ending for a picture of [mime], or null when it is not a picture. */
+    fun extension(mime: String): String? = when (mime.substringBefore(';').trim().lowercase()) {
+        "image/png" -> "png"
+        "image/jpeg", "image/jpg" -> "jpg"
+        "image/gif" -> "gif"
+        "image/webp" -> "webp"
+        "image/bmp" -> "bmp"
+        else -> null
+    }
+
+    /** [bytes] decoded (PNG, JPEG, GIF, WebP and more, through Skia) as an image for the clipboard; null when it isn't one. */
+    fun toBufferedImage(bytes: ByteArray): BufferedImage? {
+        val png = runCatching {
+            val image = org.jetbrains.skia.Image.makeFromEncoded(bytes)
+            try {
+                image.encodeToData(org.jetbrains.skia.EncodedImageFormat.PNG)?.bytes
+            } finally {
+                image.close()
+            }
+        }.getOrNull() ?: return null
+        return javax.imageio.ImageIO.read(java.io.ByteArrayInputStream(png))
     }
 }

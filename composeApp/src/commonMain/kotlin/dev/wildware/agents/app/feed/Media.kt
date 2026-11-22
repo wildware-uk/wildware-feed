@@ -129,7 +129,22 @@ interface MediaHandler {
 
     /** Opens the folder [file] was saved to, with it picked out where the system can. False when it can't. */
     fun showSaved(file: FileAttachment): Boolean = false
+
+    /** Whether [copyImage] can put a picture itself on this device's clipboard. */
+    val copiesImages: Boolean get() = false
+
+    /** Puts the picture at [url] on the clipboard as an image (a PNG), to paste into another app. */
+    suspend fun copyImage(url: String, auth: MediaAuth?): String = "Copying pictures doesn't work here"
+
+    /** What [openPicture] is called here ("Open in default app"), or null when there is no such thing. */
+    val openPictureLabel: String? get() = null
+
+    /** Shows the picture at [url] outside the app: the computer's own picture viewer, or a new browser tab. */
+    suspend fun openPicture(url: String, mime: String, auth: MediaAuth?): String = "Opening pictures elsewhere doesn't work here"
 }
+
+/** The cursor over a picture that a drag moves: a grab hand where the platform has one. */
+internal expect val panCursor: androidx.compose.ui.input.pointer.PointerIcon
 
 val LocalMediaHandler = staticCompositionLocalOf<MediaHandler?> { null }
 

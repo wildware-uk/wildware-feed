@@ -99,11 +99,9 @@ import dev.wildware.agents.app.design.gesture.EdgeProgress
 import dev.wildware.agents.app.design.gesture.GestureAction
 import dev.wildware.agents.app.design.gesture.SwipeActions
 import dev.wildware.agents.app.design.gesture.SwipeActionsState
-import dev.wildware.agents.app.design.gesture.ZoomState
 import dev.wildware.agents.app.design.gesture.contextGestures
 import dev.wildware.agents.app.design.gesture.edgeSwipe
 import dev.wildware.agents.app.design.gesture.swipeDownToDismiss
-import dev.wildware.agents.app.design.gesture.zoomable
 import dev.wildware.agents.app.design.pressable
 import dev.wildware.agents.app.design.AppMark
 import kotlinx.coroutines.launch
@@ -366,135 +364,6 @@ internal fun SheetRow(label: String, icon: ImageVector, destructive: Boolean, on
     ) {
         Icon(icon, null, tint = if (destructive) colors.error else colors.textMuted, modifier = Modifier.size(20.dp))
         Text(label, Modifier.padding(start = 16.dp), color = tint, style = AgentTheme.type.bodyStrong)
-    }
-}
-
-/**
- * Pictures full screen, one at a time. Swipe sideways (or the arrows, or the arrow keys) to go
- * through them; pinch or double-tap to zoom, drag to pan once zoomed; swipe down to close.
- * Escape, + and - work from a keyboard, and a screen reader gets next and previous as actions.
- */
-@Composable
-fun ImageViewer(gallery: Gallery, safeArea: SafeArea) {
-    val ui = LocalFeedUi.current ?: return
-    val images = gallery.images
-    if (images.isEmpty()) return
-    val pager = rememberPagerState(initialPage = gallery.index.coerceIn(0, images.lastIndex)) { images.size }
-    val zooms = remember(images) { images.map { ZoomState() } }
-    val zoom = zooms[pager.currentPage]
-    val drag = remember { DismissDrag() }
-    val focus = remember { FocusRequester() }
-    val scope = rememberCoroutineScope()
-    val save = rememberMediaSaver()
-    val motion = AgentTheme.motion
-    LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
-    // Where a swipe let go, so the picture fades away from there rather than jumping back first.
-    var letGoAt by remember { androidx.compose.runtime.mutableFloatStateOf(0f) }
-    val close = {
-        letGoAt = drag.offsetPx
-        ui.viewer = null
-    }
-    fun go(page: Int) {
-        if (page !in images.indices) return
-        scope.launch { if (motion.reduced) pager.scrollToPage(page) else pager.animateScrollToPage(page) }
-    }
-    val current = images[pager.currentPage]
-    Box(
-        Modifier
-            .fillMaxSize()
-            // Fades as it is pulled down. Read while drawing, so the drag never recomposes the viewer.
-            .drawBehind { drawRect(Color.Black.copy(alpha = (1f - maxOf(drag.offsetPx, letGoAt) / 900f).coerceIn(0.3f, 1f))) }
-            .semantics {
-                paneTitle = "Pictures"
-                customActions = listOfNotNull(
-                    CustomAccessibilityAction("Next picture") { go(pager.currentPage + 1); true }.takeIf { pager.currentPage < images.lastIndex },
-                    CustomAccessibilityAction("Previous picture") { go(pager.currentPage - 1); true }.takeIf { pager.currentPage > 0 },
-                )
-            }
-            .focusRequester(focus)
-            .onKeyEvent { e ->
-                if (e.type != KeyEventType.KeyDown) return@onKeyEvent false
-                when (e.key) {
-                    Key.Escape -> { close(); true }
-                    Key.DirectionRight -> { go(pager.currentPage + 1); true }
-                    Key.DirectionLeft -> { go(pager.currentPage - 1); true }
-                    Key.Equals, Key.Plus, Key.NumPadAdd -> { zoom.zoomTo(zoom.scale * 1.5f); true }
-                    Key.Minus, Key.NumPadSubtract -> { zoom.zoomTo(zoom.scale / 1.5f); true }
-                    else -> false
-                }
-            }
-            .focusable()
-            .swipeDownToDismiss(drag, enabled = { !zoom.isZoomed }, onDismiss = close),
-    ) {
-        HorizontalPager(
-            state = pager,
-            modifier = Modifier.fillMaxSize().offset { IntOffset(0, maxOf(drag.offsetPx, letGoAt).roundToInt()) },
-            // A zoomed picture keeps its drags for panning; swiping on to the next waits until it is back to size.
-            userScrollEnabled = !zoom.isZoomed,
-        ) { page ->
-            val image = images[page]
-            val pageZoom = zooms[page]
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .aspectRatio(image.aspect)
-                        .zoomable(pageZoom)
-                        .graphicsLayer {
-                            scaleX = pageZoom.scale
-                            scaleY = pageZoom.scale
-                            translationX = pageZoom.pan.x
-                            translationY = pageZoom.pan.y
-                        }
-                        .semantics { contentDescription = image.altText },
-                ) { AttachmentImage(image, Modifier.fillMaxSize(), ContentScale.Fit) }
-            }
-        }
-        Row(
-            Modifier.fillMaxWidth().padding(top = safeArea.top + 4.dp, start = 8.dp, end = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            IconAction(Icons.Close, "Close pictures", tint = Color.White, onClick = close)
-            Column(Modifier.weight(1f).padding(horizontal = 8.dp)) {
-                Text(current.title, color = Color.White, style = AgentTheme.type.label, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                if (images.size > 1) {
-                    Text(
-                        "${pager.currentPage + 1} of ${images.size}",
-                        Modifier.semantics { liveRegion = LiveRegionMode.Polite },
-                        color = Color.White.copy(alpha = 0.6f),
-                        style = AgentTheme.type.meta,
-                    )
-                }
-            }
-            current.saveable?.let { file -> IconAction(Icons.Download, "Save picture ${file.name}", tint = Color.White) { save(listOf(file)) } }
-            IconAction(Icons.ZoomOut, "Zoom out", tint = Color.White) { zoom.zoomTo(zoom.scale / 1.5f) }
-            IconAction(Icons.ZoomIn, "Zoom in", tint = Color.White) { zoom.zoomTo(zoom.scale * 1.5f) }
-        }
-        if (images.size > 1) {
-            if (pager.currentPage > 0) {
-                IconAction(Icons.Back, "Previous picture", Modifier.align(Alignment.CenterStart).padding(start = 8.dp), tint = Color.White) {
-                    go(pager.currentPage - 1)
-                }
-            }
-            if (pager.currentPage < images.lastIndex) {
-                IconAction(Icons.ChevronRight, "Next picture", Modifier.align(Alignment.CenterEnd).padding(end = 8.dp), tint = Color.White) {
-                    go(pager.currentPage + 1)
-                }
-            }
-        }
-        Column(
-            Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(start = 20.dp, end = 20.dp).safePadding(safeArea, bottom = 16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Text(current.altText, color = Color.White.copy(alpha = 0.85f), style = AgentTheme.type.body)
-            Spacer(Modifier.height(6.dp))
-            Text(
-                if (images.size > 1) "Swipe for the next · pinch to zoom · swipe down to close" else "Pinch to zoom · swipe down to close",
-                Modifier.clearAndSetSemantics { },
-                color = Color.White.copy(alpha = 0.5f),
-                style = AgentTheme.type.meta,
-            )
-        }
     }
 }
 

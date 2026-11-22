@@ -4,7 +4,7 @@
 import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 import { Team } from '../lib/team.mjs';
-import { expectShown, nextResponse, signedIn, tap, typeInto } from '../lib/ui.mjs';
+import { expectGone, expectShown, nextResponse, signedIn, tap, typeInto } from '../lib/ui.mjs';
 import { ffmpeg, openChannelSurely } from '../lib/cards-helpers.mjs';
 
 test.describe.configure({ mode: 'serial' });
@@ -69,7 +69,19 @@ test('a picture: it uploads, posts, shows, and opens full size', async ({ browse
 
     await tap(page, 'button', /^Image: Attached image/);
     await expectShown(page, 'Close pictures');
-    await expectShown(page, 'Zoom in');
+    // A 64 × 48 picture fits at its own size: never blown up.
+    await expectShown(page, 'Zoom 100%');
+    await tap(page, 'button', 'Zoom in');
+    await expectShown(page, 'Zoom 125%');
+    await tap(page, 'button', 'Fit to window');
+    await expectShown(page, 'Zoom 100%');
+    // The wheel zooms too, around the pointer.
+    const { width, height } = page.viewportSize();
+    await page.mouse.move(width / 2, height / 2);
+    await page.mouse.wheel(0, -120);
+    await expectGone(page, 'Zoom 100%');
+    await page.keyboard.press('Escape');
+    await expectGone(page, 'Close pictures');
 
     // The agent reads the post with its picture.
     const read = await agent.call('get_messages', { project: 'pictures' });

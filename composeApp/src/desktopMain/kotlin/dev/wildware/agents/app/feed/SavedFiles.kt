@@ -95,6 +95,17 @@ object SavedFiles {
         return start(commands.last()) != null
     }
 
+    /** The command that opens [file] in the app the computer picks for it. */
+    fun openCommand(os: DesktopOs, file: File): List<String> = when (os) {
+        DesktopOs.Windows -> listOf("explorer.exe", file.absolutePath)
+        DesktopOs.Mac -> listOf("open", file.absolutePath)
+        DesktopOs.Linux -> listOf("xdg-open", file.absolutePath)
+    }
+
+    /** Opens [file] in the computer's own app for it. Only ever given a picture the app checked. False when nothing started. */
+    fun open(file: File, os: DesktopOs = DesktopOs.current(), start: (List<String>) -> Process? = ::startQuietly): Boolean =
+        start(openCommand(os, file)) != null
+
     private fun startQuietly(command: List<String>): Process? = runCatching {
         ProcessBuilder(command)
             .redirectOutput(ProcessBuilder.Redirect.DISCARD)

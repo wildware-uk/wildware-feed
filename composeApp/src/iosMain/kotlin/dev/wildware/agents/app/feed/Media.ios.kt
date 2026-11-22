@@ -178,9 +178,30 @@ private class IosMediaHandler(private val engine: () -> HttpClientEngine) : Medi
         return "Choose where to keep it"
     }
 
+    override val copiesImages: Boolean get() = true
+
+    /** Puts the picture itself on the clipboard, to paste into Messages, Notes or anywhere. */
+    override suspend fun copyImage(url: String, auth: MediaAuth?): String {
+        val bytes = HttpClient(engine()).use { http ->
+            val response = http.get(url) { auth.headersFor(url).forEach { (key, value) -> header(key, value) } }
+            if (!response.status.isSuccess()) error("the dashboard answered ${response.status.value}")
+            response.readRawBytes()
+        }
+        if (bytes.isEmpty()) error("nothing came back")
+        val data = bytes.usePinned { NSData.dataWithBytes(it.addressOf(0), bytes.size.toULong()) }
+        withContext(Dispatchers.Main) {
+            val image = UIImage.imageWithData(data) ?: error("it isn't a picture this phone can read")
+            UIPasteboard.generalPasteboard.image = image
+        }
+        return "Picture copied"
+    }
+
     private fun topController(): UIViewController? {
         var top = UIApplication.sharedApplication.keyWindow?.rootViewController
         while (top?.presentedViewController != null) top = top.presentedViewController
         return top
     }
 }
+
+/** No grab hand here: the pointing hand says the picture can be moved. */
+internal actual val panCursor: androidx.compose.ui.input.pointer.PointerIcon = androidx.compose.ui.input.pointer.PointerIcon.Hand

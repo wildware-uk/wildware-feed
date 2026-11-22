@@ -109,6 +109,9 @@ object Icons {
     val Lock = icon("lock", rect(4f, 11f, 16f, 10f, 2f), "M8 11V7A4 4 0 0 1 16 7V11")
     val Eye = icon("eye", EYE, circle(12f, 12f, 3f))
     val EyeOff = icon("eye-off", EYE, "M3 3 21 21")
+    /** A box with an arrow out of it: open somewhere else. */
+    val External = icon("external", "M15 3H21V9", "M10 14 21 3", "M18 13V19A2 2 0 0 1 16 21H5A2 2 0 0 1 3 19V8A2 2 0 0 1 5 6H11")
+    val Folder = icon("folder", "M20 20A2 2 0 0 0 22 18V8A2 2 0 0 0 20 6H12.1L10.3 3.9A2 2 0 0 0 8.6 3H4A2 2 0 0 0 2 5V18A2 2 0 0 0 4 20Z")
     val Warning = icon("warning", "M10.3 3.9 1.8 18A2 2 0 0 0 3.5 21H20.5A2 2 0 0 0 22.2 18L13.7 3.9A2 2 0 0 0 10.3 3.9Z", "M12 9V13", "M12 17H12.01")
 }
 

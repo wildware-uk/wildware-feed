@@ -179,3 +179,6 @@ internal fun mediaFolder(mime: String): String = when {
     mime.startsWith("video/") -> Environment.DIRECTORY_MOVIES
     else -> Environment.DIRECTORY_DOWNLOADS
 }
+
+/** No grab hand here: the pointing hand says the picture can be moved. */
+internal actual val panCursor: androidx.compose.ui.input.pointer.PointerIcon = androidx.compose.ui.input.pointer.PointerIcon.Hand

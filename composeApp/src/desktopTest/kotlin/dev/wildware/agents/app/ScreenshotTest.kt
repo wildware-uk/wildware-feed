@@ -107,6 +107,14 @@ class ScreenshotTest {
         shoot("phone-dark-gesture-viewer", Size.Phone, dark = true, preview = ScreenPreview(viewer = Gallery(images, index = 1)))
     }
 
+    /** The picture viewer on a computer: the bar with the zoom and what to do with the picture, and the arrows. */
+    @Test
+    fun desktopViewer() {
+        val images = FakeFeed.state.sections.flatMap { it.items }.filterIsInstance<FeedItem.Update>().first { it.attachments.isNotEmpty() }.attachments
+        shoot("desktop-light-viewer", Size.Desktop, dark = false, preview = ScreenPreview(viewer = Gallery(images, index = 0)))
+        shoot("desktop-dark-viewer", Size.Desktop, dark = true, preview = ScreenPreview(viewer = Gallery(images, index = 0)))
+    }
+
     /** "All projects" on a phone, where each card has to say which project it is from. */
     @Test
     fun allProjects() {

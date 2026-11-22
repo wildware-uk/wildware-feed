@@ -182,6 +182,11 @@ data class Attachment(
     val notReady: NotReady? = null,
     /** The picture as it was uploaded, to save (never a thumbnail); a video's is on [video]. */
     val original: FileAttachment? = null,
+    /** The picture at full size, for the viewer when zoomed in; [url] is a smaller copy that loads fast. */
+    val fullUrl: String? = null,
+    /** The picture's own size in pixels, when the dashboard measured it. */
+    val width: Int? = null,
+    val height: Int? = null,
 ) {
     val isRemoved: Boolean get() = removedAfterDays != null
 

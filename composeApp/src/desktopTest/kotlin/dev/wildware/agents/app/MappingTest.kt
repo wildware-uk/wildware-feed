@@ -524,6 +524,9 @@ class MappingTest {
         // The upload itself, never the thumbnail or the transcode it shows.
         assertEquals("https://dash.test/media/img/thumb-1600", tiles[0].url)
         assertEquals(FileAttachment("img", "https://dash.test/media/img/original?download=1", "image.png", "2.0 KB", "image/png"), tiles[0].saveable)
+        // The viewer zooms into the original, and knows its real size for "100%".
+        assertEquals("https://dash.test/media/img/original", tiles[0].fullUrl)
+        assertEquals(1280 to 720, tiles[0].width to tiles[0].height)
         assertEquals("https://dash.test/media/vid/video", tiles[1].video?.url)
         assertEquals(FileAttachment("vid", "https://dash.test/media/vid/original?download=1", "Screen recording.mov", "2.0 KB", "video/quicktime"), tiles[1].saveable)
         assertEquals(null, tiles[2].saveable, "removed by retention: nothing to save")
