@@ -508,6 +508,28 @@ class MappingTest {
     }
 
     @Test
+    fun picturesAndVideosKeepTheirOriginalToSave() {
+        fun media(id: String, kind: String, variants: List<String>, filename: String? = null, mime: String, removed: Boolean = false) =
+            MediaView(id = id, kind = kind, status = "ready", variants = variants, filename = filename, bytes = 2048, mime = mime, width = 1280, height = 720,
+                removed = if (removed) MediaView.Removed(afterDays = 30) else null)
+        val card = update("u1", noon, "T", "B").let {
+            it.copy(update = it.update.copy(media = listOf(
+                media("img", "image", listOf("original", "thumb-1600"), mime = "image/png"),
+                media("vid", "video", listOf("original", "poster", "video"), filename = "Screen recording", mime = "video/quicktime"),
+                media("gone", "image", emptyList(), mime = "image/jpeg", removed = true),
+            )))
+        }
+        val tiles = (mapper.map(feed(listOf(card)), listOf(mega), emptyList(), emptyList(), null).sections.single().items.single() as FeedItem.Update).attachments
+
+        // The upload itself, never the thumbnail or the transcode it shows.
+        assertEquals("https://dash.test/media/img/thumb-1600", tiles[0].url)
+        assertEquals(FileAttachment("img", "https://dash.test/media/img/original?download=1", "image.png", "2.0 KB", "image/png"), tiles[0].saveable)
+        assertEquals("https://dash.test/media/vid/video", tiles[1].video?.url)
+        assertEquals(FileAttachment("vid", "https://dash.test/media/vid/original?download=1", "Screen recording.mov", "2.0 KB", "video/quicktime"), tiles[1].saveable)
+        assertEquals(null, tiles[2].saveable, "removed by retention: nothing to save")
+    }
+
+    @Test
     fun postsAndRepliesCarryTheirPicturesVideosSoundsAndFiles() {
         fun media(id: String, kind: String, variants: List<String>, filename: String? = null, mime: String = "") =
             MediaView(id = id, kind = kind, status = "ready", variants = variants, filename = filename, bytes = 2048, mime = mime, width = 1280, height = 720, durationMs = 5_000)

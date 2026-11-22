@@ -21,6 +21,8 @@ data class VideoSource(
     /** "0:42", or null when the length is unknown. */
     val duration: String?,
     val mime: String = "video/mp4",
+    /** The file as it was uploaded, to save (never the transcode); null when there is none to save. */
+    val original: FileAttachment? = null,
 ) : Playable {
     override val fileName: String get() = "video.${MediaLabels.extension(mime, "mp4")}"
 }
@@ -99,6 +101,10 @@ object MediaLabels {
         "audio/ogg" -> "ogg"
         "audio/wav", "audio/x-wav", "audio/wave" -> "wav"
         "audio/flac" -> "flac"
+        "image/png" -> "png"
+        "image/jpeg" -> "jpg"
+        "image/webp" -> "webp"
+        "image/gif" -> "gif"
         else -> fallback
     }
 }
@@ -111,6 +117,12 @@ interface MediaHandler {
     suspend fun open(item: Playable, auth: MediaAuth?): String
 
     suspend fun save(file: FileAttachment, auth: MediaAuth?): String
+
+    /**
+     * Keeps the original of a picture or video. Where the system has a place for those (a phone's
+     * Pictures or Movies) it goes there; elsewhere it is saved as any file is.
+     */
+    suspend fun saveMedia(file: FileAttachment, auth: MediaAuth?): String = save(file, auth)
 
     /** Whether a saved file can be shown in a folder here: a desktop, where saving puts it in Downloads. */
     val showsSavedFiles: Boolean get() = false

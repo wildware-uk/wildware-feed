@@ -613,8 +613,26 @@ internal class FeedMapper(
                 url = url(media, if (transcoded) "video" else "original"),
                 duration = MediaLabels.duration(media.durationMs),
                 mime = if (transcoded) "video/mp4" else media.mime,
+                original = original(media),
             ),
         )
+    }
+
+    /**
+     * The upload itself, as a file to save: `?download=1` has the dashboard send it as a download
+     * under its own name. Null when there is no original to send.
+     */
+    private fun original(media: MediaView): FileAttachment? {
+        if ("original" !in media.variants) return null
+        val kind = if (media.kind == "video") "video" else "image"
+        val ext = MediaLabels.extension(media.mime, media.mime.substringAfter('/', "bin").substringBefore(';').trim())
+        val given = media.filename?.trim()?.takeIf { it.isNotEmpty() }
+        val name = when {
+            given == null -> "$kind.$ext"
+            '.' in given.substringAfterLast('/') -> given
+            else -> "$given.$ext"
+        }
+        return FileAttachment(media.id, url(media, "original") + "?download=1", name, MediaLabels.size(media.bytes), media.mime)
     }
 
     /**
@@ -666,6 +684,7 @@ internal class FeedMapper(
             altText = media.filename ?: "Attached image",
             aspect = aspect,
             url = serverUrl.trimEnd('/') + "/" + media.path(variant),
+            original = original(media),
         )
     }
 

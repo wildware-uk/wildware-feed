@@ -399,6 +399,8 @@ fun AttachmentView(attachment: Attachment, modifier: Modifier = Modifier, onOpen
                 video != null -> VideoFace(attachment, Modifier.fillMaxSize())
                 else -> AttachmentImage(attachment, Modifier.fillMaxSize())
             }
+            // Playing, the video's own corner has it beside full screen.
+            if (!inline) attachment.saveable?.let { SaveMediaButton(it, Modifier.align(Alignment.TopEnd)) }
         }
         Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(if (attachment.video != null) Icons.Play else Icons.Image, null, tint = colors.textFaint, modifier = Modifier.size(14.dp))
@@ -516,6 +518,8 @@ private fun GridTile(images: List<Attachment>, index: Int, modifier: Modifier, o
             video != null -> VideoFace(image, Modifier.fillMaxSize(), small = true)
             else -> AttachmentImage(image, Modifier.fillMaxSize())
         }
+        // The "+N more" tile stands for the rest: it opens them, and saves none.
+        if (!inline && more == 0) image.saveable?.let { SaveMediaButton(it, Modifier.align(Alignment.TopEnd), small = true) }
         if (more > 0) {
             Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.5f)), contentAlignment = Alignment.Center) {
                 Text("+$more", color = Color.White, style = AgentTheme.type.title)

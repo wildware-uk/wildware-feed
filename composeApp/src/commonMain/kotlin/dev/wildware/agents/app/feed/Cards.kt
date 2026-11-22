@@ -1162,12 +1162,15 @@ internal fun PostMedia(attachments: List<Attachment>, sounds: List<Sound>, files
  * only by the owner who wrote it.
  */
 internal fun menuTargetFor(item: FeedItem, pinned: Boolean, following: Boolean? = null): MenuTarget = when (item) {
-    is FeedItem.Update -> MenuTarget(item.id, item.agent.name, item.title, own = false, taggable = true, work = true, status = item.status, pinned = pinned, deletable = true, hasDetails = true, following = following)
-    is FeedItem.Question -> MenuTarget(item.id, item.agent.name, item.prompt, own = false, taggable = true, pinned = pinned, deletable = false, hasDetails = true, following = following)
+    is FeedItem.Update -> MenuTarget(item.id, item.agent.name, item.title, own = false, taggable = true, work = true, status = item.status, pinned = pinned, deletable = true, hasDetails = true, following = following, saves = item.attachments.saves())
+    is FeedItem.Question -> MenuTarget(item.id, item.agent.name, item.prompt, own = false, taggable = true, pinned = pinned, deletable = false, hasDetails = true, following = following, saves = item.attachments.saves())
     is FeedItem.Post -> (item.author is Author.Owner).let { own ->
-        MenuTarget(item.id, if (own) "You" else item.author.name, item.body, own = own, taggable = true, work = true, status = item.status, pinned = pinned, hasDetails = true, following = following)
+        MenuTarget(item.id, if (own) "You" else item.author.name, item.body, own = own, taggable = true, work = true, status = item.status, pinned = pinned, hasDetails = true, following = following, saves = item.attachments.saves())
     }
 }
+
+/** The originals a card's menu can save: its pictures and videos that are there. */
+private fun List<Attachment>.saves(): List<FileAttachment> = mapNotNull { it.saveable }
 
 @Composable
 fun FeedItemView(item: FeedItem, selected: Boolean, density: Density, modifier: Modifier = Modifier, inThread: Boolean = false) {

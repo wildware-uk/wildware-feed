@@ -151,7 +151,11 @@ private class AndroidMediaHandler(private val context: Context) : MediaHandler {
 
     override suspend fun save(file: FileAttachment, auth: MediaAuth?): String = enqueue(file.url, file.name, file.mime, auth)
 
-    private fun enqueue(url: String, name: String, mime: String?, auth: MediaAuth?): String {
+    /** A picture goes to Pictures and a video to Movies, where the gallery finds them. */
+    override suspend fun saveMedia(file: FileAttachment, auth: MediaAuth?): String =
+        enqueue(file.url, file.name, file.mime, auth, folder = mediaFolder(file.mime))
+
+    private fun enqueue(url: String, name: String, mime: String?, auth: MediaAuth?, folder: String = Environment.DIRECTORY_DOWNLOADS): String {
         val safe = name.substringAfterLast('/').map { c -> if (c.code < 32 || c in "\\:<>\"|?*") '_' else c }.joinToString("").trim().trimStart('.').ifEmpty { "download" }
         val request = DownloadManager.Request(Uri.parse(url))
             .setTitle(safe)
@@ -160,11 +164,18 @@ private class AndroidMediaHandler(private val context: Context) : MediaHandler {
         if (mime != null) request.setMimeType(mime)
         // Before Android 10, the public Downloads folder needs a storage permission the app doesn't ask for.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, safe)
+            request.setDestinationInExternalPublicDir(folder, safe)
         } else {
-            request.setDestinationInExternalFilesDir(context, Environment.DIRECTORY_DOWNLOADS, safe)
+            request.setDestinationInExternalFilesDir(context, folder, safe)
         }
         context.getSystemService(DownloadManager::class.java).enqueue(request)
         return "Downloading. It shows in your notifications when it's done."
     }
+}
+
+/** Where the system keeps a saved picture or video: Pictures, Movies, else Downloads. */
+internal fun mediaFolder(mime: String): String = when {
+    mime.startsWith("image/") -> Environment.DIRECTORY_PICTURES
+    mime.startsWith("video/") -> Environment.DIRECTORY_MOVIES
+    else -> Environment.DIRECTORY_DOWNLOADS
 }

@@ -278,6 +278,8 @@ data class MenuTarget(
     val hasDetails: Boolean = false,
     /** Whether the owner follows the card's thread; null for what has no thread of its own, such as a reply. */
     val following: Boolean? = null,
+    /** The originals of its pictures and videos, for the menu's Save; none for placeholders. */
+    val saves: List<FileAttachment> = emptyList(),
 )
 
 /** The work-state choice, open on card [id], whose state is [current]. */
@@ -382,6 +384,9 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
 
     /** A short line at the bottom of the screen, gone by itself. */
     var toast by mutableStateOf<String?>(null)
+
+    /** A button the line [toast] offers, such as "Show in folder"; shown only with the line it was made for. */
+    var toastAction by mutableStateOf<ToastAction?>(null)
 
     /** The agent whose card is open, to read about it and rename it: its id. */
     var agentOpen by mutableStateOf(preview.agentOpen)

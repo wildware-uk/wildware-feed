@@ -163,8 +163,13 @@ data class Attachment(
     val removedAfterDays: Int? = null,
     /** Not ready to show: the dashboard is still making it, or never could. A placeholder says which. */
     val notReady: NotReady? = null,
+    /** The picture as it was uploaded, to save (never a thumbnail); a video's is on [video]. */
+    val original: FileAttachment? = null,
 ) {
     val isRemoved: Boolean get() = removedAfterDays != null
+
+    /** What Save keeps: the original upload. Nothing for a placeholder, which has nothing to keep. */
+    val saveable: FileAttachment? get() = if (isPlaceholder) null else video?.original ?: original
 
     /** Holds a placeholder rather than a picture or video: nothing to load, open or play. */
     val isPlaceholder: Boolean get() = isRemoved || notReady != null

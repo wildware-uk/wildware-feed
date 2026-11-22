@@ -27,7 +27,8 @@ fun Route.mediaRoutes(app: App) {
     endpoint("/api/upload/{token}", HttpMethod.Put to { call.upload(app) })
     endpoint("/api/media", HttpMethod.Post to { call.ownerUpload(app) })
     endpoint("/media/{id}/{variant}", HttpMethod.Get to {
-        call.serveMedia(app, call.parameters["id"].orEmpty(), call.parameters["variant"].orEmpty())
+        val save = call.request.queryParameters["download"] == "1"
+        call.serveMedia(app, call.parameters["id"].orEmpty(), call.parameters["variant"].orEmpty(), save = save)
     })
     endpoint("/api/agent/media/{id}", HttpMethod.Get to {
         val id = call.parameters["id"].orEmpty()
@@ -120,11 +121,11 @@ private fun ApplicationCall.agentMayFetch(app: App): Boolean {
 private suspend fun ApplicationCall.mediaMiss() =
     respondJson(404, JsonObject(mapOf("error" to JsonPrimitive("not_found"))), UPLOAD_JSON, "Cache-Control" to "no-store")
 
-private suspend fun ApplicationCall.serveMedia(app: App, id: String, variant: String, attachedOnly: Boolean = false) {
+private suspend fun ApplicationCall.serveMedia(app: App, id: String, variant: String, attachedOnly: Boolean = false, save: Boolean = false) {
     if (attachedOnly && !app.db.mediaAttached(id)) return mediaMiss()
     // Deleting a card takes back what was on it: its files answer as any other miss.
     if (app.db.mediaOnDeletedCard(id)) return mediaMiss()
-    val file = runCatching { app.serve.open(id, variant) }.getOrNull() ?: return mediaMiss()
+    val file = runCatching { app.serve.open(id, variant, save) }.getOrNull() ?: return mediaMiss()
     val base = listOf(
         "Content-Type" to file.mime,
         // private: browsers and the apps keep it, but no shared cache (Cloudflare in front) may hand

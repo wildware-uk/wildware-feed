@@ -110,18 +110,20 @@ import dev.wildware.agents.app.design.AppMark
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
-/** One row of a context menu, with its icon. */
-private data class MenuRow(val label: String, val icon: ImageVector, val destructive: Boolean, val event: FeedEvent?)
+/** One row of a context menu, with its icon: a [FeedEvent], or [run] for what the device does itself (saving). */
+private data class MenuRow(val label: String, val icon: ImageVector, val destructive: Boolean, val event: FeedEvent?, val run: (() -> Unit)? = null)
 
 /**
  * [phone] adds "Select text": on a phone a press anywhere on a card opens this menu, so picking out
  * some of its words starts here. On the desktop a drag selects.
  */
-private fun menuRows(target: MenuTarget, phone: Boolean = false): List<MenuRow> = buildList {
+private fun menuRows(target: MenuTarget, phone: Boolean = false, save: ((List<FileAttachment>) -> Unit)? = null): List<MenuRow> = buildList {
     add(MenuRow("Reply", Icons.Reply, false, FeedEvent.Reply(target.id)))
     add(MenuRow("Copy text", Icons.Copy, false, FeedEvent.CopyText(target.id)))
     if (phone) add(MenuRow("Select text", Icons.SelectText, false, FeedEvent.SelectText(target.id)))
     add(MenuRow("Copy link", Icons.Link, false, FeedEvent.CopyLink(target.id)))
+    // Each picture and video has its own Save button too, which is what a screen reader is offered.
+    if (save != null && target.saves.isNotEmpty()) add(MenuRow(saveLabel(target.saves), Icons.Download, false, null) { save(target.saves) })
     if (target.hasDetails) add(MenuRow("Details…", Icons.Details, false, FeedEvent.OpenDetails(target.id)))
     if (target.taggable) add(MenuRow("Tags…", Icons.Hash, false, FeedEvent.EditTags(target.id)))
     if (target.work) add(MenuRow(if (target.status == null) "Mark as work…" else "Work state…", Icons.Check, false, FeedEvent.ChooseStatus(target.id, target.status)))
@@ -157,6 +159,17 @@ fun Modifier.feedItemGestures(target: MenuTarget): Modifier {
     )
 }
 
+/** Does what a menu row is for: the device's own job, closing the menu, or its event. */
+private fun MenuRow.pick(ui: FeedUi, run: (FeedEvent) -> Unit) {
+    val own = this.run
+    if (own != null) {
+        ui.menu = null
+        own()
+    } else {
+        event?.let(run)
+    }
+}
+
 /** Copies for real, then tells the data layer. */
 @Suppress("DEPRECATION")
 @Composable
@@ -178,6 +191,7 @@ fun DesktopMenu(target: MenuTarget, anchorHeightPx: Int) {
     val ui = LocalFeedUi.current ?: return
     val colors = AgentTheme.colors
     val run = rememberRunner(ui, target)
+    val save = rememberMediaSaver()
     val density = LocalDensity.current
     val offset = with(density) { DpOffset(target.at.x.toDp(), (target.at.y - anchorHeightPx).toDp()) }
     DropdownMenu(
@@ -196,11 +210,11 @@ fun DesktopMenu(target: MenuTarget, anchorHeightPx: Int) {
                 ) { Text(emoji, fontSize = 18.sp) }
             }
         }
-        menuRows(target).forEach { row ->
+        menuRows(target, save = save).forEach { row ->
             DropdownMenuItem(
                 text = { Text(row.label, style = AgentTheme.type.label) },
                 leadingIcon = { Icon(row.icon, null, modifier = Modifier.size(16.dp)) },
-                onClick = { row.event?.let(run) },
+                onClick = { row.pick(ui, run) },
                 colors = MenuDefaults.itemColors(
                     textColor = if (row.destructive) colors.error else colors.text,
                     leadingIconColor = if (row.destructive) colors.error else colors.textMuted,
@@ -264,6 +278,7 @@ fun ActionSheet(target: MenuTarget, safeArea: SafeArea, sheetModifier: Modifier 
     val ui = LocalFeedUi.current ?: return
     val colors = AgentTheme.colors
     val run = rememberRunner(ui, target)
+    val save = rememberMediaSaver()
     val drag = remember { DismissDrag() }
     // Where a swipe let go, so the sheet sinks away from there rather than jumping back up first.
     var letGoAt by remember { androidx.compose.runtime.mutableFloatStateOf(0f) }
@@ -317,7 +332,7 @@ fun ActionSheet(target: MenuTarget, safeArea: SafeArea, sheetModifier: Modifier 
                 }
             }
             Box(Modifier.fillMaxWidth().height(1.dp).background(colors.border))
-            menuRows(target, phone = true).forEach { row -> SheetRow(row.label, row.icon, row.destructive) { row.event?.let(run) } }
+            menuRows(target, phone = true, save = save).forEach { row -> SheetRow(row.label, row.icon, row.destructive) { row.pick(ui, run) } }
             Box(Modifier.fillMaxWidth().height(1.dp).background(colors.border))
             SheetRow("Cancel", Icons.Close, false) { ui.menu = null }
         }
@@ -356,6 +371,7 @@ fun ImageViewer(gallery: Gallery, safeArea: SafeArea) {
     val drag = remember { DismissDrag() }
     val focus = remember { FocusRequester() }
     val scope = rememberCoroutineScope()
+    val save = rememberMediaSaver()
     val motion = AgentTheme.motion
     LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
     // Where a swipe let go, so the picture fades away from there rather than jumping back first.
@@ -436,6 +452,7 @@ fun ImageViewer(gallery: Gallery, safeArea: SafeArea) {
                     )
                 }
             }
+            current.saveable?.let { file -> IconAction(Icons.Download, "Save picture ${file.name}", tint = Color.White) { save(listOf(file)) } }
             IconAction(Icons.ZoomOut, "Zoom out", tint = Color.White) { zoom.zoomTo(zoom.scale / 1.5f) }
             IconAction(Icons.ZoomIn, "Zoom in", tint = Color.White) { zoom.zoomTo(zoom.scale * 1.5f) }
         }
@@ -678,6 +695,7 @@ fun InteractiveReply(reply: Reply, modifier: Modifier = Modifier) {
         author = if (reply.author is Author.Owner) "You" else reply.author.name,
         text = reply.body,
         own = reply.author is Author.Owner,
+        saves = reply.attachments.mapNotNull { it.saveable },
     )
     val shape = AgentTheme.shapes.medium
     val hover = remember { MutableInteractionSource() }

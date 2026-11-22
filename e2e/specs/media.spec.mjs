@@ -1,5 +1,7 @@
 // Media: the owner attaches a picture, a sound and a video from the composer. Each uploads, posts and
 // shows in the feed; the picture opens in the viewer, and the sound and the video really play.
+// A picture's Save downloads the upload itself, under its own name.
+import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 import { Team } from '../lib/team.mjs';
 import { expectShown, nextResponse, signedIn, tap, typeInto } from '../lib/ui.mjs';
@@ -73,6 +75,33 @@ test('a picture: it uploads, posts, shows, and opens full size', async ({ browse
     const read = await agent.call('get_messages', { project: 'pictures' });
     expect(read).toContain('A red square');
     expect(read).toContain(media.id);
+});
+
+test('a picture saves: the browser downloads the original as itself', async ({ browser }, info) => {
+    const picture = info.outputPath('blue-square.png');
+    ffmpeg('-f', 'lavfi', '-i', 'color=c=blue:s=64x48', '-frames:v', '1', picture);
+    const page = await inFreshChannel(browser, 'Saved pictures');
+
+    const { media } = await attachAndPost(page, picture, 'A blue square to keep');
+    await expectShown(page, 'A blue square to keep');
+
+    const downloading = page.waitForEvent('download', { timeout: 15_000 });
+    await tap(page, 'button', /^Save picture image\.png/);
+    const download = await downloading;
+    expect(download.suggestedFilename()).toBe('image.png');
+    expect(new URL(download.url()).pathname).toBe(`/media/${media.id}/original`);
+    expect(new URL(download.url()).searchParams.get('download')).toBe('1');
+    const kept = info.outputPath('kept.png');
+    await download.saveAs(kept);
+    expect(readFileSync(kept).equals(readFileSync(picture)), 'the upload byte for byte, not a thumbnail').toBe(true);
+
+    // The dashboard sends it as an attachment, and only with the owner's sign-in.
+    const answer = await page.request.get(download.url());
+    expect(answer.status()).toBe(200);
+    expect(answer.headers()['content-disposition']).toMatch(/^attachment; filename="image\.png"/);
+    const stranger = await browser.newContext();
+    expect((await stranger.request.get(download.url())).status(), 'nobody signed in').toBe(401);
+    await stranger.close();
 });
 
 test('a sound: it uploads, posts, shows, and plays', async ({ browser }, info) => {

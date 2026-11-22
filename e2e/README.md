@@ -12,7 +12,7 @@ deletes it at the end, so files run side by side and a staging server stays clea
 | `channels` | Make a channel and post; an agent's update shows live; rename; remove an agent from a channel; projects |
 | `messages` | Replies, threads, @mentions, reactions, edit and delete |
 | `search` | Search everything finds messages and cards |
-| `media` | Picture, sound and video: upload, post, view and play |
+| `media` | Picture, sound and video: upload, post, view and play; Save downloads a picture's original |
 | `cards` | Updates, pin, status, checklists and polls |
 | `requests` | An agent's questions: choice buttons, forms, text; Waiting on you |
 | `secrets` | An agent attaches a secret to its post; the owner reveals it in place, and the opening is audited |

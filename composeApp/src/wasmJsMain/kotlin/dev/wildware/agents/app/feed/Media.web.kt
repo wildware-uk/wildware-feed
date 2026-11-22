@@ -69,7 +69,8 @@ private fun HTMLVideoElement.stop() {
 internal object VideoLayer {
     private var open: (() -> Unit)? = null
 
-    fun show(url: String) {
+    /** [save]: the original to offer a Save link for; null shows none. */
+    fun show(url: String, save: FileAttachment? = null) {
         open?.invoke()
         val layer = document.createElement("div") as HTMLDivElement
         layer.setAttribute("role", "dialog")
@@ -84,6 +85,18 @@ internal object VideoLayer {
             "background:rgba(0,0,0,.6);color:white;font:18px system-ui,sans-serif;cursor:pointer"
         layer.appendChild(video)
         layer.appendChild(close)
+        // The original, as a download: the dashboard sends it as an attachment under its own name.
+        if (save != null) {
+            val link = document.createElement("a") as HTMLAnchorElement
+            link.href = save.url
+            link.download = save.name
+            link.rel = "noopener"
+            link.textContent = "Save"
+            link.setAttribute("aria-label", "Save video ${save.name}")
+            link.style.cssText = "position:fixed;top:12px;right:12px;z-index:11;height:40px;line-height:40px;padding:0 16px;border-radius:20px;" +
+                "background:rgba(0,0,0,.6);color:white;font:600 14px system-ui,sans-serif;text-decoration:none"
+            layer.appendChild(link)
+        }
         document.body?.appendChild(layer)
         val escape: (Event) -> Unit = { e ->
             if ((e as KeyboardEvent).key == "Escape") {
@@ -170,7 +183,7 @@ actual fun rememberPlatformMediaHandler(engine: () -> HttpClientEngine): MediaHa
 private object BrowserMediaHandler : MediaHandler {
     override suspend fun open(item: Playable, auth: MediaAuth?): String {
         if (item is VideoSource) {
-            VideoLayer.show(item.url)
+            VideoLayer.show(item.url, item.original)
             return "Esc closes the video"
         }
         window.open(item.url, "_blank", "noopener")

@@ -6,8 +6,12 @@ import dev.wildware.feed.server.db.Database
 class Serve(private val db: Database, private val paths: MediaPaths) {
     class MediaFile(val key: String, val size: Long, val mime: String, val etag: String, val disposition: String)
 
-    /** The file, or null for every kind of miss (all of them answer the same 404). */
-    fun open(id: String, variant: String): MediaFile? {
+    /**
+     * The file, or null for every kind of miss (all of them answer the same 404). [save] asks for the
+     * original as a download (`?download=1`): a picture or video comes as an attachment under its own
+     * name, so a browser keeps it rather than showing it.
+     */
+    fun open(id: String, variant: String, save: Boolean = false): MediaFile? {
         if (variant !in VARIANTS || !ULID.matches(id)) return null
         class Row(val kind: String, val mime: String, val sha256: String, val filename: String?, val status: String, val removed: Boolean)
         val row = db.one("SELECT kind, mime, sha256, filename, status, removed_at FROM media WHERE team_id = :team AND id = ?", id) {
@@ -40,12 +44,21 @@ class Serve(private val db: Database, private val paths: MediaPaths) {
             }
         }
         val size = paths.store.size(key) ?: return null
-        return MediaFile(key, size, mime, "\"${row.sha256}-$variant\"", disposition(download, row.filename))
+        val attach = download || (save && variant == "original")
+        val name = if (download) row.filename else savedName(row.filename, row.kind, row.mime)
+        return MediaFile(key, size, mime, "\"${row.sha256}-$variant\"", disposition(attach, name))
     }
 
     companion object {
         val VARIANTS = listOf("original", "thumb-640", "thumb-1600", "poster", "video")
         private val ULID = Regex("^[0-9A-HJKMNP-TV-Z]{26}$")
+
+        /** What a saved picture or video is called: its own name, with an extension added when it has none. */
+        fun savedName(filename: String?, kind: String, mime: String): String {
+            val ext = Mime.extensionOf(mime) ?: "bin"
+            val name = filename?.trim()?.takeIf { it.isNotEmpty() } ?: return "$kind.$ext"
+            return if ('.' in name.substringAfterLast('/')) name else "$name.$ext"
+        }
 
         /** `inline`, or `attachment` with an ASCII fallback and an RFC 5987 name (JS `encodeURIComponent`). */
         fun disposition(download: Boolean, filename: String?): String {

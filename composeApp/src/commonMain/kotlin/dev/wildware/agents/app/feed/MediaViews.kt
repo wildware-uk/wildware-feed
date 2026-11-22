@@ -58,7 +58,11 @@ import androidx.compose.ui.unit.dp
 import dev.wildware.agents.app.design.AgentTheme
 import dev.wildware.agents.app.design.Icons
 import dev.wildware.agents.app.design.pressable
+import androidx.compose.runtime.Immutable
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
 /**
@@ -97,6 +101,80 @@ internal suspend fun handOver(block: suspend () -> String): String = try {
     throw cancelled
 } catch (failed: Throwable) {
     "Couldn't open it: ${failed.message ?: "no connection"}"
+}
+
+/** A button on a short line, such as "Show in folder" after a save. It shows only with the line [forText]. */
+@Immutable
+class ToastAction(val forText: String, val label: String, val run: () -> Unit)
+
+/**
+ * Keeps the originals of pictures and videos. Saves run apart from any one screen, so closing the
+ * viewer or scrolling on doesn't cut a download short; each says how it went in a short line.
+ */
+internal object MediaSaves {
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+
+    fun save(files: List<FileAttachment>, handler: MediaHandler?, auth: MediaAuth?, ui: FeedUi?) {
+        if (handler == null || files.isEmpty()) return
+        ui?.toast = if (files.size == 1) "Saving ${files[0].name}…" else "Saving ${files.size} files…"
+        scope.launch {
+            var said = ""
+            for (file in files) {
+                said = try {
+                    handler.saveMedia(file, auth)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (failed: Throwable) {
+                    ui?.toast = "Couldn't save ${file.name}: ${failed.message ?: "no connection"}"
+                    return@launch
+                }
+            }
+            if (files.size > 1) said = "Saved ${files.size} files. $said"
+            ui?.toast = said
+            val last = files.last()
+            if (handler.showsSavedFiles) {
+                ui?.toastAction = ToastAction(said, "Show in folder") { if (!handler.showSaved(last)) ui?.toast = "Couldn't open the folder" }
+            }
+        }
+    }
+}
+
+/** Saves the originals given, from wherever the owner asked: a tile, the viewer or a menu. */
+@Composable
+internal fun rememberMediaSaver(): (List<FileAttachment>) -> Unit {
+    val ui = LocalFeedUi.current
+    val handler = LocalMediaHandler.current
+    val auth = LocalMediaAuth.current
+    return remember(ui, handler, auth) { { files -> MediaSaves.save(files, handler, auth, ui) } }
+}
+
+/** "picture" or "video", for what Save says it keeps. */
+internal fun FileAttachment.noun(): String = if (mime.startsWith("video/")) "video" else "picture"
+
+/** What a menu's Save says for [files]: "Save video", "Save 3 pictures", "Save 2 pictures and videos". */
+internal fun saveLabel(files: List<FileAttachment>): String {
+    val nouns = files.map { it.noun() }.distinct()
+    return when {
+        files.size == 1 -> "Save ${nouns[0]}"
+        nouns.size == 1 -> "Save ${files.size} ${nouns[0]}s"
+        else -> "Save ${files.size} pictures and videos"
+    }
+}
+
+/** A round Save button over a picture or video, keeping its original. */
+@Composable
+internal fun SaveMediaButton(file: FileAttachment, modifier: Modifier = Modifier, small: Boolean = false) {
+    val save = rememberMediaSaver()
+    Box(
+        modifier
+            .padding(if (small) 4.dp else 8.dp)
+            .clip(CircleShape)
+            .background(Color.Black.copy(alpha = 0.55f))
+            .pressable("Save ${file.noun()} ${file.name}", CircleShape) { save(listOf(file)) },
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(Icons.Download, null, tint = Color.White, modifier = Modifier.padding(if (small) 6.dp else 8.dp).size(16.dp))
+    }
 }
 
 /** The play button and length drawn over a video's poster. */
@@ -402,19 +480,22 @@ internal fun InlineVideo(video: VideoSource, modifier: Modifier) {
     DisposableEffect(video.url) { onDispose { if (ui?.inlineVideo == video.url) ui.inlineVideo = null } }
     Box(modifier.background(Color.Black)) {
         InAppVideo(video, auth, Modifier.fillMaxSize())
-        if (!videoControlsHaveFullScreen) Box(
-            Modifier
-                .align(Alignment.TopEnd)
-                .padding(8.dp)
-                .clip(CircleShape)
-                .background(Color.Black.copy(alpha = 0.55f))
-                .pressable("Full screen", CircleShape) {
-                    ui?.inlineVideo = null
-                    ui?.playing = video
-                },
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(Icons.Expand, null, tint = Color.White, modifier = Modifier.padding(8.dp).size(16.dp))
+        // Where the platform's player draws its own controls over the app (the iPhone's), it keeps the corner.
+        if (!videoControlsHaveFullScreen) Row(Modifier.align(Alignment.TopEnd)) {
+            video.original?.let { SaveMediaButton(it) }
+            Box(
+                Modifier
+                    .padding(8.dp)
+                    .clip(CircleShape)
+                    .background(Color.Black.copy(alpha = 0.55f))
+                    .pressable("Full screen", CircleShape) {
+                        ui?.inlineVideo = null
+                        ui?.playing = video
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Expand, null, tint = Color.White, modifier = Modifier.padding(8.dp).size(16.dp))
+            }
         }
     }
 }
@@ -447,6 +528,7 @@ fun VideoOverlay(ui: FeedUi, video: VideoSource, safeArea: SafeArea) {
         ) {
             Icon(Icons.Close, null, tint = Color.White, modifier = Modifier.padding(10.dp).size(20.dp))
         }
+        video.original?.let { SaveMediaButton(it, Modifier.align(Alignment.TopEnd).padding(top = safeArea.top)) }
     }
 }
 
@@ -454,21 +536,44 @@ fun VideoOverlay(ui: FeedUi, video: VideoSource, safeArea: SafeArea) {
 @Composable
 fun Toast(ui: FeedUi, safeArea: SafeArea) {
     val text = ui.toast ?: return
+    val action = ui.toastAction?.takeIf { it.forText == text }
     LaunchedEffect(text) {
-        kotlinx.coroutines.delay(4_000)
+        // A line with a button stays long enough to reach for it.
+        kotlinx.coroutines.delay(if (action != null) 8_000 else 4_000)
         if (ui.toast == text) ui.toast = null
     }
     Box(Modifier.fillMaxSize().padding(bottom = safeArea.bottom + 96.dp), contentAlignment = Alignment.BottomCenter) {
-        Text(
-            text,
+        Row(
             Modifier
                 .padding(horizontal = 16.dp)
                 .clip(AgentTheme.shapes.pill)
                 .background(AgentTheme.colors.text)
-                .padding(horizontal = 16.dp, vertical = 10.dp)
-                .semantics { liveRegion = LiveRegionMode.Polite },
-            color = AgentTheme.colors.background,
-            style = AgentTheme.type.label,
-        )
+                .padding(start = 16.dp, end = if (action != null) 6.dp else 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text,
+                Modifier
+                    .padding(vertical = 10.dp)
+                    .semantics { liveRegion = LiveRegionMode.Polite },
+                color = AgentTheme.colors.background,
+                style = AgentTheme.type.label,
+            )
+            if (action != null) {
+                Text(
+                    action.label,
+                    Modifier
+                        .padding(start = 8.dp)
+                        .clip(AgentTheme.shapes.pill)
+                        .pressable(action.label, AgentTheme.shapes.pill) {
+                            ui.toast = null
+                            action.run()
+                        }
+                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                    color = AgentTheme.colors.accent,
+                    style = AgentTheme.type.label,
+                )
+            }
+        }
     }
 }
