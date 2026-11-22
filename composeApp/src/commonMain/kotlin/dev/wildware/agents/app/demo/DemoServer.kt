@@ -107,6 +107,39 @@ class DemoServer(private val now: () -> Long = { Clock.System.now().toEpochMilli
         }
     }
 
+    /** Levels set in the demo's Permissions panels, by ("channel:<ref>" or "group:<ref>", principal), and which are private. */
+    private var accessLevels = mapOf<Pair<String, String>, String>()
+    private var privateOnes = setOf<String>()
+
+    /** A channel's or project's Permissions panel, as `GET /api/{projects|groups}/{ref}/access` answers (server spec/14). */
+    private fun accessPanel(kind: String, ref: String): dev.wildware.agents.AccessPanel {
+        val target = (if (kind == "groups") "group:" else "channel:") + ref
+        val agents = (data.agentNames + renamed).entries.sortedBy { it.value.lowercase() }.map { (id, name) ->
+            val own = accessLevels[target to "agent:$id"]
+            dev.wildware.agents.AccessEntry("agent:$id", "agent", id, name, level = own ?: if (target in privateOnes) "none" else "post", via = when {
+                own != null -> if (kind == "groups") "group" else "channel"
+                target in privateOnes -> "private"
+                else -> "default"
+            }, own = own)
+        }
+        val you = dev.wildware.agents.AccessEntry("member:founder", "member", "founder", "You", role = "owner", level = "manage", via = "owner", editable = false)
+        return dev.wildware.agents.AccessPanel(
+            projectId = ref.takeIf { kind == "projects" }, groupId = ref.takeIf { kind == "groups" },
+            isPrivate = target in privateOnes, yourLevel = "manage", canManage = true, entries = listOf(you) + agents,
+        )
+    }
+
+    /** `api/{projects|groups}/{ref}/access[/{kind}/{id}]`, as (projects|groups, ref, principal or null). */
+    private fun accessPath(path: String): Triple<String, String, String?>? {
+        val parts = path.split('/')
+        if (parts.size < 4 || parts[0] != "api" || parts[3] != "access" || (parts[1] != "projects" && parts[1] != "groups")) return null
+        return when (parts.size) {
+            4 -> Triple(parts[1], parts[2], null)
+            6 -> Triple(parts[1], parts[2], "${parts[4]}:${parts[5]}")
+            else -> null
+        }
+    }
+
     /** A network engine that never leaves the device. Each session asks for its own. */
     fun engine(): HttpClientEngine = MockEngine { request -> route(request) }
 
@@ -183,6 +216,12 @@ class DemoServer(private val now: () -> Long = { Clock.System.now().toEpochMilli
             "api/devices/current/alert-prefs" -> ok("""{"prefs":$alertPrefs}""")
             else -> agentsPath(path)?.let { (kind, slug) ->
                 ok("""{"agents":${json.encodeToString(members(kind, slug))}}""")
+            } ?: accessPath(path)?.takeIf { it.third == null }?.let { (kind, ref) ->
+                ok(json.encodeToString(accessPanel(kind, ref)))
+            } ?: Regex("^api/(people|agents)/[^/]+/access$").find(path)?.let {
+                // Everyone in the demo reaches every channel, posting.
+                val rows = projects.map { p -> dev.wildware.agents.ReachRow(p.id, p.slug, p.name, p.groupId, "post", "default") }
+                ok("""{"channels":${json.encodeToString(rows)}}""")
             } ?: ok("""{"error":"not_found","message":"The demo has no $path."}""", HttpStatusCode.NotFound)
         }
     }
@@ -191,6 +230,17 @@ class DemoServer(private val now: () -> Long = { Clock.System.now().toEpochMilli
         seq++
         val input = runCatching { json.parseToJsonElement(body).jsonObject }.getOrDefault(JsonObject(emptyMap()))
         val parts = path.split('/')
+        accessPath(path)?.takeIf { method == HttpMethod.Put }?.let { (kind, ref, principal) ->
+            val target = (if (kind == "groups") "group:" else "channel:") + ref
+            if (principal == null) {
+                val on = input["private"]?.let { runCatching { it.jsonPrimitive.content.toBoolean() }.getOrNull() } == true
+                privateOnes = if (on) privateOnes + target else privateOnes - target
+            } else {
+                val level = input["level"]?.takeIf { it !is kotlinx.serialization.json.JsonNull }?.jsonPrimitive?.content
+                accessLevels = if (level == null) accessLevels - (target to principal) else accessLevels + ((target to principal) to level)
+            }
+            return ok(json.encodeToString(accessPanel(kind, ref)))
+        }
         return when {
             path == "api/messages" && method == HttpMethod.Post -> {
                 val message = newMessage(input)

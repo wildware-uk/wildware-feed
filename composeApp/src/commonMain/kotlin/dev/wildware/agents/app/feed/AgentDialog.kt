@@ -77,6 +77,8 @@ fun AgentDialog(ui: FeedUi, agentId: String) {
             Column(Modifier.verticalScroll(rememberScrollState())) {
                 MetaText(agent.doing ?: agent.presence.label, color = colors.textMuted)
                 agent.details?.let { AgentFacts(it) }
+                Spacer(Modifier.height(12.dp))
+                ReachSummary(ui, agentId, agent = true)
                 Spacer(Modifier.height(16.dp))
                 BoxedField("Name", name, "Agent name", agent.name, onSubmit = save)
                 problem?.let { Text(it, Modifier.padding(top = 10.dp), color = colors.error, style = AgentTheme.type.label) }

@@ -127,6 +127,11 @@ private fun PersonActions(ui: FeedUi, person: PersonRow, team: TeamState, onDone
     var confirming by remember(person.id) { mutableStateOf(false) }
     val name = remember(person.id) { TextFieldState(person.name) }
     Panel {
+        // Which channels they can read and post in (server spec/14): your own, or anyone's for an admin.
+        if (person.you || team.canManage) {
+            ReachSummary(ui, person.id, agent = false)
+            Spacer(Modifier.height(10.dp))
+        }
         if (person.you) {
             BoxedField("Your name", name, "Your name", "Your name", onSubmit = { ui.emit(FeedEvent.Rename(name.text.toString())); onDone() })
             Spacer(Modifier.height(8.dp))

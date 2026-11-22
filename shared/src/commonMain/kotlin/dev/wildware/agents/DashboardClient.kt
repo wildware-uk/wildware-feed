@@ -370,6 +370,44 @@ class DashboardClient(
             jsonBody(buildJsonObject { put("hears", hears) })
         }.decoded<AgentMemberBody>().agent
 
+    /**
+     * Who may read, post in and manage a channel ([group] false) or a project ([group] true), by
+     * slug or id: every person and agent of the team with their level, and whether it is private.
+     * Anyone who can read it may ask; a channel they can't see is a 404 like any missing one.
+     */
+    @Throws(Exception::class)
+    suspend fun access(ref: String, group: Boolean): AccessPanel =
+        http.get("api/${if (group) "groups" else "projects"}/${ref.encodeURLPathPart()}/access") { authorise() }.decoded()
+
+    /** Makes a channel or project private (only those listed see it), or opens it to the team again. Needs Manage. */
+    @Throws(Exception::class)
+    suspend fun setPrivate(ref: String, group: Boolean, private: Boolean): AccessPanel =
+        http.put("api/${if (group) "groups" else "projects"}/${ref.encodeURLPathPart()}/access") {
+            authorise()
+            jsonBody(buildJsonObject { put("private", private) })
+        }.decoded()
+
+    /**
+     * Gives a person ([kind] "member") or agent ([kind] "agent") a [level] on a channel or project:
+     * "none", "read", "post" or "manage"; null takes their own setting away so they inherit again.
+     * Needs Manage; a team owner's level can't be changed.
+     */
+    @Throws(Exception::class)
+    suspend fun setAccessLevel(ref: String, group: Boolean, kind: String, id: String, level: String?): AccessPanel =
+        http.put("api/${if (group) "groups" else "projects"}/${ref.encodeURLPathPart()}/access/${kind.encodeURLPathPart()}/${id.encodeURLPathPart()}") {
+            authorise()
+            jsonBody(buildJsonObject { put("level", level) })
+        }.decoded()
+
+    /** What one person can reach ([agent] false, a membership id) or one agent: each channel the caller can see, with their level. */
+    @Throws(Exception::class)
+    suspend fun reachOf(id: String, agent: Boolean): List<ReachRow> =
+        http.get("api/${if (agent) "agents" else "people"}/${id.encodeURLPathPart()}/access") { authorise() }.decoded<ReachBody>().channels
+
+    /** Every change to who has access, newest first. For the team's owners and admins. */
+    @Throws(Exception::class)
+    suspend fun accessAudit(): List<AccessChange> = http.get("api/access/audit") { authorise() }.decoded<AccessAuditBody>().entries
+
     /** Every agent, removed ones too (marked by [AgentRecord.revokedAt]): old cards still name them. */
     @Throws(Exception::class)
     suspend fun agents(): List<AgentRecord> = http.get("api/agents") { authorise() }.decoded<AgentsBody>().agents
@@ -1033,6 +1071,67 @@ internal data class AgentsBody(val agents: List<AgentRecord> = emptyList())
 
 @kotlinx.serialization.Serializable
 internal data class AgentMembersBody(val agents: List<AgentMember> = emptyList())
+
+/** A channel's or project's Permissions panel (server spec/14). Levels: "none", "read", "post", "manage". */
+@kotlinx.serialization.Serializable
+data class AccessPanel(
+    val projectId: String? = null,
+    val groupId: String? = null,
+    @kotlinx.serialization.SerialName("private") val isPrivate: Boolean = false,
+    /** On a channel: its project is private, so it is too unless someone is listed on it. */
+    val groupPrivate: Boolean = false,
+    val yourLevel: String = "none",
+    val canManage: Boolean = false,
+    val entries: List<AccessEntry> = emptyList(),
+)
+
+/**
+ * One person ([kind] "member") or agent ([kind] "agent") on a panel. [via] says where their level
+ * comes from: "owner" (a team owner always manages), "channel" or "group" (a setting there),
+ * "private" (not listed on a private one) or "default" (the team's rule). [own] is the setting on
+ * this channel or project itself, [inherited] the one on its project.
+ */
+@kotlinx.serialization.Serializable
+data class AccessEntry(
+    val principal: String,
+    val kind: String,
+    val id: String,
+    val name: String,
+    val role: String? = null,
+    val level: String,
+    val via: String,
+    val own: String? = null,
+    val inherited: String? = null,
+    val editable: Boolean = true,
+)
+
+/** One channel someone can reach, with their level there and why. */
+@kotlinx.serialization.Serializable
+data class ReachRow(val projectId: String, val slug: String, val name: String, val groupId: String? = null, val level: String, val via: String)
+
+@kotlinx.serialization.Serializable
+internal data class ReachBody(val channels: List<ReachRow> = emptyList())
+
+/** One change to who has access: who did it, to what, from what to what. */
+@kotlinx.serialization.Serializable
+data class AccessChange(
+    val seq: Long,
+    val id: String,
+    val at: String,
+    val actor: String,
+    val actorName: String? = null,
+    val kind: String,
+    val targetId: String,
+    val targetName: String,
+    val principal: String? = null,
+    val principalName: String? = null,
+    val change: String,
+    val from: String? = null,
+    val to: String? = null,
+)
+
+@kotlinx.serialization.Serializable
+internal data class AccessAuditBody(val entries: List<AccessChange> = emptyList())
 
 @kotlinx.serialization.Serializable
 internal data class AgentMemberBody(val agent: AgentMember)

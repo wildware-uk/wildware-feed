@@ -213,6 +213,15 @@ sealed interface FeedEvent {
 
     /** Adds an agent to a channel or project ([hears] true) or removes it; the agent is told. */
     data class SetMember(val slug: String, val group: Boolean, val agentId: String, val hears: Boolean) : FeedEvent
+
+    /** Reads who may see a channel ([group] false) or a project, by id, for its Permissions panel. */
+    data class ReadAccess(val id: String, val group: Boolean) : FeedEvent
+    /** Makes a channel or project private, or opens it to the team again. */
+    data class SetAccessPrivate(val id: String, val group: Boolean, val isPrivate: Boolean) : FeedEvent
+    /** Gives a person ([kind] "member") or agent a level there; null inherits again. */
+    data class SetAccessLevel(val id: String, val group: Boolean, val kind: String, val who: String, val level: String?) : FeedEvent
+    /** Reads what a person ([agent] false) or an agent can reach, for their page. */
+    data class ReadReach(val id: String, val agent: Boolean) : FeedEvent
     /** Sign one of those clients out. The dialog has already asked. */
     data class RevokeConnection(val agentId: String, val connectionId: String) : FeedEvent
     /** Save how long the dashboard keeps media. The screen has already asked when it deletes more. */
@@ -1032,6 +1041,10 @@ sealed interface ProjectDialog {
     data object NewGroup : ProjectDialog
     /** A project's settings. */
     data class GroupSettings(val groupId: String) : ProjectDialog
+    /** Who may read, post in and manage a channel (server spec/14). */
+    data class Permissions(val projectId: String) : ProjectDialog
+    /** Who may read, post in and manage a project and the channels in it. */
+    data class GroupPermissions(val groupId: String) : ProjectDialog
 }
 
 /** The kind of thread a card heads, as the dashboard names it. */

@@ -645,6 +645,8 @@ data class FeedState(
     val connections: ConnectionList = ConnectionList(),
     /** Which agents hear each channel or project read so far, by [memberTarget]. */
     val members: Map<String, MemberList> = emptyMap(),
+    /** Permissions panels and reach summaries read so far (server spec/14). */
+    val access: AccessState = AccessState(),
     /** The dashboard's secrets, without values, read when the Secrets sheet opens. */
     val secrets: SecretList = SecretList(),
     /** The team's feedback and feature requests, read when the Feedback sheet opens. */

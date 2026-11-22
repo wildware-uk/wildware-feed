@@ -152,6 +152,85 @@ class DashboardSession(
         mutableMembers.value = mutableMembers.value + (target to list)
     }
 
+    /** Permissions panels and reach summaries read so far (server spec/14). */
+    private val mutableAccess = MutableStateFlow(dev.wildware.agents.app.feed.AccessState())
+
+    private fun panel(target: String) = mutableAccess.value.panels[target] ?: dev.wildware.agents.app.feed.AccessView(target)
+
+    private fun putPanel(target: String, view: dev.wildware.agents.app.feed.AccessView) {
+        mutableAccess.value = mutableAccess.value.copy(panels = mutableAccess.value.panels + (target to view))
+    }
+
+    /** A Permissions panel as the dashboard answered it, in the app's words. */
+    private fun accessView(target: String, p: dev.wildware.agents.AccessPanel): dev.wildware.agents.app.feed.AccessView {
+        fun row(e: dev.wildware.agents.AccessEntry) = dev.wildware.agents.app.feed.AccessRow(
+            kind = e.kind, id = e.id, name = e.name, level = e.level,
+            source = dev.wildware.agents.app.feed.levelSource(e.via, e.inherited, e.kind == "agent"),
+            own = e.own, editable = e.editable,
+        )
+        return dev.wildware.agents.app.feed.AccessView(
+            target = target, loaded = true, isPrivate = p.isPrivate, groupPrivate = p.groupPrivate, canManage = p.canManage,
+            people = p.entries.filter { it.kind == "member" }.map(::row), agents = p.entries.filter { it.kind == "agent" }.map(::row),
+        )
+    }
+
+    /** Reads a channel's or project's Permissions panel. */
+    private suspend fun loadAccess(id: String, group: Boolean) {
+        val target = dev.wildware.agents.app.feed.accessTarget(id, group)
+        val read = try {
+            accessView(target, client.access(id, group))
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (refused: DashboardException) {
+            panel(target).copy(problem = "Couldn't read who has access. ${refused.message}")
+        } catch (failed: Throwable) {
+            panel(target).copy(problem = "Couldn't read who has access. Check the connection and try again.")
+        }
+        putPanel(target, read)
+    }
+
+    /** Changes the private switch or one person's or agent's level, then shows the panel as the dashboard answers it. */
+    private fun changeAccess(id: String, group: Boolean, busy: String, change: suspend () -> dev.wildware.agents.AccessPanel) {
+        val target = dev.wildware.agents.app.feed.accessTarget(id, group)
+        val before = panel(target)
+        if (before.busy != null) return
+        putPanel(target, before.copy(busy = busy, problem = null))
+        scope.launch {
+            val after = try {
+                accessView(target, change())
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (refused: DashboardException) {
+                panel(target).copy(busy = null, problem = "Couldn't change it. ${refused.message}")
+            } catch (failed: Throwable) {
+                panel(target).copy(busy = null, problem = "Couldn't change it. Check the connection and try again.")
+            }
+            putPanel(target, after)
+            // A project's panel and its channels' panels show each other's settings.
+            mutableAccess.value.panels.keys.filter { it != target }.forEach { other ->
+                val (kind, otherId) = other.split(":", limit = 2)
+                loadAccess(otherId, kind == "group")
+            }
+            mutableAccess.value = mutableAccess.value.copy(reach = emptyMap())
+        }
+    }
+
+    /** Reads what one person or agent can reach, for their page. */
+    private suspend fun loadReach(id: String, agent: Boolean) {
+        val target = dev.wildware.agents.app.feed.reachTarget(id, agent)
+        val read = try {
+            val rows = client.reachOf(id, agent)
+            dev.wildware.agents.app.feed.ReachView(target, loaded = true, lines = rows.map { dev.wildware.agents.app.feed.ReachLine(it.slug, it.level) })
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (refused: DashboardException) {
+            dev.wildware.agents.app.feed.ReachView(target, problem = "Couldn't read what it can reach. ${refused.message}")
+        } catch (failed: Throwable) {
+            dev.wildware.agents.app.feed.ReachView(target, problem = "Couldn't read what it can reach. Check the connection and try again.")
+        }
+        mutableAccess.value = mutableAccess.value.copy(reach = mutableAccess.value.reach + (target to read))
+    }
+
     /**
      * Every agent the dashboard knows, removed ones too. Offline agents join the agent list from here,
      * so any agent can be opened (to rename or remove it), and removed ones are kept out of the lists
@@ -192,6 +271,7 @@ class DashboardSession(
         val joining: List<dev.wildware.agents.app.feed.JoinRequest>,
         val connections: dev.wildware.agents.app.feed.ConnectionList,
         val members: Map<String, dev.wildware.agents.app.feed.MemberList>,
+        val access: dev.wildware.agents.app.feed.AccessState,
     )
 
     private val selected = MutableStateFlow<String?>(null)
@@ -235,7 +315,7 @@ class DashboardSession(
         dashboard.projects,
         dashboard.notifications,
         // What the owner follows rides with the projects (groups) whose levels it reads.
-        combine(combine(mutableAlerts, mutableRetention, mentionables, joining, combine(mutableConnections, mutableMembers, ::Pair)) { a, r, m, j, (c, mm) -> Extras(a, r, m, j, c, mm) }, lastProject, combine(mutableDevices, mutableSecrets, mutableFeedback, ::Triple), knownAgents,
+        combine(combine(mutableAlerts, mutableRetention, mentionables, joining, combine(mutableConnections, mutableMembers, mutableAccess, ::Triple)) { a, r, m, j, (c, mm, ac) -> Extras(a, r, m, j, c, mm, ac) }, lastProject, combine(mutableDevices, mutableSecrets, mutableFeedback, ::Triple), knownAgents,
             combine(dashboard.followed, dashboard.groups, ::Pair), ::Side),
     ) { shown, everything, projects, notifications, (extras, postTarget, devicesAndSecrets, known, followsAndGroups) ->
         val (devices, secrets, feedback) = devicesAndSecrets
@@ -247,7 +327,7 @@ class DashboardSession(
         val all = if (shown.current.slug == null) shown else mapper.map(everything, projects, emptyList(), emptyList(), null)
         // Parse what the feed will draw before handing it over, here off the UI thread, so a card
         // that scrolls into view (or arrives) finds its markdown ready instead of parsing mid-frame.
-        shown.copy(searchIndex = searchEntriesOf(all.sections), bell = mapper.bell(notifications), alerts = alerts, retention = retention, mentionable = mentionable, postTarget = postTarget, devices = devices, secrets = secrets, feedback = feedback, joining = extras.joining, connections = extras.connections, members = extras.members,
+        shown.copy(searchIndex = searchEntriesOf(all.sections), bell = mapper.bell(notifications), alerts = alerts, retention = retention, mentionable = mentionable, postTarget = postTarget, devices = devices, secrets = secrets, feedback = feedback, joining = extras.joining, connections = extras.connections, members = extras.members, access = extras.access,
             agents = withOffline(shown.agents, known), follows = follows,
             groups = groups.map { ProjectGroup(it.id, it.slug, it.name, accent = it.theme?.accent, archived = it.isArchived) }).also { MarkdownCache.warm(markdownIn(it).asIterable()) }
     }.stateIn(scope, SharingStarted.Eagerly, mapper.map(feed.state.value, emptyList(), emptyList(), emptyList(), null))
@@ -972,6 +1052,12 @@ class DashboardSession(
             is FeedEvent.ReadConnections -> scope.launch { loadConnections(event.agentId) }
             is FeedEvent.ReadMembers -> scope.launch { loadMembers(event.slug, event.group) }
             is FeedEvent.SetMember -> setMember(event.slug, event.group, event.agentId, event.hears)
+            is FeedEvent.ReadAccess -> scope.launch { loadAccess(event.id, event.group) }
+            is FeedEvent.SetAccessPrivate -> changeAccess(event.id, event.group, "private") { client.setPrivate(event.id, event.group, event.isPrivate) }
+            is FeedEvent.SetAccessLevel -> changeAccess(event.id, event.group, "${event.kind}:${event.who}") {
+                client.setAccessLevel(event.id, event.group, event.kind, event.who, event.level)
+            }
+            is FeedEvent.ReadReach -> scope.launch { loadReach(event.id, event.agent) }
             is FeedEvent.RevokeConnection -> revokeConnection(event.agentId, event.connectionId)
             is FeedEvent.SetMediaRetention -> saveRetention(event.setting)
             is FeedEvent.SelectProject -> select(event.slug)

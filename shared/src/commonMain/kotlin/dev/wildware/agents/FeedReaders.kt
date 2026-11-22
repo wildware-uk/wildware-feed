@@ -227,7 +227,7 @@ internal class TimelineReader(
     override val watched = setOf(
         "update.created", "update.updated", "update.deleted", "media.ready", "media.removed",
         "project.created", "project.updated", "group.created", "group.updated", "group.deleted", "tags.changed", "fields.changed", "apps.changed",
-        "agent.renamed", StreamEvent.Resync,
+        "agent.renamed", AccessUpdated, StreamEvent.Resync,
     )
 
     // An emoji on an update rides on the update row, so it is a reason to re-read the page.
@@ -403,7 +403,7 @@ internal class ThreadsReader(
 
     override val watched = setOf(
         "message.created", "message.updated", "message.delivered", "message.deleted",
-        "reaction.updated", "ack.updated", "media.ready", "media.removed", StreamEvent.Resync,
+        "reaction.updated", "ack.updated", "media.ready", "media.removed", AccessUpdated, StreamEvent.Resync,
     )
 
     // Whole reads and thread reads go through one queue, so an older whole read can never land
@@ -653,7 +653,7 @@ internal class RequestsReader(
     /** On a team: what was answered lately, with who answered. Empty on a team of one. */
     var answered: List<RequestView> = emptyList(); private set
 
-    override val watched = setOf("request.created", "request.updated", "request.answered", StreamEvent.Resync)
+    override val watched = setOf("request.created", "request.updated", "request.answered", AccessUpdated, StreamEvent.Resync)
 
     override fun alsoWatches(event: StreamEvent) =
         event.type == "reaction.updated" && event.payload.cardKind() == CardKinds.Request ||
@@ -753,7 +753,7 @@ internal class NotificationsReader(
 ) : FeedReader(scope, onChange) {
     var list: NotificationList = NotificationList(); private set
 
-    override val watched = setOf("notification.created", "notifications.seen", StreamEvent.Resync)
+    override val watched = setOf("notification.created", "notifications.seen", AccessUpdated, StreamEvent.Resync)
 
     override suspend fun load(replace: Boolean) = apply(client.notifications())
 
@@ -775,7 +775,7 @@ internal class FollowsReader(
 ) : FeedReader(scope, onChange) {
     var follows: Follows = Follows(); private set
 
-    override val watched = setOf("subscriptions.updated", StreamEvent.Resync)
+    override val watched = setOf("subscriptions.updated", AccessUpdated, StreamEvent.Resync)
 
     override suspend fun load(replace: Boolean) = apply(client.follows())
 
@@ -839,3 +839,9 @@ internal class PresenceReader(
  * the picture, or the "removed" placeholder, without a reload.
  */
 internal val MediaEvents = setOf("media.ready", "media.removed")
+
+/**
+ * Who may see what changed (server spec/14): the event names nothing, so every reader that shows
+ * channel content reads again, and what is now hidden leaves the screen.
+ */
+internal const val AccessUpdated = "access.updated"

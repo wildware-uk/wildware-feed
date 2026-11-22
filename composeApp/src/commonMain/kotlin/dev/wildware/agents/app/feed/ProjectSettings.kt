@@ -74,6 +74,8 @@ private val AccentSwatches = listOf(
 @Composable
 fun ProjectDialogView(ui: FeedUi, dialog: ProjectDialog) {
     if (dialog is ProjectDialog.NewGroup || dialog is ProjectDialog.GroupSettings) return GroupDialogView(ui, dialog)
+    if (dialog is ProjectDialog.Permissions) return PermissionsDialogView(ui, dialog.projectId, group = false)
+    if (dialog is ProjectDialog.GroupPermissions) return PermissionsDialogView(ui, dialog.groupId, group = true)
     val project = (dialog as? ProjectDialog.Settings)?.let { s ->
         ui.projects.firstOrNull { it.id == s.projectId } ?: ui.state.current.takeIf { it.id == s.projectId }
     }
@@ -139,6 +141,10 @@ fun ProjectDialogView(ui: FeedUi, dialog: ProjectDialog) {
                     Spacer(Modifier.height(18.dp))
                     AgentsPicker(ui, slug, group = false)
                     Spacer(Modifier.height(18.dp))
+                    AppButton("Permissions…", ButtonTone.Secondary, Modifier.fillMaxWidth()) {
+                        ui.projectDialog = ProjectDialog.Permissions(project.id)
+                    }
+                    Spacer(Modifier.height(8.dp))
                     AppButton(
                         if (project.pinned) "Unpin channel" else "Pin channel",
                         ButtonTone.Secondary,
@@ -326,6 +332,10 @@ private fun GroupDialogView(ui: FeedUi, dialog: ProjectDialog) {
                     Spacer(Modifier.height(18.dp))
                     AgentsPicker(ui, group.slug, group = true)
                     Spacer(Modifier.height(18.dp))
+                    AppButton("Permissions…", ButtonTone.Secondary, Modifier.fillMaxWidth()) {
+                        ui.projectDialog = ProjectDialog.GroupPermissions(group.id)
+                    }
+                    Spacer(Modifier.height(8.dp))
                     AppButton(
                         if (group.archived) "Unarchive project" else "Archive project",
                         ButtonTone.Secondary,
