@@ -88,6 +88,8 @@ class ReadParityTest : ParityTest() {
      * server is retired; add to this list rather than loosening the comparison.
      */
     private val kotlinAdditions: List<Pair<String, Regex>> = if (!Parity.kotlin) emptyList() else listOf(
+        // A channel's place in its project (migration 069): last on a project row, so taken out first.
+        "a project row's position, its last key" to Regex(""","position":null(?=\})"""),
         // Permissions (spec/15): a channel or project says whether it is private, its last key, so taken out first.
         "a project row's or a group's private, its last key" to Regex(""","private":false(?=\})"""),
         // Channels and projects (spec/12): a channel names its group, and the snapshot lists the groups.

@@ -53,7 +53,8 @@ test("the channel menu's Move to project moves it, and it stays after a reload",
     await tap(page, 'button', /^Alpha, /, { button: 'right' });
     await tap(page, 'button', 'Move to project…');
     const moved = nextResponse(page, '/api/projects/order', 'PUT');
-    await tap(page, 'radio', 'Ops');
+    // A choice in a dialog is a button in the web app's accessibility tree, as in channels.spec.mjs.
+    await tap(page, 'button', 'Ops');
     expect((await moved).status(), 'the move').toBe(200);
     expect((await channel('alpha')).groupId).toBe(ops.id);
 
