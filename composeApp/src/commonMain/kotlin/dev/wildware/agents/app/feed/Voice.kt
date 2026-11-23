@@ -1,14 +1,30 @@
 package dev.wildware.agents.app.feed
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.MenuDefaults
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.semantics.paneTitle
+import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLinkStyles
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.unit.DpOffset
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.foundation.border
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.text.font.FontWeight
 import dev.wildware.agents.VoiceNote
+import dev.wildware.agents.VoiceWord
+import dev.wildware.agents.VoiceWords
 import dev.wildware.agents.app.design.pressable
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -73,8 +89,11 @@ interface VoiceInput {
      */
     fun start(onHeard: (words: String) -> Unit, onStarted: (problem: String?) -> Unit)
 
-    /** Stops and writes it down. [onDone] gets the words, or null and what to tell the owner. */
-    fun finish(onDone: (text: String?, problem: String?) -> Unit)
+    /**
+     * Stops and writes it down. [onDone] gets the words and those it wasn't sure of in them, or
+     * null, no words and what to tell the owner.
+     */
+    fun finish(onDone: (text: String?, words: List<VoiceWord>, problem: String?) -> Unit)
 
     /** Stops and throws the recording away. */
     fun cancel()
@@ -90,7 +109,7 @@ private val CancelDistance = 100.dp
  * finished words and says whether it sent them (true) or put them in the box to check (false).
  */
 @Stable
-class VoiceRecorder(private val input: VoiceInput, private val onWords: (String) -> Boolean) {
+class VoiceRecorder(private val input: VoiceInput, private val onWords: (String, List<VoiceWord>) -> Boolean) {
     enum class Phase { Idle, Starting, Recording, Writing }
 
     var phase by mutableStateOf(Phase.Idle)
@@ -145,11 +164,11 @@ class VoiceRecorder(private val input: VoiceInput, private val onWords: (String)
     private fun finish() {
         phase = Phase.Writing
         note = "Writing it down…"
-        input.finish { text, problem ->
+        input.finish { text, words, problem ->
             listening = false
             heard = ""
             phase = Phase.Idle
-            val sent = text != null && onWords(text)
+            val sent = text != null && onWords(text, words)
             note = problem ?: if (sent) null else "Check it, then send"
         }
     }
@@ -165,9 +184,9 @@ class VoiceRecorder(private val input: VoiceInput, private val onWords: (String)
 }
 
 @Composable
-fun rememberVoiceRecorder(input: VoiceInput?, onWords: (String) -> Boolean): VoiceRecorder? {
+fun rememberVoiceRecorder(input: VoiceInput?, onWords: (String, List<VoiceWord>) -> Boolean): VoiceRecorder? {
     val words by rememberUpdatedState(onWords)
-    return remember(input) { input?.let { VoiceRecorder(it) { text -> words(text) } } }
+    return remember(input) { input?.let { VoiceRecorder(it) { text, unsure -> words(text, unsure) } } }
 }
 
 /**
@@ -311,10 +330,11 @@ internal fun rememberUndoOpen(until: Long?): Boolean {
  * deadline, "Sending in 3s", and Undo. It is a choice the owner can still take back, not a
  * send stuck on the network, so the line it sits under is drawn at full strength. Undo takes the
  * note out of the outbox, so nothing is sent. [lineId] is the line's, `outbox:<id>`. Show it only
- * while [rememberUndoOpen] says the window is open.
+ * while [rememberUndoOpen] says the window is open. While [choice] has a word's choices open it
+ * stops and says "Paused".
  */
 @Composable
-internal fun UndoVoiceNote(lineId: String, until: Long?, modifier: Modifier = Modifier) {
+internal fun UndoVoiceNote(lineId: String, until: Long?, modifier: Modifier = Modifier, choice: WordChoice? = null) {
     val ui = LocalFeedUi.current
     if (until == null || ui == null) return
     val colors = AgentTheme.colors
@@ -323,15 +343,19 @@ internal fun UndoVoiceNote(lineId: String, until: Long?, modifier: Modifier = Mo
     // Counted down by the waits themselves, so a test's fixed clock still sees it tick.
     var left by remember(until) { mutableLongStateOf((until - now()).coerceAtLeast(0)) }
     val drained = remember(until) { Animatable(shareLeft(left)) }
-    LaunchedEffect(until) {
+    // Held while the owner picks a word: the outbox holds it too, so nothing goes meanwhile.
+    val paused = choice?.open != null
+    LaunchedEffect(until, paused) {
+        if (paused) return@LaunchedEffect
         while (left > 0) {
             val step = (left % 1_000).takeIf { it > 0 } ?: 1_000
             delay(step)
             left = (left - step).coerceAtLeast(0)
         }
     }
-    LaunchedEffect(until, motion.reduced) {
+    LaunchedEffect(until, motion.reduced, paused) {
         // With reduced motion the fill steps down once a second instead of sliding.
+        if (paused) return@LaunchedEffect
         if (motion.reduced) snapshotFlow { left }.collect { drained.snapTo(shareLeft(it)) }
         else drained.animateTo(0f, tween(left.toInt(), easing = LinearEasing))
     }
@@ -353,7 +377,7 @@ internal fun UndoVoiceNote(lineId: String, until: Long?, modifier: Modifier = Mo
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(Icons.Mic, null, tint = colors.textMuted, modifier = Modifier.size(12.dp))
-            MetaText("Sending in ${seconds}s", Modifier.padding(start = 6.dp), color = colors.textMuted)
+            MetaText(if (paused) "Paused" else "Sending in ${seconds}s", Modifier.padding(start = 6.dp), color = colors.textMuted)
             Text(
                 "Undo",
                 Modifier.padding(start = 10.dp),
@@ -366,3 +390,108 @@ internal fun UndoVoiceNote(lineId: String, until: Long?, modifier: Modifier = Mo
 
 /** How much of the pill is still to drain with [leftMillis] to go. */
 private fun shareLeft(leftMillis: Long): Float = (leftMillis.toFloat() / VoiceNote.UndoMillis).coerceIn(0f, 1f)
+
+/** Which unsure word of a waiting voice note has its choices open, by its place in the note's words; null when none. */
+@Stable
+internal class WordChoice {
+    var open by mutableStateOf<Int?>(null)
+}
+
+/**
+ * A waiting voice note's words, with the ones the phone wasn't sure of underlined with dots. A tap
+ * on one holds the countdown ([FeedEvent.PauseUnsent]) and offers the other guesses; picking one,
+ * or keeping the word as it is, settles it and starts a fresh countdown ([FeedEvent.ChooseWord]).
+ */
+@Composable
+internal fun UnsureWords(lineId: String, text: String, words: List<VoiceWord>, choice: WordChoice, modifier: Modifier = Modifier) {
+    val ui = LocalFeedUi.current
+    val colors = AgentTheme.colors
+    val density = LocalDensity.current
+    val outboxId = lineId.removePrefix(DraftPrefix)
+    val open = { index: Int ->
+        if (choice.open == null) {
+            choice.open = index
+            ui?.emit(FeedEvent.PauseUnsent(outboxId))
+        }
+    }
+    val settle = { index: Int, picked: String? ->
+        choice.open = null
+        ui?.emit(FeedEvent.ChooseWord(outboxId, index, picked))
+    }
+    val onWord by rememberUpdatedState(open)
+    // Only words that still fit the text: an older line may have changed under them.
+    val shown = remember(text, words) { words.withIndex().filter { (_, w) -> w.start in 0 until w.end && w.end <= text.length } }
+    val annotated = remember(text, shown) {
+        buildAnnotatedString {
+            append(text)
+            shown.forEach { (index, w) ->
+                // Plain text, not a link's look: the dots below say it can be changed.
+                addLink(LinkAnnotation.Clickable("word-$index", PlainWord) { onWord(index) }, w.start, w.end)
+            }
+        }
+    }
+    var layout by remember { mutableStateOf<TextLayoutResult?>(null) }
+    val dots = colors.textMuted
+    Box(modifier) {
+        Text(
+            annotated,
+            Modifier.drawBehind {
+                val laid = layout ?: return@drawBehind
+                val stroke = 1.5.dp.toPx()
+                val dash = PathEffect.dashPathEffect(floatArrayOf(2.dp.toPx(), 2.dp.toPx()))
+                shown.forEach { (_, w) ->
+                    val line = laid.getLineForOffset(w.start)
+                    val endLine = laid.getLineForOffset(w.end)
+                    val x0 = laid.getHorizontalPosition(w.start, usePrimaryDirection = true)
+                    val x1 = if (endLine == line) laid.getHorizontalPosition(w.end, usePrimaryDirection = true) else laid.getLineRight(line)
+                    val y = laid.getLineBaseline(line) + 3.dp.toPx()
+                    drawLine(dots, Offset(x0, y), Offset(x1, y), strokeWidth = stroke, pathEffect = dash)
+                }
+            },
+            color = colors.text,
+            style = AgentTheme.type.body,
+            onTextLayout = { layout = it },
+        )
+        val index = choice.open
+        val word = index?.let { i -> shown.firstOrNull { it.index == i }?.value }
+        if (index != null && word != null) {
+            val laid = layout
+            val offset = with(density) {
+                if (laid == null) DpOffset.Zero
+                else {
+                    val line = laid.getLineForOffset(word.start)
+                    DpOffset(laid.getHorizontalPosition(word.start, true).toDp(), (laid.getLineBottom(line) - laid.size.height).toDp())
+                }
+            }
+            val said = text.substring(word.start, word.end)
+            DropdownMenu(
+                expanded = true,
+                onDismissRequest = { settle(index, null) },
+                offset = offset,
+                shape = AgentTheme.shapes.medium,
+                containerColor = colors.surfaceRaised,
+                border = BorderStroke(1.dp, colors.border),
+                modifier = Modifier.semantics { paneTitle = "Other words for $said" },
+            ) {
+                word.alternatives.forEach { other ->
+                    DropdownMenuItem(
+                        text = { Text(other, style = AgentTheme.type.label) },
+                        onClick = { settle(index, other) },
+                        colors = MenuDefaults.itemColors(textColor = colors.text),
+                    )
+                }
+                if (word.alternatives.isEmpty()) {
+                    MetaText("No other guesses", Modifier.padding(horizontal = 12.dp, vertical = 8.dp), color = colors.textMuted)
+                }
+                DropdownMenuItem(
+                    text = { Text("Keep “$said”", style = AgentTheme.type.label) },
+                    leadingIcon = { Icon(Icons.Check, null, modifier = Modifier.size(16.dp)) },
+                    onClick = { settle(index, null) },
+                    colors = MenuDefaults.itemColors(textColor = colors.textMuted, leadingIconColor = colors.textMuted),
+                )
+            }
+        }
+    }
+}
+
+private val PlainWord = TextLinkStyles(style = SpanStyle(textDecoration = TextDecoration.None))

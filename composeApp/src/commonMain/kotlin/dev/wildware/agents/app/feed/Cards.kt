@@ -1150,9 +1150,14 @@ fun PostCard(item: FeedItem.Post, modifier: Modifier = Modifier, density: Densit
                     FoldedSummary(item.body, item.replies.size)
                     return@Column
                 }
+                val choice = remember(item.id) { WordChoice() }
                 val body = @Composable { if (own) PlainBody(item.body) else MarkdownBody(item.body) }
-                if (inThread) body() else Clamp(item.id, "the whole post") { body() }
-                if (holding) UndoVoiceNote(item.id, item.undoUntil, Modifier.padding(top = 4.dp))
+                when {
+                    holding && item.words.isNotEmpty() -> UnsureWords(item.id, item.body, item.words, choice)
+                    inThread -> body()
+                    else -> Clamp(item.id, "the whole post") { body() }
+                }
+                if (holding) UndoVoiceNote(item.id, item.undoUntil, Modifier.padding(top = 4.dp), choice)
                 PostMedia(item.attachments, item.sounds, item.files, item.embeds)
                 CardBlocks(item.blocks, Modifier.padding(top = 10.dp))
                 SharedSecretChips(item.secrets, Modifier.padding(top = 10.dp))

@@ -57,6 +57,43 @@ class VoiceSendTest {
     }
 
     @Test
+    fun `picking a word holds the note until a word is chosen then it goes with that word`() = runTest {
+        val server = FakeDashboard(testScheduler)
+        val (queue, actions) = setUp(server)
+        val unsure = listOf(VoiceWord(8, 14, 0.3, listOf("Monday")))
+
+        val id = actions.post(ProjectRef("mega", "Mega"), "Ship on Friday", voice = OwnerActions.Voice(VoiceNote.UndoMillis, unsure))
+        runCurrent()
+        assertEquals(unsure, queue.items.value.single().words, "the unsure words wait with the note")
+        advanceTimeBy(2_000)
+        queue.pauseVoice(id)
+        advanceTimeBy(VoiceNote.UndoMillis * 5)
+        assertTrue(server.writes.isEmpty(), "nothing goes while the choices are open")
+
+        queue.chooseWord(id, 0, "Monday")
+        advanceTimeBy(VoiceNote.UndoMillis - 500)
+        assertTrue(server.writes.isEmpty(), "a fresh wait after choosing, to see the change")
+        advanceTimeBy(1_000)
+        assertEquals(
+            listOf("""{"project":"mega","source":"voice","body":"Ship on Monday","sendKey":"id1"}"""),
+            server.writes.map { it.second },
+            "the chosen word goes; the word data never does",
+        )
+    }
+
+    @Test
+    fun `a paused note still goes in the end`() = runTest {
+        val server = FakeDashboard(testScheduler)
+        val (queue, actions) = setUp(server)
+
+        val id = actions.post(ProjectRef("mega", "Mega"), "Ship it", voice = OwnerActions.Voice(VoiceNote.UndoMillis))
+        runCurrent()
+        queue.pauseVoice(id)
+        advanceTimeBy(VoiceNote.PauseMillis + 1_000)
+        assertEquals(1, server.writes.size)
+    }
+
+    @Test
     fun `undo within the window sends nothing`() = runTest {
         val server = FakeDashboard(testScheduler)
         val (queue, actions) = setUp(server)

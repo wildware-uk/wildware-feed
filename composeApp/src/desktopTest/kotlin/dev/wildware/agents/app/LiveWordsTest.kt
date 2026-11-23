@@ -1,5 +1,6 @@
 package dev.wildware.agents.app
 
+import dev.wildware.agents.VoiceWord
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.CompositionLocalProvider
@@ -26,7 +27,7 @@ class LiveWordsTest {
     private class FakeVoice : VoiceInput {
         var heard: (String) -> Unit = {}
         var started: (String?) -> Unit = {}
-        var done: (String?, String?) -> Unit = { _, _ -> }
+        var done: (String?, List<VoiceWord>, String?) -> Unit = { _, _, _ -> }
         var cancelled = false
 
         override fun start(onHeard: (words: String) -> Unit, onStarted: (problem: String?) -> Unit) {
@@ -34,7 +35,7 @@ class LiveWordsTest {
             started = onStarted
         }
 
-        override fun finish(onDone: (text: String?, problem: String?) -> Unit) {
+        override fun finish(onDone: (text: String?, words: List<VoiceWord>, problem: String?) -> Unit) {
             done = onDone
         }
 
@@ -47,7 +48,7 @@ class LiveWordsTest {
     fun theRecorderHoldsTheWordsHeardSoFarUntilTheFinishedOnesArrive() {
         val voice = FakeVoice()
         val written = mutableListOf<String>()
-        val recorder = VoiceRecorder(voice) { written += it; false }
+        val recorder = VoiceRecorder(voice) { text, _ -> written += text; false }
 
         recorder.press()
         voice.started(null)
@@ -58,7 +59,7 @@ class LiveWordsTest {
 
         recorder.release()
         assertEquals("ship the build", recorder.heard, "still shown while it is written down")
-        voice.done("Ship the build.", null)
+        voice.done("Ship the build.", emptyList(), null)
         assertEquals(listOf("Ship the build."), written)
         assertEquals("", recorder.heard)
     }
@@ -66,7 +67,7 @@ class LiveWordsTest {
     @Test
     fun cancellingThrowsTheHeardWordsAway() {
         val voice = FakeVoice()
-        val recorder = VoiceRecorder(voice) { false }
+        val recorder = VoiceRecorder(voice) { _, _ -> false }
         recorder.press()
         voice.started(null)
         voice.heard("never mind")
@@ -79,11 +80,11 @@ class LiveWordsTest {
     @Test
     fun wordsHeardAfterTheEndAreIgnored() {
         val voice = FakeVoice()
-        val recorder = VoiceRecorder(voice) { false }
+        val recorder = VoiceRecorder(voice) { _, _ -> false }
         recorder.press()
         voice.started(null)
         recorder.release()
-        voice.done("Done.", null)
+        voice.done("Done.", emptyList(), null)
         voice.heard("late partial")
         assertEquals("", recorder.heard)
     }
@@ -103,7 +104,7 @@ class LiveWordsTest {
         runOnIdle { voice.heard("ship the build") }
         onNodeWithText("ship the build").assertExists()
         onNodeWithContentDescription("Hold to talk").performTouchInput { up() }
-        runOnIdle { voice.done("Ship the build tonight.", null) }
+        runOnIdle { voice.done("Ship the build tonight.", emptyList(), null) }
         onNodeWithText("ship the build").assertDoesNotExist()
         onNode(hasSetTextAction()).assertExists()
         onNodeWithText("Ship the build tonight.").assertExists()

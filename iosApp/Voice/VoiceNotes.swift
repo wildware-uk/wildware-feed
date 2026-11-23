@@ -79,14 +79,19 @@ final class VoiceNotes: ObservableObject {
     /// Stops recording and writes down what was said, then deletes the recording.
     /// Nil when the press was too short to be a note; throws `nothingHeard` when no words were picked up.
     func stop() async throws -> String? {
+        try await stopWithWords()?.text
+    }
+
+    /// As `stop`, with the words the transcriber wasn't sure of, placed in the text, to offer others.
+    func stopWithWords() async throws -> (text: String, words: [VoiceWord])? {
         guard let recording = stopRecording() else { return nil }
         defer { try? FileManager.default.removeItem(at: recording.file) }
         guard VoiceNote.shared.isLongEnough(seconds: recording.seconds) else { return nil }
-        let transcript = await Transcriber.transcribe(recording.file)
-        guard let text = VoiceNote.shared.text(transcript: transcript) else {
+        let heard = await Transcriber.transcribe(recording.file)
+        guard let text = VoiceNote.shared.text(transcript: heard.phrases) else {
             throw VoiceNoteError.nothingHeard
         }
-        return text
+        return (text, VoiceWords.shared.place(text: text, best: heard.best, others: heard.others))
     }
 
     /// Posts what was said as a new message. A nil `project` means the last one used.

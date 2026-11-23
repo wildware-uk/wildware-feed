@@ -119,6 +119,8 @@ data class OutboxItem(
      * takes it out. Zero when it can go at once.
      */
     val holdUntilMillis: Long = 0,
+    /** For a held voice note: the words the phone wasn't sure of, to offer others. Kept here, never sent. */
+    val words: List<VoiceWord> = emptyList(),
 ) {
     /** Items in one thread go in the order they were written. */
     val threadKey: String
@@ -310,6 +312,26 @@ object Outbox {
      */
     fun spoken(item: OutboxItem, nowMillis: Long, holdMillis: Long): OutboxItem =
         item.copy(source = VoiceNote.Source, holdUntilMillis = if (holdMillis > 0) nowMillis + holdMillis else 0)
+
+    /**
+     * Moves a held voice note's wait to end at [untilMillis]: later while the owner picks a word,
+     * a fresh few seconds once they have. Only while it is still held; one already going is left be.
+     */
+    fun holdVoice(items: List<OutboxItem>, id: String, untilMillis: Long, nowMillis: Long): List<OutboxItem> =
+        items.map { if (it.id == id && it.isHeld(nowMillis)) it.copy(holdUntilMillis = untilMillis) else it }
+
+    /**
+     * Settles an unsure word in a held voice note ([VoiceWords.choose]): its text changes before it
+     * goes, and it waits [holdMillis] more so the owner sees the change.
+     */
+    fun chooseWord(items: List<OutboxItem>, id: String, index: Int, choice: String?, nowMillis: Long, holdMillis: Long): List<OutboxItem> =
+        items.map { item ->
+            if (item.id != id || !item.isHeld(nowMillis)) return@map item
+            val chosen = VoiceWords.choose(item.text.orEmpty(), item.words, index, choice)
+            item.copy(text = chosen.text.takeIf { item.text != null }, words = chosen.words, holdUntilMillis = nowMillis + holdMillis)
+        }
+
+    private fun OutboxItem.isHeld(nowMillis: Long): Boolean = holdUntilMillis > nowMillis && claimedUntilMillis <= nowMillis
 
     /** [item] as a voice note sent with no wait: the lock screen's, Siri's. */
     fun spoken(item: OutboxItem): OutboxItem = spoken(item, 0, 0)

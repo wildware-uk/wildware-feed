@@ -1,5 +1,6 @@
 package dev.wildware.agents.app
 
+import dev.wildware.agents.VoiceWord
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.CompositionLocalProvider
@@ -54,7 +55,7 @@ class VoiceNoteUiTest {
     /** Records at once and hears the same words every time. */
     private object HeardVoice : VoiceInput {
         override fun start(onHeard: (words: String) -> Unit, onStarted: (problem: String?) -> Unit) = onStarted(null)
-        override fun finish(onDone: (text: String?, problem: String?) -> Unit) = onDone("ship it on friday", null)
+        override fun finish(onDone: (text: String?, words: List<VoiceWord>, problem: String?) -> Unit) = onDone("ship it on friday", emptyList(), null)
         override fun cancel() {}
     }
 

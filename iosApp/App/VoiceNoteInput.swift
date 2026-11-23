@@ -40,19 +40,19 @@ final class VoiceNoteInput: NSObject, VoiceInput {
         }
     }
 
-    func finish(onDone: @escaping (String?, String?) -> Void) {
+    func finish(onDone: @escaping (String?, [VoiceWord], String?) -> Void) {
         Task { @MainActor in
             LiveTranscriber.shared.stop()
             do {
-                guard let text = try await VoiceNotes.shared.stop() else {
-                    onDone(nil, "Hold the mic to talk")
+                guard let note = try await VoiceNotes.shared.stopWithWords() else {
+                    onDone(nil, [], "Hold the mic to talk")
                     return
                 }
-                onDone(text, nil)
+                onDone(note.text, note.words, nil)
             } catch VoiceNoteError.nothingHeard {
-                onDone(nil, "Didn't catch any words.")
+                onDone(nil, [], "Didn't catch any words.")
             } catch {
-                onDone(nil, "Couldn't write that down: \(error.localizedDescription)")
+                onDone(nil, [], "Couldn't write that down: \(error.localizedDescription)")
             }
         }
     }

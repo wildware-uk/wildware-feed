@@ -59,6 +59,8 @@ data class ThreadLine(
     val blocks: List<BlockView> = emptyList(),
     /** While [sending]: a voice note waiting for an Undo until then (epoch millis). Null when it can't be undone. */
     val undoUntil: Long? = null,
+    /** While [undoUntil]: the words the phone wasn't sure of, to offer others. */
+    val words: List<VoiceWord> = emptyList(),
     /** Secrets an agent attached to the line, by name (migration 066). */
     val secrets: List<SharedSecretView> = emptyList(),
 )
@@ -948,6 +950,9 @@ class Feed internal constructor(
     /** Voice notes still waiting for an Undo: the line's id to when the wait ends. */
     private var draftHolds: Map<String, Long> = emptyMap()
 
+    /** Those notes' unsure words, by line id. */
+    private var draftWords: Map<String, List<VoiceWord>> = emptyMap()
+
     private fun indexed(): ThreadIndex {
         val snapshot = threads.snapshot
         if (indexedFrom !== snapshot || indexedDrafts !== drafts) {
@@ -956,6 +961,7 @@ class Feed internal constructor(
             pendingEdits = drafts.filter { it.kind == OutboxKind.Edit && it.text != null }.associate { it.card?.id.orEmpty() to it }
             draftIds = lines.mapTo(HashSet()) { it.id }
             draftHolds = drafts.filter { it.holdUntilMillis > 0 && DraftPrefix + it.id in draftIds }.associate { DraftPrefix + it.id to it.holdUntilMillis }
+            draftWords = drafts.filter { it.words.isNotEmpty() && DraftPrefix + it.id in draftHolds }.associate { DraftPrefix + it.id to it.words }
             // A draft's files show where they will be, saying they are going up, until the dashboard has them.
             val media = drafts.filter { it.files.isNotEmpty() && DraftPrefix + it.id in draftIds }.associate { item ->
                 DraftPrefix + item.id to item.files.mapIndexed { i, file ->
@@ -1057,6 +1063,7 @@ class Feed internal constructor(
             sending = message.id in draftIds,
             uploaded = if (message.id in draftIds) uploads[message.id.removePrefix(DraftPrefix)] else null,
             undoUntil = draftHolds[message.id],
+            words = if (message.id in draftHolds) draftWords[message.id].orEmpty() else emptyList(),
             secrets = index.snapshot.secrets[message.id].orEmpty(),
         )
     }

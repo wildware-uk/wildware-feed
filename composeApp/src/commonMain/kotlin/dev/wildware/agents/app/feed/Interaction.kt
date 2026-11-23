@@ -289,6 +289,12 @@ sealed interface FeedEvent {
     /** Save how long the dashboard keeps media. The screen has already asked when it deletes more. */
     data class SetMediaRetention(val setting: MediaRetention) : FeedEvent
     data class DropUnsent(val outboxId: String) : FeedEvent
+
+    /** The owner opened the choices for an unsure word in a waiting voice note: it holds until they pick. */
+    data class PauseUnsent(val outboxId: String) : FeedEvent
+
+    /** The owner settled an unsure word in a waiting voice note: [choice] in its place, or null to keep it. */
+    data class ChooseWord(val outboxId: String, val index: Int, val choice: String?) : FeedEvent
     data object MarkAllRead : FeedEvent
     data object ToggleTheme : FeedEvent
     data object SignOut : FeedEvent

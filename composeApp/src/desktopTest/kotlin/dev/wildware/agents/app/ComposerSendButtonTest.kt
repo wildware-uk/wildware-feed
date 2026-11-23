@@ -1,5 +1,6 @@
 package dev.wildware.agents.app
 
+import dev.wildware.agents.VoiceWord
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.CompositionLocalProvider
@@ -41,7 +42,7 @@ class ComposerSendButtonTest {
     /** A phone's recorder that never records: only there so the box offers the mic. */
     private object QuietVoice : VoiceInput {
         override fun start(onHeard: (words: String) -> Unit, onStarted: (problem: String?) -> Unit) {}
-        override fun finish(onDone: (text: String?, problem: String?) -> Unit) {}
+        override fun finish(onDone: (text: String?, words: List<VoiceWord>, problem: String?) -> Unit) {}
         override fun cancel() {}
     }
 

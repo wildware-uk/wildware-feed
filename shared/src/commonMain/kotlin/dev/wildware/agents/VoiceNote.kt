@@ -15,6 +15,12 @@ object VoiceNote {
     /** How long a voice note sent on release waits, showing Undo, before it goes. */
     const val UndoMillis = 4_000L
 
+    /**
+     * The longest a waiting voice note holds while the owner picks another word. Not for ever: if
+     * the app is closed mid-choice, the note still goes.
+     */
+    const val PauseMillis = 120_000L
+
     /** The dashboard refuses longer message bodies. */
     const val MaxBodyLength = 10_000
 

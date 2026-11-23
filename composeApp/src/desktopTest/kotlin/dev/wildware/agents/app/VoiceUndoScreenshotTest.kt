@@ -15,11 +15,16 @@ import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.isRoot
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onFirst
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.v2.runDesktopComposeUiTest
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import dev.wildware.agents.VoiceNote
+import dev.wildware.agents.VoiceWord
 import dev.wildware.agents.app.design.AgentTheme
 import dev.wildware.agents.app.feed.Author
 import dev.wildware.agents.app.feed.FakeFeed
@@ -47,10 +52,11 @@ class VoiceUndoScreenshotTest {
     private val post = FeedItem.Post(
         id = "outbox:post", time = "now", author = Author.Owner("You"), project = Project("p1", "agent-dashboard", unread = 0, hue = 0, slug = "agent-dashboard"),
         body = "Can you check the Mac build before Friday?", sending = true, voice = true, undoUntil = until,
+        words = listOf(VoiceWord(18, 21, 0.3, listOf("Matt", "map"))),
     )
     private val reply = Reply(
         id = "outbox:reply", author = Author.Owner("You"), time = "now", body = "Ship it on Friday.",
-        voice = true, sending = true, undoUntil = until,
+        voice = true, sending = true, undoUntil = until, words = listOf(VoiceWord(11, 17, 0.4, listOf("Monday"))),
     )
 
     private fun ComposeUiTest.show(dark: Boolean) = setContent {
@@ -87,5 +93,15 @@ class VoiceUndoScreenshotTest {
         show(dark = true)
         mainClock.advanceTimeBy(600)
         save("desktop-dark-voice-undo")
+    }
+
+    @Test
+    fun choosingAWord() = runDesktopComposeUiTest(1260, 680) {
+        mainClock.autoAdvance = false
+        show(dark = false)
+        mainClock.advanceTimeByFrame()
+        onNode(hasClickAction() and hasAnyAncestor(hasText("Ship it on Friday.")), useUnmergedTree = true).performClick()
+        mainClock.advanceTimeBy(300)
+        save("desktop-light-voice-word-choice")
     }
 }

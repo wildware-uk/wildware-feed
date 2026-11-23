@@ -149,6 +149,23 @@ class OutboxQueue @OptIn(ExperimentalTime::class) constructor(
         confined.launch { update { Outbox.remove(it, id) } }
     }
 
+    /** Keeps a held voice note from going while the owner picks a word: [VoiceNote.PauseMillis] at most. */
+    fun pauseVoice(id: String) {
+        confined.launch {
+            update { Outbox.holdVoice(it, id, clock() + VoiceNote.PauseMillis, clock()) }
+            kick()
+        }
+    }
+
+    /** Settles an unsure word in a held voice note, then gives it a fresh [VoiceNote.UndoMillis] before it goes. */
+    fun chooseWord(id: String, index: Int, choice: String?) {
+        confined.launch {
+            update { Outbox.chooseWord(it, id, index, choice, clock(), VoiceNote.UndoMillis) }
+            // The wait may now end sooner than the one the sender is sleeping on.
+            kick()
+        }
+    }
+
     /** Reads the list again because another process changed it, and sends anything new. */
     fun reload() {
         confined.launch {
@@ -265,10 +282,14 @@ class OwnerActions(
         return queue(files) { id, stored -> Outbox.reply(id, clock(), label, thread, text, answers, stored).spokenAs(voice) }
     }
 
-    /** A voice note: sent marked as one, after [holdMillis] for an Undo (0: at once, as reviewed before sending). */
-    data class Voice(val holdMillis: Long = 0)
+    /**
+     * A voice note: sent marked as one, after [holdMillis] for an Undo (0: at once, as reviewed
+     * before sending). [words] are the ones the phone wasn't sure of, offered while it waits.
+     */
+    data class Voice(val holdMillis: Long = 0, val words: List<VoiceWord> = emptyList())
 
-    private fun OutboxItem.spokenAs(voice: Voice?): OutboxItem = if (voice == null) this else Outbox.spoken(this, clock(), voice.holdMillis)
+    private fun OutboxItem.spokenAs(voice: Voice?): OutboxItem =
+        if (voice == null) this else Outbox.spoken(this, clock(), voice.holdMillis).copy(words = voice.words.takeIf { voice.holdMillis > 0 }.orEmpty())
 
     /**
      * Answers a question with [value] exactly as the server takes it: a string, a boolean, a list of

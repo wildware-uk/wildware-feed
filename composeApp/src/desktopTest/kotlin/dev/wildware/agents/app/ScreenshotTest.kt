@@ -1,5 +1,6 @@
 package dev.wildware.agents.app
 
+import dev.wildware.agents.VoiceWord
 import dev.wildware.agents.app.feed.CardFolds
 import dev.wildware.agents.app.feed.LocalCardFolds
 import dev.wildware.agents.app.feed.Choice
@@ -425,7 +426,7 @@ class ScreenshotTest {
                 onStarted(null)
                 onHeard("Can you check why the Mac build got slower this week and")
             }
-            override fun finish(onDone: (text: String?, problem: String?) -> Unit) = Unit
+            override fun finish(onDone: (text: String?, words: List<VoiceWord>, problem: String?) -> Unit) = Unit
             override fun cancel() = Unit
         }
         for (dark in listOf(false, true)) {

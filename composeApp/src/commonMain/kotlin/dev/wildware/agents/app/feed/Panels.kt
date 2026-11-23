@@ -585,10 +585,14 @@ fun Composer(
     val sendsOnRelease = VoiceNote.sendsOnRelease(review, canSendHere = onSendVoice != null)
     // The box holds dictated words: it goes up as a voice note, so agents know to read it for meaning.
     var dictated by remember(text) { mutableStateOf(false) }
-    val recorder = rememberVoiceRecorder(LocalVoiceInput.current) { words ->
+    val recorder = rememberVoiceRecorder(LocalVoiceInput.current) { words, unsure ->
         val voice = onSendVoice
         if (voice != null && VoiceNote.sendsOnRelease(review, canSendHere = true)) {
-            voice(words.trim(), emptyList(), OwnerActions.Voice(VoiceNote.UndoMillis))
+            // Trimmed, the unsure words move back by what came off the front.
+            val cut = words.length - words.trimStart().length
+            val trimmed = words.trim()
+            val placed = unsure.map { it.copy(start = it.start - cut, end = it.end - cut) }.filter { it.start >= 0 && it.end <= trimmed.length }
+            voice(trimmed, emptyList(), OwnerActions.Voice(VoiceNote.UndoMillis, placed))
             true
         } else {
             val joined = Dictation.appendDictation(text.text.toString(), words)
@@ -882,8 +886,9 @@ fun ReplyView(reply: Reply, modifier: Modifier = Modifier) {
                 }
             }
             Spacer(Modifier.height(2.dp))
-            MarkdownBody(reply.body)
-            if (holding) UndoVoiceNote(reply.id, reply.undoUntil, Modifier.padding(top = 2.dp))
+            val choice = remember(reply.id) { WordChoice() }
+            if (holding && reply.words.isNotEmpty()) UnsureWords(reply.id, reply.body, reply.words, choice) else MarkdownBody(reply.body)
+            if (holding) UndoVoiceNote(reply.id, reply.undoUntil, Modifier.padding(top = 2.dp), choice)
             PostMedia(reply.attachments, reply.sounds, reply.files, reply.embeds)
             CardBlocks(reply.blocks, Modifier.padding(top = 8.dp))
             SharedSecretChips(reply.secrets, Modifier.padding(top = 8.dp))
