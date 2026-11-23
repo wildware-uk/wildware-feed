@@ -96,7 +96,9 @@ private suspend fun ApplicationCall.upload(app: App) {
             put("bytes", JsonPrimitive(stored.bytes))
             put("sha256", JsonPrimitive(stored.sha256))
             put("status", JsonPrimitive(stored.status))
-            put("deduped", JsonPrimitive(stored.deduped))
+            // Always false: "true" would tell the uploader the same file is already somewhere in the
+            // team, a channel it can't read included. The bytes are still stored once.
+            put("deduped", JsonPrimitive(false))
         }, UPLOAD_JSON, "Cache-Control" to "no-store")
     } catch (e: MediaError) {
         respondJson(uploadStatus.getValue(e.code), Wire.error(e.code, e.message), UPLOAD_JSON, "Cache-Control" to "no-store")

@@ -84,6 +84,11 @@ class Uploads(
         if (trimmed.isEmpty()) throw MediaError("invalid_argument", "filename is required")
         if (trimmed.length > FILENAME_MAX) throw MediaError("invalid_argument", "filename must be at most $FILENAME_MAX characters")
         if (trimmed.codePoints().anyMatch { it < 0x20 || it == 0x7f }) throw MediaError("invalid_argument", "filename contains control characters")
+        // Format characters (a right-to-left override, zero-width ones) can make a program's name
+        // read as a PDF's when it is saved: a name may hold none.
+        if (trimmed.codePoints().anyMatch { Character.getType(it) == Character.FORMAT.toInt() || it in 0x80..0x9f }) {
+            throw MediaError("invalid_argument", "filename contains invisible or text-direction characters")
+        }
         return trimmed
     }
 

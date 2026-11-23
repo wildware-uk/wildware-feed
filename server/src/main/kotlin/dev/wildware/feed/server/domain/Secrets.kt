@@ -529,7 +529,7 @@ class Secrets(
     fun sweep() {
         val now = clock()
         db.update(
-            "DELETE FROM secret_grants WHERE team_id = :team AND (used_at IS NULL AND expires_at <= ?) OR (used_at IS NOT NULL AND used_at <= ?)",
+            "DELETE FROM secret_grants WHERE team_id = :team AND ((used_at IS NULL AND expires_at <= ?) OR (used_at IS NOT NULL AND used_at <= ?))",
             now - SPENT_KEPT_MS, now - SPENT_KEPT_MS,
         )
     }

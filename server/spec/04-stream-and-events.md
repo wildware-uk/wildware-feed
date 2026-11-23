@@ -334,7 +334,9 @@ project, project_name, update_id, answered_at (ISO | null)`
 `reaction` — `agent.ts:519-531`:
 
 `type:"reaction", message_id, emoji, on, project, project_name, update_id,
-task_id, body` (message body, whitespace runs → one space, trimmed, first 160 chars).
+task_id, body` (message body, whitespace runs → one space, trimmed, first 160 chars), `author`
+(`human` or `agent:<id>`), `author_name` (the agent's name, else null) and `mine` (whether this agent
+wrote it), so the bridge never calls another agent's words "your message".
 
 ### 4.4 The three counts
 

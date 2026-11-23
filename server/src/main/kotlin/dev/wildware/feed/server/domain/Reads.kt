@@ -54,7 +54,9 @@ class Reads(private val db: Database, private val clock: () -> Long = System::cu
     /** `findProjectBySlug`: the exact slug, nothing else (device alert lists use this). */
     fun projectIdBySlug(slug: String): String? = projectRef("slug", slug)?.id
 
-    fun projectSlugsById(): Map<String, String> = db.query("SELECT id, slug FROM projects WHERE team_id = :team") { it.getString(1) to it.getString(2) }.toMap()
+    /** Every channel's slug by id, of those this work's viewer can read (a device's alert list names them). */
+    fun projectSlugsById(): Map<String, String> =
+        db.query("SELECT id, slug FROM projects WHERE team_id = :team${access.notHidden("id")}") { it.getString(1) to it.getString(2) }.toMap()
 
     fun listProjects(status: String? = null): List<JsonObject> = db.query(
         "SELECT ${Rows.PROJECT} FROM projects WHERE team_id = :team AND (? IS NULL OR status = ?)${access.notHidden("id")} ORDER BY ${Rows.PROJECT_ORDER}",

@@ -590,14 +590,21 @@ class Requests(
             }
             if (message == null || message[3] != null) throw notFound("no such message: $messageRef")
             val projectId = message[1] as String?
-            if (named != null && projectId != null && named.id != projectId) throw invalid("the message named belongs to a different project")
+            if (named != null && projectId != null && named.id != projectId) {
+                // One in a channel the asker can't read is missing, not "elsewhere" (spec/15).
+                ChannelAccess(db, clock).requireRead(projectId) { notFound("no such message: $messageRef") }
+                throw invalid("the message named belongs to a different project")
+            }
             return Anchor(projectId ?: named?.id, message[2] as String?, message[0] as String)
         }
         val updateRef = input.update?.jsTrim()
         if (updateRef.isNullOrEmpty()) return Anchor(named?.id, null, null)
         val update = db.one("SELECT id, project_id FROM updates WHERE team_id = :team AND id = ?", updateRef) { it.getString(1) to it.getString(2) }
             ?: throw notFound("no such update: $updateRef")
-        if (named != null && named.id != update.second) throw invalid("the update named belongs to a different project")
+        if (named != null && named.id != update.second) {
+            ChannelAccess(db, clock).requireRead(update.second) { notFound("no such update: $updateRef") }
+            throw invalid("the update named belongs to a different project")
+        }
         return Anchor(update.second, update.first, null)
     }
 

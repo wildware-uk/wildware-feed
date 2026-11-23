@@ -118,6 +118,8 @@ class Messages(private val feed: Feed) {
             else -> anchorProject(updateId) ?: answered?.projectId
         }
         if (anchored != null && namedProject != null && anchored != namedProject) {
+            // A card in a channel the author can't read is missing, not "elsewhere" (spec/15).
+            feed.access.requireRead(anchored) { notFound("no such project: ${input.updateId ?: input.replyTo ?: input.project ?: ""}") }
             throw invalid("that update, task or message belongs to a different project")
         }
         val projectId = anchored ?: namedProject

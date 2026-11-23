@@ -116,6 +116,19 @@ object TeamTables {
     }
 
     /**
+     * Whether the database login skips row security whatever the tables say: a superuser, or a role
+     * with BYPASSRLS. Then the policies do nothing, silently. False on SQLite.
+     */
+    fun loginSkipsRowSecurity(db: Database): Boolean {
+        if (db.dialect != Dialect.POSTGRES) return false
+        return db.withConnection { c ->
+            c.createStatement().use { st ->
+                st.executeQuery("SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname = current_user").use { it.next() && it.getBoolean(1) }
+            }
+        }
+    }
+
+    /**
      * Turn Postgres row security on or off for every team table. On: `ENABLE` and `FORCE` (the
      * database user owns the tables, and owners skip row security without `FORCE`), so a statement
      * sees only rows of the team the connection was told ([Database.rowSecurity]). Off: as before.

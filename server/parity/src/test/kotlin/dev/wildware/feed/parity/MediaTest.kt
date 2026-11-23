@@ -150,12 +150,13 @@ class MediaTest : ParityTest() {
     }
 
     @Test
-    fun `8 the same bytes twice are deduplicated`() = parity {
+    fun `8 the same bytes twice are stored once, and the answer never says so`() = parity {
         val bytes = Media.png(64, 64)
         val first = Media.reserve(alpha, "f.png", "image/png", bytes.size)
         assertEquals(false, Media.put(first["upload_url"].s, bytes, "image/png").obj()["deduped"].bool)
         val second = Media.reserve(alpha, "g.png", "image/png", bytes.size)
-        assertEquals(true, Media.put(second["upload_url"].s, bytes, "image/png").obj()["deduped"].bool)
+        // "true" would say the file is already somewhere in the team, a hidden channel included.
+        assertEquals(false, Media.put(second["upload_url"].s, bytes, "image/png").obj()["deduped"].bool)
     }
 
     @Test

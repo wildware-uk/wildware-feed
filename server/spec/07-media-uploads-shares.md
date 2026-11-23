@@ -363,7 +363,7 @@ Black-box, against both servers with the same `TOKEN_SECRET`, `PUBLIC_BASE_URL`,
 5. **Wrong type**: reserve `image/png`, PUT a zip → 415 `these bytes are "application/zip", and this upload was reserved for image/png. …`; PUT a 10-byte text file → `of no recognised type`. Reserve `image/png`, PUT an APNG → 415 `"image/apng"`.
 6. **CSRF**: PUT with `Content-Type: text/plain`, no `Origin` → 403 text `Cross-site PUT form submissions are forbidden`; token still usable.
 7. **File kind**: reserve `{mime:"text/plain", filename:"ü \"x\".txt"}`, PUT as `application/octet-stream` → 201 `kind:"file"`; after attach, `GET /media/<id>/original` → `content-type: application/octet-stream`, `content-disposition: attachment; filename="_ _x_.txt"; filename*=UTF-8''%C3%BC%20%22x%22.txt`; `GET …/thumb-640` → 404.
-8. **Dedup**: upload the same PNG bytes to two reservations → second 201 `deduped:true`; both originals share an inode.
+8. **Dedup**: upload the same PNG bytes to two reservations → both originals share an inode, and the second 201 still says `deduped:false`: the answer never tells an uploader the file is already somewhere in the team.
 9. **Serve headers**: owner GET original → 200 with all 8 headers byte-exact; `If-None-Match: "<sha>-original"` → 304 no `content-length`; `W/"<sha>-original"` → 304; `*` → 304.
 10. **Range**: `bytes=0-9` → 206, `content-range: bytes 0-9/<size>`, 10 bytes; `bytes=5-` → to end; `bytes=-4` → last 4; `bytes=<size>-` → 416 `content-range: bytes */<size>`; `bytes=5-2` → 416; `bytes=0-1,4-5` → 200 whole; `Bytes=0-1` → 200 whole.
 11. **404 matrix**: bad ULID, unknown id, unknown variant, `thumb-640` on a still-pending image, a `failed` media's original → all `404 {"error":"not_found"}` with `cache-control: no-store`.

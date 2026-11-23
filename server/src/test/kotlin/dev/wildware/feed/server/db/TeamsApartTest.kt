@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Assumptions.assumeTrue
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFails
+import kotlin.test.assertFalse
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
@@ -191,5 +192,13 @@ class TeamsApartTest {
             db.run072()
             assertEquals(TeamTables.ALL, TeamTables.notForced(db), "off stays off")
         }
+    }
+
+    @Test
+    fun `the server can tell a database login that skips row security`() {
+        Database.sqliteMemory().use { assertFalse(TeamTables.loginSkipsRowSecurity(it)) }
+        assumeTrue(!System.getenv("PG_TEST_URL").isNullOrBlank(), "PG_TEST_URL not set")
+        // The tests' own role is made NOSUPERUSER NOBYPASSRLS, as a production login must be.
+        Database.memory().use { db -> assertFalse(TeamTables.loginSkipsRowSecurity(db)) }
     }
 }

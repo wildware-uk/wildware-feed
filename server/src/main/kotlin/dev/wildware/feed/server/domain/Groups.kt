@@ -110,7 +110,8 @@ class Groups(private val feed: Feed) {
         db.update("DELETE FROM group_subscriptions WHERE team_id = :team AND group_id = ?", group.id)
         db.update("DELETE FROM project_groups WHERE team_id = :team AND id = ?", group.id)
         for ((id, slug) in channels) feed.publish("project.updated", buildJsonObject { put("projectId", id); put("slug", slug) })
-        changed("group.deleted", group)
+        // Only its id: once the row is gone nothing can tell who could see it, so no slug goes out.
+        feed.publish("group.deleted", buildJsonObject { put("groupId", group.id) })
         group
     }
 

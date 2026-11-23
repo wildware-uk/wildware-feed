@@ -30,4 +30,16 @@ class UploadsTest {
             assertNull(nameOf("chart.png", "image/png"))
         }
     }
+
+    @Test
+    fun `a name with text-direction or invisible characters is refused`() {
+        App(config, Database.memory()).use { app ->
+            val (agent, _) = app.agents.mint("scout")
+            for (name in listOf("Q3 report\u202Efdp.exe", "a\u200Bb.pdf", "x\u2066y.txt", "c\u0085d.txt")) {
+                val e = kotlin.test.assertFailsWith<MediaError>(name) { app.uploads.reserve(agent.id, name, "application/pdf", 10) }
+                assertEquals("invalid_argument", e.code)
+            }
+            app.uploads.reserve(agent.id, "Résumé – final.pdf", "application/pdf", 10)
+        }
+    }
 }

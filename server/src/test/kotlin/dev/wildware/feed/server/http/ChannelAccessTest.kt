@@ -456,6 +456,58 @@ class ChannelAccessTest {
         assertEquals(200, client.call(adminKey, "PATCH", "/api/projects/web", """{"slug":"webby"}""").status.value)
     }
 
+    @Test
+    fun `a card in a hidden channel is missing, not "in a different project"`() = withTeam { client ->
+        channels(client)
+        val card = app.db.one("SELECT id FROM updates WHERE team_id = :team AND project_id = ?", app.feed.projects.resolve("secret").id) { it.getString(1) }!!
+        // Sam chose alerts from both channels while he could see them.
+        val secretId = app.feed.projects.resolve("secret").id
+        val webId = app.feed.projects.resolve("web").id
+        app.db.update("UPDATE owner_devices SET alert_project_ids = ? WHERE team_id = :team AND user_id = ?", """["$webId","$secretId"]""", sam.id)
+        client.json(ownerKey, "PUT", "/api/projects/secret/access", """{"private":true}""")
+        val r = client.call(samKey, "POST", "/api/messages", """{"project":"web","update":"$card","body":"hi"}""")
+        assertEquals(404, r.status.value, r.bodyAsText())
+        assertEquals("not_found", client.tool(otherToken, "request_input", buildJsonObject {
+            put("kind", "confirm"); put("question", "q?"); put("project", "web"); put("update", card)
+        }).error())
+        // Sam's devices list names no channel he can't see, even one he once chose alerts for.
+        val devices = client.call(samKey, "GET", "/api/devices").bodyAsText()
+        assertTrue("\"web\"" in devices, devices)
+        assertFalse("secret" in devices, devices)
+    }
+
+    @Test
+    fun `a picture sent with feedback stays with it`() = withTeam { client ->
+        channels(client)
+        val picture = upload(client, rinKey)
+        client.json(rinKey, "POST", "/api/feedback", """{"kind":"feedback","title":"Look","body":"words","mediaIds":["$picture"]}""", status = 201)
+        // "human" is everyone on the team: Sam must not be able to take Rin's picture onto his post.
+        val taken = client.call(samKey, "POST", "/api/messages", """{"project":"web","body":"mine now","mediaIds":["$picture"]}""")
+        assertEquals(400, taken.status.value, taken.bodyAsText())
+        assertTrue("sent with feedback" in taken.bodyAsText())
+    }
+
+    @Test
+    fun `a new password signs out every other device of the account`() = withTeam { client ->
+        val other = app.devices.mint("Sam laptop", sam.id).second
+        assertEquals(200, client.call(other, "GET", "/api/me").status.value)
+        client.json(samKey, "PATCH", "/api/me", """{"password":"a new password for sam","currentPassword":"password for Sam"}""")
+        assertEquals(401, client.call(other, "GET", "/api/me").status.value, "the other device is signed out")
+        assertEquals(200, client.call(samKey, "GET", "/api/me").status.value, "the one that changed it stays")
+        assertEquals(200, client.call(rinKey, "GET", "/api/me").status.value, "nobody else's")
+    }
+
+    @Test
+    fun `a project's deletion says only its id`() = withTeam { client ->
+        val events = mutableListOf<dev.wildware.feed.server.events.AppEvent>()
+        val stop = app.bus.subscribe { events += it }
+        client.json(ownerKey, "POST", "/api/groups", """{"name":"Hidden plans","slug":"hidden-plans"}""", status = 201)
+        client.json(ownerKey, "DELETE", "/api/groups/hidden-plans")
+        stop()
+        val deleted = events.single { it.type == "group.deleted" }
+        assertFalse("hidden-plans" in deleted.payload.toString(), deleted.payload.toString())
+    }
+
     private suspend fun upload(client: HttpClient, key: String): String {
         val image = BufferedImage(3, 3, BufferedImage.TYPE_INT_RGB).apply { setRGB(1, 1, (Math.random() * 0xFFFFFF).toInt()) }
         val bytes = ByteArrayOutputStream().also { ImageIO.write(image, "png", it) }.toByteArray()

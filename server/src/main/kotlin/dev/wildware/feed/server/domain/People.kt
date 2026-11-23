@@ -360,6 +360,22 @@ class People(
         return agents
     }
 
+    /**
+     * Signs [me]'s account out on every device but [keepDeviceId], in every team it is in: after a
+     * password change, a key someone else holds must stop working too. The ids gone, by team.
+     */
+    fun signOutOtherDevices(me: Person, keepDeviceId: String): Map<String, List<String>> = Tenant.allTeams {
+        db.transaction { _ ->
+            val gone = db.query(
+                "SELECT d.team_id, d.id FROM owner_devices AS d JOIN memberships AS m ON m.team_id = d.team_id AND m.id = d.user_id " +
+                    "WHERE m.user_id = ? AND d.id <> ?",
+                me.accountId, keepDeviceId,
+            ) { it.getString(1) to it.getString(2) }
+            for ((team, id) in gone) db.update("DELETE FROM owner_devices WHERE team_id = ? AND id = ?", team, id)
+            gone.groupBy({ it.first }, { it.second })
+        }
+    }
+
     private fun eraseAccount(accountId: String): DeletedAccount {
         data class Membership(val id: String, val team: String, val role: String, val teamName: String)
         val memberships = db.query(

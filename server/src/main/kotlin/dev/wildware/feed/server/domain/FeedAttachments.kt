@@ -50,10 +50,10 @@ object FeedAttachments {
     class CheckedApp(val appId: String, val data: String, val title: String?)
     class AppViewRef(val id: String, val uri: String, val title: String?)
 
-    private class MediaRow(val agentId: String?, val author: String, val anchors: List<String?>, val sha256: String)
+    private class MediaRow(val agentId: String?, val author: String, val anchors: List<String?>, val sha256: String, val feedbackId: String?)
 
-    private fun media(db: Database, id: String) = db.one("SELECT agent_id, author, update_id, message_id, request_id, sha256 FROM media WHERE team_id = :team AND id = ?", id) {
-        MediaRow(it.getString(1), it.getString(2), listOf(it.getString(3), it.getString(4), it.getString(5)), it.getString(6))
+    private fun media(db: Database, id: String) = db.one("SELECT agent_id, author, update_id, message_id, request_id, sha256, feedback_id FROM media WHERE team_id = :team AND id = ?", id) {
+        MediaRow(it.getString(1), it.getString(2), listOf(it.getString(3), it.getString(4), it.getString(5)), it.getString(6), it.getString(7))
     }
 
     /** `checkedMediaIds`: de-duplicated, at most 24, each id-shaped. */
@@ -72,6 +72,8 @@ object FeedAttachments {
             val row = media(db, id) ?: throw notFound("no such media: $id")
             if (row.agentId != agentId) throw invalid("media $id belongs to another agent")
             if (row.anchors[0] != null) throw invalid("media $id is already on another update")
+            // Sent with feedback, it stays with it: nobody can move it onto a card, or delete it with one.
+            if (row.feedbackId != null) throw invalid("media $id was sent with feedback")
             if (row.sha256.isEmpty()) throw invalid("media $id has no bytes yet: PUT the file to its upload_url first")
         }
         return unique
@@ -90,6 +92,8 @@ object FeedAttachments {
                 else -> null
             }
             if (on != null) throw invalid("media $id is already on $on")
+            // "human" is every person on the team: a picture someone sent with feedback is theirs alone.
+            if (row.feedbackId != null) throw invalid("media $id was sent with feedback")
             if (row.sha256.isEmpty()) throw invalid("media $id has no bytes yet: upload the file first")
         }
         return unique

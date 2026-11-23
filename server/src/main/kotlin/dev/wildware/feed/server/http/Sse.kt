@@ -170,7 +170,9 @@ class SseContent(
                     var stuckMs = 0L
                     while (true) {
                         delay(checkEveryMs)
-                        if (stillAllowed != null && !runCatching(stillAllowed).getOrDefault(true)) abort("no longer allowed")
+                        // A check that fails can't say the key still works: end the stream, and the
+                        // client reconnects, signing in again, as after any drop.
+                        if (stillAllowed != null && !runCatching(stillAllowed).getOrDefault(false)) abort("no longer allowed")
                         val w = written.get()
                         stuckMs = if (w == lastWritten && queued.get() > 0) stuckMs + checkEveryMs else 0
                         lastWritten = w

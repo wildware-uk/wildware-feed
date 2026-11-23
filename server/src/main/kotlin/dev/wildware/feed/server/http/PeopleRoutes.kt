@@ -59,6 +59,14 @@ fun Route.peopleRoutes(app: App) {
                 update()
             }
             if ("name" in body) changed()
+            // A new password signs out every other device: a key someone else holds stops working too.
+            if ("password" in body) {
+                for ((team, devices) in app.people.signOutOtherDevices(me, call.caller.device.id)) {
+                    dev.wildware.feed.server.db.Tenant.with(team) {
+                        for (id in devices) app.bus.publish("device.revoked", buildJsonObject { put("deviceId", id) })
+                    }
+                }
+            }
             call.respondOwner(200, buildJsonObject { put("person", personView(me, email = true)) })
         },
         HttpMethod.Delete to {

@@ -36,6 +36,12 @@ class App(val config: Config, val db: Database, val clock: () -> Long = System::
         // With many teams, work that forgot to say its team fails, rather than landing in the home
         // team. (Config.load refuses many teams without Postgres.)
         if (config.multiTeam) dev.wildware.feed.server.db.Tenant.strict = true
+        // Row security is the second lock between teams; a login that skips it turns it off silently.
+        if (config.rowSecurity == true && dev.wildware.feed.server.db.TeamTables.loginSkipsRowSecurity(db)) {
+            val problem = "the database login is a superuser or has BYPASSRLS, so row security does nothing: connect as a role without either"
+            check(!config.multiTeam) { "Refusing to start with many teams: $problem." }
+            System.err.println("WARNING: $problem.")
+        }
         // An app's csp may name none of this server's own addresses: the home team's, or any team's.
         dev.wildware.feed.server.domain.Apps.ownOrigins = listOf(config.origin, config.publicBaseUrl)
             .mapNotNull { dev.wildware.feed.server.domain.WebUrl.parse(it)?.origin }.toSet()

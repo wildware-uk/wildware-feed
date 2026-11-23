@@ -345,6 +345,16 @@ private fun reactionFrame(app: App, agentId: String, within: List<String>?, payl
         put("update_id", str(m.updateId))
         put("task_id", str(m.taskId))
         put("body", JsonPrimitive(m.body.replace(Regex("\\s+"), " ").trim().take(160)))
+        // Who wrote the message reacted on: this agent's own, a person's, or another agent's. The
+        // bridge must never call another agent's words "your message".
+        put("author", JsonPrimitive(m.author))
+        val authorName = if (m.author.startsWith("agent:")) {
+            app.db.one("SELECT name FROM agents WHERE team_id = :team AND id = ?", m.author.removePrefix("agent:")) { it.getString(1) }
+        } else {
+            null
+        }
+        put("author_name", authorName?.let(::JsonPrimitive) ?: JsonNull)
+        put("mine", JsonPrimitive(m.author == mine))
         // On a team, who reacted (migration 055).
         val by = (payload["userId"] as? JsonPrimitive)?.content ?: dev.wildware.feed.server.domain.People.FOUNDER
         dev.wildware.feed.server.domain.People.teamName(app.db, by)?.let { who ->
