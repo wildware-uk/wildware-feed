@@ -319,14 +319,14 @@ class StreamTest : ParityTest() {
             stream.awaitEvent("work")
             owner.post("/api/messages/$line/reactions", obj("emoji" to "👍", "on" to true))
             val on = stream.awaitEvent("reaction").obj
-            assertEquals(
-                listOf("type", "message_id", "emoji", "on", "project", "project_name", "update_id", "task_id", "body", "author", "author_name", "mine"),
-                on.keys.toList(),
-            )
+            // The Kotlin server also says who wrote the line, so the bridge never calls another agent's words "yours".
+            val whose = if (Parity.kotlin) listOf("author", "author_name", "mine") else emptyList()
+            assertEquals(listOf("type", "message_id", "emoji", "on", "project", "project_name", "update_id", "task_id", "body") + whose, on.keys.toList())
             assertEquals(true, on["on"].bool)
-            // Who wrote the line reacted on, so the bridge never calls another agent's words "yours".
-            assertEquals(true, on["mine"].bool)
-            assertTrue(on["author"].s.startsWith("agent:"))
+            if (Parity.kotlin) {
+                assertEquals(true, on["mine"].bool)
+                assertTrue(on["author"].s.startsWith("agent:"))
+            }
             assertEquals("did the thing", on["body"].s)
             owner.post("/api/messages/$line/reactions", obj("emoji" to "👍", "on" to false))
             assertEquals(false, stream.awaitEvent("reaction").obj["on"].bool)
