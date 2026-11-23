@@ -154,5 +154,11 @@
   "name": "row-security-on-newer-tables",
   "file": "072-row-security-on-newer-tables.sql",
   "checksum": "4cdad9807c49b4cd7248de31204ad5db5330fa1f09c615b58b13ef3862f6cf60"
+ },
+ {
+  "version": 73,
+  "name": "agents-know-who-let-them-in",
+  "file": "073-agents-know-who-let-them-in.sql",
+  "checksum": "d1c6abc08740a20071536004764f99b9bf3e1b6aa3290f04fdff6073263fa897"
  }
 ]

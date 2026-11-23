@@ -33,6 +33,14 @@ private object AccountLog {
 fun Route.peopleRoutes(app: App) {
     fun changed() = app.bus.publish("people.updated", buildJsonObject { put("count", app.people.activeCount()) })
 
+    /** Agents revoked with the person who let them in: their sessions end, and the apps hear it. */
+    fun agentsRevoked(ids: List<String>) {
+        for (id in ids) {
+            app.sessions.endAll(id)
+            app.bus.publish("agent.revoked", buildJsonObject { put("agentId", id) })
+        }
+    }
+
     endpoint(
         "/api/me",
         HttpMethod.Get to {
@@ -65,6 +73,7 @@ fun Route.peopleRoutes(app: App) {
             for ((team, devices) in gone.devicesByTeam) {
                 dev.wildware.feed.server.db.Tenant.with(team) {
                     for (id in devices) app.bus.publish("device.revoked", buildJsonObject { put("deviceId", id) })
+                    agentsRevoked(gone.agentsByTeam[team].orEmpty())
                     changed()
                 }
             }
@@ -102,12 +111,16 @@ fun Route.peopleRoutes(app: App) {
             val body = call.jsonObjectBody()
             if (body.keys.toList() != listOf("role")) throw invalid("a change to a person sets role and nothing else")
             val role = People.Role.of(body["role"].jsString) ?: throw invalid("role must be owner, admin or member")
+            val letIn = app.agents.letInBy(call.parameters["id"] ?: "")
             val person = app.people.setRole(call.person, call.parameters["id"] ?: "", role)
+            if (person.role.rank < People.Role.ADMIN.rank) agentsRevoked(letIn)
             changed()
             call.respondOwner(200, buildJsonObject { put("person", personView(person, email = true)) })
         },
         HttpMethod.Delete to {
+            val letIn = app.agents.letInBy(call.parameters["id"] ?: "")
             val (person, devices) = app.people.remove(call.person, call.parameters["id"] ?: "")
+            agentsRevoked(letIn)
             for (id in devices) app.bus.publish("device.revoked", buildJsonObject { put("deviceId", id) })
             changed()
             call.respondOwner(200, buildJsonObject { put("person", personView(person, email = true)) })

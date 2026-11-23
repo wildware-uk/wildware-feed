@@ -12,16 +12,21 @@ class Agents(private val db: Database, private val tokenSecret: String, private 
     /** Why a bearer was refused, with the TS server's code and message. */
     data class Refusal(val code: String, val message: String)
 
-    fun mint(name: String): Pair<Agent, String> {
+    /** A new agent and its token. [createdBy] is the membership id of the person letting it in, if a person is. */
+    fun mint(name: String, createdBy: String? = null): Pair<Agent, String> {
         val clean = checkName(name)
         val token = Tokens.random()
         val agent = Agent(Ulid.next(), clean, clock(), null, null)
         db.update(
-            "INSERT INTO agents (team_id, id, name, token_hash, created_at) VALUES (:team, ?, ?, ?, ?)",
-            agent.id, agent.name, Tokens.hash(token, tokenSecret), agent.createdAt,
+            "INSERT INTO agents (team_id, id, name, token_hash, created_at, created_by) VALUES (:team, ?, ?, ?, ?, ?)",
+            agent.id, agent.name, Tokens.hash(token, tokenSecret), agent.createdAt, createdBy,
         )
         return agent to token
     }
+
+    /** The live agents [membershipId] let in: what removing them revokes ([People.remove]). */
+    fun letInBy(membershipId: String): List<String> =
+        db.query("SELECT id FROM agents WHERE team_id = :team AND created_by = ? AND revoked_at IS NULL", membershipId) { it.getString(1) }
 
     fun list(includeRevoked: Boolean): List<Agent> = db.query(
         "SELECT * FROM agents WHERE team_id = :team ${if (includeRevoked) "" else "AND revoked_at IS NULL"} ORDER BY seq",

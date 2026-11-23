@@ -502,5 +502,12 @@
   "file": "072-row-security-on-newer-tables.sql",
   "rebuildsTables": false,
   "checksum": "07dba67af2faaf557f463cfcae6d425acd812857d81867ae71c731185bd6bdf0"
+ },
+ {
+  "version": 73,
+  "name": "agents-know-who-let-them-in",
+  "file": "073-agents-know-who-let-them-in.sql",
+  "rebuildsTables": false,
+  "checksum": "cd3c8e69105bcad2f3d3a82d97436f2598c59d16470b9715c63113b82eea6035"
  }
 ]
