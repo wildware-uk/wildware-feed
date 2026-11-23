@@ -517,6 +517,7 @@ class MappingTest {
                 media("img", "image", listOf("original", "thumb-1600"), mime = "image/png"),
                 media("vid", "video", listOf("original", "poster", "video"), filename = "Screen recording", mime = "video/quicktime"),
                 media("gone", "image", emptyList(), mime = "image/jpeg", removed = true),
+                media("hta", "video", listOf("original", "poster", "video"), filename = "clip.hta", mime = "video/mp4"),
             )))
         }
         val tiles = (mapper.map(feed(listOf(card)), listOf(mega), emptyList(), emptyList(), null).sections.single().items.single() as FeedItem.Update).attachments
@@ -530,6 +531,8 @@ class MappingTest {
         assertEquals("https://dash.test/media/vid/video", tiles[1].video?.url)
         assertEquals(FileAttachment("vid", "https://dash.test/media/vid/original?download=1", "Screen recording.mov", "2.0 KB", "video/quicktime"), tiles[1].saveable)
         assertEquals(null, tiles[2].saveable, "removed by retention: nothing to save")
+        // Saved under the extension of its checked type, never the one it was sent with.
+        assertEquals("clip.mp4", tiles[3].saveable?.name)
     }
 
     @Test

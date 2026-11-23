@@ -631,12 +631,11 @@ internal class FeedMapper(
         if ("original" !in media.variants) return null
         val kind = if (media.kind == "video") "video" else "image"
         val ext = MediaLabels.extension(media.mime, media.mime.substringAfter('/', "bin").substringBefore(';').trim())
-        val given = media.filename?.trim()?.takeIf { it.isNotEmpty() }
-        val name = when {
-            given == null -> "$kind.$ext"
-            '.' in given.substringAfterLast('/') -> given
-            else -> "$given.$ext"
-        }
+        // Its own name with the extension of the type its bytes were checked to be, as the server
+        // names it: a video called clip.hta saves as clip.mp4, never as something that would run.
+        val given = media.filename?.trim()?.substringAfterLast('/')?.substringAfterLast('\\')?.takeIf { it.isNotEmpty() }
+        val stem = given?.let { if ('.' in it) it.substringBeforeLast('.') else it }?.trimEnd('.', ' ')?.takeIf { it.isNotEmpty() }
+        val name = "${stem ?: kind}.$ext"
         return FileAttachment(media.id, url(media, "original") + "?download=1", name, MediaLabels.size(media.bytes), media.mime)
     }
 

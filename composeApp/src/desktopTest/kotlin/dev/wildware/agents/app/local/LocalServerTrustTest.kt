@@ -130,6 +130,25 @@ class LocalServerTrustTest {
     }
 
     @Test
+    fun `the video proxy and the sound downloader don't send the key to a look-alike either`() = runBlocking {
+        val port = LocalServer.freePort(47000 + (Math.random() * 1000).toInt())
+        val host = LocalServer(dir, port)
+        val signed = host.signInHere("Laptop")
+        host.stop()
+        val lookAlike = LookAlike(port).also { closers += it::close }
+        LocalServerGuard.host = host
+        closers += { LocalServerGuard.host = null }
+        val headers = mapOf(HttpHeaders.Authorization to "Bearer ${signed.token}")
+        val media = "${signed.server}/media/01ARZ3NDEKTSV4RRFFQ69G5FAV/original"
+
+        val proxy = dev.wildware.agents.app.feed.LoopbackMediaProxy().also { closers += it::close }
+        val played = java.net.URI(proxy.urlFor(media, headers, "clip.mp4")).toURL().openConnection() as java.net.HttpURLConnection
+        assertEquals(502, played.responseCode)
+        assertFailsWith<IOException> { dev.wildware.agents.app.feed.SoundDownloads.fetch(media, headers) }
+        assertEquals(0, lookAlike.withKey, "a request carrying the key reached the other program: ${lookAlike.heads.map { it.first() }}")
+    }
+
+    @Test
     fun `when the server on this computer can't start the feed stays shut until it can`() = runBlocking {
         val server = FakeServer().also { closers += it::close }
         val problem = "The server on this computer couldn't start: its port is in use."

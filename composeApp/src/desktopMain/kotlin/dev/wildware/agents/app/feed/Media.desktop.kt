@@ -348,7 +348,8 @@ actual fun rememberSoundPlayer(sound: Sound, auth: MediaAuth?): SoundPlayer? {
 
 /** Fetches a sound whole: they are short, and a decoder wants to see all of it. */
 internal object SoundDownloads {
-    private val http by lazy { okhttp3.OkHttpClient.Builder().readTimeout(60, java.util.concurrent.TimeUnit.SECONDS).build() }
+    // The key goes with each request: the app's own server must prove it is this app's first.
+    private val http by lazy { dev.wildware.agents.app.local.desktopOkHttp(okhttp3.OkHttpClient.Builder().readTimeout(60, java.util.concurrent.TimeUnit.SECONDS)) }
 
     /** Bigger than this is no sound to play on a card (a 2-hour MP3 at 128 kbit/s is about 115 MB). */
     private const val MaxBytes = 128L * 1024 * 1024
@@ -391,8 +392,14 @@ class DesktopMediaHandler(
     private val clipboard: (Transferable) -> Unit = { java.awt.Toolkit.getDefaultToolkit().systemClipboard.setContents(it, null) },
     /** Opens a picture in the computer's own picture viewer ([SavedFiles.open]). */
     private val openFile: (File) -> Boolean = { SavedFiles.open(it) },
-    /** Where a picture opened elsewhere is kept while it is looked at. */
-    private val pictures: File = File(System.getProperty("java.io.tmpdir"), "wildware-feed-pictures"),
+    /**
+     * Where a picture opened elsewhere is kept while it is looked at: a folder of this app's own,
+     * made new with a random name and only this user's to open, never a fixed name in the shared
+     * temporary folder that another user on the computer could make first.
+     */
+    private val pictures: Lazy<File> = lazy {
+        java.nio.file.Files.createTempDirectory("wildware-feed-pictures").toFile().also { dev.wildware.agents.app.session.privateTo(it, directory = true) }
+    },
 ) : MediaHandler {
     override suspend fun open(item: Playable, auth: MediaAuth?): String = "Plays in the app"
 
@@ -442,8 +449,8 @@ class DesktopMediaHandler(
         val bytes = fetch(url, auth)
         withContext(Dispatchers.Default) { PictureBytes.toBufferedImage(bytes) } ?: error("it isn't a picture this computer can read")
         val target = withContext(Dispatchers.IO) {
-            pictures.mkdirs()
-            File(pictures, "picture-${Integer.toHexString(url.hashCode())}.$ext").also { it.writeBytes(bytes) }
+            val folder = pictures.value.apply { mkdirs() }
+            File(folder, "picture-${Integer.toHexString(url.hashCode())}.$ext").also { it.writeBytes(bytes) }
         }
         return if (openFile(target)) "Opened in your picture viewer" else "Couldn't open a picture viewer"
     }
@@ -537,16 +544,22 @@ internal object PictureBytes {
         else -> null
     }
 
-    /** [bytes] decoded (PNG, JPEG, GIF, WebP and more, through Skia) as an image for the clipboard; null when it isn't one. */
+    /** The most pixels a picture to copy or open may have: a small file can claim a vast picture, and decoding it would run out of memory. */
+    const val MaxPixels = 50_000_000L
+
+    /**
+     * [bytes] decoded (PNG, JPEG, GIF, WebP and more, through Skia) as an image for the clipboard;
+     * null when it isn't one. One of more than [MaxPixels] is refused before it is decoded.
+     */
     fun toBufferedImage(bytes: ByteArray): BufferedImage? {
-        val png = runCatching {
-            val image = org.jetbrains.skia.Image.makeFromEncoded(bytes)
-            try {
-                image.encodeToData(org.jetbrains.skia.EncodedImageFormat.PNG)?.bytes
-            } finally {
-                image.close()
-            }
-        }.getOrNull() ?: return null
-        return javax.imageio.ImageIO.read(java.io.ByteArrayInputStream(png))
+        val image = runCatching { org.jetbrains.skia.Image.makeFromEncoded(bytes) }.getOrNull() ?: return null
+        val png = try {
+            // Skia reads the size from the header; the pixels are only decoded when encoded below.
+            if (image.width.toLong() * image.height.toLong() > MaxPixels) error("it is too big to copy or open")
+            runCatching { image.encodeToData(org.jetbrains.skia.EncodedImageFormat.PNG)?.bytes }.getOrNull()
+        } finally {
+            image.close()
+        }
+        return png?.let { javax.imageio.ImageIO.read(java.io.ByteArrayInputStream(it)) }
     }
 }

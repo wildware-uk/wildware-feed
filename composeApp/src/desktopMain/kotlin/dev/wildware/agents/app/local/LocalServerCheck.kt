@@ -45,3 +45,26 @@ class LocalServerCheck(private val host: LocalServer) : Interceptor {
 fun desktopHttpEngine(host: LocalServer?): HttpClientEngine = OkHttp.create {
     if (host != null) addInterceptor(LocalServerCheck(host))
 }
+
+/**
+ * The server this app runs itself, once the app has set it up. Clients made outside the main one
+ * (the video proxy, the sound downloader) check it through [desktopOkHttp], so none of them sends a
+ * key to whatever else is listening at its address.
+ */
+object LocalServerGuard {
+    @Volatile var host: LocalServer? = null
+}
+
+/**
+ * An OkHttp client for a request that carries a key: [LocalServerCheck] in front of this app's own
+ * server ([LocalServerGuard.host], looked up at each request, so a client made before the server
+ * still checks it).
+ */
+fun desktopOkHttp(builder: okhttp3.OkHttpClient.Builder = okhttp3.OkHttpClient.Builder()): okhttp3.OkHttpClient {
+    var checker: Pair<LocalServer, LocalServerCheck>? = null
+    return builder.addInterceptor(Interceptor { chain ->
+        val host = LocalServerGuard.host ?: return@Interceptor chain.proceed(chain.request())
+        val check = checker?.takeIf { it.first === host }?.second ?: LocalServerCheck(host).also { checker = host to it }
+        check.intercept(chain)
+    }).build()
+}

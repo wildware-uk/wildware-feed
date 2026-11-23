@@ -176,5 +176,6 @@ private fun localServer(dir: File): dev.wildware.agents.app.local.LocalServer {
     privateTo(serverDir, directory = true)
     val host = dev.wildware.agents.app.local.LocalServer(serverDir, writePrivately = ::writePrivately)
     Runtime.getRuntime().addShutdownHook(Thread { kotlinx.coroutines.runBlocking { host.stop() } })
+    dev.wildware.agents.app.local.LocalServerGuard.host = host
     return host
 }

@@ -24,7 +24,8 @@ import java.util.concurrent.TimeUnit
  * comes, so scrubbing seeks instead of downloading, and nothing is written to disk.
  */
 class LoopbackMediaProxy(
-    private val http: OkHttpClient = OkHttpClient.Builder().readTimeout(60, TimeUnit.SECONDS).build(),
+    // The key goes with each request: the app's own server must prove it is this app's first.
+    private val http: OkHttpClient = dev.wildware.agents.app.local.desktopOkHttp(OkHttpClient.Builder().readTimeout(60, TimeUnit.SECONDS)),
 ) : AutoCloseable {
     private class Target(val url: String, val headers: Map<String, String>)
 
