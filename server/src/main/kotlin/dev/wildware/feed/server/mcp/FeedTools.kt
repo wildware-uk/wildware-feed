@@ -23,6 +23,7 @@ import dev.wildware.feed.server.domain.ThreadReads
 import dev.wildware.feed.server.domain.UpdateRow
 import dev.wildware.feed.server.domain.Updates
 import dev.wildware.feed.server.domain.feed
+import dev.wildware.feed.server.domain.mayReadCard
 import dev.wildware.feed.server.domain.jsBoolean
 import dev.wildware.feed.server.domain.jsNumber
 import dev.wildware.feed.server.domain.jsString
@@ -235,7 +236,8 @@ fun ToolRegistry.registerFeedTools(app: App) {
         val card = call.anyCard()
         // A deleted card's fields went with it: none, as for a card that never was.
         // A card in a channel the agent can't read has none either (spec/15).
-        val live = app.feed.cards.find(card).let { it != null && it.deletedAt == null }
+        // Nor does a message addressed only to other agents (spec/02 §7.7).
+        val live = app.feed.cards.find(card).let { it != null && it.deletedAt == null } && app.feed.mayReadCard(call.agent.id, card)
         val fields = if (live) app.feed.fields.on(card) else emptyList()
         val summary = if (fields.isEmpty()) {
             "Nothing noted on that card yet."

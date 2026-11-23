@@ -35,6 +35,9 @@ fun Route.mediaRoutes(app: App) {
         // A file on a card in a channel this person can't read is missing (spec/15).
         val card = app.db.mediaCard(id)
         if (card != null && app.feed.cards.find(card) == null) return@to call.mediaMiss()
+        // A file sent with feedback is for those who may see that feedback (spec/14, spec/15).
+        val feedbackId = app.db.mediaFeedback(id)
+        if (feedbackId != null && app.feedback.find(feedbackId)?.let(app.feedback::readable) != true) return@to call.mediaMiss()
         call.serveMedia(app, id, call.parameters["variant"].orEmpty(), save = save)
     })
     endpoint("/api/agent/media/{id}", HttpMethod.Get to {
@@ -135,6 +138,10 @@ private fun dev.wildware.feed.server.db.Database.mediaCard(id: String): CardRef?
 ) { rs ->
     rs.getString(1)?.let { CardRef("update", it) } ?: rs.getString(2)?.let { CardRef("message", it) } ?: rs.getString(3)?.let { CardRef("request", it) }
 }
+
+/** The feedback a file was sent with, or null. */
+private fun dev.wildware.feed.server.db.Database.mediaFeedback(id: String): String? =
+    one("SELECT feedback_id FROM media WHERE team_id = :team AND id = ?", id) { it.getString(1) }
 
 private suspend fun ApplicationCall.mediaMiss() =
     respondJson(404, JsonObject(mapOf("error" to JsonPrimitive("not_found"))), UPLOAD_JSON, "Cache-Control" to "no-store")

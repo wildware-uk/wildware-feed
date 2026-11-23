@@ -254,6 +254,17 @@ class TeamLeakTest {
     }
 
     /** A body naming B's things under every name a route or tool might read. */
+    /** [a] with only one card named (update, message or request), as a card tool takes one. */
+    private fun onlyCard(a: JsonObject, kind: String): JsonObject {
+        val keys = mapOf(
+            "update" to setOf("update_id", "updateId", "id"),
+            "message" to setOf("message_id", "messageId", "answers"),
+            "request" to setOf("request_id", "requestId"),
+        )
+        val drop = keys.filterKeys { it != kind }.values.flatten().toSet()
+        return JsonObject(a.filterKeys { it !in drop })
+    }
+
     private fun bodyAt(b: Map<String, List<String>>, i: Int): JsonObject {
         fun pick(kind: String) = b[kind].orEmpty().let { if (it.isEmpty()) "x" else it[i % it.size] }
         return buildJsonObject {
@@ -326,10 +337,17 @@ class TeamLeakTest {
                 val tools = Wire.json.parseToJsonElement(javaClass.getResource("/mcp/tools-list.json")!!.readText()) as JsonArray
                 for (t in tools) {
                     val name = t.jsonObject["name"]!!.jsonPrimitive.content
-                    for (i in 0 until 3) {
-                        val args = bodyAt(b, i)
+                    // Every card at once (which a card tool refuses before anything else), each kind of
+                    // card alone, and nothing at all (a list tool's "everything").
+                    val tries = (0 until 3).flatMap { i -> listOf(bodyAt(b, i)) + listOf("update", "message", "request").map { onlyCard(bodyAt(b, i), it) } } +
+                        listOf(JsonObject(emptyMap()))
+                    for (args in tries) {
+                        // Far more calls than an agent or a team may make in a minute: a refusal for that proves nothing.
+                        app.mcpLimiter.reset(alpha.agentId)
+                        app.teamMcpLimiter.reset(alpha.id)
                         val answer = kotlinx.coroutines.withTimeoutOrNull(5_000) { tool(alpha, alpha.agentToken, name, args) }
                             ?: fail("tool $name didn't answer")
+                        assertTrue("rate_limited" !in answer, "tool $name was rate limited, so the sweep checked nothing")
                         calls++
                         leaked(args.toString(), answer).takeIf { it.isNotEmpty() }?.let { leaks += "tool $name -> $it: ${answer.take(300)}" }
                     }

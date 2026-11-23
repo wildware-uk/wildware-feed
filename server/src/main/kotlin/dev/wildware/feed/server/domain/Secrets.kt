@@ -291,6 +291,10 @@ class Secrets(
             if (secret != null && !mayRead(secret, request.agentId)) {
                 throw conflict("a secret named $name already exists and is not shared with the agent asking: share it, or answer with another name")
             }
+            // Shared since the agent asked: the new value would reach every agent sharing it.
+            if (secret != null && sharedBeyond(secret, request.agentId)) {
+                throw conflict("a secret named $name is shared with other agents too, so this answer would change it for all of them: change it in Secrets instead")
+            }
         }
         // Claim the request first (this also times it out if it is past due), so a value is only
         // stored for a request that was still waiting.
@@ -392,6 +396,11 @@ class Secrets(
         val existing = byName(clean)
         if (existing != null && !mayRead(existing, agentId)) {
             throw conflict("$clean is taken by a secret that is not shared with you: ask for it under another name, or ask your owner to share it")
+        }
+        // Answering would replace the value every other agent sharing it uses, and the owner would
+        // think it was for you alone.
+        if (existing != null && sharedBeyond(existing, agentId)) {
+            throw conflict("$clean is shared with other agents too: ask for it under a new name, or ask your owner to change it")
         }
         return clean
     }
@@ -617,6 +626,9 @@ class Secrets(
     }?.takeIf { it.revokedAt == null }
 
     private fun mayRead(secret: Secret, agentId: String) = secret.allAgents || agentId in secret.agentIds
+
+    /** Whether agents other than [agentId] may read [secret]: then a value given to [agentId] would reach them too. */
+    private fun sharedBeyond(secret: Secret, agentId: String) = secret.allAgents || secret.agentIds.any { it != agentId }
 
     /** An agent replaces only a secret it uploaded, that the owner has not taken over, that it may still read, and that is not paused. */
     private fun mayReplace(secret: Secret, agentId: String) =

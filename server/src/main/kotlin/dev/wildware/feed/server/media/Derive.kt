@@ -273,6 +273,8 @@ class Derive(
         val probe = tools.probe(source)
         val rawW = probe.width ?: throw IllegalStateException("Input file contains unsupported image format")
         val rawH = probe.height ?: throw IllegalStateException("Input file contains unsupported image format")
+        // A small file can claim a vast picture; decoding it would tie up a worker for minutes.
+        if (rawW.toLong() * rawH.toLong() > MAX_PIXELS) throw IllegalStateException("the picture is too large: at most $MAX_PIXELS pixels")
         val (w, h) = if (Orientation.swapsAxes(orientation)) rawH to rawW else rawW to rawH
         val files = THUMB_WIDTHS.map { width ->
             val height = maxOf(1, Math.round(h.toDouble() * width / w).toInt())
@@ -301,6 +303,9 @@ class Derive(
 
     private fun video(media: Row, source: Path, work: Path): Measured {
         val probe = tools.probe(source)
+        if ((probe.width ?: 0).toLong() * (probe.height ?: 0).toLong() > MAX_PIXELS) {
+            throw IllegalStateException("the video is too large: at most $MAX_PIXELS pixels a frame")
+        }
         val files = mutableListOf<Produced>()
         val poster = work.resolve("poster.jpg")
         var wrote = false
@@ -329,6 +334,9 @@ class Derive(
 
     companion object {
         val THUMB_WIDTHS = listOf(640, 1600)
+
+        /** The most pixels a picture (or a video frame) may have: about 50 million, 8K is 33 million. */
+        const val MAX_PIXELS = 50_000_000L
         private val CONTENT_TYPES = mapOf("webp" to "image/webp", "jpg" to "image/jpeg", "mp4" to "video/mp4")
         const val WORKER_INTERVAL_MS = 1000L
 

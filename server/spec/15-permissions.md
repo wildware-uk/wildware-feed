@@ -60,7 +60,9 @@ message as a channel that never was), everywhere data leaves the server:
 
 Writes check the level: below `read` is `not_found`, `read` is `403 forbidden` ("you can read this
 channel but not post in it"). A slug is unique whoever can see its channel: making a channel whose
-slug a hidden channel holds is `409 conflict` and says only that.
+slug a hidden channel holds is `409 conflict` and says only that. Changing a channel's or a
+project's slug is for owners and admins only (`403 forbidden` for anyone else, even with Manage),
+as making one is, so nobody else can probe for a hidden one's slug.
 
 What is not per channel: agents, people, devices, secrets, pairings, registered apps and embed
 types are the team's, as before. There is no search route.
@@ -103,7 +105,7 @@ Project and group JSON gain `private` as their last key.
 | `GET`/`PUT /api/groups/{ref}/access…` | the same, for a project | `{groupId, private, yourLevel, canManage, entries}` |
 | `GET /api/people/{id}/access` | yourself; anyone for an admin | `{memberId, role, channels: [{projectId, slug, name, groupId, level, via}]}` |
 | `GET /api/agents/{id}/access` | any person | `{agentId, channels: […]}` |
-| `GET /api/access/audit` | admin | `{entries: [{seq, id, at, actor, actorName, kind, targetId, targetName, principal, principalName, change, from, to}], nextCursor}`; `?before=<seq>&limit=` |
+| `GET /api/access/audit` | admin | `{entries: [{seq, id, at, actor, actorName, kind, targetId, targetName, principal, principalName, change, from, to}], nextCursor}`; `?before=<seq>&limit=`; changes to a channel or project the viewer can't see are left out |
 
 An entry: `{principal, kind (member | agent), id, name, role, level, via, own, inherited, editable}`.
 `via` is `owner`, `channel`, `group`, `private` or `default`; `own` is the row on this channel or

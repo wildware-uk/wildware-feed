@@ -5,6 +5,7 @@ import dev.wildware.feed.server.domain.BlockReads
 import dev.wildware.feed.server.domain.Cards
 import dev.wildware.feed.server.domain.feed
 import dev.wildware.feed.server.domain.jsBoolean
+import dev.wildware.feed.server.domain.mayReadCard
 import dev.wildware.feed.server.domain.jsString
 import dev.wildware.feed.server.domain.notFound
 import kotlinx.serialization.json.JsonArray
@@ -43,6 +44,7 @@ fun ToolRegistry.registerBlockTools(app: App) {
         val a = call.args
         val card = Cards.oneCard(update = a["update_id"].jsString, message = a["message_id"].jsString, request = a["request_id"].jsString)
         app.feed.cards.resolve(card)
+        if (!app.feed.mayReadCard(call.agent.id, card)) throw notFound("no such ${card.kind}: ${card.id}")
         val all = BlockReads(app.db, app.clock).viewsOn(card)
         val wanted = a["block_id"].jsString
         val blocks = if (wanted == null) all else all.filter { it["id"].jsString == wanted }.ifEmpty { throw notFound("no block \"$wanted\" on that ${card.kind}") }

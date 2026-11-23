@@ -53,11 +53,16 @@ class Serve(private val db: Database, private val paths: MediaPaths) {
         val VARIANTS = listOf("original", "thumb-640", "thumb-1600", "poster", "video")
         private val ULID = Regex("^[0-9A-HJKMNP-TV-Z]{26}$")
 
-        /** What a saved picture or video is called: its own name, with an extension added when it has none. */
+        /**
+         * What a saved picture, video or sound is called: its own name, with the extension of the
+         * type its bytes were checked to be. Whatever extension it was given is replaced, so a video
+         * named `clip.hta` saves as `clip.mp4`, never as something the computer would run.
+         */
         fun savedName(filename: String?, kind: String, mime: String): String {
             val ext = Mime.extensionOf(mime) ?: "bin"
-            val name = filename?.trim()?.takeIf { it.isNotEmpty() } ?: return "$kind.$ext"
-            return if ('.' in name.substringAfterLast('/')) name else "$name.$ext"
+            val name = filename?.trim()?.substringAfterLast('/')?.substringAfterLast('\\')?.takeIf { it.isNotEmpty() } ?: return "$kind.$ext"
+            val stem = if ('.' in name) name.substringBeforeLast('.') else name
+            return "${stem.trimEnd('.', ' ').ifEmpty { kind }}.$ext"
         }
 
         /** `inline`, or `attachment` with an ASCII fallback and an RFC 5987 name (JS `encodeURIComponent`). */

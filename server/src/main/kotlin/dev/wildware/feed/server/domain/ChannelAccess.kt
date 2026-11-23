@@ -193,6 +193,24 @@ class ChannelAccess(private val db: Database, private val clock: () -> Long = Sy
     /** Whether [principal] may read [channelId]. */
     fun canRead(principal: String, channelId: String?): Boolean = channelId == null || levelFor(principal, channelId) >= Level.READ
 
+    /**
+     * Whether this work's viewer is one of the team's owners or admins (the server's own work counts
+     * as one). Only they make channels, so only they may learn, from a refused address, that a
+     * channel they can't see holds it (spec/15).
+     */
+    fun viewerIsAdmin(): Boolean {
+        val principal = Viewer.currentOrNull?.principal ?: return true
+        val role = roleOf(principal) ?: return false
+        return role.rank >= People.Role.ADMIN.rank
+    }
+
+    /** Whether [principal] can see project [groupId]: read on the project itself or on a channel in it. */
+    fun canSeeGroup(principal: String, groupId: String): Boolean {
+        val who = Viewer.currentOrNull
+        val hidden = if (who != null && who.principal == principal) hiddenGroups() else view(principal).hiddenGroups
+        return groupId !in hidden
+    }
+
     /** Refuse, as missing, a channel this work's viewer can't read. */
     fun requireRead(channelId: String?, missing: () -> DomainError) {
         if (!visible(channelId)) throw missing()
@@ -434,12 +452,17 @@ class ChannelAccess(private val db: Database, private val clock: () -> Long = Sy
         )
     }
 
-    /** The newest changes first, for owners and admins: who changed what, from what to what. */
+    /**
+     * The newest changes first, for owners and admins: who changed what, from what to what. Changes
+     * to a channel or project the viewer can't see are left out, as everywhere else (spec/15).
+     */
     fun auditLog(limit: Int, before: Long?): List<JsonObject> {
         val names = everyoneNames()
+        fun leaveOut(kind: String, ids: Set<String>) =
+            if (ids.isEmpty()) "" else " AND NOT (target_kind = '$kind' AND target_id IN (${ids.joinToString(", ") { literal(it) }}))"
         return db.query(
             "SELECT seq, id, at, actor, target_kind, target_id, target_name, principal, change, old_value, new_value FROM access_audit " +
-                "WHERE team_id = :team AND (? IS NULL OR seq < ?) ORDER BY seq DESC LIMIT ?",
+                "WHERE team_id = :team AND (? IS NULL OR seq < ?)${leaveOut("channel", hidden())}${leaveOut("group", hiddenGroups())} ORDER BY seq DESC LIMIT ?",
             before, before, limit,
         ) { rs ->
             buildJsonObject {

@@ -66,8 +66,10 @@ class Groups(private val feed: Feed) {
         feed.access.requireManageGroup(group.id) { notFound("no such group: ${reference.jsTrim()}") }
         val sets = LinkedHashMap<String, Any?>()
         patch.name?.let { sets["name"] = requiredText(it, "name", Projects.NAME_MAX) }
-        patch.slug?.let {
-            val slug = Slugs.assertSlug(it)
+        patch.slug?.let { Slugs.assertSlug(it) }?.takeIf { it != group.slug }?.let {
+            val slug = it
+            // As for a channel: only owners and admins may try an address another project may hold.
+            if (!feed.access.viewerIsAdmin()) throw forbidden("only the team's owners and admins can change a project's address")
             val holder = rawRow("slug", slug)
             if (holder != null && holder.id != group.id) throw conflict("slug already in use: $slug")
             sets["slug"] = slug

@@ -30,6 +30,10 @@ without one sends nothing anywhere: feedback is only saved there, for the team.
 - **Statuses.** `pending` → `sent`, `saved` or `discarded`. Each change publishes
   `feedback.updated {feedbackId, status}` in the item's team.
 - **Teams apart.** Rows carry `team_id` and Postgres row security; a team reads only its own.
+- **Channels apart (spec/15).** An item is listed to its author, and to anyone else only when they
+  can read the channel of its card and of its question; one tied to no channel is the team's. Its
+  `card` is `null` to a viewer who can't read that card. Its media answer `404` to anyone the item
+  is not listed to.
 - **Media.** Uploads sent with feedback carry `feedback_id`, so the unattached-media sweep leaves
   them. An agent's also sit on its question (`request_id`), so the owner sees them there.
 

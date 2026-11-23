@@ -15,7 +15,9 @@ class Tags(private val feed: Feed) {
 
     /** One project's tags (a non-empty reference is resolved) or every project's, oldest first. */
     fun list(project: String?): List<TagRow> {
-        if (project.isNullOrEmpty()) return db.query("SELECT ${Rows.TAG} FROM tags WHERE team_id = :team ORDER BY seq") { TagRow(Rows.tag(it)) }
+        if (project.isNullOrEmpty()) {
+            return db.query("SELECT ${Rows.TAG} FROM tags WHERE team_id = :team${feed.access.notHidden("project_id")} ORDER BY seq") { TagRow(Rows.tag(it)) }
+        }
         val id = feed.projects.resolve(project).id
         return db.query("SELECT ${Rows.TAG} FROM tags WHERE team_id = :team AND project_id IN (?) ORDER BY seq", id) { TagRow(Rows.tag(it)) }
     }

@@ -2,6 +2,7 @@ package dev.wildware.feed.server.domain
 
 import dev.wildware.feed.server.App
 import dev.wildware.feed.server.db.Ulid
+import dev.wildware.feed.server.db.Viewer
 import dev.wildware.feed.server.db.longOrNull
 import dev.wildware.feed.server.http.Wire
 import kotlinx.serialization.json.JsonArray
@@ -181,8 +182,35 @@ class Feedback(private val app: App) {
         val args = mutableListOf<Any?>()
         if (status != null) { where.append(" AND status = ?"); args += status }
         if (agentId != null) { where.append(" AND author_kind = 'agent' AND author_id = ?"); args += agentId }
-        args += limit.coerceIn(1, LIST_MAX)
+        args += LIST_MAX
         return db.query("SELECT $COLUMNS FROM feedback WHERE $where ORDER BY seq DESC LIMIT ?", *args.toTypedArray(), row = ::item)
+            .filter(::readable)
+            .take(limit.coerceIn(1, LIST_MAX))
+    }
+
+    /**
+     * Whether this work's viewer may see [item] (spec/15): its author always; anyone else only when
+     * they can read the channel of the card it is about and of its approval question. An item tied
+     * to no channel is the whole team's, as anything in no channel is (spec/14 §3).
+     */
+    fun readable(item: Item): Boolean {
+        val principal = Viewer.currentOrNull?.principal ?: return true
+        val author = (if (item.authorKind == "agent") Viewer.AGENT else Viewer.MEMBER) + item.authorId
+        if (principal == author) return true
+        val channels = listOfNotNull(
+            item.card?.let { channelOf(it.table, it.id) },
+            item.requestId?.let { channelOf("approvals", it) },
+        )
+        return channels.all { app.feed.access.visible(it) }
+    }
+
+    private fun channelOf(table: String, id: String): String? =
+        db.one("SELECT project_id FROM $table WHERE team_id = :team AND id = ?", id) { it.getString(1) }
+
+    /** The card [item] is about, when this work's viewer can read it. */
+    private fun shownCard(item: Item): CardRef? = item.card?.takeIf { card ->
+        val channel = channelOf(card.table, card.id)
+        channel == null || app.feed.access.visible(channel)
     }
 
     /** The media sent with [id], as the owner API shows media. */
@@ -201,7 +229,7 @@ class Feedback(private val app: App) {
         put("body", item.body)
         put("status", item.status)
         put("author", buildJsonObject { put("kind", item.authorKind); put("id", item.authorId); put("name", item.authorName) })
-        put("card", item.card?.json ?: JsonNull)
+        put("card", shownCard(item)?.json ?: JsonNull)
         put("requestId", item.requestId)
         put("approvedBy", item.approvedBy?.let { by -> buildJsonObject { put("id", by); put("name", app.people.nameOf(by)) } } ?: JsonNull)
         put("media", JsonArray(media(item.id)))
@@ -219,7 +247,7 @@ class Feedback(private val app: App) {
         put("body", if (full || item.body.length <= AGENT_BODY_MAX) item.body else item.body.take(AGENT_BODY_MAX) + "…")
         put("status", item.status)
         put("author", buildJsonObject { put("kind", item.authorKind); put("name", item.authorName) })
-        put("card", item.card?.json ?: JsonNull)
+        put("card", shownCard(item)?.json ?: JsonNull)
         put("request_id", item.requestId)
         put("created_at", Wire.isoOf(item.createdAt))
         put("sent_at", item.sentAt?.let { JsonPrimitive(Wire.isoOf(it)) } ?: JsonNull)

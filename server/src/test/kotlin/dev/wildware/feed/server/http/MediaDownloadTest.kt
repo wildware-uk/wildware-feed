@@ -84,6 +84,11 @@ class MediaDownloadTest {
     @Test
     fun `a saved picture or video always has a name with an extension`() {
         assertEquals("clip.mp4", Serve.savedName("clip.mp4", "video", "video/mp4"))
+        // The extension is always the checked type's: one that would run on a computer is replaced.
+        assertEquals("clip.mp4", Serve.savedName("clip.hta", "video", "video/mp4"))
+        assertEquals("photo.jpg", Serve.savedName("photo.exe", "image", "image/jpeg"))
+        assertEquals("video.mp4", Serve.savedName(".hta", "video", "video/mp4"))
+        assertEquals("notes.mp4", Serve.savedName("C:\\x\\notes.bat", "video", "video/mp4"))
         assertEquals("Screen recording.webm", Serve.savedName("Screen recording", "video", "video/webm"))
         assertEquals("image.jpg", Serve.savedName(null, "image", "image/jpeg"))
         assertEquals("image.png", Serve.savedName("  ", "image", "image/png"))

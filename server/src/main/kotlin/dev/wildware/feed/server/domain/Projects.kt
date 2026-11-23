@@ -98,10 +98,14 @@ class Projects(private val feed: Feed) {
         val description = patch.description?.let { optionalText(it.value, "description", DESCRIPTION_MAX) }
         val theme = patch.theme?.let { t -> t.value?.let { mergeTheme(project.theme as? JsonObject, it) } }
         val board = patch.board?.let { assertBoard(it.value) }
-        if (patch.slug != null) {
-            slug = Slugs.assertSlug(patch.slug)
-            val holder = slugHeld(slug)
-            if (holder != null && holder.id != project.id) throw conflict("slug already in use: $slug")
+        val wanted = patch.slug?.let { Slugs.assertSlug(it) }
+        if (wanted != null && wanted != project.slug) {
+            // A taken address may belong to a channel the viewer can't see: only those who make
+            // channels (owners, admins) may try one, as only they may make one (spec/15).
+            if (!feed.access.viewerIsAdmin()) throw forbidden("only the team's owners and admins can change a channel's address")
+            val holder = slugHeld(wanted)
+            if (holder != null && holder.id != project.id) throw conflict("slug already in use: $wanted")
+            slug = wanted
         }
 
         if (slug != null) { sets["slug"] = slug; given = true }

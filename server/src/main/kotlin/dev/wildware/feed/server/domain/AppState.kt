@@ -27,7 +27,8 @@ class AppState(private val db: Database, private val clock: () -> Long = System:
         // A card in a channel this viewer can't read answers as missing (spec/15).
         val table = when (kind) { "update" -> "updates"; "message" -> "messages"; else -> "approvals" }
         val channel = db.one("SELECT project_id FROM $table WHERE team_id = :team AND id = ?", cardId) { it.getString(1) }
-        if (!ChannelAccess(db, clock).visible(channel)) throw notFound("no such $kind: $cardId")
+        // Changing what everyone on the card sees is a write: it needs Post, as every other card write does.
+        ChannelAccess(db, clock).requirePost(channel) { notFound("no such $kind: $cardId") }
 
         val text = state?.let {
             if (FeedAttachments.tooDeep(it)) throw invalid("state may nest at most ${FeedAttachments.APP_JSON_DEPTH_MAX} levels deep")

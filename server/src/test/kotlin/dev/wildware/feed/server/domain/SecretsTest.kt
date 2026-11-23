@@ -229,6 +229,15 @@ class SecretsTest {
         assertContentEquals("second".toByteArray(), secrets.reveal(stored.id, "reveal", owner))
         assertTrue(actions(stored.id).contains("provided"))
         assertNoValueInEvents()
+
+        // Once it is shared with other agents too, answering would change it for all of them: refused
+        // at the tool, and at the answer for a request made before it was shared.
+        val pending = requests.create(alpha.id, NewRequest(kind = "secret", question = "Once more?", secretName = "STRIPE_TEST_KEY")).first
+        secrets.change(stored.id, owner, allAgents = true)
+        assertEquals("conflict", assertFailsWith<DomainError> { secrets.checkRequestable(alpha.id, "STRIPE_TEST_KEY") }.code)
+        assertEquals("conflict", assertFailsWith<DomainError> { secrets.provide(requests, pending.id, "third".toByteArray(), null, owner) }.code)
+        assertContentEquals("second".toByteArray(), secrets.reveal(stored.id, "reveal", owner))
+        assertEquals("pending", requests.find(pending.id)!!.state)
     }
 
     // ---- several secrets in one request (`fields`) ---------------------------------------------

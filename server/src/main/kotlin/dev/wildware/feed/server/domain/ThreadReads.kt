@@ -57,7 +57,9 @@ class ThreadReads(private val feed: Feed) {
         val root = shown.firstOrNull()?.takeIf { thread.kind == "message" && it.id == thread.id }
         val replies = if (root != null) shown.drop(1) else shown
         val kept = replies.takeLast(LIMIT)
-        val fields = feed.fields.on(CardRef(thread.kind, thread.id))
+        // A feed post addressed only to other agents keeps its fields to itself, as it keeps its words.
+        val rootHeld = thread.kind == "message" && all.any { it.id == thread.id } && root == null
+        val fields = if (rootHeld) emptyList() else feed.fields.on(CardRef(thread.kind, thread.id))
         Read(thread, head, fields, listOfNotNull(root) + kept, withheld, replies.size - kept.size)
     }
 
@@ -90,6 +92,16 @@ class ThreadReads(private val feed: Feed) {
      * same rule as reading the card. On an update or a question, reading its thread; on a message,
      * reading that very line of it ([read]'s rule, mentions and the whole-thread rule included).
      */
+    /**
+     * Whether [agentId] may read what is on message [messageId] by [author] (its blocks, its fields):
+     * a message @naming only other agents is theirs and its author's, as its words are (spec/02 §7.7).
+     */
+    fun mayReadLine(agentId: String, messageId: String, author: String?): Boolean {
+        val me = AGENT + agentId
+        if (author == me || Mentions.readable(db, messageId, author, me)) return true
+        return mayFetch(agentId, CardRef("message", messageId))
+    }
+
     fun mayFetch(agentId: String, card: CardRef): Boolean {
         val opened = try {
             open(agentId, card)
@@ -187,4 +199,11 @@ class ThreadReads(private val feed: Feed) {
             "(You were @mentioned in a thread you were not in. To read all of it — the post that started it, every " +
                 "reply, the card's details and their files — call get_messages({message_id: \"$messageId\"}).)"
     }
+}
+
+/** Whether agent [agentId] may read what is on [card]: on a message, by [ThreadReads.mayReadLine]; any other card, yes. */
+fun Feed.mayReadCard(agentId: String, card: CardRef): Boolean {
+    if (card.kind != "message") return true
+    val author = db.one("SELECT author FROM messages WHERE team_id = :team AND id = ?", card.id) { it.getString(1) } ?: return true
+    return threads.mayReadLine(agentId, card.id, author)
 }

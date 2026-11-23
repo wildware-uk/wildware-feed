@@ -132,6 +132,23 @@ class ChannelAccessLeakTest {
         assertEquals(200, send(ownerKey, "PUT", "/api/projects/vault/access", """{"private":true}""").status.value)
         val scoutId = app.db.one("SELECT id FROM agents WHERE team_id = :team AND name = 'scout'") { it.getString(1) }!!
         assertEquals(200, send(ownerKey, "PUT", "/api/projects/vault/access/agent/$scoutId", """{"level":"post"}""").status.value)
+        // Feedback about a vault card, by the owner and (pending approval) by scout (review F3).
+        assertEquals(201, send(ownerKey, "POST", "/api/feedback", """{"kind":"feedback","title":"Zebra feedback","body":"zebra words","card":{"kind":"update","id":"$update"}}""").status.value)
+        assertTrue("error" !in tool(scout, "send_feedback", args("kind" to "feedback", "title" to "Zebra idea", "body" to "zebra idea body", "update_id" to update, "project" to "vault")))
+        // Taking scout out of the private project and back in says so inside it, not in no channel (F4).
+        assertEquals(200, send(ownerKey, "PUT", "/api/groups/lockers/agents/$scoutId", """{"hears":false}""").status.value)
+        assertEquals(200, send(ownerKey, "PUT", "/api/groups/lockers/agents/$scoutId", """{"hears":true}""").status.value)
+    }
+
+    /** [a] with only one card named (update, message or request), as a tool takes one: every other card key dropped. */
+    private fun onlyCard(a: JsonObject, kind: String): JsonObject {
+        val keys = mapOf(
+            "update" to setOf("update_id", "updateId", "update", "id"),
+            "message" to setOf("message_id", "messageId", "answers", "replyTo"),
+            "request" to setOf("request_id", "requestId"),
+        )
+        val drop = keys.filterKeys { it != kind }.values.flatten().toSet()
+        return JsonObject(a.filterKeys { it !in drop })
     }
 
     /** Ids of the vault's things, by kind. */
@@ -226,9 +243,15 @@ class ChannelAccessLeakTest {
                 val (_, invite) = app.people.invite(app.people.find(People.FOUNDER)!!, People.Role.MEMBER, "sam@example.test")
                 val sam = app.people.accept(invite, "Sam", "sam@example.test", "password for sam")
                 val samKey = app.devices.mint("Sam phone", sam.id).second
+                // An admin who isn't listed on the private channel or project: hidden from them too (spec/15).
+                val (_, adminInvite) = app.people.invite(app.people.find(People.FOUNDER)!!, People.Role.ADMIN, "ada@example.test")
+                val ada = app.people.accept(adminInvite, "Ada", "ada@example.test", "password for ada")
+                val adaKey = app.devices.mint("Ada phone", ada.id).second
                 val scout = app.agents.mint("scout").second
                 val (other, otherToken) = app.agents.mint("other")
                 seed(app, ownerKey, scout)
+                // Another agent with no access can't be put in the private project (F4).
+                assertEquals(409, send(ownerKey, "PUT", "/api/groups/lockers/agents/${other.id}", """{"hears":true}""").status.value)
                 tool(otherToken, "register_session", args("meta" to buildJsonObject { put("host", "box") }))
 
                 val v = targets(app)
@@ -249,8 +272,9 @@ class ChannelAccessLeakTest {
                     for ((i, path) in fills(pattern, v).withIndex()) {
                         val read = method == "GET" || method == "HEAD"
                         val body = if (read) null else bodyAt(v, i).toString()
-                        val target = if (read) "$path?" + queryAt(v, i) else path
-                        for (key in listOf(samKey, otherToken)) {
+                        // A read with every query parameter, and with none (a bad one, like status=done, refuses the lot).
+                        val targets = if (read) listOf("$path?" + queryAt(v, i), path) else listOf(path)
+                        for (target in targets) for (key in listOf(samKey, adaKey, otherToken)) {
                             val answer = kotlinx.coroutines.withTimeoutOrNull(5_000) { send(key, method, target, body).bodyAsText() }
                                 ?: fail("$method $path didn't answer")
                             calls++
@@ -261,9 +285,15 @@ class ChannelAccessLeakTest {
                 val tools = Wire.json.parseToJsonElement(javaClass.getResource("/mcp/tools-list.json")!!.readText()) as JsonArray
                 for (t in tools) {
                     val name = t.jsonObject["name"]!!.jsonPrimitive.content
-                    for (i in 0 until 3) {
-                        val a = bodyAt(v, i)
+                    // Every card at once (which a card tool refuses before any access check), each kind of
+                    // card alone, and nothing at all (a list tool's "every channel").
+                    val tries = (0 until 3).flatMap { i -> listOf(bodyAt(v, i)) + listOf("update", "message", "request").map { onlyCard(bodyAt(v, i), it) } } +
+                        listOf(JsonObject(emptyMap()))
+                    for (a in tries) {
+                        // The sweep makes far more calls than an agent may in a minute: a refusal for that proves nothing.
+                        app.mcpLimiter.reset(other.id)
                         val answer = kotlinx.coroutines.withTimeoutOrNull(5_000) { tool(otherToken, name, a) } ?: fail("tool $name didn't answer")
+                        assertTrue("rate_limited" !in answer, "tool $name was rate limited, so the sweep checked nothing")
                         calls++
                         leaked(a.toString(), answer).takeIf { it.isNotEmpty() }?.let { leaks += "tool $name -> $it: ${answer.take(300)}" }
                     }

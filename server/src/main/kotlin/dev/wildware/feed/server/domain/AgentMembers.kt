@@ -98,6 +98,10 @@ class AgentMembers(private val feed: Feed) {
     fun setGroup(group: GroupRow, agentId: String, hears: Boolean, by: String): Member = feed.op {
         feed.access.requireManageGroup(group.id) { notFound("no such group: ${group.id}") }
         val name = agentName(agentId)
+        val agent = Subscriptions.agent(agentId)
+        if (hears && !feed.access.canSeeGroup(agent, group.id)) {
+            throw conflict("$name has no access to project ${group.name}: give it Read or Post in Permissions first")
+        }
         val changed = if (hears) subs.ownerAddGroup(agentId, group.id) else subs.ownerRemoveGroup(agentId, group.id)
         if (changed) {
             changedFor(agentId, buildJsonObject { put("groupId", group.id) })
@@ -107,7 +111,13 @@ class AgentMembers(private val feed: Feed) {
                 "@$name I removed you from project ${group.name} and its channels. Messages there reach you only when they " +
                     "@mention you, and posting there will not add you back. Ask me if you need it again."
             }
-            tell(body, null, by)
+            // Said in one of the project's channels, never in no channel, where every member would
+            // read a private project's name: the first the agent can read, else the first.
+            val channels = feed.db.query(
+                "SELECT slug, id FROM projects WHERE team_id = :team AND group_id = ? ORDER BY ${Rows.PROJECT_ORDER}", group.id,
+            ) { it.getString(1) to it.getString(2) }
+            val channel = channels.firstOrNull { feed.access.canRead(agent, it.second) } ?: channels.firstOrNull()
+            if (channel != null) tell(body, channel.first, by)
         }
         groupMember(agentId, name, group.id)
     }

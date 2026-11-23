@@ -290,8 +290,13 @@ class ChannelAccessTest {
         client.json(ownerKey, "PUT", "/api/projects/secret/access", """{"private":true}""")
         client.json(ownerKey, "PUT", "/api/projects/secret/access/member/${sam.id}", """{"level":"read"}""")
         client.json(ownerKey, "PUT", "/api/projects/secret/access/agent/${scout.id}", """{"level":"none"}""")
-        val log = client.json(adminKey, "GET", "/api/access/audit")["entries"]!!.jsonArray.map { it.jsonObject }
+        val log = client.json(ownerKey, "GET", "/api/access/audit")["entries"]!!.jsonArray.map { it.jsonObject }
         assertEquals(3, log.size, log.toString())
+        // Ada is an admin, but isn't listed on the private channel: its changes are hidden from her too.
+        val adas = client.json(adminKey, "GET", "/api/access/audit")["entries"]!!.jsonArray
+        assertEquals(0, adas.size, adas.toString())
+        client.json(ownerKey, "PUT", "/api/projects/secret/access/member/${admin.id}", """{"level":"read"}""")
+        assertEquals(4, client.json(adminKey, "GET", "/api/access/audit")["entries"]!!.jsonArray.size)
         val first = log.last()
         assertEquals("private", first["change"]!!.jsonPrimitive.content)
         assertEquals("false", first["from"]!!.jsonPrimitive.content)
@@ -348,6 +353,73 @@ class ChannelAccessTest {
         val again = client.tool(otherToken, "create_project", args("name" to "Secret", "slug" to "secret"))
         assertEquals("conflict", again.error(), again.toString())
         assertFalse("words in secret" in again.toString())
+    }
+
+    @Test
+    fun `a member who may only read can't change a card's shared app state`() = withTeam { client ->
+        channels(client)
+        client.tool(scoutToken, "register_app", buildJsonObject { put("uri", "ui://board"); put("name", "Board"); put("html", "<p>a board</p>") })
+        client.tool(scoutToken, "post_update", buildJsonObject {
+            put("project", "secret"); put("body", "a board")
+            put("apps", kotlinx.serialization.json.JsonArray(listOf(buildJsonObject { put("app", "ui://board"); put("data", buildJsonObject { put("n", 1) }) })))
+        })
+        val view = app.db.one("SELECT id FROM app_views WHERE team_id = :team ORDER BY seq DESC LIMIT 1") { it.getString(1) }!!
+        client.json(ownerKey, "PUT", "/api/projects/secret/access/member/${sam.id}", """{"level":"read"}""")
+        assertEquals(403, client.call(samKey, "POST", "/api/apps/$view/state", """{"state":{"moved":true}}""").status.value)
+        assertEquals(null, app.db.one("SELECT state FROM app_views WHERE team_id = :team AND id = ?", view) { it.getString(1) })
+        client.json(ownerKey, "PUT", "/api/projects/secret/access/member/${sam.id}", """{"level":"post"}""")
+        assertEquals(200, client.call(samKey, "POST", "/api/apps/$view/state", """{"state":{"moved":true}}""").status.value)
+    }
+
+    @Test
+    fun `a message to one agent keeps its fields and blocks from the others`() = withTeam { client ->
+        channels(client)
+        client.tool(otherToken, "subscribe", args("channel" to "web"))
+        val posted = client.json(ownerKey, "POST", "/api/messages", """{"project":"web","body":"@scout only for you"}""", status = 201)
+        val id = posted["message"]!!.jsonObject["id"]!!.jsonPrimitive.content
+        assertNull(client.tool(scoutToken, "set_card_field", args("message_id" to id, "name" to "Plan", "value" to "for scout alone")).error())
+        // Scout answers in the thread with no mention: other hears the reply, and learns the root's id.
+        client.tool(scoutToken, "post_message", args("message_id" to id, "body" to "on it"))
+        val fields = client.tool(otherToken, "get_card_fields", args("message_id" to id)).toString()
+        assertFalse("for scout alone" in fields, fields)
+        assertEquals("not_found", client.tool(otherToken, "get_blocks", args("message_id" to id)).error())
+        val thread = client.tool(otherToken, "get_messages", args("message_id" to id)).toString()
+        assertFalse("for scout alone" in thread, thread)
+        assertTrue("for scout alone" in client.tool(scoutToken, "get_card_fields", args("message_id" to id)).toString())
+        assertNull(client.tool(scoutToken, "get_blocks", args("message_id" to id)).error())
+    }
+
+    @Test
+    fun `feedback about a card in a private channel, and its picture, are for those who can read it`() = withTeam { client ->
+        channels(client)
+        val card = app.db.one("SELECT id FROM updates WHERE team_id = :team AND project_id = ?", app.feed.projects.resolve("secret").id) { it.getString(1) }!!
+        val picture = upload(client, ownerKey)
+        client.json(
+            ownerKey, "POST", "/api/feedback",
+            """{"kind":"feedback","title":"About the secret card","body":"words","mediaIds":["$picture"],"card":{"kind":"update","id":"$card"}}""", status = 201,
+        )
+        client.json(ownerKey, "PUT", "/api/projects/secret/access", """{"private":true}""")
+        val listed = client.json(samKey, "GET", "/api/feedback").toString()
+        assertFalse("About the secret card" in listed, listed)
+        assertEquals(404, client.call(samKey, "GET", "/media/$picture/original").status.value)
+        assertFalse("About the secret card" in client.tool(otherToken, "list_feedback", JsonObject(emptyMap())).toString())
+        // Given Read, Sam sees it, picture and all.
+        client.json(ownerKey, "PUT", "/api/projects/secret/access/member/${sam.id}", """{"level":"read"}""")
+        assertTrue("About the secret card" in client.json(samKey, "GET", "/api/feedback").toString())
+        assertEquals(200, client.call(samKey, "GET", "/media/$picture/original").status.value)
+    }
+
+    @Test
+    fun `only owners and admins change a channel's address`() = withTeam { client ->
+        channels(client)
+        client.json(ownerKey, "PUT", "/api/projects/web/access/member/${sam.id}", """{"level":"manage"}""")
+        // A taken address would say a channel Sam can't see is there.
+        client.json(ownerKey, "PUT", "/api/projects/secret/access/member/${sam.id}", """{"level":"none"}""")
+        assertEquals(403, client.call(samKey, "PATCH", "/api/projects/web", """{"slug":"secret"}""").status.value)
+        assertEquals(403, client.call(samKey, "PATCH", "/api/projects/web", """{"slug":"webby"}""").status.value)
+        // The same address, sent back as it is, is no change.
+        assertEquals(200, client.call(samKey, "PATCH", "/api/projects/web", """{"slug":"web","name":"Web site"}""").status.value)
+        assertEquals(200, client.call(adminKey, "PATCH", "/api/projects/web", """{"slug":"webby"}""").status.value)
     }
 
     private suspend fun upload(client: HttpClient, key: String): String {
