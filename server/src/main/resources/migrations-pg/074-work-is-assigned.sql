@@ -15,3 +15,11 @@ CREATE TABLE "card_assignees" (
 CREATE UNIQUE INDEX card_assignees_card ON card_assignees (team_id, card_kind, card_id, principal);
 CREATE INDEX card_assignees_principal ON card_assignees (team_id, principal);
 CREATE POLICY team_rows ON "card_assignees" USING (team_id = current_setting('app.team', true) OR current_setting('app.team', true) = '*');
+-- Where row security is already on (any table here forced), switch it on for this table too, as
+-- 072 does for the tables before it; the server's start does the same from TeamTables.ALL.
+DO 'BEGIN
+	IF EXISTS (SELECT 1 FROM pg_class WHERE relnamespace = current_schema()::regnamespace AND relkind = ''r'' AND relforcerowsecurity) THEN
+		ALTER TABLE card_assignees ENABLE ROW LEVEL SECURITY;
+		ALTER TABLE card_assignees FORCE ROW LEVEL SECURITY;
+	END IF;
+END';
