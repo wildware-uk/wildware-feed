@@ -11,6 +11,7 @@ import dev.wildware.feed.server.domain.DomainError
 import dev.wildware.feed.server.domain.People
 import io.ktor.client.request.header
 import io.ktor.client.request.post
+import io.ktor.client.request.request
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
 import io.ktor.server.testing.testApplication
@@ -144,6 +145,37 @@ class SignInLimitsTest {
         val wrong = runBlocking { Tenant.withTeam(theirs) { app.checkPassword("not it", "198.51.100.40", "them@$theirs.test") } }
         val unknown = runBlocking { Tenant.withTeam(theirs) { app.checkPassword("not it", "198.51.100.41", "nobody@$theirs.test") } }
         assertEquals(wrong, unknown)
+    }
+
+    @Test
+    fun `accepting an invite and changing your details are charged to the account, as sign-in is`() {
+        val app = App(config, Database.memory())
+        member(app, "ann@example.com", "ann's own password")
+        val ann = app.people.signIn("ann@example.com", "ann's own password")!!
+        val annKey = app.devices.mint("Ann phone", ann.id).second
+        val founder = app.people.find(People.FOUNDER)!!
+        testApplication {
+            application { feed(app) }
+            suspend fun send(method: io.ktor.http.HttpMethod, path: String, body: String, key: String? = null) = client.request(path) {
+                this.method = method
+                if (key != null) header("Authorization", "Bearer $key")
+                header("Content-Type", "application/json")
+                setBody(body)
+            }.status.value
+            // Guessing Ann's password through an invite to some other team's seat: five, then the
+            // same account's budget from her own key: five more. Then even sign-in is shut.
+            val invite = app.people.invite(founder, People.Role.MEMBER, null).second
+            repeat(5) { i ->
+                assertEquals(400, send(io.ktor.http.HttpMethod.Post, "/api/invite/accept", """{"token":"$invite","name":"A","email":"ann@example.com","password":"guess number $i","deviceName":"x"}"""))
+            }
+            repeat(5) { i ->
+                assertEquals(400, send(io.ktor.http.HttpMethod.Patch, "/api/me", """{"password":"a brand new one","currentPassword":"guess $i"}""", annKey))
+            }
+            assertEquals(429, send(io.ktor.http.HttpMethod.Patch, "/api/me", """{"password":"a brand new one","currentPassword":"ann's own password"}""", annKey))
+            assertEquals(429, send(io.ktor.http.HttpMethod.Delete, "/api/me", """{"confirm":"${DELETE_ACCOUNT_CONFIRM}","password":"guess"}""", annKey))
+            assertEquals(429, status(runBlocking { app.checkPassword("ann's own password", "198.51.100.77", "ann@example.com") }))
+        }
+        app.close()
     }
 
     @Test

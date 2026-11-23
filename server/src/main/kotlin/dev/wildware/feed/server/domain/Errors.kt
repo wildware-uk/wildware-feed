@@ -3,6 +3,9 @@ package dev.wildware.feed.server.domain
 /** A refusal the caller can act on, with the TS server's code and status (spec/02 §1.2). */
 open class DomainError(val code: String, override val message: String, val status: Int) : RuntimeException(message)
 
+/** A password that was checked and was wrong: it counts against the account's budget ([dev.wildware.feed.server.http.accountPasswordCheck]). */
+class WrongPassword(code: String, message: String) : DomainError(code, message, 400)
+
 fun invalid(message: String) = DomainError("invalid_argument", message, 400)
 fun notFound(message: String) = DomainError("not_found", message, 404)
 fun conflict(message: String) = DomainError("conflict", message, 409)

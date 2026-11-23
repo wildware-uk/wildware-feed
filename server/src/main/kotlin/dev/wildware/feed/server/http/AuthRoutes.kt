@@ -5,7 +5,9 @@ import dev.wildware.feed.server.auth.PasswordGate
 import dev.wildware.feed.server.auth.Passwords
 import dev.wildware.feed.server.auth.SlidingLimiter
 import dev.wildware.feed.server.db.Tenant
+import dev.wildware.feed.server.domain.DomainError
 import dev.wildware.feed.server.domain.People
+import dev.wildware.feed.server.domain.WrongPassword
 import dev.wildware.feed.server.domain.jsTrim
 
 /**
@@ -57,6 +59,11 @@ suspend fun App.checkPassword(password: String?, clientAddress: String, email: S
             signInAudit("locked", accountKey, clientAddress)
             return PasswordCheck.Refused(429, TOO_MANY, (verdict.retryAfterMs + 999) / 1000)
         }
+        // One check at a time per account, refused before it waits for the hashing queue.
+        if (!passwordsInFlight.add(accountKey)) {
+            giveBack()
+            return PasswordCheck.Refused(503, ONE_AT_A_TIME, 1)
+        }
     }
     val person = try {
         Passwords.gate.run { if (email == null) people.signInFounder(password ?: "") else people.signIn(email, password ?: "") }
@@ -64,6 +71,8 @@ suspend fun App.checkPassword(password: String?, clientAddress: String, email: S
         // No password was checked, so the guess doesn't count.
         giveBack()
         return PasswordCheck.Refused(503, e.message, 1)
+    } finally {
+        accountKey?.let(passwordsInFlight::remove)
     }
     if (person == null) {
         signInAudit("wrong", accountKey, clientAddress)
@@ -80,6 +89,51 @@ suspend fun App.checkPassword(password: String?, clientAddress: String, email: S
 }
 
 /**
+ * A password check outside sign-in, charged to the same per-account budget as sign-in
+ * ([People.accountKey], [People.signInKey]): accepting an invite as an account that already exists,
+ * changing your email or password, deleting your account. [block] throws [WrongPassword] when the
+ * password was checked and was wrong, which counts; anything else, or no password check at all,
+ * gives the guess back. A right one clears the account's count. One check at a time per account,
+ * refused before the hashing queue, so nobody can keep the queue full with one account.
+ */
+suspend fun <T> App.accountPasswordCheck(accountKey: String, block: suspend () -> T): T {
+    fun refuse(): Nothing {
+        signInAudit("locked", accountKey, "-")
+        throw DomainError("rate_limited", TOO_MANY, 429)
+    }
+    val budget = emailLimiter.take(accountKey)
+    if (!budget.allowed) refuse()
+    val wait = signInBackoff.take(accountKey)
+    if (!wait.allowed) {
+        emailLimiter.giveBack(accountKey)
+        refuse()
+    }
+    fun giveBack() {
+        emailLimiter.giveBack(accountKey)
+        signInBackoff.giveBack(accountKey)
+    }
+    if (!passwordsInFlight.add(accountKey)) {
+        giveBack()
+        throw DomainError("busy", ONE_AT_A_TIME, 503)
+    }
+    try {
+        val result = block()
+        giveBack()
+        emailLimiter.reset(accountKey)
+        signInBackoff.clear(accountKey)
+        return result
+    } catch (e: WrongPassword) {
+        signInAudit("wrong", accountKey, "-")
+        throw e
+    } catch (e: Throwable) {
+        giveBack()
+        throw e
+    } finally {
+        passwordsInFlight.remove(accountKey)
+    }
+}
+
+/**
  * One log line per wrong or refused sign-in: which team, which account (a short hash, never the
  * email), from where. Never the password.
  */
@@ -89,6 +143,7 @@ private fun signInAudit(outcome: String, accountKey: String?, address: String) {
 }
 
 private const val TOO_MANY = "Too many attempts. Try again later."
+private const val ONE_AT_A_TIME = "A password check for this account is already running. Try again in a moment."
 private const val LOOPBACK = "loopback"
 private const val WRONG = "That password is not right."
 private const val WRONG_EMAIL = "That email and password don't match."

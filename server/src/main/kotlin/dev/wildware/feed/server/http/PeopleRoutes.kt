@@ -45,7 +45,11 @@ fun Route.peopleRoutes(app: App) {
             if (unknown.isNotEmpty()) throw invalid("a change to you takes name, email, password and currentPassword, not ${unknown.joinToString(", ")}")
             val update = { app.people.updateMe(call.person, optional("name"), optional("email"), optional("password"), optional("currentPassword")) }
             // A new email or password checks the current one: password work, so it waits its turn.
-            val me = if ("email" in body || "password" in body) Passwords.gate.run(update) else update()
+            val me = if ("email" in body || "password" in body) {
+                app.accountPasswordCheck(app.people.accountKey(call.person)) { Passwords.gate.run(update) }
+            } else {
+                update()
+            }
             if ("name" in body) changed()
             call.respondOwner(200, buildJsonObject { put("person", personView(me, email = true)) })
         },
@@ -57,7 +61,7 @@ fun Route.peopleRoutes(app: App) {
             if (unknown.isNotEmpty()) throw invalid("deleting your account takes confirm and password, not ${unknown.joinToString(", ")}")
             if (body["confirm"].jsString != DELETE_ACCOUNT_CONFIRM) throw invalid("confirm must be \"$DELETE_ACCOUNT_CONFIRM\"")
             val password = body["password"]?.takeIf { it !is JsonNull }?.let { it.jsString ?: throw invalid("password must be a string") }
-            val gone = Passwords.gate.run { app.people.deleteAccount(call.person, password) }
+            val gone = app.accountPasswordCheck(app.people.accountKey(call.person)) { Passwords.gate.run { app.people.deleteAccount(call.person, password) } }
             for ((team, devices) in gone.devicesByTeam) {
                 dev.wildware.feed.server.db.Tenant.with(team) {
                     for (id in devices) app.bus.publish("device.revoked", buildJsonObject { put("deviceId", id) })
@@ -179,7 +183,11 @@ fun Route.peopleRoutes(app: App) {
             fun text(key: String) = body[key].jsString ?: throw invalid("$key must be a string")
             val deviceName = requiredText(text("deviceName"), "deviceName", 100)
             val code = tokenOf(body)
-            val person = Passwords.gate.run { app.people.accept(code, text("name"), text("email"), text("password")) }
+            // An existing account's password is checked here: the same budget as signing in to it.
+            val email = text("email")
+            val person = app.accountPasswordCheck(app.people.signInKey(email)) {
+                Passwords.gate.run { app.people.accept(code, text("name"), email, text("password")) }
+            }
             val (device, token) = app.devices.mint(deviceName, person.id)
             changed()
             val minted = buildJsonObject {

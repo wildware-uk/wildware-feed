@@ -132,6 +132,12 @@ class People(
         return if (own != null) "email:" + own.jsTrim().lowercase() else "account:" + founder.accountId
     }
 
+    /** [People.signInKey] for [person]: the budget their own password checks are charged to. */
+    fun accountKey(person: Person): String {
+        val own = db.one("SELECT email FROM users WHERE id = ?", person.accountId) { it.getString(1) }
+        return if (own != null) "email:" + own.jsTrim().lowercase() else "account:" + person.accountId
+    }
+
     /** Whether [password] is this person's. */
     fun verify(person: Person, password: String): Boolean {
         val hash = db.one("SELECT password_hash FROM users WHERE id = ?", person.accountId) { it.getString(1) }
@@ -248,7 +254,7 @@ class People(
             val existing = db.one("SELECT id, password_hash FROM users WHERE email = ?", cleanEmail) { it.getString(1) to it.getString(2) }
             val accountId = if (existing != null) {
                 if (!accountPassword(existing.first, existing.second, password)) {
-                    throw invalid("$cleanEmail already has an account here: use its password")
+                    throw WrongPassword("invalid_argument", "$cleanEmail already has an account here: use its password")
                 }
                 existing.first
             } else {
@@ -332,7 +338,7 @@ class People(
         requireActive(me)
         // The slow password work happens before the write, so it never holds the database.
         if (passwordHashOf(me) != null && (password == null || !verify(me, password))) {
-            throw DomainError("wrong_password", "That password is not right.", 400)
+            throw WrongPassword("wrong_password", "That password is not right.")
         }
         return Tenant.allTeams { db.transaction { _ -> eraseAccount(me.accountId) } }
     }
@@ -384,7 +390,7 @@ class People(
     fun updateMe(me: Person, name: String?, email: String?, password: String?, currentPassword: String?): Person {
         // The slow password work happens before the write, so it never holds the database.
         if ((email != null || password != null) && (currentPassword == null || !verify(me, currentPassword))) {
-            throw DomainError("wrong_password", "That password is not right.", 400)
+            throw WrongPassword("wrong_password", "That password is not right.")
         }
         password?.let(::checkNewPassword)
         val hashed = password?.let(Passwords::hash)

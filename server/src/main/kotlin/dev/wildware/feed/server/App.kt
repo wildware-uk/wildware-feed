@@ -82,6 +82,9 @@ class App(val config: Config, val db: Database, val clock: () -> Long = System::
      * last: one minute, two, four, up to 15 minutes. Only the right password, or a day with no wrong
      * one, starts the count again.
      */
+    /** Accounts with a password check running now: one at a time each ([checkPassword], [accountPasswordCheck]). */
+    val passwordsInFlight: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()
+
     val signInBackoff = dev.wildware.feed.server.auth.Backoff(
         free = 10, baseMs = 60_000, maxMs = 900_000, forgetMs = 86_400_000, clock = clock,
     )

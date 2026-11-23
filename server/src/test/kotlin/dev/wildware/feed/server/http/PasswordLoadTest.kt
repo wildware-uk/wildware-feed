@@ -56,6 +56,8 @@ class PasswordLoadTest {
     fun `sign-ins at once never hash more than the gate allows`() {
         val results = guesses(8) { "203.0.113.$it" }
         assertTrue(peak.get() in 1..Passwords.gate.permits, "at most ${Passwords.gate.permits} at once, saw ${peak.get()}")
+        // All aimed at one account: it takes one check at a time, the rest are refused before the queue.
+        assertEquals(1, peak.get(), "one account, one hash at a time")
         for (r in results) {
             assertIs<PasswordCheck.Refused>(r)
             assertTrue(r.status == 400 || r.status == 503, "a wrong password or busy, not ${r.status}")
@@ -74,12 +76,14 @@ class PasswordLoadTest {
 
     @Test
     fun `the right password still gets in, and clears only the account's count, not the address's`() {
-        guesses(3) { "192.0.2.1" }
+        // One at a time: one account takes one password check at once.
+        fun wrong(n: Int, address: String) = List(n) { runBlocking { app.checkPassword("wrong guess", address) } }
+        wrong(3, "192.0.2.1")
         assertIs<PasswordCheck.Ok>(runBlocking { app.checkPassword("owner password", "192.0.2.1") })
         // The address keeps its three wrong guesses: they may have been at other accounts.
-        assertEquals(2, guesses(5) { "192.0.2.1" }.count { (it as PasswordCheck.Refused).status != 429 })
+        assertEquals(2, wrong(5, "192.0.2.1").count { (it as PasswordCheck.Refused).status != 429 })
         // The account's count started again: from elsewhere, all five are checked.
-        assertEquals(5, guesses(5) { "192.0.2.2" }.count { (it as PasswordCheck.Refused).status != 429 })
+        assertEquals(5, wrong(5, "192.0.2.2").count { (it as PasswordCheck.Refused).status != 429 })
     }
 
     @Test
