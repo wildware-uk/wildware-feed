@@ -401,7 +401,7 @@ private suspend fun decide(app: App, call: ApplicationCall, request: AuthRequest
             "existing" -> app.agents.find(form["agent_id"].orEmpty())?.takeIf { it.revokedAt == null }
                 ?: return call.page(409, consent(app, request, nonce, "That agent no longer exists. Pick another, or make a new one.", name), request.redirectUri)
             else -> {
-                val clean = requiredText(name.orEmpty(), "name", OAuth.NAME_MAX)
+                val clean = dev.wildware.feed.server.domain.Agents.checkName(name.orEmpty(), OAuth.NAME_MAX)
                 val taken = app.agents.list(includeRevoked = false).firstOrNull { it.name.equals(clean, ignoreCase = true) }
                 if (taken != null) {
                     return call.page(

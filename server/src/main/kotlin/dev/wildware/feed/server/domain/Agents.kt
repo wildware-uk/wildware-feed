@@ -13,7 +13,7 @@ class Agents(private val db: Database, private val tokenSecret: String, private 
     data class Refusal(val code: String, val message: String)
 
     fun mint(name: String): Pair<Agent, String> {
-        val clean = requiredText(name, "name", 100)
+        val clean = checkName(name)
         val token = Tokens.random()
         val agent = Agent(Ulid.next(), clean, clock(), null, null)
         db.update(
@@ -37,9 +37,28 @@ class Agents(private val db: Database, private val tokenSecret: String, private 
 
     fun rename(id: String, name: String): Agent {
         find(id) ?: throw notFound("no such agent: $id")
-        val clean = requiredText(name, "name", 100)
+        val clean = checkName(name)
         db.update("UPDATE agents SET name = ? WHERE team_id = :team AND id = ?", clean, id)
         return find(id)!!
+    }
+
+    companion object {
+        /** Words an agent can't be called: what the bridge and the feed call people and the server, and the @groups. */
+        val RESERVED = setOf("owner", "human", "system", "server", Mentions.EVERYONE, Mentions.HERE)
+
+        /**
+         * An agent's name, cleaned: 1 to [max] characters, none of them a control character, a double quote,
+         * a backtick or an angle bracket, and not one of [RESERVED] in any case. Other agents read the name where
+         * the bridge says who wrote a message, so it must never pass for the owner or break out of that.
+         */
+        fun checkName(name: String, max: Int = 100): String {
+            val clean = requiredText(name, "name", max)
+            if (clean.any { it.isISOControl() || it in "\"<>`" || Character.getType(it) == Character.FORMAT.toInt() }) {
+                throw invalid("an agent's name can't hold double quotes, backticks, angle brackets or control characters")
+            }
+            if (clean.lowercase().removePrefix("@") in RESERVED) throw invalid("\"$clean\" is kept for the dashboard itself: choose another name")
+            return clean
+        }
     }
 
     /** Parse an Authorization header as the TS `readBearerToken` does (§7.2 step 1-2). */

@@ -59,7 +59,7 @@ class Pairings(
 
     /** Start a pairing. [address] is the client's, [askedBy] the agent asking over MCP, if one is. */
     fun start(name: String, host: String?, cwd: String?, address: String?, askedBy: String?): Started {
-        val clean = requiredText(name, "name", NAME_MAX)
+        val clean = Agents.checkName(name, NAME_MAX)
         val cleanHost = optionalText(host, "host", HOST_MAX)
         val cleanCwd = optionalText(cwd, "cwd", CWD_MAX)
         expireDue()
@@ -99,7 +99,7 @@ class Pairings(
     fun approve(id: String, name: String?): Pairing {
         expireDue()
         val pairing = waiting(id)
-        val chosen = if (name == null) pairing.name else requiredText(name, "name", NAME_MAX)
+        val chosen = Agents.checkName(name ?: pairing.name, NAME_MAX)
         val taken = db.query("SELECT name FROM agents WHERE team_id = :team AND revoked_at IS NULL") { it.getString(1) }
             .any { it.lowercase() == chosen.lowercase() }
         if (taken) throw DomainError("name_taken", "an agent is already called \"$chosen\"; choose another name", 409)
