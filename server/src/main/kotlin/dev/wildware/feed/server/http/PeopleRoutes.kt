@@ -46,7 +46,7 @@ fun Route.peopleRoutes(app: App) {
             val update = { app.people.updateMe(call.person, optional("name"), optional("email"), optional("password"), optional("currentPassword")) }
             // A new email or password checks the current one: password work, so it waits its turn.
             val me = if ("email" in body || "password" in body) {
-                app.accountPasswordCheck(app.people.accountKey(call.person)) { Passwords.gate.run(update) }
+                app.accountPasswordCheck(app.people.accountKey(call.person), "device:" + call.caller.device.id) { Passwords.gate.run(update) }
             } else {
                 update()
             }
@@ -61,7 +61,7 @@ fun Route.peopleRoutes(app: App) {
             if (unknown.isNotEmpty()) throw invalid("deleting your account takes confirm and password, not ${unknown.joinToString(", ")}")
             if (body["confirm"].jsString != DELETE_ACCOUNT_CONFIRM) throw invalid("confirm must be \"$DELETE_ACCOUNT_CONFIRM\"")
             val password = body["password"]?.takeIf { it !is JsonNull }?.let { it.jsString ?: throw invalid("password must be a string") }
-            val gone = app.accountPasswordCheck(app.people.accountKey(call.person)) { Passwords.gate.run { app.people.deleteAccount(call.person, password) } }
+            val gone = app.accountPasswordCheck(app.people.accountKey(call.person), "device:" + call.caller.device.id) { Passwords.gate.run { app.people.deleteAccount(call.person, password) } }
             for ((team, devices) in gone.devicesByTeam) {
                 dev.wildware.feed.server.db.Tenant.with(team) {
                     for (id in devices) app.bus.publish("device.revoked", buildJsonObject { put("deviceId", id) })
@@ -185,7 +185,7 @@ fun Route.peopleRoutes(app: App) {
             val code = tokenOf(body)
             // An existing account's password is checked here: the same budget as signing in to it.
             val email = text("email")
-            val person = app.accountPasswordCheck(app.people.signInKey(email)) {
+            val person = app.accountPasswordCheck(app.people.signInKey(email), call.limiterAddress(app.config)) {
                 Passwords.gate.run { app.people.accept(code, text("name"), email, text("password")) }
             }
             val (device, token) = app.devices.mint(deviceName, person.id)

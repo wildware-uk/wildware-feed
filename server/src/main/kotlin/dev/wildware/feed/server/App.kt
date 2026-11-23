@@ -85,6 +85,32 @@ class App(val config: Config, val db: Database, val clock: () -> Long = System::
     /** Accounts with a password check running now: one at a time each ([checkPassword], [accountPasswordCheck]). */
     val passwordsInFlight: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()
 
+    /**
+     * Password checks running now per caller (a client address, or a device key): at most
+     * [PASSWORDS_PER_CALLER] each, so one caller can't hold the hashing queue by aiming at many
+     * accounts, or many made-up emails, at once.
+     */
+    private val passwordCallers = java.util.concurrent.ConcurrentHashMap<String, Int>()
+
+    /** Take one of [caller]'s turns, or false when it has [PASSWORDS_PER_CALLER] running already. */
+    fun takePasswordTurn(caller: String): Boolean {
+        var took = false
+        passwordCallers.compute(caller) { _, n ->
+            val running = n ?: 0
+            if (running < PASSWORDS_PER_CALLER) {
+                took = true
+                running + 1
+            } else {
+                running
+            }
+        }
+        return took
+    }
+
+    fun givePasswordTurn(caller: String) {
+        passwordCallers.computeIfPresent(caller) { _, n -> (n - 1).takeIf { it > 0 } }
+    }
+
     val signInBackoff = dev.wildware.feed.server.auth.Backoff(
         free = 10, baseMs = 60_000, maxMs = 900_000, forgetMs = 86_400_000, clock = clock,
     )
@@ -281,3 +307,6 @@ class App(val config: Config, val db: Database, val clock: () -> Long = System::
         fun open(config: Config) = App(config, Database.open(config))
     }
 }
+
+/** Password checks one caller may have running at once ([App.takePasswordTurn]). */
+const val PASSWORDS_PER_CALLER = 2

@@ -45,6 +45,19 @@ class PasswordGateTest {
     }
 
     @Test
+    fun `a full queue refuses at once instead of making the caller wait`() = runTest {
+        val gate = PasswordGate(1, waitMs = 60_000, io = StandardTestDispatcher(testScheduler), maxWaiting = 1)
+        val holder = launch { gate.withTurn { delay(10_000) } }
+        val waiter = launch { gate.withTurn { } }
+        runCurrent()
+        val start = testScheduler.currentTime
+        assertFailsWith<PasswordGate.Full> { gate.withTurn { } }
+        assertEquals(start, testScheduler.currentTime, "refused without waiting")
+        joinAll(holder, waiter)
+        assertEquals("free", gate.run { "free" })
+    }
+
+    @Test
     fun `password work inside a turn takes no second turn`() = runTest {
         val gate = PasswordGate(1, waitMs = 2_000, io = StandardTestDispatcher(testScheduler))
         assertEquals(2, gate.run { gate.blocking { 1 } + gate.blocking { 1 } })

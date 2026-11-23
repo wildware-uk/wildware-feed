@@ -13,10 +13,20 @@ import kotlinx.coroutines.withTimeoutOrNull
  * no cap a burst of sign-ins could ask for more memory than the server has. A caller waits up to
  * [waitMs] for its turn, then gets [Busy] (503, try again) instead of piling up.
  */
-class PasswordGate(val permits: Int, private val waitMs: Long, private val io: CoroutineDispatcher = Dispatchers.IO) {
+class PasswordGate(
+    val permits: Int,
+    private val waitMs: Long,
+    private val io: CoroutineDispatcher = Dispatchers.IO,
+    /** At most this many callers wait for a turn; the next is refused at once ([Full]), not queued. */
+    val maxWaiting: Int = permits * 8,
+) {
     class Busy : DomainError("busy", "The server is busy. Try again in a moment.", 503)
 
+    /** The queue is full: refused before waiting, so a flood can't hold everyone's sign-in for seconds. */
+    class Full : DomainError("rate_limited", "Too many password checks right now. Try again in a moment.", 429)
+
     private val semaphore = Semaphore(permits)
+    private val waiting = java.util.concurrent.atomic.AtomicInteger()
 
     /** Set on the thread doing a turn's work, so the hashes inside it take no second turn. */
     private val holding = ThreadLocal<Boolean>()
@@ -34,6 +44,18 @@ class PasswordGate(val permits: Int, private val waitMs: Long, private val io: C
     }
 
     internal suspend fun <T> withTurn(body: suspend () -> T): T {
+        if (waiting.incrementAndGet() > maxWaiting + permits) {
+            waiting.decrementAndGet()
+            throw Full()
+        }
+        try {
+            return withTurnCounted(body)
+        } finally {
+            waiting.decrementAndGet()
+        }
+    }
+
+    private suspend fun <T> withTurnCounted(body: suspend () -> T): T {
         var got = false
         // Nothing suspends between acquire and `got = true`, so a timeout either cancels the wait
         // (the semaphore keeps its permit) or finds the permit ours.

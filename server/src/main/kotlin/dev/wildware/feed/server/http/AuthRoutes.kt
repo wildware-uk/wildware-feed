@@ -65,14 +65,26 @@ suspend fun App.checkPassword(password: String?, clientAddress: String, email: S
             return PasswordCheck.Refused(503, ONE_AT_A_TIME, 1)
         }
     }
+    // A few checks at a time per caller, whatever accounts they aim at (or made-up emails, which
+    // cost the same hash as real ones, so the time taken tells nothing), refused before the queue.
+    val caller = if (loopback) LOOPBACK else clientAddress
+    if (!takePasswordTurn(caller)) {
+        giveBack()
+        accountKey?.let(passwordsInFlight::remove)
+        return PasswordCheck.Refused(429, AT_ONCE, 1)
+    }
     val person = try {
         Passwords.gate.run { if (email == null) people.signInFounder(password ?: "") else people.signIn(email, password ?: "") }
     } catch (e: PasswordGate.Busy) {
         // No password was checked, so the guess doesn't count.
         giveBack()
         return PasswordCheck.Refused(503, e.message, 1)
+    } catch (e: PasswordGate.Full) {
+        giveBack()
+        return PasswordCheck.Refused(429, e.message, 1)
     } finally {
         accountKey?.let(passwordsInFlight::remove)
+        givePasswordTurn(caller)
     }
     if (person == null) {
         signInAudit("wrong", accountKey, clientAddress)
@@ -96,7 +108,7 @@ suspend fun App.checkPassword(password: String?, clientAddress: String, email: S
  * gives the guess back. A right one clears the account's count. One check at a time per account,
  * refused before the hashing queue, so nobody can keep the queue full with one account.
  */
-suspend fun <T> App.accountPasswordCheck(accountKey: String, block: suspend () -> T): T {
+suspend fun <T> App.accountPasswordCheck(accountKey: String, caller: String, block: suspend () -> T): T {
     fun refuse(): Nothing {
         signInAudit("locked", accountKey, "-")
         throw DomainError("rate_limited", TOO_MANY, 429)
@@ -116,6 +128,11 @@ suspend fun <T> App.accountPasswordCheck(accountKey: String, block: suspend () -
         giveBack()
         throw DomainError("busy", ONE_AT_A_TIME, 503)
     }
+    if (!takePasswordTurn(caller)) {
+        giveBack()
+        passwordsInFlight.remove(accountKey)
+        throw DomainError("rate_limited", AT_ONCE, 429)
+    }
     try {
         val result = block()
         giveBack()
@@ -130,6 +147,7 @@ suspend fun <T> App.accountPasswordCheck(accountKey: String, block: suspend () -
         throw e
     } finally {
         passwordsInFlight.remove(accountKey)
+        givePasswordTurn(caller)
     }
 }
 
@@ -143,6 +161,7 @@ private fun signInAudit(outcome: String, accountKey: String?, address: String) {
 }
 
 private const val TOO_MANY = "Too many attempts. Try again later."
+private const val AT_ONCE = "Too many password checks from you at once. Try again in a moment."
 private const val ONE_AT_A_TIME = "A password check for this account is already running. Try again in a moment."
 private const val LOOPBACK = "loopback"
 private const val WRONG = "That password is not right."

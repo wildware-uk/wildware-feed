@@ -15,6 +15,7 @@ import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
@@ -62,6 +63,38 @@ class PasswordLoadTest {
             assertIs<PasswordCheck.Refused>(r)
             assertTrue(r.status == 400 || r.status == 503, "a wrong password or busy, not ${r.status}")
         }
+    }
+
+    @Test
+    fun `one caller aiming at many accounts, real or made up, gets five checks and two at a time`() {
+        // Made-up emails cost the same hash as real ones, so the time taken says nothing about who
+        // has an account, and they come out of the same budget.
+        val emails = List(8) { "someone$it@example.com" }
+        // The stand-in hash unknown emails are checked against is made on first use.
+        runBlocking { app.checkPassword("warm up", "198.51.100.59", "first@example.com") }
+        hashes.set(0)
+        val sequential = emails.map { email -> runBlocking { app.checkPassword("wrong guess", "198.51.100.60", email) } }
+        assertEquals(List(5) { 400 } + List(3) { 429 }, sequential.map { (it as PasswordCheck.Refused).status })
+        assertEquals(5, hashes.get(), "one hash per checked guess, none for the refused ones")
+
+        hashes.set(0)
+        peak.set(0)
+        val atOnce = runBlocking(Dispatchers.Default) {
+            emails.map { email -> async { app.checkPassword("wrong guess", "198.51.100.61", "x-$email") } }.awaitAll()
+        }.map { (it as PasswordCheck.Refused).status }
+        assertTrue(atOnce.all { it == 400 || it == 429 || it == 503 }, atOnce.toString())
+        assertTrue(hashes.get() <= 5, "at most five checked, saw ${hashes.get()}")
+        assertTrue(peak.get() <= dev.wildware.feed.server.PASSWORDS_PER_CALLER, "at most two at once from one caller, saw ${peak.get()}")
+    }
+
+    @Test
+    fun `a caller holds at most two password turns at once`() {
+        assertTrue(app.takePasswordTurn("198.51.100.62"))
+        assertTrue(app.takePasswordTurn("198.51.100.62"))
+        assertFalse(app.takePasswordTurn("198.51.100.62"), "a third waits for one to end")
+        assertTrue(app.takePasswordTurn("198.51.100.63"), "another caller is not held")
+        app.givePasswordTurn("198.51.100.62")
+        assertTrue(app.takePasswordTurn("198.51.100.62"))
     }
 
     @Test
