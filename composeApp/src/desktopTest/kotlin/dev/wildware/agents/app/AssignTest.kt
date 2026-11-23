@@ -28,7 +28,7 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
-/** Assigning work in the app (server migration 073): the picker, avatars on board cards, the board's filters, and A. */
+/** Assigning work in the app (server migration 074): the picker, avatars on board cards, the board's filters, and A. */
 @OptIn(ExperimentalTestApi::class)
 class AssignTest {
     private val server = FakeServer()

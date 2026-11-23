@@ -57,7 +57,7 @@ import dev.wildware.agents.app.design.TextInput
 import dev.wildware.agents.app.design.pressable
 
 /*
- * Assigning work (server migration 073): up to five people or agents on a card. "Assign…" on a
+ * Assigning work (server migration 074): up to five people or agents on a card. "Assign…" on a
  * board card, a card's ⋯ menu and the thread opens the picker; A on a focused board card too.
  * The board shows each card's assignees as small avatars.
  */

@@ -79,7 +79,7 @@ class Cards(private val feed: Feed) {
         )
         val saved = find(card) ?: throw notFound("no such ${card.kind}: ${card.id}")
         announce(card, saved)
-        // Assigned work that moved: the agents waiting on it hear it in its thread (migration 073).
+        // Assigned work that moved: the agents waiting on it hear it in its thread (migration 074).
         Viewer.currentOrNull?.principal?.let { by -> feed.assignees.moved(card, saved.status, by) }
         saved.status
     }
@@ -159,7 +159,7 @@ class Cards(private val feed: Feed) {
         val states = statuses ?: STATUSES
         if (states.isEmpty()) return emptyList()
         val marks = states.joinToString(", ") { "?" }
-        // Only what the reader can read; [assignedTo] (migration 073) keeps the cards assigned to them.
+        // Only what the reader can read; [assignedTo] (migration 074) keeps the cards assigned to them.
         val assigned = assignedTo?.let { " AND " + Assignees.assignedToSql("id") } ?: ""
         val scope = (projectIds?.let { ids -> "AND project_id IN (${ids.joinToString(", ") { "?" }})" } ?: "") + feed.access.notHidden("project_id") + assigned
         val params = states + projectIds.orEmpty() + listOfNotNull(assignedTo)

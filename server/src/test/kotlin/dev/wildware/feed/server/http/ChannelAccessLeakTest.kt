@@ -123,7 +123,7 @@ class ChannelAccessLeakTest {
         assertEquals(200, send(ownerKey, "POST", "/api/cards/message/$finished/status", """{"status":"done"}""").status.value)
         assertEquals(200, send(ownerKey, "POST", "/api/cards/message/$finished/board", """{"removed":true}""").status.value)
         assertEquals(200, send(ownerKey, "PUT", "/api/cards/update/$update/follow", """{"following":true}""").status.value)
-        // Assignees (migration 073): scout takes the zebra plan, and the owner assigns it the finished post.
+        // Assignees (migration 074): scout takes the zebra plan, and the owner assigns it the finished post.
         assertTrue("\"isError\":true" !in tool(scout, "assign_work", args("update_id" to update, "assignees" to JsonArray(listOf(JsonPrimitive("me"))))))
         assertEquals(200, send(ownerKey, "POST", "/api/cards/message/$finished/assignees", """{"assignees":["scout"]}""").status.value)
         send(ownerKey, "POST", "/api/messages", """{"project":"vault","body":"@other zebra for you"}""")

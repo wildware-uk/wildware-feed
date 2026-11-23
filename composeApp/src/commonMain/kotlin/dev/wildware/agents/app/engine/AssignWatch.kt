@@ -17,7 +17,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 /**
- * The Assign picker while it is open (server migration 073): who the card is assigned to and who
+ * The Assign picker while it is open (server migration 074): who the card is assigned to and who
  * could be, read when it opens, and the owner's choice saved in one go. [saved] runs after a save
  * goes through, so the board reads itself again.
  */

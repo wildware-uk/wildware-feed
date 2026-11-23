@@ -1925,7 +1925,7 @@
   "path": [
    "description"
   ],
-  "why": "Assigning work (migration 073): a work card has up to five assignees, people or agents; assign_work sets them, list_work finds what is assigned to you.",
+  "why": "Assigning work (migration 074): a work card has up to five assignees, people or agents; assign_work sets them, list_work finds what is assigned to you.",
   "replace": "\"cancelled\". Omit for every card carrying any state.\n- limit (optional): at most 200, default 50.",
   "with": "\"cancelled\". Omit for every card carrying any state.\n- assigned_to (optional): \"me\" for the work assigned to you (see assign_work), or a\n  person's or agent's name or id. It looks in every channel you can read, followed or not,\n  unless you name a channel.\n- limit (optional): at most 200, default 50."
  },
@@ -1934,7 +1934,7 @@
   "path": [
    "description"
   ],
-  "why": "Assigning work (migration 073): a work card has up to five assignees, people or agents; assign_work sets them, list_work finds what is assigned to you.",
+  "why": "Assigning work (migration 074): a work card has up to five assignees, people or agents; assign_work sets them, list_work finds what is assigned to you.",
   "replace": "status_at }], count }.",
   "with": "status_at, assignees? }], count }. assignees ([{ kind, id, name }]) is there\nwhen someone is assigned."
  },
@@ -1945,7 +1945,7 @@
    "properties",
    "assigned_to"
   ],
-  "why": "Assigning work (migration 073): a work card has up to five assignees, people or agents; assign_work sets them, list_work finds what is assigned to you.",
+  "why": "Assigning work (migration 074): a work card has up to five assignees, people or agents; assign_work sets them, list_work finds what is assigned to you.",
   "now": {
    "description": "Only the cards assigned to someone: \"me\" for work assigned to you, or a person's or agent's name or id. Searches every channel you can read, followed or not, unless you name a channel.",
    "type": "string"
@@ -1953,7 +1953,7 @@
  },
  {
   "tool": "assign_work",
-  "why": "Assigning work (migration 073): a work card has up to five assignees, people or agents; assign_work sets them, list_work finds what is assigned to you.",
+  "why": "Assigning work (migration 074): a work card has up to five assignees, people or agents; assign_work sets them, list_work finds what is assigned to you.",
   "add": {
    "name": "assign_work",
    "title": "Assign work to people or agents",
@@ -2006,7 +2006,7 @@
   "path": [
    "description"
   ],
-  "why": "Assigning work (migration 073): a to-do for a person that can wait is a card assigned to them, made in one post_update; a question is for an answer you need now.",
+  "why": "Assigning work (migration 074): a to-do for a person that can wait is a card assigned to them, made in one post_update; a question is for an answer you need now.",
   "replace": "Stop and ask the human who owns this dashboard for something only they can supply, then\nwait for the answer.",
   "with": "Stop and ask the human who owns this dashboard for something only they can supply, then\nwait for the answer.\n\nAsk only when you are blocked and need the answer now. A to-do for a person that can\nwait (approve the TestFlight build, add a DNS record, review this copy) is a card\ninstead: post_update with status \"todo\" and assignees [\"Sam\"], then carry on with other\nwork. When they mark it done, a line in its thread tells you."
  },
@@ -2015,7 +2015,7 @@
   "path": [
    "description"
   ],
-  "why": "Assigning work (migration 073): a to-do for a person that can wait is a card assigned to them, made in one post_update; a question is for an answer you need now.",
+  "why": "Assigning work (migration 074): a to-do for a person that can wait is a card assigned to them, made in one post_update; a question is for an answer you need now.",
   "replace": "If the card is a piece of work, mark it with set_status — \"in_progress\" while you are\non it, \"done\" when it is finished. That is what the task board used to be.",
   "with": "- status (optional): makes the card work at once, as set_status would: \"todo\",\n  \"in_progress\", \"blocked\", \"done\" or \"cancelled\".\n- assignees (optional): up to five people or agents to assign it to, by name or id, as\n  assign_work takes them (it becomes \"todo\" if you gave no status). Each must be able to\n  read the channel.\n\nIf the card is a piece of work, mark it — \"in_progress\" while you are on it, \"done\" when\nit is finished. That is what the task board used to be. A to-do for a person that can\nwait (approve a build, add a DNS record, review copy) is a card with status \"todo\" and\nthem as assignee, not a request_input: carry on with other work, and a line in its\nthread tells you when they mark it done."
  },
@@ -2026,7 +2026,7 @@
    "properties",
    "status"
   ],
-  "why": "Assigning work (migration 073): a to-do for a person that can wait is a card assigned to them, made in one post_update; a question is for an answer you need now.",
+  "why": "Assigning work (migration 074): a to-do for a person that can wait is a card assigned to them, made in one post_update; a question is for an answer you need now.",
   "now": {
    "description": "Make the card work at once: \"todo\", \"in_progress\", \"blocked\", \"done\" or \"cancelled\".",
    "type": "string",
@@ -2046,7 +2046,7 @@
    "properties",
    "assignees"
   ],
-  "why": "Assigning work (migration 073): a to-do for a person that can wait is a card assigned to them, made in one post_update; a question is for an answer you need now.",
+  "why": "Assigning work (migration 074): a to-do for a person that can wait is a card assigned to them, made in one post_update; a question is for an answer you need now.",
   "now": {
    "description": "Assign it at once to these people or agents (names, handles, \"me\", or agent:<id> / member:<id>). At most five; each must be able to read the channel.",
    "type": "array",

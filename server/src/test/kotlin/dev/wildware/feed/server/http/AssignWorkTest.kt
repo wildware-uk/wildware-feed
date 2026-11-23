@@ -38,7 +38,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * Assigning work (migration 073, spec/16): a work card's people and agents, who may assign, the
+ * Assigning work (migration 074, spec/16): a work card's people and agents, who may assign, the
  * line in the thread, an agent told on its stream wherever the card is, a person told by the bell
  * and their phone, list_work's assigned_to, and the board's filters.
  *

@@ -49,11 +49,11 @@ class Messages(private val feed: Feed) {
          */
         val guardRepeats: Boolean = false,
         /**
-         * The server's own line saying who assigned or unassigned whom (migration 073): stored with
+         * The server's own line saying who assigned or unassigned whom (migration 074): stored with
          * source [ASSIGNMENT], which no client can set.
          */
         val assignment: Boolean = false,
-        /** The server's line saying assigned work moved (migration 073): source [STATUS_LINE]. */
+        /** The server's line saying assigned work moved (migration 074): source [STATUS_LINE]. */
         val statusLine: Boolean = false,
     )
 
@@ -458,10 +458,10 @@ class Messages(private val feed: Feed) {
         /** A voice note (migration 065): said aloud and transcribed on the phone, then sent as said. */
         const val VOICE = "voice"
 
-        /** A line the server writes in a card's thread when its assignees change (migration 073). */
+        /** A line the server writes in a card's thread when its assignees change (migration 074). */
         const val ASSIGNMENT = "assignment"
 
-        /** A line the server writes when assigned work moves, for the agents waiting on it (migration 073). */
+        /** A line the server writes when assigned work moves, for the agents waiting on it (migration 074). */
         const val STATUS_LINE = "status"
 
         /** The server's own lines: they reach only the agents they name, and ring no bell unless they assign. */

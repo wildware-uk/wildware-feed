@@ -1,4 +1,4 @@
--- Migration 073: who a piece of work is assigned to (spec/16). A row gives one card (an update or
+-- Migration 074: who a piece of work is assigned to (spec/16). A row gives one card (an update or
 -- a post marked as work) one assignee: a person (member:<membership id>) or an agent
 -- (agent:<agent id>). A card has at most a handful. assigned_by is whoever did it, in the same
 -- form, and message_id is the line in the card's thread that said so. Unassigning deletes the row;

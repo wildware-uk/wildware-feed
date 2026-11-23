@@ -511,10 +511,10 @@
   "checksum": "cd3c8e69105bcad2f3d3a82d97436f2598c59d16470b9715c63113b82eea6035"
  },
  {
-  "version": 73,
+  "version": 74,
   "name": "work-is-assigned",
-  "file": "073-work-is-assigned.sql",
+  "file": "074-work-is-assigned.sql",
   "rebuildsTables": false,
-  "checksum": "60a409d9ed9cad58fda7e22b2b8f9411aba18080779ee6aae1e8eb1ca8c7ecbb"
+  "checksum": "29d3e1c697f5052bc0a4377cf0ae4a8d021fca850a61ede82ec0944769ad3b00"
  }
 ]

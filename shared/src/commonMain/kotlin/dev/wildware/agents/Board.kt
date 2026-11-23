@@ -48,7 +48,7 @@ data class BoardCardView(
     val removedBy: String? = null,
     /** The viewer may change its work state: Post on its channel. */
     val canMove: Boolean = true,
-    /** Who it is assigned to (server migration 073), oldest first. */
+    /** Who it is assigned to (server migration 074), oldest first. */
     val assignees: List<AssigneeView> = emptyList(),
 )
 
@@ -108,7 +108,7 @@ suspend fun DashboardClient.setBoardAutoRemove(days: Int?): Int? =
     }.decoded<BoardSettingBody>().autoRemoveDays
 
 /**
- * A card's assignee (server migration 073): a person or an agent. [principal] is `member:<id>` or
+ * A card's assignee (server migration 074): a person or an agent. [principal] is `member:<id>` or
  * `agent:<id>`; [kind] is "person" or "agent". [canRead] is whether they can read the card's channel,
  * on a candidate (only those can be assigned).
  */

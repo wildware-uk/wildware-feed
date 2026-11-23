@@ -96,7 +96,7 @@ fun ToolRegistry.registerFeedTools(app: App) {
     }
 
     register("post_update") { call ->
-        // Assignees are checked before anything is posted (migration 073), so a refusal leaves no card behind.
+        // Assignees are checked before anything is posted (migration 074), so a refusal leaves no card behind.
         call.texts("assignees")?.takeIf { it.isNotEmpty() }?.let { names ->
             app.feed.assignees.precheck(app.feed.projects.resolve(call.requiredChannel()).id, names, call.author)
         }
@@ -118,7 +118,7 @@ fun ToolRegistry.registerFeedTools(app: App) {
             ),
         )
         val apps = if (call.list("apps").isNullOrEmpty()) emptyList() else FeedAttachments.appsOn(app.db, CardRef("update", update.id))
-        // A work state and assignees in the same call (migration 073): a to-do for someone, in one go.
+        // A work state and assignees in the same call (migration 074): a to-do for someone, in one go.
         val card = CardRef("update", update.id)
         val status = call.text("status")?.let { app.feed.cards.setStatus(card, it) }
         val assigned = call.texts("assignees")?.takeIf { it.isNotEmpty() }?.let {
@@ -197,7 +197,7 @@ fun ToolRegistry.registerFeedTools(app: App) {
 
     register("list_work") { call ->
         val project = call.channel()
-        // assigned_to (migration 073): "me" is this agent, else a person's or agent's name or id.
+        // assigned_to (migration 074): "me" is this agent, else a person's or agent's name or id.
         val assignedTo = call.text("assigned_to")?.takeIf { it.isNotBlank() }?.let { app.feed.assignees.resolve(it, call.author).principal }
         val projectIds = when {
             !project.isNullOrEmpty() -> listOf(app.feed.projects.resolve(project).id)
@@ -477,7 +477,7 @@ private fun readThread(app: App, call: ToolCall): ToolResult {
                 put("author", c.author)
                 if (author != null) put("author_name", author)
                 if (c.kind == "update") { put("title", c.title); put("body", c.body) }
-                // Who it is assigned to (migration 073): a work card's people and agents.
+                // Who it is assigned to (migration 074): a work card's people and agents.
                 if (c.kind == "update" || c.kind == "message") {
                     put("assignees", FeedViews.assignees(app.feed.assignees.forCards(c.kind, listOf(c.id))[c.id].orEmpty()))
                 }
@@ -554,7 +554,7 @@ private fun ToolCall.apps(): List<FeedAttachments.AppInput>? = list("apps")?.map
 
 /** The MCP shapes (spec/05 §3.1): snake_case, ISO times, keys in the TS order. */
 internal object FeedViews {
-    /** Assignees as agents read them (migration 073): `{ kind, id, name }`, kind "agent" or "person". */
+    /** Assignees as agents read them (migration 074): `{ kind, id, name }`, kind "agent" or "person". */
     fun assignees(ws: List<Assignees.Who>): JsonArray = JsonArray(ws.map { w ->
         buildJsonObject { put("kind", w.kind); put("id", w.id); put("name", w.name) }
     })

@@ -162,9 +162,9 @@
   "checksum": "d1c6abc08740a20071536004764f99b9bf3e1b6aa3290f04fdff6073263fa897"
  },
  {
-  "version": 73,
+  "version": 74,
   "name": "work-is-assigned",
-  "file": "073-work-is-assigned.sql",
-  "checksum": "8d099aac15d44feafc4b932ae86a5f4df8aa7e44c096c7b640ca7951c58c30a9"
+  "file": "074-work-is-assigned.sql",
+  "checksum": "7925e165c0dafcee81d1ba9c6a5cbb0bfb785512aa6d990545d8b00d35c0a84b"
  }
 ]

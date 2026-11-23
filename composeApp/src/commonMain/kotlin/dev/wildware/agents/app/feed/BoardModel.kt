@@ -50,7 +50,7 @@ data class BoardCard(
     val removedByAge: Boolean = false,
     /** The viewer may change its work state. */
     val canMove: Boolean = true,
-    /** Who it is assigned to, oldest first (server migration 073). */
+    /** Who it is assigned to, oldest first (server migration 074). */
     val assignees: List<Assignee> = emptyList(),
 ) {
     /** What a screen reader says for it. */
