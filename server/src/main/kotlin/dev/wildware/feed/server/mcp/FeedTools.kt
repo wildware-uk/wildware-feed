@@ -386,6 +386,16 @@ fun ToolRegistry.registerFeedTools(app: App) {
         })
     }
 
+    register("delete_update") { call ->
+        val update = app.feed.updates.delete(call.text("update_id")!!, call.agent.id)
+        ToolResult.ok("Deleted. The update is gone from your owner’s screen.", buildJsonObject {
+            put("update", buildJsonObject {
+                FeedViews.update(update).forEach { (k, v) -> put(k, v) }
+                put("deleted_at", update.deletedAt?.let(Wire::isoOf))
+            })
+        })
+    }
+
     register("delete_message") { call ->
         val message = app.feed.messages.delete(call.text("message_id")!!, call.author)
         ToolResult.ok("Unsent. It is gone from your owner’s screen.", buildJsonObject { put("message", FeedViews.message(message)) })

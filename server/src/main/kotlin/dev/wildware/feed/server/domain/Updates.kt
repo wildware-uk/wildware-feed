@@ -139,10 +139,15 @@ class Updates(private val feed: Feed) {
         saved
     }
 
-    /** Soft, and quiet when it already is. Nothing on the card goes with it. */
-    fun delete(updateId: String): UpdateRow = feed.op {
+    /**
+     * Soft, and quiet when it already is. Nothing on the card goes with it. An agent ([agentId])
+     * may delete only its own; the owner ([agentId] null) any. Already deleted is a quiet success
+     * only for someone who could have deleted it.
+     */
+    fun delete(updateId: String, agentId: String? = null): UpdateRow = feed.op {
         val update = find(updateId) ?: throw notFound("no such update: $updateId")
         feed.access.requirePost(update.projectId) { notFound("no such update: $updateId") }
+        if (agentId != null && update.agentId != agentId) throw invalid("that update was posted by another agent")
         if (update.deletedAt != null) return@op update
         db.update("UPDATE updates SET deleted_at = ? WHERE team_id = :team AND id = ? AND deleted_at IS NULL", feed.now(), update.id)
         feed.publish("update.deleted", buildJsonObject { put("updateId", update.id); put("projectId", update.projectId) })
