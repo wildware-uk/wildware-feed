@@ -135,13 +135,13 @@ private fun menuRows(
     if (target.hasDetails) add(MenuRow("Details…", Icons.Details, false, FeedEvent.OpenDetails(target.id)))
     if (target.taggable) add(MenuRow("Tags…", Icons.Hash, false, FeedEvent.EditTags(target.id)))
     if (target.work) add(MenuRow(if (target.status == null) "Mark as work…" else "Work state…", Icons.Check, false, FeedEvent.ChooseStatus(target.id, target.status)))
-    if (target.work) add(MenuRow("Assign…", Icons.People, false, FeedEvent.Assign(target.id)))
     target.pinned?.let { pinned ->
         add(MenuRow(if (pinned) "Unpin" else "Pin", Icons.Pin, false, FeedEvent.Pin(target.id, pinned = !pinned)))
     }
     target.following?.let { following ->
         add(MenuRow(if (following) "Unfollow thread" else "Follow thread", if (following) Icons.BellOff else Icons.Bell, false, FeedEvent.FollowThread(target.id, !following)))
     }
+    if (target.work) add(MenuRow("Assign…", Icons.People, false, FeedEvent.Assign(target.id)))
     add(MenuRow("Feedback…", Icons.Feedback, false, FeedEvent.FeedbackAbout(target.id)))
     if (target.deletable) add(MenuRow("Delete", Icons.Trash, true, FeedEvent.Delete(target.id)))
 }
@@ -700,8 +700,7 @@ fun PhoneThreadScreen(ui: FeedUi, item: Threaded, widthPx: Float, safeArea: Safe
                 // Whether its replies alert the owner: lit while followed.
                 val following = ui.following(item)
                 FollowAction(following) { ui.emit(FeedEvent.FollowThread(item.id, !following)) }
-                if (item is FeedItem.Update || item is FeedItem.Post) IconAction(Icons.People, "Assign…") { ui.emit(FeedEvent.Assign(item.id)) }
-                // The card's own menu, as a long press on it gives: pin, tags, details, work state, delete.
+                // The card's own menu, as a long press on it gives: pin, tags, details, work state, assign, delete.
                 IconAction(Icons.More, "More thread actions") {
                     ui.menu = menuTargetFor(item, ui.isPinned(item.id, item.pinned), following)
                 }

@@ -187,7 +187,8 @@ fun AssignPicker(ui: FeedUi, state: AssignState, safeArea: SafeArea) {
                             .fillMaxWidth()
                             .semantics { selected = on }
                             .then(
-                                if (can || on) Modifier.pressable(c.name, AgentTheme.shapes.small, role = Role.Checkbox, labelIsShown = true) {
+                                // Spoken as what a press does: "Assign forge", "Unassign forge".
+                                if (can || on) Modifier.pressable(if (on) "Unassign ${c.name}" else "Assign ${c.name}", AgentTheme.shapes.small, role = Role.Checkbox) {
                                     if (on) chosen.remove(c.principal) else chosen.add(c.principal)
                                 } else Modifier.alpha(0.5f),
                             )

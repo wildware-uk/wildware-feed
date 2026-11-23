@@ -230,7 +230,8 @@ fun ToolRegistry.registerFeedTools(app: App) {
                     put("author", item.author)
                     put("created_at", Wire.isoOf(item.createdAt))
                     put("status_at", item.statusAt?.let(Wire::isoOf))
-                    put("assignees", FeedViews.assignees(assigned[item.id].orEmpty()))
+                    // Only when someone is: an unassigned card reads exactly as it always has.
+                    assigned[item.id]?.takeIf { it.isNotEmpty() }?.let { put("assignees", FeedViews.assignees(it)) }
                 }
             }))
             put("count", work.size)

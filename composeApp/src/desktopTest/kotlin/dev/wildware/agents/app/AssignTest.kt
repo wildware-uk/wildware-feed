@@ -87,7 +87,8 @@ class AssignTest {
         waitForNode(hasText("Assign…") and hasClickAction()).performClick()
         // Everyone who could be: lumen can't read the channel and says so.
         waitForNode(hasText("Can't read this channel"))
-        waitForNode(hasTestTag("assign-forge")).performClick()
+        waitForNode(hasContentDescription("Assign forge") and hasClickAction()).performClick()
+        waitForNode(hasContentDescription("Unassign forge"))
         waitForNode(hasText("Save") and hasClickAction()).performClick()
         assertEquals("""{"assignees":["agent:a1"],"mode":"set"}""", waitForWrite("POST", "/api/cards/message/m-post/assignees"))
     }

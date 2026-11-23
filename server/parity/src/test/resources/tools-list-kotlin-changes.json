@@ -1936,7 +1936,7 @@
   ],
   "why": "Assigning work (migration 072): a work card has up to five assignees, people or agents; assign_work sets them, list_work finds what is assigned to you.",
   "replace": "status_at }], count }.",
-  "with": "status_at, assignees: [{ kind, id, name }] }], count }."
+  "with": "status_at, assignees? }], count }. assignees ([{ kind, id, name }]) is there\nwhen someone is assigned."
  },
  {
   "tool": "list_work",

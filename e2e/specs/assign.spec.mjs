@@ -41,8 +41,11 @@ test('the owner assigns an agent from the board and filters to their own work', 
     await tap(page, 'button', 'Card options');
     await tap(page, 'button', 'Assign…');
     await find(page, 'textbox', 'Search people and agents');
-    await tap(page, await roleOf(page, ['checkbox', 'button'], 'builder'), 'builder');
-    await tap(page, await roleOf(page, ['checkbox', 'button'], 'Olive Owner'), 'Olive Owner');
+    // Each row is spoken as what a press does: "Assign builder", then "Unassign builder".
+    await find(page, await roleOf(page, ['button', 'checkbox'], 'Assign builder'), 'Assign builder');
+    await tap(page, await roleOf(page, ['button', 'checkbox'], 'Assign builder'), 'Assign builder');
+    await find(page, await roleOf(page, ['button', 'checkbox'], 'Unassign builder'), 'Unassign builder');
+    await tap(page, await roleOf(page, ['button', 'checkbox'], 'Assign Olive Owner'), 'Assign Olive Owner');
     const saved = nextResponse(page, `/api/cards/message/${login}/assignees`);
     await tap(page, 'button', 'Save');
     expect((await saved).status(), 'saving the assignees').toBe(200);
