@@ -1,5 +1,6 @@
 package dev.wildware.agents.android
 
+import dev.wildware.agents.VoiceWord
 import android.Manifest
 import android.content.Context
 import android.content.Intent
@@ -30,7 +31,7 @@ class SpeechVoiceInput(private val context: Context, private val hooks: Activity
     private var listening = false
     private var onStarted: ((String?) -> Unit)? = null
     private var onHeard: ((String) -> Unit)? = null
-    private var onDone: ((String?, String?) -> Unit)? = null
+    private var onDone: ((String?, List<VoiceWord>, String?) -> Unit)? = null
 
     override fun start(onHeard: (words: String) -> Unit, onStarted: (problem: String?) -> Unit) {
         if (!SpeechRecognizer.isRecognitionAvailable(context)) return onStarted("This phone has no speech recognition")
@@ -47,7 +48,8 @@ class SpeechVoiceInput(private val context: Context, private val hooks: Activity
         listen()
     }
 
-    override fun finish(onDone: (text: String?, problem: String?) -> Unit) {
+    // Android's recognizer rates only whole guesses, not words: no unsure words to offer.
+    override fun finish(onDone: (text: String?, words: List<VoiceWord>, problem: String?) -> Unit) {
         holding = false
         this.onDone = onDone
         if (listening) recognizer?.stopListening() else deliver()
@@ -89,7 +91,7 @@ class SpeechVoiceInput(private val context: Context, private val hooks: Activity
         onHeard = null
         release()
         val text = heard.toString().trim()
-        if (text.isNotEmpty()) done(text, null) else done(null, problem ?: "Didn't catch that. Hold and try again")
+        if (text.isNotEmpty()) done(text, emptyList(), null) else done(null, emptyList(), problem ?: "Didn't catch that. Hold and try again")
     }
 
     private fun release() {
