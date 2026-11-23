@@ -134,7 +134,7 @@ test('replying on a card further down takes the feed to the top with it', async 
     await find(page, 'textbox', 'Reply');
 });
 
-test('"Mention an agent" names one agent: only that agent gets the message', async ({ browser }) => {
+test('"Mention an agent" names one agent: it gets the message, and so does the channel', async ({ browser }) => {
     const page = await inAlpha(browser);
     await inbox(builder); await inbox(reviewer); // start both with nothing unread
     await tap(page, 'button', 'Mention an agent');
@@ -149,8 +149,8 @@ test('"Mention an agent" names one agent: only that agent gets the message', asy
 
     const got = await expectAgentGets(reviewer, 'please look at the logo sizes');
     expect(got.body).toBe('@reviewer please look at the logo sizes');
-    // builder works in this channel, but the message named someone else.
-    expect((await inbox(builder)).map((m) => m.body)).not.toContain('@reviewer please look at the logo sizes');
+    // builder works in this channel: a person's @name reaches the channel too.
+    expect((await inbox(builder)).map((m) => m.body)).toContain('@reviewer please look at the logo sizes');
 });
 
 // "Mention an agent" puts "@" in the box and the cursor after it, so the list of agents opens and
@@ -177,6 +177,7 @@ test('typing @name and picking from the list mentions that agent', async ({ brow
     await expectShown(page, '@builder the nightly build is red');
 
     await expectAgentGets(builder, '@builder the nightly build is red');
+    // reviewer doesn't follow this channel, and wasn't named.
     expect((await inbox(reviewer)).map((m) => m.body)).not.toContain('@builder the nightly build is red');
 });
 
