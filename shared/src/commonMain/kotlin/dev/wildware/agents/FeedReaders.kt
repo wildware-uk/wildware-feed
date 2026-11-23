@@ -601,8 +601,11 @@ internal class ThreadsReader(
     fun adopt(message: MessageView) {
         adopted[message.id] = message
         while (adopted.size > MaxAdopted) adopted.remove(adopted.keys.first())
-        if (snapshot.messages.none { it.id == message.id }) {
-            snapshot = snapshot.copy(messages = (snapshot.messages + message).sortedWith(Oldest))
+        snapshot = if (snapshot.messages.none { it.id == message.id }) {
+            snapshot.copy(messages = (snapshot.messages + message).sortedWith(Oldest))
+        } else {
+            // An edit the dashboard answered with: its words show before the stream says so.
+            snapshot.copy(messages = snapshot.messages.map { if (it.id == message.id) message else it })
         }
     }
 

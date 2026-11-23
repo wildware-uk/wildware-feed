@@ -1,5 +1,6 @@
 package dev.wildware.agents.app.feed
 
+import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -143,6 +144,7 @@ private fun menuRows(
     }
     if (target.work) add(MenuRow("Assign…", Icons.People, false, FeedEvent.Assign(target.id)))
     add(MenuRow("Feedback…", Icons.Feedback, false, FeedEvent.FeedbackAbout(target.id)))
+    if (target.editable) add(MenuRow("Edit", Icons.Pencil, false, FeedEvent.EditMessage(target.id, target.text)))
     if (target.deletable) add(MenuRow("Delete", Icons.Trash, true, FeedEvent.Delete(target.id)))
 }
 
@@ -829,6 +831,25 @@ fun BackToTop(modifier: Modifier = Modifier, newCount: Int = 0, onClick: () -> U
         Icon(Icons.ArrowUp, null, tint = fg, modifier = Modifier.size(16.dp))
         Text(label, Modifier.padding(start = 6.dp), color = fg, style = AgentTheme.type.label)
     }
+}
+
+/** The owner's own post or reply, its words in a box to change, with Cancel and Save. */
+@Composable
+fun EditMessageDialog(ui: FeedUi, ask: EditAsk) {
+    val colors = AgentTheme.colors
+    val words = remember(ask) { TextFieldState(ask.text) }
+    val save = { ui.saveEdit(words.text.toString()) }
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = { ui.editing = null },
+        containerColor = colors.surfaceRaised,
+        titleContentColor = colors.text,
+        textContentColor = colors.textMuted,
+        shape = AgentTheme.shapes.large,
+        title = { Text("Edit message", style = AgentTheme.type.title) },
+        text = { BoxedField("Message", words, "Message", "Message", multiline = true) },
+        dismissButton = { AppButton("Cancel", ButtonTone.Secondary) { ui.editing = null } },
+        confirmButton = { AppButton("Save", ButtonTone.Primary, enabled = words.text.isNotBlank()) { save() } },
+    )
 }
 
 /** "Delete this update?" with Cancel and Delete. Escape, Back or a tap outside cancel. */

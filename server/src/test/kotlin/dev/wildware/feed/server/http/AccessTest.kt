@@ -152,6 +152,34 @@ class AccessTest {
     }
 
     @Test
+    fun `a person edits only their own words whatever their role`() = withTeam { team ->
+        fun message(r: String) = Wire.json.parseToJsonElement(r).jsonObject["message"]!!.jsonObject
+        val mine = message(call(team.member, "POST", "/api/messages", """{"body":"ship on fridya","project":"web"}""").bodyAsText())["id"]!!.jsonPrimitive.content
+        val founders = message(call(team.owner, "POST", "/api/messages", """{"body":"hello","project":"web"}""").bodyAsText())["id"]!!.jsonPrimitive.content
+
+        val edited = call(team.member, "PATCH", "/api/messages/$mine", """{"body":"ship on Friday"}""")
+        assertEquals(200, edited.status.value)
+        val row = message(edited.bodyAsText())
+        assertEquals("ship on Friday", row["body"]!!.jsonPrimitive.content)
+        assertTrue(row["editedAt"]!!.jsonPrimitive.content.toLong() > 0)
+
+        // Not even an owner or an admin edits someone else's words.
+        assertEquals(403, call(team.other, "PATCH", "/api/messages/$mine", """{"body":"x"}""").status.value)
+        assertEquals(403, call(team.admin, "PATCH", "/api/messages/$mine", """{"body":"x"}""").status.value)
+        assertEquals(403, call(team.owner, "PATCH", "/api/messages/$mine", """{"body":"x"}""").status.value)
+        assertEquals(403, call(team.member, "PATCH", "/api/messages/$founders", """{"body":"x"}""").status.value)
+        assertEquals(200, call(team.owner, "PATCH", "/api/messages/$founders", """{"body":"hello all"}""").status.value)
+
+        assertEquals(400, call(team.member, "PATCH", "/api/messages/$mine", """{"body":""}""").status.value)
+        assertEquals(400, call(team.member, "PATCH", "/api/messages/$mine", """{}""").status.value)
+        assertEquals(404, call(team.member, "PATCH", "/api/messages/nope", """{"body":"x"}""").status.value)
+        // The refused edits changed nothing.
+        val gone = message(call(team.member, "DELETE", "/api/messages/$mine").bodyAsText())
+        assertEquals("ship on Friday", gone["body"]!!.jsonPrimitive.content)
+        assertEquals(404, call(team.member, "PATCH", "/api/messages/$mine", """{"body":"x"}""").status.value)
+    }
+
+    @Test
     fun `devices are each person's own`() = withTeam { team ->
         val list = Wire.json.parseToJsonElement(call(team.member, "GET", "/api/devices").bodyAsText()).jsonObject["devices"].toString()
         assertTrue(list.contains("sam's phone") && !list.contains("kim's phone"), list)

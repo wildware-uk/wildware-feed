@@ -1043,6 +1043,7 @@ class DashboardSession(
                 actions.post(it, event.text.ifBlank { null }, event.files.map(::upload), tags, voice = event.voice)
             }
             is FeedEvent.Delete -> cardRef(event.targetId)?.let { actions.delete(it) }
+            is FeedEvent.SaveEdit -> cardRef(event.targetId)?.takeIf { it.kind == CardKinds.Message }?.let { actions.edit(it, event.text) }
             is FeedEvent.Tag -> cardRef(event.targetId)?.let { actions.tag(it, event.tag, event.on, event.create) }
             is FeedEvent.SetStatus -> cardRef(event.targetId)?.let { actions.setStatus(it, event.status?.wire) }
             is FeedEvent.ShowBoard -> board.show(event.scope)
@@ -1204,7 +1205,7 @@ class DashboardSession(
             is FeedEvent.CloseAlone -> dashboard.everything.closeAlone()
             is FeedEvent.RetrySend -> outbox.retryNow(event.outboxId)
             is FeedEvent.DropUnsent -> outbox.remove(event.outboxId)
-            is FeedEvent.ChooseStatus, is FeedEvent.Reply, is FeedEvent.OpenDetails, is FeedEvent.EditTags, is FeedEvent.FeedbackAbout, is FeedEvent.CopyText, is FeedEvent.SelectText, is FeedEvent.CopyLink, is FeedEvent.Quote, is FeedEvent.SignOut, is FeedEvent.ToggleTheme -> Unit
+            is FeedEvent.ChooseStatus, is FeedEvent.EditMessage, is FeedEvent.Reply, is FeedEvent.OpenDetails, is FeedEvent.EditTags, is FeedEvent.FeedbackAbout, is FeedEvent.CopyText, is FeedEvent.SelectText, is FeedEvent.CopyLink, is FeedEvent.Quote, is FeedEvent.SignOut, is FeedEvent.ToggleTheme -> Unit
         }
     }
 

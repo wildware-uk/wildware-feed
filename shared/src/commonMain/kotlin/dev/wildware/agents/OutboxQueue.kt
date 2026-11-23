@@ -291,6 +291,9 @@ class OwnerActions(
     /** Marks a card as work, moves it along, or with a null [status] takes it off the work list. */
     fun setStatus(card: CardRef, status: String?): String = queue(emptyList()) { id, _ -> Outbox.status(id, clock(), card, status) }
 
+    /** Changes the words of the owner's own message. */
+    fun edit(card: CardRef, text: String): String = queue(emptyList()) { id, _ -> Outbox.edit(id, clock(), card, text) }
+
     /** Deletes a message (a post takes its replies with it) or an update. */
     fun delete(card: CardRef): String = queue(emptyList()) { id, _ -> Outbox.delete(id, clock(), card) }
 

@@ -258,6 +258,7 @@ private fun FeedScreenBody(
             AssignPickerHost(ui, if (phone) safeArea else SafeArea())
             if (ui.shortcutsOpen) ShortcutsSheet(ui, if (phone) safeArea else SafeArea())
             ui.deleting?.let { DeleteConfirm(ui, it) }
+            ui.editing?.let { EditMessageDialog(ui, it) }
             if (ui.alertsOpen) AlertSettingsSheet(ui, if (phone) safeArea else SafeArea())
             if (ui.retentionOpen) RetentionSettingsSheet(ui, if (phone) safeArea else SafeArea())
             ui.projectDialog?.let { ProjectDialogView(ui, it) }

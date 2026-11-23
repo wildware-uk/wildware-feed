@@ -196,6 +196,15 @@ class DashboardClient(
             setBody(json.encodeToJsonElement(NewMessage.serializer(), message))
         }.decoded<MessageCreatedBody>().message
 
+    /** Changes the words of the owner's own post or reply. Only its writer may. */
+    @Throws(Exception::class)
+    suspend fun editMessage(messageId: String, body: String): MessageView =
+        http.patch("api/messages/${messageId.encodeURLPathPart()}") {
+            authorise()
+            contentType(ContentType.Application.Json)
+            setBody(buildJsonObject { put("body", body) })
+        }.decoded<MessageCreatedBody>().message
+
     /** Takes back a post, a reply, or an agent's line. Deleting a post takes its replies with it. */
     @Throws(Exception::class)
     suspend fun deleteMessage(messageId: String) {

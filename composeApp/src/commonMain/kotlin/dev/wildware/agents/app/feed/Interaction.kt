@@ -58,6 +58,10 @@ sealed interface FeedEvent {
     data class SelectText(val targetId: String) : FeedEvent
     data class CopyLink(val targetId: String) : FeedEvent
     data class Delete(val targetId: String) : FeedEvent
+    /** Opens the owner's own post or reply to change its words; [text] is what it says now. */
+    data class EditMessage(val targetId: String, val text: String) : FeedEvent
+    /** Saves the owner's changed words for their own post or reply. */
+    data class SaveEdit(val targetId: String, val text: String) : FeedEvent
     /** Put a tag on a card, or take it off. [tag] is its id, or with [create] a new word to make on the way. */
     data class Tag(val targetId: String, val tag: String, val on: Boolean, val create: Boolean = false) : FeedEvent
     /** Open the tag picker for a card. The screen handles it; nothing is sent. */
@@ -349,6 +353,8 @@ data class MenuTarget(
     val pinned: Boolean? = null,
     /** Whether the owner may delete it: their own lines, and any update. */
     val deletable: Boolean = own,
+    /** Whether the owner may change its words: only their own posts and replies, once they are up. */
+    val editable: Boolean = own && !id.startsWith(dev.wildware.agents.DraftPrefix),
     /** A card that can carry fields: an update or a post, not a reply. */
     val hasDetails: Boolean = false,
     /** Whether the owner follows the card's thread; null for what has no thread of its own, such as a reply. */
@@ -368,6 +374,9 @@ data class StatusPick(val id: String, val current: WorkStatus?)
 /** "Delete this update?": what a delete would take, asked before it goes. */
 @Immutable
 data class DeleteAsk(val targetId: String, val question: String)
+
+/** The owner's own post or reply open to change its words: [text] is what it says now. */
+data class EditAsk(val targetId: String, val text: String)
 
 /** The emoji a double-tap adds. */
 const val QuickReaction = "👍"
@@ -1048,6 +1057,17 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
         return kept + added
     }
 
+    /** The owner's own line open to edit; null when none is. */
+    var editing by mutableStateOf<EditAsk?>(null)
+
+    /** Saves the edit open in [editing]: unchanged or empty words change nothing. */
+    fun saveEdit(text: String) {
+        val ask = editing ?: return
+        editing = null
+        val words = text.trim()
+        if (words.isNotEmpty() && words != ask.text.trim()) onEvent(FeedEvent.SaveEdit(ask.targetId, words))
+    }
+
     /** The delete waiting for the owner to say yes. Nothing is deleted until they do. */
     var deleting by mutableStateOf<DeleteAsk?>(null)
 
@@ -1100,6 +1120,11 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
         // Deleting can't be undone, so every way of asking for it (menu, sheet, screen reader) asks first.
         if (event is FeedEvent.Delete) {
             deleting = askFor(event.targetId)
+            menu = null
+            return
+        }
+        if (event is FeedEvent.EditMessage) {
+            editing = EditAsk(event.targetId, event.text)
             menu = null
             return
         }

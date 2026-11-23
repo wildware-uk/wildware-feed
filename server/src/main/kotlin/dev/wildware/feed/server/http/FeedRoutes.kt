@@ -166,6 +166,12 @@ fun Route.feedRoutes(app: App) {
 
     endpoint(
         "/api/messages/{id}",
+        // Kotlin only: a person edits their own message, as an agent does with edit_message.
+        HttpMethod.Patch to {
+            val body = call.jsonObjectBody()
+            val text = text(body["body"], "body")
+            call.respondOwner(200, buildJsonObject { put("message", app.feed.messages.edit(param("id"), Messages.HUMAN, text, person = call.person).json) })
+        },
         HttpMethod.Delete to {
             call.respondOwner(200, buildJsonObject { put("message", app.feed.messages.delete(param("id"), Messages.HUMAN, call.person).json) })
         },

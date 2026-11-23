@@ -229,13 +229,18 @@ class Messages(private val feed: Feed) {
 
     /**
      * Only the author may edit a live message; its mentions are worked out again. [refs], when
-     * given, become the cards it points at; an empty list takes them all off.
+     * given, become the cards it points at; an empty list takes them all off. For a `human` one the
+     * author is the [person] who wrote it ([person] null: the founder), never another of the team,
+     * whatever their role.
      */
-    fun edit(messageId: String, by: String, body: String, refs: List<CardRef>? = null): MessageRow = feed.op {
+    fun edit(messageId: String, by: String, body: String, refs: List<CardRef>? = null, person: People.Person? = null): MessageRow = feed.op {
         val message = find(messageId)
         if (message == null || message.deletedAt != null) throw notFound("no such message: $messageId")
         checkAuthor(by)
         if (by != message.author) throw invalid("that message was posted by somebody else")
+        if (by == HUMAN && (message.userId ?: People.FOUNDER) != (person?.id ?: People.FOUNDER)) {
+            throw forbidden("only the person who wrote a message can edit it")
+        }
         feed.access.requirePost(message.projectId) { notFound("no such message: $messageId") }
         val clean = requiredText(body, "body", BODY_MAX)
         val card = CardRef("message", message.id)

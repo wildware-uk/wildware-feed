@@ -429,7 +429,7 @@ class Dashboard internal constructor(
         if (items === draftsFrom) return drafts
         draftsFrom = items
         delivered.retainAll(items.mapTo(HashSet()) { it.id })
-        drafts = items.filter { !it.gaveUp && it.id !in delivered && (it.kind == OutboxKind.Message || it.kind == OutboxKind.Ticket) }
+        drafts = items.filter { !it.gaveUp && it.id !in delivered && (it.kind == OutboxKind.Message || it.kind == OutboxKind.Ticket || it.kind == OutboxKind.Edit) }
         return drafts
     }
 
@@ -942,13 +942,18 @@ class Feed internal constructor(
     private var indexedDrafts: List<OutboxItem>? = null
     private var draftIds: Set<String> = emptySet()
 
+    /** The owner's edits still on their way, by the message they change. */
+    private var pendingEdits: Map<String, OutboxItem> = emptyMap()
+
     /** Voice notes still waiting for an Undo: the line's id to when the wait ends. */
     private var draftHolds: Map<String, Long> = emptyMap()
 
     private fun indexed(): ThreadIndex {
         val snapshot = threads.snapshot
         if (indexedFrom !== snapshot || indexedDrafts !== drafts) {
-            val lines = drafts.mapNotNull(::draftLine)
+            val lines = drafts.filter { it.kind != OutboxKind.Edit }.mapNotNull(::draftLine)
+            // An edit on its way shows at once; the newest wins.
+            pendingEdits = drafts.filter { it.kind == OutboxKind.Edit && it.text != null }.associate { it.card?.id.orEmpty() to it }
             draftIds = lines.mapTo(HashSet()) { it.id }
             draftHolds = drafts.filter { it.holdUntilMillis > 0 && DraftPrefix + it.id in draftIds }.associate { DraftPrefix + it.id to it.holdUntilMillis }
             // A draft's files show where they will be, saying they are going up, until the dashboard has them.
@@ -1034,7 +1039,9 @@ class Feed internal constructor(
 
     private fun appsOn(card: CardRef): List<AppView> = timeline.cardApps.filter { it.card == card }
 
-    private fun line(message: MessageView, context: FeedContext, index: ThreadIndex = indexed()): ThreadLine {
+    private fun line(stored: MessageView, context: FeedContext, index: ThreadIndex = indexed()): ThreadLine {
+        val edit = pendingEdits[stored.id]
+        val message = if (edit == null) stored else stored.copy(body = edit.text.orEmpty(), editedAt = edit.createdAtMillis)
         return ThreadLine(
             message = message,
             authorName = context.authorName(message.author),

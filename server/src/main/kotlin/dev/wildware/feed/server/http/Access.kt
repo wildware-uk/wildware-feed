@@ -42,6 +42,7 @@ object Access {
         // Taking part: posting, reacting, answering, tagging, pins, work states, app state.
         "POST /api/messages" to M,
         "DELETE /api/messages/{id}" to M, // your own; anyone's for an admin (Messages.delete)
+        "PATCH /api/messages/{id}" to M, // your own only, whatever your role (Messages.edit)
         "POST /api/messages/{id}/reactions" to M,
         "POST /api/media" to M,
         "PATCH /api/updates/{id}" to M, // pinned, and nothing else

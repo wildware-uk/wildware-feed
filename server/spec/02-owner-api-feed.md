@@ -16,6 +16,7 @@ Routes covered:
 | GET | `/api/messages` | `listMessagesHandler` `src/http/owner/messages.ts:162` |
 | POST | `/api/messages` | `postMessageHandler` `src/http/owner/messages.ts:98` |
 | DELETE | `/api/messages/[id]` | `deleteMessageHandler` `src/http/owner/messages.ts:114` |
+| PATCH | `/api/messages/[id]` | Kotlin only (§4.3a) |
 | POST | `/api/messages/[id]/reactions` | `reactHandler` `src/http/owner/messages.ts:135` |
 | POST | `/api/cards/[kind]/[id]/pin` | `pinCardHandler` `src/http/owner/cards.ts:48` |
 | POST | `/api/cards/[kind]/[id]/status` | `setCardStatusHandler` `src/http/owner/cards.ts:67` |
@@ -350,6 +351,21 @@ No body. `deleteMessage` with `by: human` (`src/domain/messages.ts:477-507`):
 Reactions, acks, media, mentions, fields and tags on it are left alone.
 
 Response `200 {"message": Message}` (re-read, `deletedAt` set).
+
+### 4.3a `PATCH /api/messages/[id]` (Kotlin only)
+
+A person edits their own message: the owner's side of MCP `edit_message` (05). Body (strict):
+`body` string (else 400 `body must be a string`), the new words.
+- Unknown or deleted → 404 `no such message: <id>`.
+- An agent's message → 400 `that message was posted by somebody else`.
+- Another person's message → 403 `only the person who wrote a message can edit it`, whatever the
+  caller's role. A message with no `userId` is the founder's.
+- Empty or too long `body` → 400, as for `POST /api/messages`.
+- Sets `body` and `edited_at = now`; mentions are worked out again and newly named people follow the
+  thread, as when posting. Media, refs, reactions, acks and its `source` are left alone.
+- Publish `message.updated {messageId, projectId, author, updateId, replyTo, requestId, taskId}`.
+
+Response `200 {"message": Message}` (re-read, `editedAt` set).
 
 ### 4.4 `POST /api/messages/[id]/reactions`
 

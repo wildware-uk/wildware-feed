@@ -44,6 +44,9 @@ enum class OutboxKind {
 
     /** Sets the field [OutboxItem.field] on [OutboxItem.card] to [OutboxItem.value], or takes it off when that is null. */
     Field,
+
+    /** Changes the words of the owner's own message [OutboxItem.card] to [OutboxItem.text]. */
+    Edit,
 }
 
 /** A photo or file waiting to go up with its message. [name] is the file in the outbox's folder. */
@@ -122,7 +125,7 @@ data class OutboxItem(
         get() = when (kind) {
             OutboxKind.Answer -> "request=${answer?.requestId}"
             OutboxKind.RequestAnswer, OutboxKind.Dismiss -> "request=${card?.id}"
-            OutboxKind.React, OutboxKind.Delete, OutboxKind.Tag, OutboxKind.Status, OutboxKind.Pin, OutboxKind.Field -> "card=${card?.kind}/${card?.id}"
+            OutboxKind.React, OutboxKind.Delete, OutboxKind.Tag, OutboxKind.Status, OutboxKind.Pin, OutboxKind.Field, OutboxKind.Edit -> "card=${card?.kind}/${card?.id}"
             else -> thread.entries.sortedBy { it.key }.joinToString("&") { "${it.key}=${it.value}" }
         }
 
@@ -203,6 +206,9 @@ object Outbox {
 
     fun delete(id: String, nowMillis: Long, card: CardRef) =
         OutboxItem(id, nowMillis, OutboxKind.Delete, "Delete", card = card)
+
+    fun edit(id: String, nowMillis: Long, card: CardRef, text: String) =
+        OutboxItem(id, nowMillis, OutboxKind.Edit, "Edit", card = card, text = text)
 
     /** [tag] is a tag id, or a new word to make on the way when [create]. */
     fun tag(id: String, nowMillis: Long, card: CardRef, tag: String, on: Boolean, create: Boolean) =
@@ -423,6 +429,11 @@ internal suspend fun DashboardClient.deliverQueued(
             OutboxKind.Pin -> {
                 val card = item.card ?: return DeliveryResult(DeliveryOutcome.GiveUp, message = "It has no card.")
                 pinCard(card, item.on ?: true)
+            }
+            OutboxKind.Edit -> {
+                val card = item.card ?: return DeliveryResult(DeliveryOutcome.GiveUp, message = "It has no card.")
+                val text = item.text ?: return DeliveryResult(DeliveryOutcome.GiveUp, message = "It has no words.")
+                sent = editMessage(card.id, text)
             }
         }
         DeliveryResult(DeliveryOutcome.Sent, 200, ticketMessageId = ticketMessageId, sent = sent)
