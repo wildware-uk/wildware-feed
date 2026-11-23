@@ -171,8 +171,8 @@ class TeamsApartTest {
             db.turnOff("card_secrets", "feedback", "channel_access", "access_audit")
             assertTrue(TeamTables.rowSecurityForced(db))
             assertEquals(listOf("access_audit", "card_secrets", "channel_access", "feedback"), TeamTables.notForced(db))
-            App(config().copy(rowSecurity = true), db).close()
-            assertEquals(emptyList(), TeamTables.notForced(db))
+            // Closing the app closes its database, so look first.
+            App(config().copy(rowSecurity = true), db).use { assertEquals(emptyList(), TeamTables.notForced(db)) }
         }
     }
 
