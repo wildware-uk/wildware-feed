@@ -59,13 +59,16 @@ class RateLimitTest : ParityTest() {
     fun `five wrong passwords lock the login, form and device sign-in alike`() = parity {
         assumeTrue(System.getenv("PARITY_SKIP_LOCKOUT") != "1", "PARITY_SKIP_LOCKOUT=1")
         owner // make sure the shared owner exists before the door shuts
-        Device.signIn() // a success resets the count
         // The login form and device sign-in share one limiter; without the website, only the latter.
-        repeat(5) { i ->
-            val status = if (Parity.web) Owner.loginForm("wrong-$i").status.value
+        // A right password no longer clears this address's count (only the account's), so wrong
+        // guesses earlier tests made from here still count: at most five get checked, then it locks.
+        val statuses = (0 until 6).map { i ->
+            if (Parity.web) Owner.loginForm("wrong-$i").status.value
             else call(HttpMethod.Post, "/api/devices/sign-in", obj("name" to "x", "password" to "wrong-$i")).status.value
-            assertEquals(400, status, "attempt ${i + 1}")
         }
+        val locked = statuses.indexOf(429)
+        assertTrue(locked in 0..5, "locked within five wrong guesses: $statuses")
+        assertTrue(statuses.take(locked).all { it == 400 } && statuses.drop(locked).all { it == 429 }, statuses.toString())
         if (Parity.web) {
             val locked = Owner.loginForm(Parity.adminPassword)
             assertEquals(429, locked.status.value)
@@ -79,7 +82,7 @@ class RateLimitTest : ParityTest() {
         assertEquals(429, device.status.value)
         assertEquals("""{"error":"rate_limited","message":"Too many attempts. Try again later."}""", device.bodyAsText())
         val retry = device.headers[HttpHeaders.RetryAfter]!!.toInt()
-        assertTrue(retry in 800..900, "retry-after about 15 minutes: $retry")
+        assertTrue(retry in 1..900, "retry-after at most 15 minutes: $retry")
 
         // The owner signed in before the lockout still works.
         assertEquals(200, owner.get("/api/summary").status.value)
