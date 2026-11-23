@@ -101,7 +101,11 @@ fun InlineThread(
                 if (ui != null) {
                     val following = ui.following(item)
                     FollowAction(following, labelled = true) { ui.emit(FeedEvent.FollowThread(item.id, !following)) }
-                    if (item is FeedItem.Update || item is FeedItem.Post) AssignAction { ui.emit(FeedEvent.Assign(item.id)) }
+                    if (item is FeedItem.Update || item is FeedItem.Post) {
+                        // Remembered, so a new reply doesn't redraw it: the feed's redraw budget is tight.
+                        val assign = remember(ui, item.id) { { ui.emit(FeedEvent.Assign(item.id)) } }
+                        AssignAction(assign)
+                    }
                 }
             }
         }

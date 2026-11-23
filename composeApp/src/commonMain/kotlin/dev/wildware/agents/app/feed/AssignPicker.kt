@@ -24,6 +24,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -119,6 +121,16 @@ fun AssigneeAvatars(assignees: List<Assignee>, modifier: Modifier = Modifier, si
         }
         if (assignees.size > shown) MetaText("+${assignees.size - shown}", Modifier.offset(x = -(size / 4) * (shown - 1)).padding(start = 2.dp))
     }
+}
+
+/**
+ * The picker while it is open. It reads only the picker's own part of the feed's state, so a new
+ * card or reply never redraws the screen around it.
+ */
+@Composable
+fun AssignPickerHost(ui: FeedUi, safeArea: SafeArea) {
+    val open by remember(ui) { derivedStateOf { ui.state.assign } }
+    open?.let { AssignPicker(ui, it, safeArea) }
 }
 
 /**

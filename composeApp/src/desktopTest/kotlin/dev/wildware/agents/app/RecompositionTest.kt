@@ -93,8 +93,8 @@ class RecompositionTest {
         // sidebar counting cards again. Measured at 412, then 420 once the header gained the
         // work-state filter row and status chip (#18): new things on screen, not extra redraws.
         // 443 once the sidebar gained its "New project" row (channels grouped into projects).
-        // 469 once a card's thread gained "Assign…" beside Follow (migration 073).
-        assertTrue(calls.values.sum() < 480, "one reply redrew ${calls.values.sum()} composables")
+        println("one reply redrew ${calls.values.sum()} composables")
+        assertTrue(calls.values.sum() < 460, "one reply redrew ${calls.values.sum()} composables: ${calls.entries.sortedByDescending { it.value }}")
     }
 
     @Test

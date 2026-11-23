@@ -255,7 +255,7 @@ private fun FeedScreenBody(
             Toast(ui, if (phone) safeArea else SafeArea())
             if (ui.bellOpen) NotificationPanel(ui, if (phone) safeArea else SafeArea()) { path -> scope.launch { ui.goTo(OpenCard.fromPath(path)) } }
             ui.statusPick?.let { StatusPicker(ui, it, if (phone) safeArea else SafeArea()) }
-            ui.state.assign?.let { AssignPicker(ui, it, if (phone) safeArea else SafeArea()) }
+            AssignPickerHost(ui, if (phone) safeArea else SafeArea())
             if (ui.shortcutsOpen) ShortcutsSheet(ui, if (phone) safeArea else SafeArea())
             ui.deleting?.let { DeleteConfirm(ui, it) }
             if (ui.alertsOpen) AlertSettingsSheet(ui, if (phone) safeArea else SafeArea())
