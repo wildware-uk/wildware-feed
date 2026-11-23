@@ -12,11 +12,9 @@ package dev.wildware.feed.server.domain
  * `subscribe`), is @mentioned anywhere in it, wrote in it, wrote its card, or hears its channel.
  * Other teams never: every query is the caller's team.
  *
- * Which lines: everything live in the thread, except a line that @names only other agents, which
- * stays theirs as it does everywhere ([Mentions.readable]). One exception, for the owner: when a
- * person @mentioned this agent in the thread, every line a person wrote there is shared with it
- * too, so "@b can you help @a" lets b read what the owner told a. A line one agent addressed only
- * to another agent stays between them. Lines held back are counted, never shown.
+ * Which lines: everything live in the thread, except a line an agent addressed with @name only to
+ * other agents, which stays theirs as it does everywhere ([Mentions.readable]). A person's @name
+ * never hides a line. Lines held back are counted, never shown.
  */
 class ThreadReads(private val feed: Feed) {
     private val db get() = feed.db
@@ -79,11 +77,7 @@ class ThreadReads(private val feed: Feed) {
                     "(the same id) to read it, or ask your owner to @mention you there.",
             )
         }
-        // Brought in by a person: what people wrote here is shared with this agent.
-        val byPerson = all.any { it.author == HUMAN && named(it.id, agentId) }
-        val shown = all.filter { line ->
-            line.author == me || Mentions.readable(db, line.id, line.author, me) || (byPerson && line.author == HUMAN)
-        }
+        val shown = all.filter { line -> line.author == me || Mentions.readable(db, line.id, line.author, me) }
         return Opened(thread, projectId, head, all, shown)
     }
 
@@ -94,7 +88,7 @@ class ThreadReads(private val feed: Feed) {
      */
     /**
      * Whether [agentId] may read what is on message [messageId] by [author] (its blocks, its fields):
-     * a message @naming only other agents is theirs and its author's, as its words are (spec/02 §7.7).
+     * a message an agent wrote @naming only other agents is theirs and its author's, as its words are (spec/02 §7.7).
      */
     fun mayReadLine(agentId: String, messageId: String, author: String?): Boolean {
         val me = AGENT + agentId
@@ -167,7 +161,6 @@ class ThreadReads(private val feed: Feed) {
         /** The most replies one read hands over; the post that started the thread always comes too. */
         const val LIMIT = 200
         private const val AGENT = "agent:"
-        private const val HUMAN = "human"
 
         /**
          * The line an agent reads under a message that @mentions it in a thread it was not in before:

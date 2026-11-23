@@ -184,7 +184,7 @@ class FeedTest {
     }
 
     @Test
-    fun `an owner's answer naming an agent reaches only it, even outside the projects it works in`() {
+    fun `an owner's answer naming an agent reaches it outside the projects it works in, and the channel too`() {
         agent("A1", "scout")
         agent("A2", "forge")
         feed.projects.create("P", null, null)
@@ -199,7 +199,8 @@ class FeedTest {
         assertEquals(update.id, answer.updateId)
         assertEquals(listOf("A2"), mentioned(answer.id))
         assertEquals(listOf("@forge can you check this"), feed.messages.read("A2", null, null, false).messages.map { it.body })
-        assertTrue(feed.messages.read("A1", null, null, false).messages.none { it.id == answer.id }, "only the agent it names hears it")
+        // A person's @name widens: scout, who follows p, hears it as well.
+        assertTrue(feed.messages.read("A1", null, null, false).messages.any { it.id == answer.id }, "the channel hears a person's @name")
     }
 
     @Test
@@ -293,15 +294,26 @@ class FeedTest {
     }
 
     @Test
-    fun `a message that names an agent reaches only that agent`() {
+    fun `an agent's @name reaches only the agents it names, a person's reaches the channel too`() {
         agent("A1", "scout")
         agent("A2", "builder")
+        agent("A3", "lead")
         val p = feed.projects.create("P", null, null).first.id
+        feed.projects.create("Q", null, null)
         for (a in listOf("A1", "A2")) Subscriptions(db).followProject(Subscriptions.agent(a), p, chosen = true)
-        human("@builder only you", project = "p")
+        feed.messages.post(Messages.Post(author = "agent:A3", body = "@builder only you", project = "p"))
+        human("@builder and the channel", project = "p")
         human("everyone", project = "p")
-        assertEquals(listOf("everyone"), feed.messages.read("A1", null, null, null).messages.map { it.body })
-        assertEquals(listOf("@builder only you", "everyone"), feed.messages.read("A2", null, null, null).messages.map { it.body })
+        assertEquals(listOf("@builder and the channel", "everyone"), feed.messages.read("A1", null, null, false).messages.map { it.body })
+        assertEquals(listOf("@builder only you", "@builder and the channel", "everyone"), feed.messages.read("A2", null, null, false).messages.map { it.body })
+        // The same from a `since` cursor, and in the unread counts.
+        assertEquals(listOf("@builder and the channel", "everyone"), feed.messages.read("A1", "0", null, false).messages.map { it.body })
+        assertEquals(2, AgentWork(db, bus) { now }.countWork("A1").unreadMessages)
+        assertEquals(3, AgentWork(db, bus) { now }.countWork("A2").unreadMessages)
+        // A person's @name still reaches an agent that follows nothing there.
+        human("@lead look", project = "q")
+        assertTrue(feed.messages.read("A3", null, null, false).messages.any { it.body == "@lead look" })
+        assertTrue(feed.messages.read("A1", null, null, false).messages.none { it.body == "@lead look" })
     }
 
     // ---- cards ------------------------------------------------------------------------------------

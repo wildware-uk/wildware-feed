@@ -13,14 +13,24 @@ import java.util.regex.Pattern
 object Mentions {
     const val EVERYONE = "everyone"
     const val HERE = "here"
+    private const val AGENT = "agent:"
+
+    /**
+     * Whether a message [author] wrote is directed by its @names: an agent's @name reaches only the
+     * agents it names, while a person's @name reaches that agent as well as everyone in the channel.
+     */
+    fun directs(author: String?): Boolean = author?.startsWith(AGENT) == true
+
+    /** [directs] in SQL, for a message's author column [column]: true when its @names narrow it. */
+    fun directsSql(column: String = "m.author"): String = "$column LIKE '$AGENT%'"
 
     /**
      * Whether [reader] (`human`, or `agent:<id>`) may read the words of a message [author] wrote: a
-     * message that @names agents reaches only them and its author, wherever its text would show
-     * (a reply's quote, a work summary, a thread's title); the owner reads everything.
+     * message an agent wrote that @names agents reaches only them and its author, wherever its text
+     * would show (a reply's quote, a work summary, a thread's title); the owner reads everything.
      */
     fun readable(db: Database, messageId: String, author: String?, reader: String): Boolean {
-        if (reader == "human" || reader == author) return true
+        if (reader == "human" || reader == author || !directs(author)) return true
         val named = db.query("SELECT agent_id FROM message_mentions WHERE team_id = :team AND message_id = ?", messageId) { it.getString(1) }
         return named.isEmpty() || reader.removePrefix("agent:") in named
     }

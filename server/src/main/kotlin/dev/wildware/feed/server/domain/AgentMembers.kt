@@ -127,7 +127,10 @@ class AgentMembers(private val feed: Feed) {
         feed.publish("subscriptions.updated", JsonObject(where + buildJsonObject { put("subscriber", Subscriptions.agent(agentId)) }))
     }
 
-    /** A message from the owner that @mentions only the agent: it reaches that agent wherever it is, and no other. */
+    /**
+     * A message from the owner that @mentions the agent: it reaches that agent wherever it is and,
+     * being a person's @name, the rest of the channel too.
+     */
     private fun tell(body: String, project: String?, by: String) {
         feed.messages.post(Messages.Post(author = Messages.HUMAN, body = body, project = project, userId = by))
     }

@@ -2085,5 +2085,14 @@
     "taskSupport": "forbidden"
    }
   }
+ },
+ {
+  "tool": "get_messages",
+  "path": [
+   "description"
+  ],
+  "why": "A person's @name reaches that agent as well as everyone in the channel; an agent's @name reaches only the agents it names.",
+  "replace": "**@name narrows it.** A message that names agents with @name is handed only to them,\neven outside the channels they follow, and that holds when you read from `since` too.\n",
+  "with": "**@name.** A person's @name reaches that agent as well as everyone in the channel; an\nagent's @name reaches only the agents it names. Either way the agents named get it even\noutside the channels they follow, and that holds when you read from `since` too.\n"
  }
 ]

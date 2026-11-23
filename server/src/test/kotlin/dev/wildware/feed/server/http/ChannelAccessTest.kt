@@ -7,6 +7,7 @@ import dev.wildware.feed.server.db.Database
 import dev.wildware.feed.server.db.Viewer
 import dev.wildware.feed.server.domain.Agents
 import dev.wildware.feed.server.domain.ChannelAccess
+import dev.wildware.feed.server.domain.Messages
 import dev.wildware.feed.server.domain.People
 import dev.wildware.feed.server.domain.feed
 import dev.wildware.feed.server.events.AppEvent
@@ -364,11 +365,17 @@ class ChannelAccessTest {
     fun `an agent's file download follows the message it is on (issue 304)`() = withTeam { client ->
         channels(client)
         client.tool(scoutToken, "subscribe", args("channel" to "web"))
-        // A file on a line @addressed only to another agent is that agent's.
+        // A file on a line an agent @addressed only to another agent is that agent's.
+        val (lead, _) = app.agents.mint("lead")
         val forOther = upload(client, ownerKey)
-        client.json(ownerKey, "POST", "/api/messages", """{"project":"web","body":"@other this one is yours","mediaIds":["$forOther"]}""", status = 201)
+        app.db.update("UPDATE media SET author = ? WHERE team_id = :team AND id = ?", "agent:${lead.id}", forOther)
+        app.feed.messages.post(Messages.Post(author = "agent:${lead.id}", body = "@other this one is yours", project = "web", mediaIds = listOf(forOther)))
         assertEquals(404, client.call(scoutToken, "GET", "/api/agent/media/$forOther").status.value)
         assertEquals(200, client.call(otherToken, "GET", "/api/agent/media/$forOther").status.value)
+        // A person's @name narrows nothing: scout hears the channel, so the file is its too.
+        val shared = upload(client, ownerKey)
+        client.json(ownerKey, "POST", "/api/messages", """{"project":"web","body":"@other and the channel","mediaIds":["$shared"]}""", status = 201)
+        assertEquals(200, client.call(scoutToken, "GET", "/api/agent/media/$shared").status.value)
 
         // A file posted where scout doesn't listen: refused, until a person @mentions scout in its thread.
         client.json(ownerKey, "POST", "/api/projects", """{"name":"Quiet","slug":"quiet"}""", status = 201)
@@ -409,8 +416,9 @@ class ChannelAccessTest {
     fun `a message to one agent keeps its fields and blocks from the others`() = withTeam { client ->
         channels(client)
         client.tool(otherToken, "subscribe", args("channel" to "web"))
-        val posted = client.json(ownerKey, "POST", "/api/messages", """{"project":"web","body":"@scout only for you"}""", status = 201)
-        val id = posted["message"]!!.jsonObject["id"]!!.jsonPrimitive.content
+        // An agent's @name directs a message; a person's narrows nothing (below).
+        val (lead, _) = app.agents.mint("lead")
+        val id = app.feed.messages.post(Messages.Post(author = "agent:${lead.id}", body = "@scout only for you", project = "web")).id
         assertNull(client.tool(scoutToken, "set_card_field", args("message_id" to id, "name" to "Plan", "value" to "for scout alone")).error())
         // Scout answers in the thread with no mention: other hears the reply, and learns the root's id.
         client.tool(scoutToken, "post_message", args("message_id" to id, "body" to "on it"))
@@ -421,6 +429,12 @@ class ChannelAccessTest {
         assertFalse("for scout alone" in thread, thread)
         assertTrue("for scout alone" in client.tool(scoutToken, "get_card_fields", args("message_id" to id)).toString())
         assertNull(client.tool(scoutToken, "get_blocks", args("message_id" to id)).error())
+
+        // The owner's @scout reaches the whole channel, so what is on it is the channel's to read.
+        val posted = client.json(ownerKey, "POST", "/api/messages", """{"project":"web","body":"@scout and the channel"}""", status = 201)
+        val open = posted["message"]!!.jsonObject["id"]!!.jsonPrimitive.content
+        assertNull(client.tool(scoutToken, "set_card_field", args("message_id" to open, "name" to "Plan", "value" to "for everyone")).error())
+        assertTrue("for everyone" in client.tool(otherToken, "get_card_fields", args("message_id" to open)).toString())
     }
 
     @Test

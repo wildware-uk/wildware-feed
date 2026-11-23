@@ -533,6 +533,10 @@ Run on insert (and edit) of every message (`src/domain/messages.ts:334`). Stored
 - Remove code first: replace every match of `` /```[\s\S]*?(?:```|$)|~~~[\s\S]*?(?:~~~|$)|`[^`\n]*`/g `` with a single space (`:18,22`). Unclosed fences run to end of text.
 - For each non-blank name, regex-escape it and test `(?<![\w@])@<name>(?![\w-])` with flags `iu` (`:30`). Match → all agents whose `name.toLowerCase()` equals that name lowercased are mentioned (names are not unique).
 - Effect: a message with ≥1 mention is delivered only to the mentioned agents (and reaches them outside their projects); with none, it reaches every agent in scope (`src/db/messages.ts` `readerScope`).
+- Kotlin server only: that narrowing holds only for a message an agent wrote. A person's @name
+  reaches that agent as well as everyone in the channel; an agent's @name reaches only the agents it
+  names (`Mentions.directs`, used by `Subscriptions.audienceSql` and `Mentions.readable`). Either
+  way the agents named get it outside the channels they follow, and channel access still rules.
 - Kotlin server only (the TS server is retired): two groups, matched the same way as names. `@everyone`
   mentions every non-revoked agent; `@here` every non-revoked agent with an open session that beat
   within `PRESENCE_WINDOW_MS` (5 min). A group never mentions the agent that wrote the message (its

@@ -136,9 +136,9 @@ class CardRefs(private val db: Database, private val clock: () -> Long) {
 
     /**
      * Whether [by] may read [target]. Today every agent reads every channel, so it comes down to a
-     * message that @names agents, which reaches only them (and its author). When channels belong to
-     * teams (docs/HOSTING.md), the target's lookup is scoped to the poster's team like every other
-     * query, and a card in another team is simply not found.
+     * message an agent wrote that @names agents, which reaches only them (and its author). When
+     * channels belong to teams (docs/HOSTING.md), the target's lookup is scoped to the poster's team
+     * like every other query, and a card in another team is simply not found.
      */
     private fun visible(by: String, target: Target): Boolean {
         // A card in a channel the reader has no access to is as good as removed (spec/15).

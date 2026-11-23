@@ -127,7 +127,8 @@ people.
   still reaches it, as always. Removing it from a project quiets every channel in it, including
   ones it followed on their own; the owner can still add it to one of them.
 - **It takes effect at once**: the agent stream reads what the agent hears on every event.
-- **The agent is told**, by a message from the person who made the change, that @mentions only it:
+- **The agent is told**, by a message from the person who made the change, that @mentions it (a
+  person's @name, so the rest of the channel sees it too):
   "@alpha I removed you from #web. …" in the channel, or with no channel for a project.
 
 Stored on the rows that already exist (`project_subscriptions`, `group_subscriptions`):

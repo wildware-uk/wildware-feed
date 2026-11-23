@@ -61,8 +61,8 @@ message as a channel that never was), everywhere data leaves the server:
 - **Agent files** (`GET /api/agent/media/{id}`, issue #304): the same rule as reading the card the
   file is on: the channel's access, then the thread rule of `get_messages({message_id})` (it follows
   the thread, hears the channel, wrote there, or was @mentioned there), and on a message that very
-  line (a line @addressed only to other agents stays theirs, except that a person @mentioning this
-  agent in the thread shares what people wrote there). Any refusal is the same 404.
+  line (a line an agent @addressed only to other agents stays theirs; a person's @name hides
+  nothing). Any refusal is the same 404.
 
 Writes check the level: below `read` is `not_found`, `read` is `403 forbidden` ("you can read this
 channel but not post in it"). A slug is unique whoever can see its channel: making a channel whose

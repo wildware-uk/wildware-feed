@@ -24,8 +24,9 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * A message that @names agents reaches only them. Its words must not reach the other agents some
- * other way either: as the quote on a reply, as a work summary, or as a followed thread's title.
+ * A message an agent wrote that @names agents reaches only them. Its words must not reach the other
+ * agents some other way either: as the quote on a reply, as a work summary, or as a followed
+ * thread's title. A person's @name narrows nothing, so it has nothing to keep.
  */
 class AddressedQuotesTest {
     private val config = Config(
@@ -65,11 +66,12 @@ class AddressedQuotesTest {
     private fun addressedStaysAddressed(app: App) {
         val (alpha, _) = app.agents.mint("alpha")
         val (beta, _) = app.agents.mint("beta")
+        val (lead, _) = app.agents.mint("lead")
         app.feed.projects.create("Web", null, null)
         for (agent in listOf(alpha, beta)) app.feed.updates.post(Updates.Post(project = "web", agentId = agent.id, body = "${agent.name} works in web"))
         for (agent in listOf(alpha, beta)) tool(app, agent, "get_messages")
 
-        val addressed = app.feed.messages.post(Messages.Post(author = Messages.HUMAN, body = "@alpha the private plan", project = "web"))
+        val addressed = app.feed.messages.post(Messages.Post(author = "agent:${lead.id}", body = "@alpha the private plan", project = "web"))
         tool(app, alpha, "post_message", "message_id" to addressed.id, "body" to "on it")
 
         // beta hears alpha's reply, but not the words it answers.

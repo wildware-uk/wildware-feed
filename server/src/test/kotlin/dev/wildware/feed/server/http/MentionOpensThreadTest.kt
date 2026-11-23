@@ -149,9 +149,9 @@ class MentionOpensThreadTest {
             val otherIds = tool(app, other, "get_messages", "message_id" to root.id)["messages"]!!.jsonArray.map { it.jsonObject["id"]!!.jsonPrimitive.content }
             assertEquals(listOf(root.id, aside.id, ask.id, agentToAgent.id, later.id), otherIds)
 
-            // The bystander was named only by an agent: it reads the unaddressed lines and its own, not the owner's to others.
+            // The bystander was named only by an agent: it reads every line, as a person's @name hides none.
             val byIds = tool(app, bystander, "get_messages", "message_id" to root.id)["messages"]!!.jsonArray.map { it.jsonObject["id"]!!.jsonPrimitive.content }
-            assertEquals(listOf(root.id, agentToAgent.id, later.id), byIds)
+            assertEquals(listOf(root.id, aside.id, ask.id, agentToAgent.id, later.id), byIds)
 
             // An agent nobody named, that follows neither the channel nor the thread, can't read it.
             val (outsider, _) = app.agents.mint("outsider")

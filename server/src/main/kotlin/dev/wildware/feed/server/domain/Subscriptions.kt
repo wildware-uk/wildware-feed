@@ -58,9 +58,10 @@ class Subscriptions(private val db: Database, private val clock: () -> Long = Sy
     )
 
     /**
-     * Which messages reach an agent, besides the @mention rule (a message naming agents reaches
-     * only them): what it follows (channels, threads), of that only what is in [within] when that is
-     * given (get_messages reading one channel), and mentions of it anywhere. With [threadsAnywhere]
+     * Which messages reach an agent, besides the @mention rule (a message an agent wrote naming
+     * agents reaches only them; a person's @name reaches the channel too, [Mentions.directs]): what
+     * it follows (channels, threads), of that only what is in [within] when that is given
+     * (get_messages reading one channel), and mentions of it anywhere. With [threadsAnywhere]
      * (a bridge that named channels, [bridge]) [within] narrows only the channels it follows, never
      * the threads. A followed message in no channel passes [within] only with [channelless].
      */
@@ -640,15 +641,20 @@ class Subscriptions(private val db: Database, private val clock: () -> Long = Sy
         }
 
         /**
-         * The @mention audience rule (for messages aliased `m`): a message that names agents reaches only
-         * them, and an assignment line only the agents it names. One parameter, the reader's agent id. See [reachSql] for [oneMessage].
+         * The @mention audience rule (for messages aliased `m`): a message an agent wrote that names
+         * agents reaches only them ([Mentions.directs]); a person's @names widen it, never narrow it.
+         * An assignment line reaches only the agents it names. One parameter, the reader's agent id.
+         * See [reachSql] for [oneMessage].
          */
-        fun audienceSql(oneMessage: Boolean = false): String = if (oneMessage) {
-            "((NOT EXISTS (SELECT 1 FROM message_mentions AS mm WHERE mm.team_id = m.team_id AND mm.message_id = m.id) AND $NOT_ASSIGNMENT) " +
-                "OR EXISTS (SELECT 1 FROM message_mentions AS mm WHERE mm.team_id = m.team_id AND mm.message_id = m.id AND mm.agent_id = ?))"
-        } else {
-            "((m.id NOT IN (SELECT mm.message_id FROM message_mentions AS mm WHERE mm.team_id = :team) AND $NOT_ASSIGNMENT) " +
-                "OR m.id IN (SELECT mm.message_id FROM message_mentions AS mm WHERE mm.team_id = :team AND mm.agent_id = ?))"
+        fun audienceSql(oneMessage: Boolean = false): String {
+            val (namesNone, namesReader) = if (oneMessage) {
+                "NOT EXISTS (SELECT 1 FROM message_mentions AS mm WHERE mm.team_id = m.team_id AND mm.message_id = m.id)" to
+                    "EXISTS (SELECT 1 FROM message_mentions AS mm WHERE mm.team_id = m.team_id AND mm.message_id = m.id AND mm.agent_id = ?)"
+            } else {
+                "m.id NOT IN (SELECT mm.message_id FROM message_mentions AS mm WHERE mm.team_id = :team)" to
+                    "m.id IN (SELECT mm.message_id FROM message_mentions AS mm WHERE mm.team_id = :team AND mm.agent_id = ?)"
+            }
+            return "(($NOT_ASSIGNMENT AND (NOT ${Mentions.directsSql()} OR $namesNone)) OR $namesReader)"
         }
 
         /**

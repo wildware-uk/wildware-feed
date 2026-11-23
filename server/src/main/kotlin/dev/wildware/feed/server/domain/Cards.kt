@@ -151,7 +151,7 @@ class Cards(private val feed: Feed) {
 
     /**
      * `listWorkInScope`: [projectIds] null is every project. An agent [reader] (`agent:<id>`) is not
-     * shown a message that @names other agents, as get_messages does not show it one.
+     * shown a message another agent @named other agents in, as get_messages does not show it one.
      */
     fun listWork(projectIds: List<String>?, statuses: List<String>?, limit: Int, reader: String = Messages.HUMAN, assignedTo: String? = null): List<WorkItem> {
         for (status in statuses.orEmpty()) if (status !in STATUSES) throw invalid("${JsText.quote(status)} is not a work state")
@@ -167,7 +167,7 @@ class Cards(private val feed: Feed) {
         val (audience, heard) = if (reader == Messages.HUMAN || (assignedTo != null && assignedTo == reader)) {
             "" to emptyList()
         } else {
-            " AND (author = ? OR id NOT IN (SELECT mm.message_id FROM message_mentions AS mm WHERE mm.team_id = :team) " +
+            " AND (author = ? OR NOT ${Mentions.directsSql("author")} OR id NOT IN (SELECT mm.message_id FROM message_mentions AS mm WHERE mm.team_id = :team) " +
                 "OR id IN (SELECT mm.message_id FROM message_mentions AS mm WHERE mm.team_id = :team AND mm.agent_id = ?))" to
                 listOf(reader, reader.removePrefix("agent:"))
         }
