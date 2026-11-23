@@ -486,6 +486,8 @@ class DesktopMediaHandler(
             partial.copyTo(target, overwrite = true)
             partial.delete()
         }
+        // It came from an agent, through the dashboard: the computer treats it as from the internet.
+        markFromInternet(target)
     }
 
     companion object {
@@ -494,14 +496,47 @@ class DesktopMediaHandler(
 
         fun defaultDownloads(): File = downloadsFolder
 
-        /** [name] with nothing that could climb out of the folder or upset a file system. */
+        /**
+         * [name] with nothing that could climb out of the folder, upset a file system, or disguise
+         * what the file is: text-direction overrides and other invisible characters go (they can
+         * make "fdp.exe" read as ".pdf"), and a Windows device name ("CON", "NUL.txt") gets a "_".
+         */
         fun safeFileName(name: String): String {
             // Only the last part of a path: "../../build.log" is saved as "build.log".
-            val cleaned = name.substringAfterLast('/').substringAfterLast('\\').map { c -> if (c == '/' || c == '\\' || c == ':' || c.code < 32 || c in "<>\"|?*") '_' else c }
+            val cleaned = name.substringAfterLast('/').substringAfterLast('\\')
+                .filterNot { Character.getType(it) == Character.FORMAT.toInt() || it.code in 0x7f..0x9f }
+                .map { c -> if (c == '/' || c == '\\' || c == ':' || c.code < 32 || c in "<>\"|?*") '_' else c }
                 .joinToString("")
                 .trim()
                 .trimStart('.')
-            return cleaned.ifEmpty { "download" }.take(200)
+                .trimEnd('.', ' ')
+            val safe = if (WindowsDevice.matches(cleaned.substringBefore('.'))) "_$cleaned" else cleaned
+            return safe.ifEmpty { "download" }.take(200)
+        }
+
+        private val WindowsDevice = Regex("^(con|prn|aux|nul|com[0-9]|lpt[0-9])$", RegexOption.IGNORE_CASE)
+
+        /**
+         * Marks [file] as downloaded from the internet, as a browser does, so the computer's own
+         * checks run when it is opened: Windows' Mark of the Web, macOS's quarantine flag, and the
+         * freedesktop origin on Linux. Best effort: a file system that can't hold the mark still
+         * gets the file.
+         */
+        fun markFromInternet(file: File) {
+            val os = System.getProperty("os.name").orEmpty().lowercase()
+            runCatching {
+                when {
+                    os.contains("win") -> java.io.FileOutputStream(file.path + ":Zone.Identifier").use {
+                        it.write("[ZoneTransfer]\r\nZoneId=3\r\n".toByteArray())
+                    }
+                    os.contains("mac") -> {
+                        val value = "0081;%08x;Wildware Feed;".format(System.currentTimeMillis() / 1000)
+                        ProcessBuilder("xattr", "-w", "com.apple.quarantine", value, file.path).redirectErrorStream(true).start().waitFor()
+                    }
+                    else -> java.nio.file.Files.getFileAttributeView(file.toPath(), java.nio.file.attribute.UserDefinedFileAttributeView::class.java)
+                        ?.write("xdg.origin.url", java.nio.charset.StandardCharsets.UTF_8.encode("wildware-feed"))
+                }
+            }
         }
 
         /** [name] in [folder], or "name (2).ext" and so on when that is taken. */
