@@ -34,12 +34,20 @@ dependencies {
     implementation(libs.commonmark.strikethrough)
     // Crash reports, only when SENTRY_DSN is set (CrashReports.kt).
     implementation(libs.sentry.java)
+    // Metrics and events over OTLP/HTTP, only when OTEL_EXPORTER_OTLP_ENDPOINT is set (Telemetry.kt).
+    // The JDK's own HTTP client sends them, not OkHttp: one less library in a 512 MB dyno.
+    implementation(libs.opentelemetry.sdk)
+    implementation(libs.opentelemetry.exporter.otlp) {
+        exclude(group = "io.opentelemetry", module = "opentelemetry-exporter-sender-okhttp")
+    }
+    runtimeOnly(libs.opentelemetry.exporter.sender.jdk)
     runtimeOnly(libs.slf4j.simple)
 
     testImplementation(kotlin("test"))
     testImplementation(libs.junit.jupiter)
     testImplementation(libs.ktor.server.test.host)
     testImplementation(libs.coroutines.test)
+    testImplementation(libs.opentelemetry.sdk.testing)
     testRuntimeOnly(libs.junit.launcher)
 }
 

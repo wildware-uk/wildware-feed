@@ -2,6 +2,8 @@ package dev.wildware.feed.server.http
 
 import dev.wildware.feed.server.App
 import dev.wildware.feed.server.CrashReports
+import dev.wildware.feed.server.Telemetry
+import dev.wildware.feed.server.Tracing
 import dev.wildware.feed.server.domain.DomainError
 import dev.wildware.feed.server.db.Tenant
 import dev.wildware.feed.server.db.Viewer
@@ -55,6 +57,8 @@ class FeedServer(val app: App) {
         if (!stopped.compareAndSet(false, true)) return
         runCatching { engine.stop(GRACE_MS, TIMEOUT_MS) }
         app.close()
+        // Send the last minute's numbers before the process goes (a no-op when metrics are off).
+        Telemetry.stop()
     }
 
     companion object {
@@ -71,15 +75,29 @@ class FeedServer(val app: App) {
 fun Application.feed(app: App, placeOf: (ApplicationCall) -> Place = { Hosts.placeOf(app, it) }) {
     // A request that throws is answered with one fixed 500: the error's own text can hold anything,
     // so it goes only to the log, and to crash reports when they are on.
+    // Every request is also counted and timed (Telemetry), and a sample traced (Tracing): by its
+    // route's pattern and status, never its path or anything it carried.
     intercept(ApplicationCallPipeline.Monitoring) {
+        val started = System.nanoTime()
+        val method = call.request.httpMethod.value
+        val trace = Tracing.startRequest(method)
         try {
-            proceed()
+            if (trace == null) proceed() else withContext(Tracing.element(trace)) { proceed() }
         } catch (e: Throwable) {
             if (e is kotlinx.coroutines.CancellationException) throw e
-            CrashReports.requestFailed(e, call.request.httpMethod.value, call.attributes.getOrNull(RoutePattern))
+            CrashReports.requestFailed(e, method, call.attributes.getOrNull(RoutePattern))
+            Telemetry.event(
+                Telemetry.Level.ERROR, "http.unhandled",
+                "http.request.method" to method, "http.route" to (call.attributes.getOrNull(RoutePattern) ?: "other"), "error.type" to Telemetry.errorType(e),
+            )
             if (call.response.isCommitted) throw e
-            call.application.environment.log.error("Unhandled: ${call.request.httpMethod.value} ${call.attributes.getOrNull(RoutePattern) ?: "(no route)"}", e)
+            call.application.environment.log.error("Unhandled: $method ${call.attributes.getOrNull(RoutePattern) ?: "(no route)"}", e)
             call.respondRaw(500, INTERNAL_ERROR, Wire.JSON)
+        } finally {
+            val route = call.attributes.getOrNull(RoutePattern)
+            val status = call.response.status()?.value ?: 0
+            Telemetry.request(method, route, status, System.nanoTime() - started, stream = call.attributes.contains(StreamCall))
+            Tracing.finishRequest(trace, method, route, status)
         }
     }
     intercept(ApplicationCallPipeline.Monitoring) {
@@ -305,6 +323,9 @@ fun Route.endpoint(path: String, vararg handlers: Pair<HttpMethod, suspend Routi
 
 /** The pattern a request matched (`/api/cards/{id}`), not its path: a crash report names the route, never the ids in it. */
 private val RoutePattern = io.ktor.util.AttributeKey<String>("RoutePattern")
+
+/** Set on a call answered with a live stream ([respondSse]): it is counted, not timed. */
+internal val StreamCall = io.ktor.util.AttributeKey<Unit>("StreamCall")
 
 /** Every `METHOD /pattern` any server has registered, for the test that every owner route has a rule. */
 val registeredEndpoints: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()

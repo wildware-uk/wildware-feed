@@ -125,31 +125,50 @@ class ToolRegistry {
             "or name one of its channels; list_projects shows them)"
     }
 
-    /** `tools/call`, as the SDK would answer it. */
+    /**
+     * `tools/call`, as the SDK would answer it. Each call is counted by tool and outcome (Telemetry):
+     * `ok`, `refused` (the tool said no), `invalid` (no such tool, or bad arguments), `failed` (a bug).
+     */
     suspend fun call(app: App, agent: Agents.Agent, params: JsonObject?): ToolResult {
+        val started = System.nanoTime()
         val name = (params?.get("name") as? JsonPrimitive)?.content ?: ""
-        val handler = handlers[name] ?: return ToolResult.sdkError("Tool $name not found")
-        val raw = params?.get("arguments")
-        val (args, issues) = Schema.check(schemas.getValue(name), raw)
-        if (issues.isNotEmpty()) {
-            return ToolResult.sdkError("Input validation error: Invalid arguments for tool $name: ${issues.joinToString("\n")}")
-        }
-        // A suspended team is read-only: its agents can read, not write (docs/HOSTING.md §7).
-        val team = app.teams.current()
-        if (team != null && team.suspended && !dev.wildware.feed.server.http.Suspension.readOnlyTool(name)) {
-            return ToolResult.failed("suspended", dev.wildware.feed.server.http.Suspension.message(team))
-        }
-        return try {
-            // Every tool sees as this agent does (spec/15): a channel it has no access to doesn't exist for it.
-            kotlinx.coroutines.withContext(dev.wildware.feed.server.db.Viewer.element(dev.wildware.feed.server.db.Viewer.agent(agent.id))) {
-                handler(ToolCall(app, agent, args!!))
+        var outcome = "ok"
+        try {
+            val handler = handlers[name] ?: return ToolResult.sdkError("Tool $name not found").also { outcome = "invalid" }
+            val raw = params?.get("arguments")
+            val (args, issues) = Schema.check(schemas.getValue(name), raw)
+            if (issues.isNotEmpty()) {
+                outcome = "invalid"
+                return ToolResult.sdkError("Input validation error: Invalid arguments for tool $name: ${issues.joinToString("\n")}")
             }
-        } catch (e: DomainError) {
-            ToolResult.failed(e.code, groupHint(app, e))
-        } catch (e: Exception) {
-            System.err.println("mcp tool failed: $e")
-            e.printStackTrace()
-            ToolResult.failed("internal_error", "the dashboard failed to handle this call; see server logs")
+            // A suspended team is read-only: its agents can read, not write (docs/HOSTING.md §7).
+            val team = app.teams.current()
+            if (team != null && team.suspended && !dev.wildware.feed.server.http.Suspension.readOnlyTool(name)) {
+                outcome = "refused"
+                return ToolResult.failed("suspended", dev.wildware.feed.server.http.Suspension.message(team))
+            }
+            return try {
+                // Every tool sees as this agent does (spec/15): a channel it has no access to doesn't exist for it.
+                kotlinx.coroutines.withContext(dev.wildware.feed.server.db.Viewer.element(dev.wildware.feed.server.db.Viewer.agent(agent.id))) {
+                    handler(ToolCall(app, agent, args!!))
+                }
+            } catch (e: DomainError) {
+                outcome = "refused"
+                ToolResult.failed(e.code, groupHint(app, e))
+            } catch (e: Exception) {
+                outcome = if (e is kotlinx.coroutines.CancellationException) "cancelled" else "failed"
+                System.err.println("mcp tool failed: $e")
+                e.printStackTrace()
+                if (outcome == "failed") {
+                    dev.wildware.feed.server.Telemetry.event(
+                        dev.wildware.feed.server.Telemetry.Level.ERROR, "mcp.tool_failed", "mcp.tool" to name, "error.type" to dev.wildware.feed.server.Telemetry.errorType(e),
+                    )
+                }
+                ToolResult.failed("internal_error", "the dashboard failed to handle this call; see server logs")
+            }
+        } finally {
+            // Only a registered name is a label: anything an agent typed would make a series of its own.
+            dev.wildware.feed.server.Telemetry.toolCall(if (name in handlers) name else "unknown", outcome, System.nanoTime() - started)
         }
     }
 }

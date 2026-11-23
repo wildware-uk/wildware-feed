@@ -79,8 +79,13 @@ class Database private constructor(
         val start = System.nanoTime()
         lock.lock()
         try {
-            val waited = (System.nanoTime() - start) / 1_000_000
-            if (waited >= SLOW_WAIT_MS) System.err.println("database: waited $waited ms for the connection")
+            val waitedNanos = System.nanoTime() - start
+            dev.wildware.feed.server.Telemetry.connectionWait(waitedNanos)
+            val waited = waitedNanos / 1_000_000
+            if (waited >= SLOW_WAIT_MS) {
+                System.err.println("database: waited $waited ms for the connection")
+                dev.wildware.feed.server.Telemetry.event(dev.wildware.feed.server.Telemetry.Level.WARN, "db.slow_wait", "wait_ms" to waited)
+            }
             return try {
                 block()
             } catch (e: SQLException) {
@@ -178,10 +183,19 @@ class Database private constructor(
     private inline fun <T> timed(text: String, block: () -> T): T {
         val start = System.nanoTime()
         try {
-            return block()
+            // A span of the request's trace, when it is one of the few traced (Tracing).
+            return dev.wildware.feed.server.Tracing.statement(text, block)
         } finally {
-            val ms = (System.nanoTime() - start) / 1_000_000
-            if (ms >= SLOW_WAIT_MS) System.err.println("database: a statement took $ms ms: ${text.replace(Regex("\\s+"), " ").take(120)}")
+            val nanos = System.nanoTime() - start
+            dev.wildware.feed.server.Telemetry.statement(text, nanos)
+            val ms = nanos / 1_000_000
+            if (ms >= SLOW_WAIT_MS) {
+                System.err.println("database: a statement took $ms ms: ${text.replace(Regex("\\s+"), " ").take(120)}")
+                dev.wildware.feed.server.Telemetry.event(
+                    dev.wildware.feed.server.Telemetry.Level.WARN, "db.slow_statement",
+                    "db.operation.name" to dev.wildware.feed.server.Telemetry.operation(text), "duration_ms" to ms,
+                )
+            }
         }
     }
 

@@ -234,6 +234,7 @@ class App(val config: Config, val db: Database, val clock: () -> Long = System::
                 block()
             } catch (e: Exception) {
                 System.err.println("$name failed: $e")
+                Telemetry.event(Telemetry.Level.ERROR, "job.failed", "job" to name, "error.type" to Telemetry.errorType(e))
             }
         }, periodMs, periodMs, java.util.concurrent.TimeUnit.MILLISECONDS)
     }
@@ -251,6 +252,7 @@ class App(val config: Config, val db: Database, val clock: () -> Long = System::
                 dev.wildware.feed.server.db.Tenant.with(team, block)
             } catch (e: Exception) {
                 System.err.println("$name failed for a team: $e")
+                Telemetry.event(Telemetry.Level.ERROR, "job.failed", "job" to name, "error.type" to Telemetry.errorType(e))
             }
         }
     }

@@ -205,12 +205,15 @@ class SseContent(
     }
 }
 
-/** Subscribe, then send the headers and the stream; unsubscribe however it ends. */
-suspend fun ApplicationCall.respondSse(content: SseContent) {
+/** Subscribe, then send the headers and the stream; unsubscribe however it ends. [kind] (`owner` or `agent`) labels the open-streams count. */
+suspend fun ApplicationCall.respondSse(content: SseContent, kind: String = "owner") {
     content.open()
+    attributes.put(StreamCall, Unit)
+    dev.wildware.feed.server.Telemetry.stream(kind, 1)
     try {
         respond(content)
     } finally {
+        dev.wildware.feed.server.Telemetry.stream(kind, -1)
         content.release()
     }
 }

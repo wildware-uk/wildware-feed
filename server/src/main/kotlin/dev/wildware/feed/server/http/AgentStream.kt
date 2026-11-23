@@ -142,6 +142,7 @@ internal suspend fun ApplicationCall.agentStream(app: App, agent: Agents.Agent, 
                         worker.cancel()
                     })
                 },
+                kind = "agent",
             )
         }
     }

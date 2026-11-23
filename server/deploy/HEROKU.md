@@ -64,6 +64,10 @@ Crash reports are off unless you set `SENTRY_DSN` to a Sentry project's DSN
 (`heroku config:set SENTRY_DSN='<dsn>' -a APP`; `SENTRY_ENVIRONMENT` defaults to `production`).
 A report carries the error's type and stack, the HTTP method and route pattern, and the server's
 version: never request contents, messages, users or addresses (`server/.../CrashReports.kt`).
+The same DSN also sends a 5% sample of request traces and the server's operational events as
+Sentry logs; metrics and logs to Grafana Cloud need `OTEL_EXPORTER_OTLP_ENDPOINT` and
+`OTEL_EXPORTER_OTLP_HEADERS`. Both are described, with what is and is never sent, in
+[OBSERVABILITY.md](OBSERVABILITY.md).
 
 For shared secrets (docs/SECRETS.md) add `SECRETS_KEY` (`openssl rand -base64 32`). Keep a copy
 outside Heroku: without it the stored secrets cannot be opened, backups included. To change it, set

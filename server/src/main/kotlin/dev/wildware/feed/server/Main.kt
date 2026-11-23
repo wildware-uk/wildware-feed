@@ -17,8 +17,17 @@ fun main(args: Array<String>) {
             System.err.println(e.message)
             exitProcess(1)
         }
-        if (CrashReports.start(System.getenv())) println("Crash reports: on (SENTRY_DSN)")
+        if (CrashReports.start(System.getenv())) {
+            println("Crash reports: on (SENTRY_DSN); traces ${Tracing.rate}, logs ${if (CrashReports.logger != null) "on" else "off"}")
+        }
+        if (Telemetry.start(System.getenv())) println("Metrics: on (OTEL_EXPORTER_OTLP_ENDPOINT)")
         val app = App.open(config)
+        Telemetry.watch(app)
+        Telemetry.event(
+            Telemetry.Level.INFO, "server.start",
+            "version" to dev.wildware.feed.server.http.ServerInfo.version,
+            "db.system" to (if (config.databaseUrl != null) "postgresql" else "sqlite"), "multi_team" to config.multiTeam,
+        )
         println(if (config.databaseUrl != null) "Database: Postgres" else "Database: SQLite in ${config.dataDir}")
         println(config.s3?.let { "Media: bucket ${it.bucket}" } ?: "Media: on disk in ${config.dataDir}")
         println("Listening on http://${config.host}:${config.port}")

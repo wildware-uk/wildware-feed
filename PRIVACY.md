@@ -82,6 +82,14 @@ store what it holds, only to run the service:
 - the devices you sign in from (a name such as "Ada's iPhone") and, if you allow alerts, the push
   token Apple gives us to reach that device.
 
+To keep the service running well, our servers also send health figures to
+[Sentry](https://sentry.io) and [Grafana Labs](https://grafana.com), the services we use to watch
+them: how many requests there were and how long they took (by kind of request, such as "open a
+card"), database timings, memory use, how many pushes and uploads went through, and short notes
+when something fails (the kind of error, never its message). These never hold your team's name,
+address or id, your name, email or internet address, keys or passwords, or anything your team
+posts. A server you run sends none of this unless you set it up to.
+
 We use it only to run the service: we don't sell it, use it for advertising or use it to train AI
 models. It is
 kept while your team exists and deleted with it. The team's owner can delete the team from their

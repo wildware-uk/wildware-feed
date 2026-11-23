@@ -214,6 +214,7 @@ class Uploads(
         val deduped = place(media.id, written.temp, written.mime, written.sha256)
         db.update("UPDATE media SET bytes = ?, sha256 = ? WHERE team_id = :team AND id = ?", written.bytes, written.sha256, media.id)
         val view = mediaView(media.id)!!
+        dev.wildware.feed.server.Telemetry.uploaded(media.kind, written.bytes)
         return Stored(view, media.id, media.kind, media.mime, written.bytes, written.sha256, view["status"]!!.let { (it as JsonPrimitive).content }, deduped)
     }
 

@@ -293,7 +293,17 @@ class Apns(
     }
 
     /** Send to one device's token in [column]; `sent`, `removed` (a dead token was cleared) or `failed`. */
-    fun deliver(device: PushDevice, column: String, headers: List<Pair<String, String>>, payload: String): String {
+    fun deliver(device: PushDevice, column: String, headers: List<Pair<String, String>>, payload: String): String =
+        send(device, column, headers, payload).also { outcome ->
+            val kind = when (column) {
+                "apns_token" -> "alert"
+                "live_activity_token" -> "live_activity"
+                else -> "push_to_start"
+            }
+            dev.wildware.feed.server.Telemetry.push(kind, outcome)
+        }
+
+    private fun send(device: PushDevice, column: String, headers: List<Pair<String, String>>, payload: String): String {
         val token = when (column) {
             "apns_token" -> device.apnsToken
             "live_activity_token" -> device.liveActivityToken

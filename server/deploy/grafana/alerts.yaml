@@ -1,0 +1,69 @@
+# Alert rules for the Wildware Feed server (Prometheus rule format; see ../OBSERVABILITY.md for
+# how to load them). Metric names are the OTLP metrics as Grafana Cloud stores them.
+namespace: wildware-feed
+groups:
+  - name: wildware-feed-server
+    interval: 1m
+    rules:
+      - alert: FeedServer5xxRate
+        # More than 2% of requests failed for 5 minutes, with at least one request every 20 s
+        # (so one failure in a quiet minute isn't an alert).
+        expr: |
+          (
+            sum(rate(http_server_request_duration_seconds_count{job="wildware-feed-server",http_response_status_class="5xx"}[5m]))
+            /
+            sum(rate(http_server_request_duration_seconds_count{job="wildware-feed-server"}[5m]))
+          ) > 0.02
+          and sum(rate(http_server_request_duration_seconds_count{job="wildware-feed-server"}[5m])) > 0.05
+        for: 5m
+        labels:
+          severity: page
+        annotations:
+          summary: "More than 2% of requests are failing (5xx)"
+          description: "Sentry has the stack traces. Heroku logs have the full lines."
+
+      - alert: FeedServerSlow
+        # p95 over 2 s for 5 minutes, leaving out routes that are slow on purpose: MCP (tools that
+        # wait for an answer), pairing polls, uploads and media downloads. Live streams are never timed.
+        expr: |
+          histogram_quantile(0.95, sum by (le) (rate(http_server_request_duration_seconds_bucket{job="wildware-feed-server",http_route!~"/mcp|/api/pair/\\{id\\}|/api/upload/\\{token\\}|/api/media|/media/\\{id\\}/\\{variant\\}|/api/agent/media/\\{id\\}"}[5m]))) > 2
+        for: 5m
+        labels:
+          severity: page
+        annotations:
+          summary: "Requests are slow: p95 over 2 seconds"
+          description: "Check the database panels: one connection serves every request, so a long wait there slows everything."
+
+      - alert: FeedServerNoRequests
+        # Nothing answered for 10 minutes, or no metrics at all (the server is down or not exporting).
+        # Agents' heartbeats keep a live server busy around the clock.
+        expr: |
+          (sum(increase(http_server_request_duration_seconds_count{job="wildware-feed-server"}[10m])) or vector(0)) == 0
+        for: 1m
+        labels:
+          severity: page
+        annotations:
+          summary: "No requests for 10 minutes"
+          description: "The server is down, stuck, or has stopped sending metrics. Check the Heroku dyno and its logs."
+
+      - alert: FeedServerSignInBlocks
+        # A burst of rate-limited password sign-ins: someone guessing passwords.
+        expr: |
+          sum(increase(feed_sign_in_attempts_total{job="wildware-feed-server",outcome="blocked"}[10m])) > 10
+        for: 0m
+        labels:
+          severity: warn
+        annotations:
+          summary: "More than 10 sign-ins were blocked in 10 minutes"
+          description: "Password guessing is being rate limited. Blocks are by address and by email, so no account is at risk yet."
+
+      - alert: FeedServerMemoryHigh
+        # The basic dyno has 512 MB; Heroku starts swapping and then restarts it above that.
+        expr: |
+          max(process_memory_usage_bytes{job="wildware-feed-server"}) > 460 * 1024 * 1024
+        for: 10m
+        labels:
+          severity: warn
+        annotations:
+          summary: "Server memory over 460 MB of the dyno's 512 MB"
+          description: "See the JVM memory panel: heap, or memory outside it."
