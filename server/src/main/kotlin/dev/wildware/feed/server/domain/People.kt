@@ -269,6 +269,8 @@ class People(
         db.update("UPDATE memberships SET role = ? WHERE team_id = :team AND id = ?", role.wire, target.id)
         // Invites they made that their new role could not make are withdrawn with it.
         if (role.rank < target.role.rank) revokeInvitesBeyond(target.id, role)
+        // A member can't let agents in, so what they let in as an admin goes with the role.
+        if (role.rank < Role.ADMIN.rank) revokeWhatTheyLetIn(Tenant.id, target.id)
         find(target.id)!!
     }
 
@@ -291,13 +293,14 @@ class People(
         if (target.role == Role.OWNER && ownerCount() <= 1) throw conflict("the team needs at least one owner")
         db.update("UPDATE memberships SET removed_at = ? WHERE team_id = :team AND id = ? AND removed_at IS NULL", clock(), target.id)
         revokeInvitesBeyond(target.id, null)
+        revokeWhatTheyLetIn(Tenant.id, target.id)
         val devices = db.query("SELECT id FROM owner_devices WHERE team_id = :team AND user_id = ?", target.id) { it.getString(1) }
         db.update("DELETE FROM owner_devices WHERE team_id = :team AND user_id = ?", target.id)
         find(target.id)!! to devices
     }
 
     /** What deleting an account did: for each team it left, the devices that were signed out there. */
-    data class DeletedAccount(val accountId: String, val devicesByTeam: Map<String, List<String>>)
+    data class DeletedAccount(val accountId: String, val devicesByTeam: Map<String, List<String>>, val agentsByTeam: Map<String, List<String>> = emptyMap())
 
     /**
      * A person deletes their own account (App Store guideline 5.1.1(v)): here, and in every team on
@@ -318,6 +321,20 @@ class People(
         return Tenant.allTeams { db.transaction { _ -> eraseAccount(me.accountId) } }
     }
 
+    /**
+     * Revokes the agents [membershipId] let in (pairing, OAuth) and the OAuth connections they
+     * allowed, in [team]: someone who leaves keeps no way in through them. The ids of the agents
+     * ([Agents.letInBy] lists them first, for the routes to say so). Agents from before migration
+     * 073 don't say who let them in, and stay.
+     */
+    private fun revokeWhatTheyLetIn(team: String, membershipId: String): List<String> {
+        val now = clock()
+        val agents = db.query("SELECT id FROM agents WHERE team_id = ? AND created_by = ? AND revoked_at IS NULL", team, membershipId) { it.getString(1) }
+        db.update("UPDATE agents SET revoked_at = ? WHERE team_id = ? AND created_by = ? AND revoked_at IS NULL", now, team, membershipId)
+        db.update("UPDATE oauth_grants SET revoked_at = ? WHERE team_id = ? AND created_by = ? AND revoked_at IS NULL", now, team, membershipId)
+        return agents
+    }
+
     private fun eraseAccount(accountId: String): DeletedAccount {
         data class Membership(val id: String, val team: String, val role: String, val teamName: String)
         val memberships = db.query(
@@ -336,6 +353,7 @@ class People(
         }
         val now = clock()
         val devices = linkedMapOf<String, List<String>>()
+        val agents = linkedMapOf<String, List<String>>()
         for (m in memberships) {
             db.update("UPDATE memberships SET removed_at = ? WHERE team_id = ? AND id = ? AND removed_at IS NULL", now, m.team, m.id)
             db.update(
@@ -343,6 +361,7 @@ class People(
                 now, m.team, m.id,
             )
             db.update("DELETE FROM auth_codes WHERE team_id = ? AND membership_id = ?", m.team, m.id)
+            agents[m.team] = revokeWhatTheyLetIn(m.team, m.id)
             devices[m.team] = db.query("SELECT id FROM owner_devices WHERE team_id = ? AND user_id = ?", m.team, m.id) { it.getString(1) }
             db.update("DELETE FROM owner_devices WHERE team_id = ? AND user_id = ?", m.team, m.id)
         }
@@ -355,7 +374,7 @@ class People(
             "INSERT INTO account_deletions (id, account_id, email_hash, teams, deleted_at) VALUES (?, ?, ?, ?, ?)",
             Ulid.next(now), accountId, email?.let(::emailHash), memberships.joinToString(",") { it.team }, now,
         )
-        return DeletedAccount(accountId, devices)
+        return DeletedAccount(accountId, devices, agents)
     }
 
     /**

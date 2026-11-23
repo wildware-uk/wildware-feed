@@ -335,7 +335,10 @@ object OwnerSession {
      * removed or is no longer an owner or admin (migration 055), and means nothing on another
      * team's address, where that person isn't found.
      */
-    fun read(app: App, call: ApplicationCall): String? {
+    fun read(app: App, call: ApplicationCall): String? = session(app, call)?.first
+
+    /** [read], with the person the session is for. */
+    fun session(app: App, call: ApplicationCall): Pair<String, People.Person>? {
         val raw = call.request.cookies.rawCookies[cookieName(app)] ?: return null
         val parts = raw.split('.')
         if (parts.size != 5 || parts[0] != "v2") return null
@@ -343,7 +346,7 @@ object OwnerSession {
         if (expires <= app.clock() || !Tokens.wellFormed(parts[2])) return null
         val person = app.people.find(parts[3]) ?: return null
         if (!person.active || person.role.rank < People.Role.ADMIN.rank) return null
-        return parts[2].takeIf { Tokens.same(signature(app, expires, it, person), parts[4]) }
+        return parts[2].takeIf { Tokens.same(signature(app, expires, it, person), parts[4]) }?.let { it to person }
     }
 
     fun csrf(app: App, nonce: String, request: AuthRequest): String =
@@ -382,7 +385,7 @@ private suspend fun signIn(app: App, call: ApplicationCall, request: AuthRequest
 }
 
 private suspend fun decide(app: App, call: ApplicationCall, request: AuthRequest, form: Parameters) {
-    val nonce = OwnerSession.read(app, call) ?: return call.page(401, OAuthPage.signIn(request, "Your sign-in expired. Sign in again."))
+    val (nonce, person) = OwnerSession.session(app, call) ?: return call.page(401, OAuthPage.signIn(request, "Your sign-in expired. Sign in again."))
     val csrf = form["csrf"].orEmpty()
     if (!Tokens.same(csrf, OwnerSession.csrf(app, nonce, request))) {
         return call.page(403, OAuthPage.problem("This page expired or did not come from this dashboard, so nothing was allowed. Start again from the app you are connecting."))
@@ -410,13 +413,14 @@ private suspend fun decide(app: App, call: ApplicationCall, request: AuthRequest
                         request.redirectUri,
                     )
                 }
-                app.agents.mint(clean).first
+                app.agents.mint(clean, person.id).first
             }
         }
     } catch (e: DomainError) {
         return call.page(400, consent(app, request, nonce, "The name ${e.message.removePrefix("name ")}.", name), request.redirectUri)
     }
-    val code = app.oauth.allow(request.client, agent.id, request.resource, request.scope, request.redirectUri, request.redirectUriGiven, request.codeChallenge)
+    // Who allowed it: removing them revokes the connection (People.remove).
+    val code = app.oauth.allow(request.client, agent.id, request.resource, request.scope, request.redirectUri, request.redirectUriGiven, request.codeChallenge, person.id)
     call.respondRedirect303(AuthRequest.answerUrl(request.redirectUri, listOf("code" to code, "state" to request.state, "iss" to issuer)), *NO_STORE)
 }
 

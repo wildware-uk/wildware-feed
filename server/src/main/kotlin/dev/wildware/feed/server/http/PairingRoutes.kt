@@ -73,7 +73,8 @@ fun Route.pairingRoutes(app: App) {
         HttpMethod.Post to {
             val body = call.lenientObjectBody()
             val name = body["name"]?.let { if (it is JsonNull) null else it.jsString ?: throw invalid("name must be a string") }
-            val pairing = app.pairings.approve(call.parameters["id"].orEmpty(), name)
+            // Who allowed it: removing them revokes it (People.remove).
+            val pairing = app.pairings.approve(call.parameters["id"].orEmpty(), name, call.person.id)
             call.respondOwner(200, buildJsonObject {
                 put("pairing", app.pairings.ownerJson(pairing))
                 put("agent", buildJsonObject { put("id", pairing.agentId); put("name", pairing.name) })

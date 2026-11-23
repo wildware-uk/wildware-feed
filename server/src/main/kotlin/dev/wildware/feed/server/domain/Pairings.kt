@@ -96,7 +96,7 @@ class Pairings(
      * The owner allows it, under [name] when given (else the name the agent asked for). The name
      * must not be a live agent's: a clash is a conflict, and the owner picks another.
      */
-    fun approve(id: String, name: String?): Pairing {
+    fun approve(id: String, name: String?, by: String? = null): Pairing {
         expireDue()
         val pairing = waiting(id)
         val chosen = if (name == null) pairing.name else requiredText(name, "name", NAME_MAX)
@@ -108,8 +108,8 @@ class Pairings(
         val decided = db.transaction { _ ->
             // A hash of a token nobody holds: the name is kept, and nothing can sign in as it yet.
             db.update(
-                "INSERT INTO agents (team_id, id, name, token_hash, created_at) VALUES (:team, ?, ?, ?, ?)",
-                agentId, chosen, Tokens.hash(Tokens.random(), tokenSecret), now,
+                "INSERT INTO agents (team_id, id, name, token_hash, created_at, created_by) VALUES (:team, ?, ?, ?, ?, ?)",
+                agentId, chosen, Tokens.hash(Tokens.random(), tokenSecret), now, by,
             )
             db.update(
                 "UPDATE agent_pairings SET state = 'approved', name = ?, agent_id = ?, decided_at = ?, expires_at = ? " +

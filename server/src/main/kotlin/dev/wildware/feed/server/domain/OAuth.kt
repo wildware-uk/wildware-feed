@@ -110,15 +110,15 @@ class OAuth(private val db: Database, private val tokenSecret: String, private v
      * The owner allowed [client] as the agent [agentId]: a grant with a one-time code, which this
      * returns (it is never stored). The code is good for [CODE_MS], once.
      */
-    fun allow(client: Client, agentId: String, resource: String, scope: String, redirectUri: String, redirectUriGiven: Boolean, codeChallenge: String): String {
+    fun allow(client: Client, agentId: String, resource: String, scope: String, redirectUri: String, redirectUriGiven: Boolean, codeChallenge: String, createdBy: String? = null): String {
         val code = Tokens.random()
         val now = clock()
         db.transaction { _ ->
             db.update(
                 "INSERT INTO oauth_grants (team_id, id, client_id, agent_id, resource, scope, redirect_uri, redirect_uri_given, code_hash, code_challenge, " +
-                    "code_expires_at, created_at) VALUES (:team, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    "code_expires_at, created_at, created_by) VALUES (:team, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 Ulid.next(now), client.id, agentId, resource, scope, redirectUri, if (redirectUriGiven) 1 else 0, hash(code), codeChallenge,
-                now + CODE_MS, now,
+                now + CODE_MS, now, createdBy,
             )
             db.update("UPDATE oauth_clients SET approved_at = ? WHERE team_id = :team AND id = ? AND approved_at IS NULL", now, client.id)
         }
