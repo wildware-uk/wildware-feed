@@ -1122,13 +1122,16 @@ fun PostCard(item: FeedItem.Post, modifier: Modifier = Modifier, density: Densit
     val chooseStatus = { ui?.emit(FeedEvent.ChooseStatus(item.id, item.status)); Unit }
     val foldLabel = remember(item.body) { dev.wildware.agents.PlainText.clip(dev.wildware.agents.PlainText.fromMarkdown(item.body), 60) }
     val fold = rememberFold(item.id, "post", foldLabel, inThread)
-    WithMenu(target, modifier.alpha(if (item.sending) SendingAlpha else 1f)) { gestures ->
+    // A voice note in its undo window is waiting on the owner, not the network: drawn as sent, with the countdown.
+    val holding = rememberUndoOpen(item.undoUntil.takeIf { item.sending })
+    val pending = item.sending && !holding
+    WithMenu(target, modifier.alpha(if (pending) SendingAlpha else 1f)) { gestures ->
     CardFrame(gestures, density = density, mine = item.author is Author.Owner, bumpId = item.id) {
         Column {
             CardHeader(
                 author = item.author,
                 role = if (own) "You" else (item.author as? Author.AgentAuthor)?.agent?.role,
-                time = if (item.sending) sendingLabel(item.uploaded) else item.time,
+                time = if (pending) sendingLabel(item.uploaded) else item.time,
                 level = null,
                 status = item.status,
                 project = item.project,
@@ -1149,7 +1152,7 @@ fun PostCard(item: FeedItem.Post, modifier: Modifier = Modifier, density: Densit
                 }
                 val body = @Composable { if (own) PlainBody(item.body) else MarkdownBody(item.body) }
                 if (inThread) body() else Clamp(item.id, "the whole post") { body() }
-                if (item.sending) UndoVoiceNote(item.id, item.undoUntil, Modifier.padding(top = 6.dp))
+                if (holding) UndoVoiceNote(item.id, item.undoUntil, Modifier.padding(top = 4.dp))
                 PostMedia(item.attachments, item.sounds, item.files, item.embeds)
                 CardBlocks(item.blocks, Modifier.padding(top = 10.dp))
                 SharedSecretChips(item.secrets, Modifier.padding(top = 10.dp))

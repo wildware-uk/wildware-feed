@@ -850,13 +850,16 @@ private fun SendButton(enabled: Boolean, onClick: () -> Unit) {
 @Composable
 fun ReplyView(reply: Reply, modifier: Modifier = Modifier) {
     val colors = AgentTheme.colors
-    val time = if (reply.sending) sendingLabel(reply.uploaded) else reply.time
+    // A voice note in its undo window is waiting on the owner, not the network: drawn as sent, with the countdown.
+    val holding = rememberUndoOpen(reply.undoUntil.takeIf { reply.sending })
+    val pending = reply.sending && !holding
+    val time = if (pending) sendingLabel(reply.uploaded) else reply.time
     val detail = if (reply.sending) "" else reply.timeDetail
     val answering = reply.answering?.let { "answering $it" }
     val spoken = listOfNotNull(
         reply.author.name, answering, detail.ifEmpty { time }, "voice note".takeIf { reply.voice }, reply.edited, "new".takeIf { reply.unread },
     ).joinToString(", ")
-    Row(modifier.fillMaxWidth().alpha(if (reply.sending) SendingAlpha else 1f)) {
+    Row(modifier.fillMaxWidth().alpha(if (pending) SendingAlpha else 1f)) {
         Avatar(reply.author, 28.dp, showPresence = false)
         Column(Modifier.padding(start = 10.dp).weight(1f)) {
             Row(
@@ -880,7 +883,7 @@ fun ReplyView(reply: Reply, modifier: Modifier = Modifier) {
             }
             Spacer(Modifier.height(2.dp))
             MarkdownBody(reply.body)
-            if (reply.sending) UndoVoiceNote(reply.id, reply.undoUntil, Modifier.padding(top = 4.dp))
+            if (holding) UndoVoiceNote(reply.id, reply.undoUntil, Modifier.padding(top = 2.dp))
             PostMedia(reply.attachments, reply.sounds, reply.files, reply.embeds)
             CardBlocks(reply.blocks, Modifier.padding(top = 8.dp))
             SharedSecretChips(reply.secrets, Modifier.padding(top = 8.dp))

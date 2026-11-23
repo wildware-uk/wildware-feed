@@ -27,6 +27,10 @@ import dev.wildware.agents.app.design.AgentTheme
 import dev.wildware.agents.app.feed.Author
 import dev.wildware.agents.app.feed.Composer
 import dev.wildware.agents.app.feed.FakeFeed
+import dev.wildware.agents.app.feed.FeedItem
+import dev.wildware.agents.app.feed.PostCard
+import dev.wildware.agents.app.feed.Project
+import dev.wildware.agents.app.feed.SendingLabel
 import dev.wildware.agents.app.feed.FeedEvent
 import dev.wildware.agents.app.feed.FeedUi
 import dev.wildware.agents.app.feed.LocalFeedUi
@@ -79,6 +83,52 @@ class VoiceNoteUiTest {
             show(reply(voice = false))
             onNode(hasContentDescription("voice note", substring = true)).assertDoesNotExist()
         }
+    }
+
+    @Test
+    fun theUndoWindowCountsDownAndIsNotDrawnAsSending() = runComposeUiTest {
+        mainClock.autoAdvance = false
+        show(reply(voice = true, sending = true, undoUntil = now + VoiceNote.UndoMillis))
+        mainClock.advanceTimeByFrame()
+        onNodeWithText("Sending in 4s").assertExists()
+        onNodeWithText("Undo").assertExists()
+        onNode(hasContentDescription(SendingLabel, substring = true)).assertDoesNotExist()
+        mainClock.advanceTimeBy(1_000)
+        onNodeWithText("Sending in 3s").assertExists()
+        // Once the window shuts, a note still waiting on the network looks like any other send.
+        mainClock.advanceTimeBy(VoiceNote.UndoMillis)
+        onNodeWithText("Undo").assertDoesNotExist()
+        onNode(hasText("Sending in", substring = true)).assertDoesNotExist()
+        onNode(hasContentDescription(SendingLabel, substring = true)).assertExists()
+    }
+
+    @Test
+    fun aWindowAlreadyOverShowsNoPill() = runComposeUiTest {
+        show(reply(voice = true, sending = true, undoUntil = now - 1))
+        onNodeWithText("Undo").assertDoesNotExist()
+        onNode(hasContentDescription(SendingLabel, substring = true)).assertExists()
+    }
+
+    @Test
+    fun aPostInItsUndoWindowShowsTheCountdown() = runComposeUiTest {
+        mainClock.autoAdvance = false
+        val post = FeedItem.Post(
+            id = "outbox:abc", time = "now", author = Author.Owner("You"), project = Project("p1", "one", unread = 0, hue = 0, slug = "one"),
+            body = "ship it on friday", sending = true, voice = true, undoUntil = now + VoiceNote.UndoMillis,
+        )
+        setContent {
+            CompositionLocalProvider(LocalFeedUi provides ui, LocalNow provides { now }) {
+                AgentTheme(dark = false) { PostCard(post) }
+            }
+        }
+        mainClock.advanceTimeByFrame()
+        onNodeWithText("Sending in 4s").assertExists()
+        onNode(hasContentDescription(SendingLabel, substring = true)).assertDoesNotExist()
+        onNodeWithText("Undo").performClick()
+        assertEquals(listOf<FeedEvent>(FeedEvent.DropUnsent("abc")), events)
+        mainClock.advanceTimeBy(VoiceNote.UndoMillis + 100)
+        onNodeWithText("Undo").assertDoesNotExist()
+        onNode(hasContentDescription(SendingLabel, substring = true)).assertExists()
     }
 
     @Test

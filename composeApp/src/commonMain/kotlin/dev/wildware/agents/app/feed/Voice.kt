@@ -1,5 +1,15 @@
 package dev.wildware.agents.app.feed
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.foundation.border
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.text.font.FontWeight
+import dev.wildware.agents.VoiceNote
+import dev.wildware.agents.app.design.pressable
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -15,6 +25,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Text
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
@@ -280,23 +291,78 @@ internal fun VoiceMark(modifier: Modifier = Modifier) {
 }
 
 /**
- * "Undo" on a voice note still waiting to go, until [until]; then it goes on its way and this goes.
- * Undo takes it out of the outbox, so nothing is sent. [lineId] is the line's, `outbox:<id>`.
+ * Whether a line is inside its undo window: [until] is set and not yet reached. Turns false at the
+ * deadline by itself, so the line can switch to its sending look (or on to sent) then.
+ */
+@Composable
+internal fun rememberUndoOpen(until: Long?): Boolean {
+    val now = LocalNow.current
+    var open by remember(until) { mutableStateOf(until != null && now() < until) }
+    LaunchedEffect(until, open) {
+        if (until == null || !open) return@LaunchedEffect
+        delay(until - now())
+        open = false
+    }
+    return open
+}
+
+/**
+ * A voice note waiting out its few seconds before it goes: a small pill whose fill drains to the
+ * deadline, "Sending in 3s", and Undo. It is a choice the owner can still take back, not a
+ * send stuck on the network, so the line it sits under is drawn at full strength. Undo takes the
+ * note out of the outbox, so nothing is sent. [lineId] is the line's, `outbox:<id>`. Show it only
+ * while [rememberUndoOpen] says the window is open.
  */
 @Composable
 internal fun UndoVoiceNote(lineId: String, until: Long?, modifier: Modifier = Modifier) {
     val ui = LocalFeedUi.current
     if (until == null || ui == null) return
+    val colors = AgentTheme.colors
+    val motion = AgentTheme.motion
     val now = LocalNow.current
-    var open by remember(until) { mutableStateOf(now() < until) }
-    if (!open) return
+    // Counted down by the waits themselves, so a test's fixed clock still sees it tick.
+    var left by remember(until) { mutableLongStateOf((until - now()).coerceAtLeast(0)) }
+    val drained = remember(until) { Animatable(shareLeft(left)) }
     LaunchedEffect(until) {
-        delay(until - now())
-        open = false
+        while (left > 0) {
+            val step = (left % 1_000).takeIf { it > 0 } ?: 1_000
+            delay(step)
+            left = (left - step).coerceAtLeast(0)
+        }
     }
-    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
-        MetaText("Voice note", color = AgentTheme.colors.textMuted)
-        Spacer(Modifier.width(4.dp))
-        MetaAction("Undo") { ui.emit(FeedEvent.DropUnsent(lineId.removePrefix(DraftPrefix))) }
+    LaunchedEffect(until, motion.reduced) {
+        // With reduced motion the fill steps down once a second instead of sliding.
+        if (motion.reduced) snapshotFlow { left }.collect { drained.snapTo(shareLeft(it)) }
+        else drained.animateTo(0f, tween(left.toInt(), easing = LinearEasing))
+    }
+    val seconds = ((left + 999) / 1_000).coerceAtLeast(1)
+    val drain = colors.accentSoft
+    val shape = AgentTheme.shapes.pill
+    val undo = { ui.emit(FeedEvent.DropUnsent(lineId.removePrefix(DraftPrefix))) }
+    // The whole pill is the Undo button: a full-size target around a small pill.
+    Box(modifier.clip(shape).pressable("Undo", shape, labelIsShown = true, onClick = undo), contentAlignment = Alignment.CenterStart) {
+        Row(
+            Modifier
+                .height(28.dp)
+                .clip(shape)
+                .background(colors.surfaceSunken)
+                // The time left, as a fill that shrinks to nothing at the deadline. Read while drawing, so it never recomposes.
+                .drawBehind { drawRect(drain, size = Size(size.width * drained.value, size.height)) }
+                .border(1.dp, colors.border, shape)
+                .padding(start = 10.dp, end = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(Icons.Mic, null, tint = colors.textMuted, modifier = Modifier.size(12.dp))
+            MetaText("Sending in ${seconds}s", Modifier.padding(start = 6.dp), color = colors.textMuted)
+            Text(
+                "Undo",
+                Modifier.padding(start = 10.dp),
+                color = colors.accent,
+                style = AgentTheme.type.meta.copy(fontWeight = FontWeight.SemiBold),
+            )
+        }
     }
 }
+
+/** How much of the pill is still to drain with [leftMillis] to go. */
+private fun shareLeft(leftMillis: Long): Float = (leftMillis.toFloat() / VoiceNote.UndoMillis).coerceIn(0f, 1f)
