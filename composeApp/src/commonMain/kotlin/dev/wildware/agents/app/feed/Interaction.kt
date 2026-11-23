@@ -299,6 +299,9 @@ sealed interface FeedEvent {
 
     /** The owner settled an unsure word in a waiting voice note: [choice] in its place, or null to keep it. */
     data class ChooseWord(val outboxId: String, val index: Int, val choice: String?) : FeedEvent
+
+    /** The owner swapped an unsure word in their own sent voice note: [choice] in its place (an edit), or null to keep it. */
+    data class ChooseSentWord(val messageId: String, val index: Int, val choice: String?) : FeedEvent
     data object MarkAllRead : FeedEvent
     data object ToggleTheme : FeedEvent
     data object SignOut : FeedEvent

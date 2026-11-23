@@ -1240,6 +1240,9 @@ class DashboardSession(
             is FeedEvent.DropUnsent -> outbox.remove(event.outboxId)
             is FeedEvent.PauseUnsent -> outbox.pauseVoice(event.outboxId)
             is FeedEvent.ChooseWord -> outbox.chooseWord(event.outboxId, event.index, event.choice)
+            is FeedEvent.ChooseSentWord -> dashboard.chooseSentWord(event.messageId, event.index, event.choice)?.let { text ->
+                actions.edit(CardRef(CardKinds.Message, event.messageId), text)
+            }
             is FeedEvent.ChooseStatus, is FeedEvent.EditMessage, is FeedEvent.Reply, is FeedEvent.OpenDetails, is FeedEvent.EditTags, is FeedEvent.FeedbackAbout, is FeedEvent.CopyText, is FeedEvent.SelectText, is FeedEvent.CopyLink, is FeedEvent.Quote, is FeedEvent.SignOut, is FeedEvent.ToggleTheme -> Unit
         }
     }

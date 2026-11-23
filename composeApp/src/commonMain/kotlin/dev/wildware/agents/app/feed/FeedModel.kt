@@ -310,7 +310,7 @@ data class Reply(
     val assignment: Boolean = false,
     /** While [sending]: a voice note that can still be taken back, until then (epoch millis). */
     val undoUntil: Long? = null,
-    /** While [undoUntil]: words the phone wasn't sure of, underlined, with other guesses to pick. */
+    /** The owner's own voice note: words the phone wasn't sure of, underlined, with other guesses to pick. */
     val words: List<VoiceWord> = emptyList(),
     /** Questions an agent asked under this reply. They are answered right here, as well as at the top. */
     val questions: List<FeedItem.Question> = emptyList(),
@@ -600,7 +600,7 @@ sealed interface FeedItem {
         val voice: Boolean = false,
         /** While [sending]: a voice note that can still be taken back, until then (epoch millis). */
         val undoUntil: Long? = null,
-        /** While [undoUntil]: words the phone wasn't sure of, underlined, with other guesses to pick. */
+        /** The owner's own voice note: words the phone wasn't sure of, underlined, with other guesses to pick. */
         val words: List<VoiceWord> = emptyList(),
         /** Questions an agent asked under the post itself, shown at the top of its thread. */
         val questions: List<Question> = emptyList(),

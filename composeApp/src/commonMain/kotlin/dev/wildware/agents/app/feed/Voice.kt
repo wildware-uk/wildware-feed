@@ -398,12 +398,14 @@ internal class WordChoice {
 }
 
 /**
- * A waiting voice note's words, with the ones the phone wasn't sure of underlined with dots. A tap
- * on one holds the countdown ([FeedEvent.PauseUnsent]) and offers the other guesses; picking one,
- * or keeping the word as it is, settles it and starts a fresh countdown ([FeedEvent.ChooseWord]).
+ * A voice note's words, with the ones the phone wasn't sure of underlined with dots, and a tap on
+ * one offering the other guesses. While the note waits to go ([sent] false) the tap holds the
+ * countdown ([FeedEvent.PauseUnsent]), and picking one, or keeping the word as it is, settles it and
+ * starts a fresh countdown ([FeedEvent.ChooseWord]). Once it is up, picking another word edits the
+ * message ([FeedEvent.ChooseSentWord]).
  */
 @Composable
-internal fun UnsureWords(lineId: String, text: String, words: List<VoiceWord>, choice: WordChoice, modifier: Modifier = Modifier) {
+internal fun UnsureWords(lineId: String, text: String, words: List<VoiceWord>, choice: WordChoice, modifier: Modifier = Modifier, sent: Boolean = false) {
     val ui = LocalFeedUi.current
     val colors = AgentTheme.colors
     val density = LocalDensity.current
@@ -411,12 +413,12 @@ internal fun UnsureWords(lineId: String, text: String, words: List<VoiceWord>, c
     val open = { index: Int ->
         if (choice.open == null) {
             choice.open = index
-            ui?.emit(FeedEvent.PauseUnsent(outboxId))
+            if (!sent) ui?.emit(FeedEvent.PauseUnsent(outboxId))
         }
     }
     val settle = { index: Int, picked: String? ->
         choice.open = null
-        ui?.emit(FeedEvent.ChooseWord(outboxId, index, picked))
+        ui?.emit(if (sent) FeedEvent.ChooseSentWord(lineId, index, picked) else FeedEvent.ChooseWord(outboxId, index, picked))
     }
     val onWord by rememberUpdatedState(open)
     // Only words that still fit the text: an older line may have changed under them.

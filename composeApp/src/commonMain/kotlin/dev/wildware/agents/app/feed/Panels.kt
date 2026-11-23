@@ -887,7 +887,12 @@ fun ReplyView(reply: Reply, modifier: Modifier = Modifier) {
             }
             Spacer(Modifier.height(2.dp))
             val choice = remember(reply.id) { WordChoice() }
-            if (holding && reply.words.isNotEmpty()) UnsureWords(reply.id, reply.body, reply.words, choice) else MarkdownBody(reply.body)
+            when {
+                reply.words.isEmpty() -> MarkdownBody(reply.body)
+                holding -> UnsureWords(reply.id, reply.body, reply.words, choice)
+                !reply.sending -> UnsureWords(reply.id, reply.body, reply.words, choice, sent = true)
+                else -> MarkdownBody(reply.body)
+            }
             if (holding) UndoVoiceNote(reply.id, reply.undoUntil, Modifier.padding(top = 2.dp), choice)
             PostMedia(reply.attachments, reply.sounds, reply.files, reply.embeds)
             CardBlocks(reply.blocks, Modifier.padding(top = 8.dp))

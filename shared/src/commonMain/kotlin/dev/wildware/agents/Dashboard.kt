@@ -34,6 +34,12 @@ fun mediaKindOf(mime: String): String = when (mime.substringBefore(';').trim().l
     else -> "file"
 }
 
+/** A sent voice note's unsure words, and the text they were placed in: once the text changes otherwise, they no longer fit. */
+internal data class SentWords(val text: String, val words: List<VoiceWord>)
+
+/** How many sent voice notes keep their unsure words: the newest. */
+private const val MostSentWords = 50
+
 /** The comments under a card, each with what is said about it. */
 data class ThreadLine(
     val message: MessageView,
@@ -59,7 +65,7 @@ data class ThreadLine(
     val blocks: List<BlockView> = emptyList(),
     /** While [sending]: a voice note waiting for an Undo until then (epoch millis). Null when it can't be undone. */
     val undoUntil: Long? = null,
-    /** While [undoUntil]: the words the phone wasn't sure of, to offer others. */
+    /** The owner's own voice note, waiting or sent from this device: the words the phone wasn't sure of, to offer others. */
     val words: List<VoiceWord> = emptyList(),
     /** Secrets an agent attached to the line, by name (migration 066). */
     val secrets: List<SharedSecretView> = emptyList(),
@@ -435,8 +441,31 @@ class Dashboard internal constructor(
         return drafts
     }
 
+    /**
+     * The unsure words of voice notes sent from here, by message id, with the words they were
+     * placed in: kept on this device while the app runs, so a word can still be swapped once the
+     * note is up. Never sent anywhere.
+     */
+    private val sentWords = LinkedHashMap<String, SentWords>()
+
+    /**
+     * Settles an unsure word in the owner's own sent voice note: [choice] in its place, or null to
+     * keep it. Gives back the note's new words for an edit, or null when nothing changed.
+     */
+    fun chooseSentWord(messageId: String, index: Int, choice: String?): String? {
+        val kept = sentWords[messageId] ?: return null
+        val chosen = VoiceWords.choose(kept.text, kept.words, index, choice)
+        sentWords[messageId] = SentWords(chosen.text, chosen.words)
+        changed()
+        return chosen.text.takeIf { it != kept.text }
+    }
+
     private fun sent(item: OutboxItem, result: DeliveryResult) {
         val message = result.sent ?: return
+        if (item.words.isNotEmpty() && message.body == item.text) {
+            sentWords[message.id] = SentWords(message.body, item.words)
+            while (sentWords.size > MostSentWords) sentWords.remove(sentWords.keys.first())
+        }
         feeds.values.forEach { it.adopt(message) }
         delivered += item.id
         draftsFrom = null
@@ -595,9 +624,11 @@ class Dashboard internal constructor(
         val uploads = outbox?.uploads?.value.orEmpty()
         // One look at the open feeds, so one opened meanwhile waits for the next round whole.
         val open = feeds.values
+        val words = sentWords.toMap()
         open.forEach {
             it.drafts = pending
             it.uploads = uploads
+            it.sentWords = words
         }
         val names = names()
         if (mutableAgentNames.value != names) mutableAgentNames.value = names
@@ -939,6 +970,9 @@ class Feed internal constructor(
     /** How far each of those has got with its files, by outbox id; set with [drafts]. */
     internal var uploads: Map<String, Float> = emptyMap()
 
+    /** Unsure words of the owner's sent voice notes, by message id; set with [drafts]. */
+    internal var sentWords: Map<String, SentWords> = emptyMap()
+
     private var index = ThreadIndex(MessagesSnapshot(seq = 0))
     private var indexedFrom: MessagesSnapshot? = null
     private var indexedDrafts: List<OutboxItem>? = null
@@ -1063,7 +1097,8 @@ class Feed internal constructor(
             sending = message.id in draftIds,
             uploaded = if (message.id in draftIds) uploads[message.id.removePrefix(DraftPrefix)] else null,
             undoUntil = draftHolds[message.id],
-            words = if (message.id in draftHolds) draftWords[message.id].orEmpty() else emptyList(),
+            words = if (message.id in draftHolds) draftWords[message.id].orEmpty()
+            else sentWords[message.id]?.takeIf { it.text == message.body }?.words.orEmpty(),
             secrets = index.snapshot.secrets[message.id].orEmpty(),
         )
     }

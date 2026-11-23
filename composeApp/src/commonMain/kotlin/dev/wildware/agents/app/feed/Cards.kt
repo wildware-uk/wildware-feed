@@ -1154,6 +1154,7 @@ fun PostCard(item: FeedItem.Post, modifier: Modifier = Modifier, density: Densit
                 val body = @Composable { if (own) PlainBody(item.body) else MarkdownBody(item.body) }
                 when {
                     holding && item.words.isNotEmpty() -> UnsureWords(item.id, item.body, item.words, choice)
+                    !item.sending && item.words.isNotEmpty() -> UnsureWords(item.id, item.body, item.words, choice, sent = true)
                     inThread -> body()
                     else -> Clamp(item.id, "the whole post") { body() }
                 }

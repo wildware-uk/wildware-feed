@@ -100,10 +100,14 @@ class VoiceWordChoiceTest {
     }
 
     @Test
-    fun onceSentTheWordsAreOrdinaryText() = runComposeUiTest {
+    fun onceSentPickingAWordEditsTheMessage() = runComposeUiTest {
         show(sending = false, undoUntil = null)
-        onNodeWithText("Ship it on Friday").assertExists()
-        word().assertDoesNotExist()
+        onNodeWithText("Undo").assertDoesNotExist()
+        word().performClick()
+        waitForIdle()
+        onNodeWithText("Monday").performClick()
+        waitForIdle()
+        assertEquals(listOf<FeedEvent>(FeedEvent.ChooseSentWord("outbox:abc", 0, "Monday")), events, "no pause: nothing is counting down")
     }
 
     @Test
