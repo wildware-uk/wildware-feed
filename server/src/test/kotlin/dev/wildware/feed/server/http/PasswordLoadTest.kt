@@ -73,10 +73,13 @@ class PasswordLoadTest {
     }
 
     @Test
-    fun `the right password still gets in and clears the address`() {
+    fun `the right password still gets in, and clears only the account's count, not the address's`() {
         guesses(3) { "192.0.2.1" }
         assertIs<PasswordCheck.Ok>(runBlocking { app.checkPassword("owner password", "192.0.2.1") })
-        assertEquals(5, guesses(5) { "192.0.2.1" }.count { (it as PasswordCheck.Refused).status != 429 })
+        // The address keeps its three wrong guesses: they may have been at other accounts.
+        assertEquals(2, guesses(5) { "192.0.2.1" }.count { (it as PasswordCheck.Refused).status != 429 })
+        // The account's count started again: from elsewhere, all five are checked.
+        assertEquals(5, guesses(5) { "192.0.2.2" }.count { (it as PasswordCheck.Refused).status != 429 })
     }
 
     @Test
