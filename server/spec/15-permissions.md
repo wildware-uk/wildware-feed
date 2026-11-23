@@ -20,9 +20,14 @@ The level is the most specific of:
 
 1. a **team owner** always has `manage`, whatever any row says; no row can be set for them;
 2. a row for them on the **channel**;
-3. else a row for them on the channel's **project** (group);
-4. else, when the channel **or its project is private**, `none`;
-5. else **today's rule**: admins `manage`; members and agents `post`.
+3. else, when the **channel is private**, `none`: a private channel is for those listed on it
+   alone, and no project row reaches it (else whoever manages the project, every admin by
+   default, could let themselves in);
+4. else a row for them on the channel's **project** (group);
+5. else, when **its project is private**, `none`;
+6. else **today's rule**: admins `manage`; members and agents `post`.
+
+Nobody but a team owner raises their own level, or clears their own row: `403 forbidden`.
 
 With no rows and nothing private, that is exactly the server before migration 068: nobody gains or
 loses anything on deploy. Content in no channel (a feed post outside any channel) is everyone's.
@@ -32,7 +37,8 @@ project is hidden from someone only when they have `none` on it and on every cha
 
 Moving a channel out of a project, or deleting the project, keeps the access the channel had
 through it: the project's rows are copied onto the channel where it has none, and a channel leaving
-a private project becomes private itself. Nothing hidden comes into view by being moved.
+a private project becomes private itself. A private channel took nothing from its project, so
+nothing is copied onto it. Nothing hidden comes into view by being moved.
 
 ## What hidden means
 

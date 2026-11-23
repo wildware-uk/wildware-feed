@@ -90,17 +90,20 @@ class ChannelAccess(private val db: Database, private val clock: () -> Long = Sy
         }.toMap()
         val base = baseLevel(principal, role)
         val owner = role == People.Role.OWNER
-        fun grant(own: Level?, group: Level?, private: Boolean): Grant = when {
+        // A private channel is for those listed on it alone: no project row reaches it, or whoever
+        // manages the project (every admin, by default) could let themselves in.
+        fun grant(own: Level?, channelPrivate: Boolean, group: Level?, groupPrivate: Boolean): Grant = when {
             owner -> Grant(Level.MANAGE, OWNER)
             own != null -> Grant(own, CHANNEL)
+            channelPrivate -> Grant(Level.NONE, PRIVATE)
             group != null -> Grant(group, GROUP)
-            private -> Grant(Level.NONE, PRIVATE)
+            groupPrivate -> Grant(Level.NONE, PRIVATE)
             else -> Grant(base, DEFAULT)
         }
         val byChannel = channels.associate { t ->
-            t.id to grant(rows["channel" to t.id], t.groupId?.let { rows["group" to it] }, t.private || t.groupPrivate)
+            t.id to grant(rows["channel" to t.id], t.private, t.groupId?.let { rows["group" to it] }, t.groupPrivate)
         }
-        val byGroup = groups.associate { (id, private) -> id to grant(null, rows["group" to id], private) }
+        val byGroup = groups.associate { (id, private) -> id to grant(null, false, rows["group" to id], private) }
         return View(principal, byChannel, byGroup, channels.associate { it.id to it.groupId }, if (owner) Level.MANAGE else base, clock(), version())
     }
 
@@ -364,6 +367,12 @@ class ChannelAccess(private val db: Database, private val clock: () -> Long = Sy
         if (who.role == People.Role.OWNER) throw DomainError("conflict", "a team owner always manages every channel and project", 409)
         val before = rowsOn(kind, targetId)[principal]
         if (before == level) return
+        // Nobody but an owner raises their own access, or clears their own row (which could raise it).
+        if (principal == Viewer.MEMBER + actor.id && actor.role != People.Role.OWNER) {
+            val v = view(principal)
+            val now = (if (kind == "group") v.groups[targetId]?.level else v.channels[targetId]?.level) ?: Level.NONE
+            if (level == null || level.rank > now.rank) throw forbidden("you can't raise your own access: ask a team owner")
+        }
         val now = clock()
         if (level == null) {
             db.update("DELETE FROM channel_access WHERE team_id = :team AND target_kind = ? AND target_id = ? AND principal = ?", kind, targetId, principal)
@@ -421,6 +430,8 @@ class ChannelAccess(private val db: Database, private val clock: () -> Long = Sy
      */
     fun keepThroughMove(channelId: String, groupId: String) {
         val group = target("group", groupId) ?: return
+        // A private channel took nothing from its project, so it takes nothing away either.
+        if (target("channel", channelId)?.private == true) return
         val own = rowsOn("channel", channelId)
         val now = clock()
         for ((principal, level) in rowsOn("group", groupId)) {

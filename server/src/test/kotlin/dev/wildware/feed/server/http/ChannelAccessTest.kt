@@ -29,6 +29,7 @@ import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
 import java.nio.file.Files
 import javax.imageio.ImageIO
+import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -262,6 +263,39 @@ class ChannelAccessTest {
         client.json(ownerKey, "PUT", "/api/projects/secret/access/member/${sam.id}", """{"level":"none"}""")
         client.json(ownerKey, "PATCH", "/api/projects/secret", """{"groupId":null}""")
         assertFalse("secret" in slugs(client.json(rinKey, "GET", "/api/snapshot")), "leaving a private project keeps a channel private")
+    }
+
+    @Test
+    fun `a private channel is for those listed on it, whatever anyone has on its project`() = withTeam { client ->
+        channels(client)
+        val group = client.json(ownerKey, "POST", "/api/groups", """{"name":"Company","slug":"company"}""", status = 201)["group"]!!.jsonObject["id"]!!.jsonPrimitive.content
+        client.json(ownerKey, "PATCH", "/api/projects/secret", """{"groupId":"$group"}""")
+        client.json(ownerKey, "PUT", "/api/projects/secret/access", """{"private":true}""")
+        fun adaSees() = runBlocking { "secret" in slugs(client.json(adminKey, "GET", "/api/snapshot")) }
+        assertFalse(adaSees(), "Ada is an admin but isn't listed")
+
+        // Ada manages the project by default. A row there, for her or her agent, opens nothing private.
+        assertEquals(200, client.call(adminKey, "PUT", "/api/groups/company/access/member/${admin.id}", """{"level":"read"}""").status.value)
+        assertFalse(adaSees())
+        client.call(ownerKey, "PUT", "/api/groups/company/access/member/${admin.id}", """{"level":"manage"}""")
+        assertEquals(200, client.call(adminKey, "PUT", "/api/groups/company/access/agent/${scout.id}", """{"level":"manage"}""").status.value)
+        client.tool(scoutToken, "subscribe", args("channel" to "web"))
+        assertEquals("not_found", client.tool(scoutToken, "get_messages", args("channel" to "secret")).error())
+        // Nor does making the project private and open again, which lists her on it.
+        client.json(adminKey, "PUT", "/api/groups/company/access", """{"private":true}""")
+        client.json(adminKey, "PUT", "/api/groups/company/access", """{"private":false}""")
+        assertFalse(adaSees())
+
+        // She can't clear her own row, or raise it, either: only an owner can.
+        assertEquals(403, client.call(adminKey, "PUT", "/api/groups/company/access/member/${admin.id}", """{"level":null}""").status.value)
+
+        // Leaving the project copies none of its rows onto the private channel.
+        client.json(ownerKey, "PATCH", "/api/projects/secret", """{"groupId":null}""")
+        assertFalse(adaSees())
+        assertEquals("not_found", client.tool(scoutToken, "get_messages", args("channel" to "secret")).error())
+        // Listed on the channel itself, she sees it.
+        client.json(ownerKey, "PUT", "/api/projects/secret/access/member/${admin.id}", """{"level":"read"}""")
+        assertTrue(adaSees())
     }
 
     @Test
