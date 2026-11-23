@@ -208,7 +208,7 @@ fun Route.feedRoutes(app: App) {
             val limit = if (Js.isInteger(asked) && asked > 0) minOf(asked, Board.PAGE_MAX.toDouble()).toInt() else Board.PAGE
             val column = params["column"]?.takeIf { it.isNotEmpty() }
             val removed = params["removed"] == "1" || params["removed"] == "true"
-            // Assigned to me, to nobody, or to one person or agent (migration 072).
+            // Assigned to me, to nobody, or to one person or agent (migration 073).
             val assigned = params["assigned"]?.takeIf { it.isNotBlank() }?.let { asked ->
                 when (asked) {
                     Board.UNASSIGNED -> Board.UNASSIGNED
@@ -220,7 +220,7 @@ fun Route.feedRoutes(app: App) {
         },
     )
 
-    // Who a card is assigned to (migration 072): read them with everyone who could be, or change them.
+    // Who a card is assigned to (migration 073): read them with everyone who could be, or change them.
     endpoint(
         "/api/cards/{kind}/{id}/assignees",
         HttpMethod.Get to {

@@ -49,7 +49,7 @@ class Board(private val feed: Feed) {
     /**
      * The board for [scope]: each column's first [limit] cards, newest move first. With [column] only
      * that column, after [after]. [removed] also lists the finished cards taken off the board, marked.
-     * [assigned] (migration 072) keeps only the cards assigned to that principal, or with [UNASSIGNED]
+     * [assigned] (migration 073) keeps only the cards assigned to that principal, or with [UNASSIGNED]
      * the cards assigned to nobody.
      */
     fun read(scope: Scope, column: String? = null, after: Cursor? = null, limit: Int = PAGE, removed: Boolean = false, assigned: String? = null): JsonObject {

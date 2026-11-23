@@ -144,7 +144,7 @@ class Notifications(private val db: Database, private val bus: Bus, private val 
             author.startsWith("agent:") && author.length > "agent:".length -> author.removePrefix("agent:").let { Triple(it, agentName(it), null) }
             else -> return null
         }
-        // A line saying who was assigned (migration 072) rings only for the people it assigned.
+        // A line saying who was assigned (migration 073) rings only for the people it assigned.
         // A line saying assigned work moved is for the agents it names, not anyone's bell.
         if (row[9] == Messages.STATUS_LINE) return null
         if (row[9] == Messages.ASSIGNMENT) {

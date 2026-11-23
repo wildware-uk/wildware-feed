@@ -69,7 +69,7 @@ class FakeServer {
     var notifications = listOf<NotificationView>()
     /** `GET /api/board`, as the dashboard answers it (migration 070). */
     @Volatile var board: String = """{"columns":[],"autoRemoveDays":7}"""
-    /** `GET /api/cards/{kind}/{id}/assignees` (migration 072): who it is assigned to, and who could be. */
+    /** `GET /api/cards/{kind}/{id}/assignees` (migration 073): who it is assigned to, and who could be. */
     @Volatile var assignees: String = """{"card":{"kind":"message","id":"m-post"},"assignees":[],"candidates":[""" +
         """{"principal":"member:founder","kind":"person","id":"founder","name":"Shaun","handle":"shaun","canRead":true},""" +
         """{"principal":"agent:a1","kind":"agent","id":"a1","name":"forge","canRead":true},""" +

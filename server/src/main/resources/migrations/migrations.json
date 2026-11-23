@@ -504,17 +504,17 @@
   "checksum": "07dba67af2faaf557f463cfcae6d425acd812857d81867ae71c731185bd6bdf0"
  },
  {
-  "version": 72,
-  "name": "work-is-assigned",
-  "file": "072-work-is-assigned.sql",
-  "rebuildsTables": false,
-  "checksum": "867c528f05929e1acf4a518be0c1fac260efef07b2ca968c88a4323ddd0a75ae"
- },
- {
   "version": 73,
   "name": "agents-know-who-let-them-in",
   "file": "073-agents-know-who-let-them-in.sql",
   "rebuildsTables": false,
   "checksum": "cd3c8e69105bcad2f3d3a82d97436f2598c59d16470b9715c63113b82eea6035"
+ },
+ {
+  "version": 73,
+  "name": "work-is-assigned",
+  "file": "073-work-is-assigned.sql",
+  "rebuildsTables": false,
+  "checksum": "60a409d9ed9cad58fda7e22b2b8f9411aba18080779ee6aae1e8eb1ca8c7ecbb"
  }
 ]

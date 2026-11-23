@@ -9,7 +9,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
 /**
- * Who a piece of work is assigned to (migration 072, spec/16): up to [MAX] people
+ * Who a piece of work is assigned to (migration 073, spec/16): up to [MAX] people
  * (`member:<membership id>`) or agents (`agent:<agent id>`) on an update or a post.
  *
  * Anyone with Post on the card's channel may assign, and an agent may too. Each assignee must be able

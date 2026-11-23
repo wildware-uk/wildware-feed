@@ -652,7 +652,7 @@ class Subscriptions(private val db: Database, private val clock: () -> Long = Sy
         }
 
         /**
-         * A line saying who was assigned, or that assigned work moved (migration 072), reaches only
+         * A line saying who was assigned, or that assigned work moved (migration 073), reaches only
          * the agents it names: one that names none reaches no agent at all.
          */
         private const val NOT_ASSIGNMENT = "coalesce(m.source, '') NOT IN ('${Messages.ASSIGNMENT}', '${Messages.STATUS_LINE}')"

@@ -1,6 +1,6 @@
 # 16. Assigning work
 
-Migration 072. A work card (an update or a post with a work state) can be assigned to people and
+Migration 073. A work card (an update or a post with a work state) can be assigned to people and
 agents of the team: who is doing it, said outright rather than guessed from who last wrote in the
 thread.
 

@@ -87,7 +87,7 @@ class PushMessages(private val app: App) {
             row.author.startsWith("agent:") -> agentName(row.author.removePrefix("agent:")) ?: "An agent"
             else -> return null
         }
-        // A line saying who was assigned (migration 072): only the people it assigned are told.
+        // A line saying who was assigned (migration 073): only the people it assigned are told.
         if (row.source == dev.wildware.feed.server.domain.Messages.STATUS_LINE) return null
         if (row.source == dev.wildware.feed.server.domain.Messages.ASSIGNMENT) {
             val card = db.one(
