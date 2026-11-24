@@ -45,7 +45,7 @@ object Discovery {
         "docs" to listOf("list_docs", "read_doc", "search_docs", "create_doc", "edit_doc"),
         "channels" to listOf("create_project", "list_projects", "set_project_theme", "subscribe", "unsubscribe", "list_subscriptions"),
         "sessions" to listOf("register_session", "heartbeat", "end_session", "start_pairing", "await_pairing"),
-        "secrets" to listOf("list_secrets", "secret_url", "create_secret_upload", "request_secret"),
+        "secrets" to listOf("list_secrets", "secret_url", "create_secret_upload", "request_secret", "request_secret_access"),
         "media" to listOf("create_upload", "attach_media"),
         "apps" to listOf("list_embed_types", "register_embed_type", "list_apps", "register_app", "set_app_data"),
         "feedback" to listOf("send_feedback", "list_feedback"),
