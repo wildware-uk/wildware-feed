@@ -124,6 +124,7 @@ class ToolDiscoveryTest {
             assertContains(text, "acknowledge({message_id, state: \"thinking\"}) before you start")
             assertContains(text, "Secrets (API keys, passwords) never go through request_input")
             assertContains(text, "priority \"critical\" pages your owner")
+            assertContains(text, "Talk to people only through the feed tools (post_message, post_update, request_input).")
             assertFalse("{{tools}}" in text)
         }
         assertContains(discovery, "call_tool({name, arguments})")
