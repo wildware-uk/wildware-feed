@@ -36,6 +36,9 @@ class Pairings(
     private val tokenSecret: String,
     private val clock: () -> Long = System::currentTimeMillis,
 ) {
+    /** Refuses one more agent when the team's plan has no room ([Teams.checkAgent]); set by the app. */
+    @Volatile var checkAgent: () -> Unit = {}
+
     data class Pairing(
         val id: String,
         val name: String,
@@ -103,6 +106,7 @@ class Pairings(
         val taken = db.query("SELECT name FROM agents WHERE team_id = :team AND revoked_at IS NULL") { it.getString(1) }
             .any { it.lowercase() == chosen.lowercase() }
         if (taken) throw DomainError("name_taken", "an agent is already called \"$chosen\"; choose another name", 409)
+        checkAgent()
         val now = clock()
         val agentId = Ulid.next(now)
         val decided = db.transaction { _ ->

@@ -55,6 +55,14 @@ object Wire {
         put("error", JsonPrimitive(code))
         if (message != null) put("message", JsonPrimitive(message))
     }
+
+    /** `plan_limit`: the error, which limit, and where to upgrade (null when the server has no control plane). */
+    fun planLimit(e: dev.wildware.feed.server.domain.PlanLimit): JsonObject = buildJsonObject {
+        put("error", JsonPrimitive(e.code))
+        put("message", JsonPrimitive(e.message))
+        put("limit", JsonPrimitive(e.limit))
+        put("upgradeUrl", e.upgradeUrl?.let(::JsonPrimitive) ?: kotlinx.serialization.json.JsonNull)
+    }
 }
 
 /** A body sent as given: [contentType] is written verbatim (null writes none). */
@@ -84,7 +92,7 @@ suspend fun ApplicationCall.respondOwner(status: Int, body: JsonElement) =
     respondJson(status, body, Wire.JSON_UTF8, "Cache-Control" to "no-store")
 
 suspend fun ApplicationCall.respondDomainError(e: DomainError) =
-    respondOwner(e.status, Wire.error(e.code, e.message))
+    respondOwner(e.status, if (e is dev.wildware.feed.server.domain.PlanLimit) Wire.planLimit(e) else Wire.error(e.code, e.message))
 
 suspend fun ApplicationCall.respondRedirect303(location: String, vararg headers: Pair<String, String>) =
     respondRaw(303, "", null, "Location" to location, *headers)

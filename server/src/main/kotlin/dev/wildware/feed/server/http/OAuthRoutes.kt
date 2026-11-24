@@ -416,6 +416,10 @@ private suspend fun decide(app: App, call: ApplicationCall, request: AuthRequest
                 app.agents.mint(clean, person.id).first
             }
         }
+    } catch (e: dev.wildware.feed.server.domain.PlanLimit) {
+        // The free plan has its three agents: say so in its own words, with where to upgrade.
+        val words = e.upgradeUrl?.let { "${e.message} Upgrade at $it" } ?: e.message
+        return call.page(409, consent(app, request, nonce, words, name), request.redirectUri)
     } catch (e: DomainError) {
         return call.page(400, consent(app, request, nonce, "The name ${e.message.removePrefix("name ")}.", name), request.redirectUri)
     }

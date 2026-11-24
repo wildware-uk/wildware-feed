@@ -3,6 +3,7 @@ package dev.wildware.feed.server.http
 import dev.wildware.feed.server.App
 import dev.wildware.feed.server.domain.Js
 import dev.wildware.feed.server.domain.Reads
+import dev.wildware.feed.server.domain.Teams
 import dev.wildware.feed.server.domain.invalid
 import dev.wildware.feed.server.domain.jsTrim
 import dev.wildware.feed.server.domain.notFound
@@ -41,6 +42,10 @@ fun Route.readRoutes(app: App, lastSeq: () -> Long) {
         val suspended = call.attributes.getOrNull(TeamKey)?.suspended == true
         call.respondOwner(200, if (suspended) kotlinx.serialization.json.JsonObject(summary + ("suspended" to kotlinx.serialization.json.JsonPrimitive(true))) else summary)
     })
+
+    // The team's plan, its limits and what is used (docs/TEAMS.md §7), for the apps' Settings. A team with
+    // no plan (a self-hosted server) answers {"plan": null}: no limits but its own.
+    endpoint("/api/plan", HttpMethod.Get to { call.respondOwner(200, planJson(app)) })
 
     endpoint(
         "/api/snapshot",
@@ -165,4 +170,32 @@ internal fun threadQuery(params: Parameters): Reads.ThreadQuery {
 private fun people(app: dev.wildware.feed.server.App): List<Pair<String, JsonElement>> {
     if (!app.people.isTeam()) return emptyList()
     return listOf("people" to JsonArray(app.people.list().map { personView(it, email = false) }))
+}
+
+/** What `GET /api/plan` answers. */
+internal fun planJson(app: App): kotlinx.serialization.json.JsonObject {
+    val team = app.teams.current()
+    val plan = team?.plan
+    return buildJsonObject {
+        if (team == null || plan == null) {
+            put("plan", JsonNull)
+            return@buildJsonObject
+        }
+        val free = plan == Teams.Plan.FREE
+        val (people, waiting) = app.teams.seatsUsed()
+        fun num(n: Long?) = n?.let(::JsonPrimitive) ?: JsonNull
+        put("plan", plan.wire)
+        put("limits", buildJsonObject {
+            put("people", num(if (free) minOf(team.seatLimit ?: Long.MAX_VALUE, Teams.Free.PEOPLE) else team.seatLimit))
+            put("agents", num(if (free) Teams.Free.AGENTS else null))
+            put("storageBytes", num(if (free) minOf(team.storageLimit ?: Long.MAX_VALUE, Teams.Free.STORAGE_BYTES) else team.storageLimit))
+            put("historyDays", num(if (free) Teams.Free.HISTORY_DAYS else null))
+        })
+        put("used", buildJsonObject {
+            put("people", people + waiting)
+            put("agents", app.teams.agentsLive())
+            put("storageBytes", app.teams.storageUsed())
+        })
+        put("upgradeUrl", if (free) app.teams.upgradeUrl(team)?.let(::JsonPrimitive) ?: JsonNull else JsonNull)
+    }
 }

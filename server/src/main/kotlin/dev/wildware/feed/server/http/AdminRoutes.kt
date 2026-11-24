@@ -27,8 +27,8 @@ import java.security.MessageDigest
 /**
  * The admin API the control plane calls (docs/HOSTING.md §7, contract version 1): make a team and
  * its owner, invite, suspend and resume, set limits, delete, read usage, and sign someone in after
- * the control plane has checked their email itself. It knows teams, people and numbers, never what
- * a plan or price is.
+ * the control plane has checked their email itself, and put a team on a plan (free or team). It knows
+ * teams, people and numbers, and which plan's limits apply; never a price.
  *
  * Every call is signed with one of ADMIN_API_KEYS (HMAC-SHA256 over the method, path, time and
  * body); the key never travels. No other credential works here, and the signature works nowhere
@@ -186,6 +186,7 @@ private suspend fun ApplicationCall.route(app: App, c: AdminCall, pattern: Strin
         c.method == "GET" && s.size == 3 && s[0] == "teams" && s[2] == "usage" -> { named("teams/{id}/usage"); ok(200, usage(app, openTeam(app, s[1]))) }
         c.method == "GET" && s == listOf("usage") -> { named("usage"); usageSince(app) }
         c.method == "PUT" && s.size == 3 && s[0] == "teams" && s[2] == "limits" -> { named("teams/{id}/limits"); setLimits(app, c, s[1]) }
+        c.method == "PUT" && s.size == 3 && s[0] == "teams" && s[2] == "plan" -> { named("teams/{id}/plan"); setPlan(app, c, s[1]) }
         c.method == "PUT" && s.size == 3 && s[0] == "teams" && s[2] == "suspended" -> { named("teams/{id}/suspended"); setSuspended(app, c, s[1]) }
         c.method == "POST" && s.size == 3 && s[0] == "teams" && s[2] == "invites" -> { named("teams/{id}/invites"); idempotent(app, c) { invite(app, c, s[1]) } }
         c.method == "POST" && s.size == 3 && s[0] == "teams" && s[2] == "setup-links" -> { named("teams/{id}/setup-links"); setupLink(app, c, s[1]) }
@@ -316,6 +317,8 @@ private fun teamJson(app: App, t: Teams.Team): JsonObject = buildJsonObject {
         put("seats", t.seatLimit?.let(::JsonPrimitive) ?: JsonNull)
         put("storageBytes", t.storageLimit?.let(::JsonPrimitive) ?: JsonNull)
     })
+    // A team with no plan set has none of the free plan's limits: it reads as the Team plan.
+    put("plan", (t.plan ?: Teams.Plan.TEAM).wire)
     put("suspended", t.suspended)
     put("suspendedReason", t.suspendedReason?.let(::JsonPrimitive) ?: JsonNull)
     put("state", t.state.wire)
@@ -342,6 +345,7 @@ private fun createTeam(app: App, c: AdminCall): Outcome {
     val seats = limits?.let { c.count(it, "seats") }
     val storage = limits?.let { c.count(it, "storageBytes") }
     val ref = c.string(body, "externalRef", Teams.EXTERNAL_REF_MAX, required = false)
+    val plan = c.string(body, "plan", 16, required = false)?.let { Teams.Plan.of(it) ?: throw bad("plan is free or team.") }
     // The operator's own call may give a reserved name (never `home`); customers' sign-ups never ask.
     val allowReserved = when (val v = body["allowReserved"]) {
         null, is JsonNull -> false
@@ -349,13 +353,14 @@ private fun createTeam(app: App, c: AdminCall): Outcome {
     }
     app.teams.slugProblem(slug, allowReserved)?.let { throw it }
     // The team and its owner together, or neither: a failure leaves no ownerless team holding the slug.
-    return app.db.transaction { _ -> createTeamAndOwner(app, slug, name, ref, seats, storage, email, ownerName, allowReserved) }
+    return app.db.transaction { _ -> createTeamAndOwner(app, slug, name, ref, seats, storage, email, ownerName, allowReserved, plan) }
 }
 
 private fun createTeamAndOwner(
     app: App, slug: String, name: String, ref: String?, seats: Long?, storage: Long?, email: String, ownerName: String, allowReserved: Boolean,
+    plan: Teams.Plan?,
 ): Outcome {
-    val team = app.teams.create(slug, name, ref, seats, storage, allowReserved)
+    val team = app.teams.create(slug, name, ref, seats, storage, allowReserved, plan)
     return Tenant.with(team.id) {
         val (person, newAccount) = app.people.addOwner(email, ownerName)
         val setup = if (!person.hasPassword) app.teams.mintCode("setup", person.id, Teams.SETUP_TTL_MS) else null
@@ -394,6 +399,14 @@ private suspend fun ApplicationCall.setLimits(app: App, c: AdminCall, id: String
     liveTeam(app, id)
     val body = c.json
     val team = app.teams.setLimits(id, c.count(body, "seats"), c.count(body, "storageBytes")) ?: throw noTeam()
+    return ok(200, buildJsonObject { put("team", teamJson(app, team)) })
+}
+
+private suspend fun ApplicationCall.setPlan(app: App, c: AdminCall, id: String): Int {
+    val current = liveTeam(app, id)
+    if (current.id == Tenant.HOME) throw bad("The home team has no plan.")
+    val plan = Teams.Plan.of(c.string(c.json, "plan", 16)) ?: throw bad("plan is free or team.")
+    val team = app.teams.setPlan(id, plan) ?: throw noTeam()
     return ok(200, buildJsonObject { put("team", teamJson(app, team)) })
 }
 
@@ -537,7 +550,8 @@ private fun usage(app: App, t: Teams.Team): JsonObject = Tenant.with(t.id) {
             put("bytes", app.teams.storageUsed())
             put("limit", t.storageLimit?.let(::JsonPrimitive) ?: JsonNull)
         })
-        put("agents", count("SELECT count(*) FROM agents WHERE team_id = :team AND revoked_at IS NULL"))
+        put("agents", app.teams.agentsLive())
+        put("plan", (t.plan ?: Teams.Plan.TEAM).wire)
         put("devices", count("SELECT count(*) FROM owner_devices WHERE team_id = :team"))
         put("projects", buildJsonObject { put("active", activeProjects); put("archived", allProjects - activeProjects) })
         put("databaseBytes", databaseBytes(app))

@@ -39,6 +39,12 @@ class Database private constructor(
      * connection's own, changed only when the team changes, and forgotten on reconnect.
      */
     @Volatile var rowSecurity: Boolean = false
+
+    /**
+     * The oldest `created_at` a read may show in a team, put in for `:since` ([TeamTables.expand]):
+     * 0 (everything) unless the team's plan hides old history ([dev.wildware.feed.server.domain.Teams.historyFloor]).
+     */
+    @Volatile var historyFloor: (String) -> Long = { 0L }
     private var teamOnConnection: String? = null
 
     /** How many statements [query] and [update] have run, for tests that keep reads from growing per row. */
@@ -168,7 +174,7 @@ class Database private constructor(
 
     fun <T> query(sql: String, vararg args: Any?, row: (ResultSet) -> T): List<T> = withConnection { c ->
         statements++
-        val (text, bound) = TeamTables.expand(sql, args)
+        val (text, bound) = TeamTables.expand(sql, args, historyFloor)
         checkText(bound)
         setTeam(c)
         timed(text) {
@@ -203,7 +209,7 @@ class Database private constructor(
 
     fun update(sql: String, vararg args: Any?): Int = withConnection { c ->
         statements++
-        val (text, bound) = TeamTables.expand(sql, args)
+        val (text, bound) = TeamTables.expand(sql, args, historyFloor)
         checkText(bound)
         setTeam(c)
         timed(text) { c.prepareStatement(sql(text)).use { st -> st.bind(bound); st.executeUpdate() } }

@@ -212,7 +212,10 @@ Limiting an agent to some projects is out of scope.
 
 ## 7. Admin surface for the control plane
 
-Small and generic, so a self-hoster can use it too. No billing, no plans, no prices.
+Small and generic, so a self-hoster can use it too. No billing and no prices. The one thing it knows
+of plans is which one a hosted team is on, `free` or `team`, and the free plan's fixed limits (2
+people, 3 agents, 500 MB of files, 30 days of history shown): HOSTING.md §7, "The free plan". A
+self-hosted server's team has no plan and no plan limits.
 
 **(changed)** With many teams per server, the admin API works per team: create a team, read its
 usage, set its limits, suspend it, delete it, export it. HOSTING.md §7 has the full list. The CLI,

@@ -95,7 +95,13 @@ class DashboardSession(
     val cardFolds: dev.wildware.agents.TextStore = teamFiles?.cardFolds ?: platform.cardFolds
 
     private val scope = CoroutineScope(parent.coroutineContext + SupervisorJob(parent.coroutineContext[Job]))
-    val client = DashboardClient(saved.server, saved.token, platform.httpEngine())
+    val client = DashboardClient(saved.server, saved.token, platform.httpEngine()).also { c ->
+        // Any free-plan refusal, from any call: offer "Upgrade", and read the plan's use again.
+        c.onPlanLimit = { hit ->
+            mutableUpgrade.value = hit
+            scope.launch { loadPlan() }
+        }
+    }
     private val outbox = OutboxQueue(client, platform.outbox, scope)
     private val outboxChanged = platform.outboxChanged
     private val foreground = platform.foreground
@@ -135,6 +141,11 @@ class DashboardSession(
 
     /** How long the dashboard keeps media, read when the session starts. */
     val retention: StateFlow<RetentionSettings> = mutableRetention
+
+    private val mutablePlan = MutableStateFlow(dev.wildware.agents.app.feed.PlanState())
+
+    /** The last free-plan refusal not yet put away: Settings and the feed offer "Upgrade" for it. */
+    private val mutableUpgrade = MutableStateFlow<dev.wildware.agents.PlanLimitHit?>(null)
 
     private val mutableDevices = MutableStateFlow(DeviceList())
     private val mutableSecrets = MutableStateFlow(SecretList())
@@ -341,7 +352,11 @@ class DashboardSession(
         shown.copy(searchIndex = searchEntriesOf(all.sections), lone = all.lone, bell = mapper.bell(notifications), alerts = alerts, retention = retention, mentionable = mentionable, postTarget = postTarget, devices = devices, secrets = secrets, feedback = feedback, joining = extras.joining, connections = extras.connections, members = extras.members, access = extras.access,
             agents = withOffline(shown.agents, known), follows = follows,
             groups = groups.map { ProjectGroup(it.id, it.slug, it.name, accent = it.theme?.accent, archived = it.isArchived, position = it.position) }).also { MarkdownCache.warm(markdownIn(it).asIterable()) }
-    }.let { feed -> combine(feed, board.state, assign.state) { shown, onBoard, assigning -> shown.copy(board = onBoard, assign = assigning) } }
+    }.let { feed ->
+        combine(feed, board.state, assign.state, mutablePlan, mutableUpgrade) { shown, onBoard, assigning, plan, upgrade ->
+            shown.copy(board = onBoard, assign = assigning, plan = plan, upgrade = upgrade)
+        }
+    }
         .stateIn(scope, SharingStarted.Eagerly, mapper.map(feed.state.value, emptyList(), emptyList(), emptyList(), null))
 
     /** True once the dashboard has stopped taking this device's key. */
@@ -778,6 +793,7 @@ class DashboardSession(
     }
 
     private fun joinProblem(refused: DashboardException): String = when {
+        refused.code == dev.wildware.agents.PlanLimitHit.Code -> refused.message ?: "The free plan has no room for another agent."
         refused.code == "name_taken" -> "Another agent is already called that. Choose another name."
         refused.status == 409 -> "This request was already decided, or it has expired."
         refused.status == 404 -> "This request is gone: it expired, or this dashboard can't pair agents yet."
@@ -811,6 +827,21 @@ class DashboardSession(
                 before.copy(problem = "Couldn't save that. Check the connection and try again.")
             }
         }
+    }
+
+    /**
+     * Reads the team's plan. A dashboard with none, or from before plans, or one that can't be
+     * reached leaves it unknown: Settings then shows nothing about plans.
+     */
+    private suspend fun loadPlan() {
+        val plan = try {
+            client.plan()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failed: Throwable) {
+            null
+        }
+        mutablePlan.value = dev.wildware.agents.app.feed.PlanState(plan, loaded = true)
     }
 
     /**
@@ -1068,6 +1099,8 @@ class DashboardSession(
             is FeedEvent.ClearNotifications -> dashboard.markNotificationsSeen(null)
             is FeedEvent.SetAlertPrefs -> saveAlerts(event.prefs)
             is FeedEvent.ReadMediaRetention -> scope.launch { loadRetention() }
+            is FeedEvent.ReadPlan -> scope.launch { loadPlan() }
+            is FeedEvent.DismissUpgrade -> mutableUpgrade.value = null
             is FeedEvent.ReadFeedback -> scope.launch { loadFeedback() }
             is FeedEvent.SendFeedback -> sendFeedback(event.draft, event.done)
             is FeedEvent.ReadDevices -> scope.launch { loadDevices() }

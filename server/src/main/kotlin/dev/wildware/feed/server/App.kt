@@ -171,6 +171,8 @@ class App(val config: Config, val db: Database, val clock: () -> Long = System::
     /** The teams, their addresses and limits (docs/HOSTING.md §4, §7). */
     val teams = dev.wildware.feed.server.domain.Teams(db, config, mediaPaths, clock).also { teams ->
         people.checkSeat = { teams.checkSeat() }
+        agents.checkAgent = { teams.checkAgent() }
+        db.historyFloor = { id -> teams.historyFloor(id) }
         mediaPaths.homeHeir = { teams.homeHeir() }
     }
 
@@ -203,7 +205,7 @@ class App(val config: Config, val db: Database, val clock: () -> Long = System::
     val appState = AppState(db, clock)
 
     /** Agents asking to join, and the owner allowing or denying them (migration 050). */
-    val pairings = dev.wildware.feed.server.domain.Pairings(db, bus, config.tokenSecret, clock)
+    val pairings = dev.wildware.feed.server.domain.Pairings(db, bus, config.tokenSecret, clock).also { it.checkAgent = { teams.checkAgent() } }
 
     /** Secrets the owner and agents share, sealed under SECRETS_KEY (migration 054, docs/SECRETS.md). */
     val secrets = dev.wildware.feed.server.domain.Secrets(

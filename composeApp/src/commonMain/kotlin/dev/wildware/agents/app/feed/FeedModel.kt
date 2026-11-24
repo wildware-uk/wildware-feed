@@ -700,6 +700,10 @@ data class FeedState(
     val board: BoardState = BoardState(),
     /** The Assign picker, while open (server migration 074). */
     val assign: AssignState? = null,
+    /** The hosted team's plan, read when Settings opens. */
+    val plan: PlanState = PlanState(),
+    /** A free-plan refusal still to answer: its words and an "Upgrade" link, until put away. */
+    val upgrade: dev.wildware.agents.PlanLimitHit? = null,
 ) {
     fun item(id: String): FeedItem? = sections.firstNotNullOfOrNull { s -> s.items.firstOrNull { it.id == id } }
 }
@@ -736,6 +740,13 @@ data class AlertSettings(val prefs: AlertPrefs? = null, val loaded: Boolean = fa
  * which every signed-in device is, and the dashboard refusing the read turns it off. With teams it
  * becomes admins only: decide it here and every way in (the account sheet, the command bar) follows.
  */
+/**
+ * The team's plan as Settings shows it. [plan] is null until read, and stays null on a dashboard
+ * with no plan (self-hosted) or one from before plans: then Settings shows nothing about plans.
+ */
+@Immutable
+data class PlanState(val plan: dev.wildware.agents.TeamPlan? = null, val loaded: Boolean = false)
+
 @Immutable
 data class RetentionSettings(
     val setting: MediaRetention = MediaRetention(),

@@ -79,7 +79,7 @@ class Reads(private val db: Database, private val clock: () -> Long = System::cu
         val projectId = project?.let { resolveProject(it).id }
         val rows = db.query(
             "SELECT ${Rows.UPDATE} FROM updates WHERE team_id = :team AND (? IS NULL OR project_id = ?) AND (? IS NULL OR seq < ?) " +
-                "AND deleted_at IS NULL${access.notHidden("project_id")} ORDER BY seq DESC LIMIT ?",
+                "AND deleted_at IS NULL AND created_at >= :since${access.notHidden("project_id")} ORDER BY seq DESC LIMIT ?",
             projectId, projectId, beforeSeq, beforeSeq, pageLimit + 1,
         ) { Rows.update(it) }
         val hasMore = rows.size > pageLimit
@@ -124,7 +124,7 @@ class Reads(private val db: Database, private val clock: () -> Long = System::cu
 
     /** A live update this viewer may read, by id; null when it is missing, deleted or in a channel hidden from them. */
     private fun liveUpdate(id: String): JsonObject? =
-        db.one("SELECT ${Rows.UPDATE} FROM updates WHERE team_id = :team AND id = ? AND deleted_at IS NULL", id) { Rows.update(it) }
+        db.one("SELECT ${Rows.UPDATE} FROM updates WHERE team_id = :team AND id = ? AND deleted_at IS NULL AND created_at >= :since", id) { Rows.update(it) }
             ?.takeIf { access.visible(it.str("projectId")) }
 
     /**
@@ -195,7 +195,7 @@ class Reads(private val db: Database, private val clock: () -> Long = System::cu
             val post = messageById(query.replyTo) ?: return emptyList()
             if (post["deletedAt"] !is JsonNull) return emptyList()
             val replies = db.query(
-                "SELECT ${Rows.MESSAGE} FROM messages WHERE team_id = :team AND reply_to = ? AND deleted_at IS NULL${access.notHidden("project_id")} ORDER BY seq ASC",
+                "SELECT ${Rows.MESSAGE} FROM messages WHERE team_id = :team AND reply_to = ? AND deleted_at IS NULL AND created_at >= :since${access.notHidden("project_id")} ORDER BY seq ASC",
                 post.str("id"),
             ) { Rows.message(it) }
             // `slice(-(limit - 1))`: a limit of 1 is `slice(-0)`, which is all of them.
@@ -205,14 +205,14 @@ class Reads(private val db: Database, private val clock: () -> Long = System::cu
         val projectId = query.project?.let { resolveProject(it).id }
         val window = db.query(
             "SELECT ${Rows.MESSAGE} FROM messages WHERE team_id = :team AND (? IS NULL OR project_id = ?) AND (? IS NULL OR update_id = ?) " +
-                "AND (? IS NULL OR task_id = ?) AND (? IS NULL OR request_id = ?) AND deleted_at IS NULL${access.notHidden("project_id")} ORDER BY seq DESC LIMIT ?",
+                "AND (? IS NULL OR task_id = ?) AND (? IS NULL OR request_id = ?) AND deleted_at IS NULL AND created_at >= :since${access.notHidden("project_id")} ORDER BY seq DESC LIMIT ?",
             projectId, projectId, query.updateId, query.updateId, query.taskId, query.taskId, query.requestId, query.requestId, limit,
         ) { Rows.message(it) }.reversed()
         return withParents(window)
     }
 
     private fun messageById(id: String): JsonObject? =
-        db.one("SELECT ${Rows.MESSAGE} FROM messages WHERE team_id = :team AND id = ?", id) { Rows.message(it) }?.takeIf { access.visible(it.str("projectId")) }
+        db.one("SELECT ${Rows.MESSAGE} FROM messages WHERE team_id = :team AND id = ? AND created_at >= :since", id) { Rows.message(it) }?.takeIf { access.visible(it.str("projectId")) }
 
     private fun withParents(window: List<JsonObject>): List<JsonObject> {
         val present = window.map { it.str("id") }.toSet()
@@ -220,7 +220,7 @@ class Reads(private val db: Database, private val clock: () -> Long = System::cu
         for (m in window) m.str("replyTo")?.takeIf { it.isNotEmpty() && it !in present }?.let(wanted::add)
         if (wanted.isEmpty()) return window
         val byId = inChunks(wanted.toList()) { chunk ->
-            db.query("SELECT ${Rows.MESSAGE} FROM messages WHERE team_id = :team AND id IN (${marks(chunk)})${access.notHidden("project_id")}", *chunk.toTypedArray()) { Rows.message(it) }
+            db.query("SELECT ${Rows.MESSAGE} FROM messages WHERE team_id = :team AND id IN (${marks(chunk)}) AND created_at >= :since${access.notHidden("project_id")}", *chunk.toTypedArray()) { Rows.message(it) }
         }.associateBy { it.str("id") }
         val heads = wanted.mapNotNull { byId[it] }.filter { it["deletedAt"] is JsonNull }
         return (heads + window).sortedBy { it["seq"]!!.toString().toLong() }
@@ -675,9 +675,9 @@ class Reads(private val db: Database, private val clock: () -> Long = System::cu
         class Row(val kind: String, val id: String, val statusAt: Long?, val createdAt: Long, val title: String?, val body: String, val author: String?)
         val rows = db.query(
             "SELECT 'update' AS kind, id, project_id, status, status_at, created_at, title, body, 'agent:' || agent_id AS author, " +
-                "COALESCE(status_at, created_at) AS moved_at FROM updates WHERE team_id = :team AND status IN (?) AND deleted_at IS NULL AND project_id IN ($scope) " +
+                "COALESCE(status_at, created_at) AS moved_at FROM updates WHERE team_id = :team AND status IN (?) AND deleted_at IS NULL AND created_at >= :since AND project_id IN ($scope) " +
                 "UNION ALL SELECT 'message' AS kind, id, project_id, status, status_at, created_at, NULL AS title, body, author, " +
-                "COALESCE(status_at, created_at) AS moved_at FROM messages WHERE team_id = :team AND status IN (?) AND deleted_at IS NULL AND project_id IN ($scope) " +
+                "COALESCE(status_at, created_at) AS moved_at FROM messages WHERE team_id = :team AND status IN (?) AND deleted_at IS NULL AND created_at >= :since AND project_id IN ($scope) " +
                 "ORDER BY moved_at DESC, id DESC LIMIT ?",
             "in_progress", *projectIds.toTypedArray(), "in_progress", *projectIds.toTypedArray(), WORKING_MAX,
         ) { rs ->
@@ -718,8 +718,8 @@ class Reads(private val db: Database, private val clock: () -> Long = System::cu
         val scope = marks(projectIds)
         return db.query(
             "SELECT status, COUNT(*) AS total FROM (SELECT status FROM updates WHERE team_id = :team AND status IS NOT NULL AND deleted_at IS NULL " +
-                "AND project_id IN ($scope) UNION ALL SELECT status FROM messages WHERE team_id = :team AND status IS NOT NULL AND deleted_at IS NULL " +
-                "AND project_id IN ($scope)) GROUP BY status",
+                "AND created_at >= :since AND project_id IN ($scope) UNION ALL SELECT status FROM messages WHERE team_id = :team AND status IS NOT NULL " +
+                "AND deleted_at IS NULL AND created_at >= :since AND project_id IN ($scope)) GROUP BY status",
             *(projectIds + projectIds).toTypedArray(),
         ) { it.getString(1) to it.getLong(2) }.toMap()
     }

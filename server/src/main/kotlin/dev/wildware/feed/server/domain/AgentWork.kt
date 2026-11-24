@@ -54,6 +54,7 @@ class AgentWork(private val db: Database, private val bus: Bus, private val cloc
             WHERE m.team_id = :team
               AND m.seq > coalesce(rc.last_seen_message_seq, 0)
               AND m.deleted_at IS NULL
+              AND m.created_at >= :since
               AND m.author <> ?
               AND ${Subscriptions.audienceSql(oneMessage)}"""
         args += agentId

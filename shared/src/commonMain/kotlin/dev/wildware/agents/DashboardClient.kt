@@ -36,8 +36,17 @@ import kotlinx.serialization.json.put
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
 
-/** The dashboard refused a call. [status] is the HTTP status, [code] the dashboard's error code when it gave one. */
-class DashboardException(val status: Int, val code: String?, message: String) : Exception(message)
+/**
+ * The dashboard refused a call. [status] is the HTTP status, [code] the dashboard's error code when it gave one.
+ * A free plan's refusal (`plan_limit`) also says which [limit] and where to upgrade ([upgradeUrl]).
+ */
+class DashboardException(
+    val status: Int,
+    val code: String?,
+    message: String,
+    val limit: String? = null,
+    val upgradeUrl: String? = null,
+) : Exception(message)
 
 /** A file going up with a post: a shared screenshot, photo or document. */
 class Attachment(val filename: String, val mimeType: String, val bytes: ByteArray)
@@ -631,6 +640,17 @@ class DashboardClient(
             })
         }.decoded<AlertPrefsBody>().prefs
 
+    /**
+     * The team's plan, its limits and what is used. Null on a dashboard with no plan (self-hosted),
+     * or one from before plans (404).
+     */
+    @Throws(Exception::class)
+    suspend fun plan(): TeamPlan? {
+        val response = http.get("api/plan") { authorise() }
+        if (response.status.value == 404) return null
+        return response.decoded<TeamPlan>().takeIf { it.plan != null }
+    }
+
     /** How long the dashboard keeps media. Only the owner may read it. */
     @Throws(Exception::class)
     suspend fun mediaRetention(): MediaRetention = http.get("api/settings/media-retention") { authorise() }.decoded()
@@ -1065,11 +1085,20 @@ class DashboardClient(
     internal suspend fun HttpResponse.requireSuccess() {
         if (status.isSuccess()) return
         val error = runCatching { json.decodeFromString<ErrorBody>(bodyAsText()) }.getOrNull()
-        throw DashboardException(status.value, error?.error, error?.message ?: "The dashboard answered ${status.value}.")
+        val refused = DashboardException(status.value, error?.error, error?.message ?: "The dashboard answered ${status.value}.", error?.limit, error?.upgradeUrl)
+        PlanLimitHit.of(refused)?.let { hit -> onPlanLimit?.invoke(hit) }
+        throw refused
     }
 
+    /**
+     * Told of every free-plan refusal ([PlanLimitHit]), whichever call it came from (an invite, an
+     * agent let in, an upload), so the app can offer "Upgrade" in one place.
+     */
+    @kotlin.concurrent.Volatile
+    var onPlanLimit: ((PlanLimitHit) -> Unit)? = null
+
     @Serializable
-    internal data class ErrorBody(val error: String? = null, val message: String? = null)
+    internal data class ErrorBody(val error: String? = null, val message: String? = null, val limit: String? = null, val upgradeUrl: String? = null)
 
 
     /** What files sent with no words say: just their names, "report.pdf, logs.zip". */

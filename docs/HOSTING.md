@@ -454,6 +454,27 @@ Stored on the `teams` row, set by the control plane, enforced by the server:
 | Agents | no limit | Rate limited instead (below). |
 | Suspended | – | Read-only, as TEAMS.md §7: reads and exports work, writes answer `403 suspended`. |
 
+**The free plan.** The control plane puts each team on a plan, `free` or `team`
+(`PUT /admin/teams/{id}/plan`). A team with no plan (the home team, a self-hosted server, a team made
+before plans) has none of the free plan's limits. The free plan's limits are fixed in the server
+(`Teams.Free`), on top of the seat and storage limits above:
+
+| Free plan | Limit | Over it |
+|---|---|---|
+| People | 2, counting invites still waiting | The next invite is refused: `409 plan_limit` with `"limit": "people"`. |
+| Agents | 3 with a live token | The next agent (minted, paired or connected by OAuth) is refused: `409 plan_limit`, `"limit": "agents"`. |
+| Files | 500 MB | The upload that would pass it is refused: `413 plan_limit`, `"limit": "storage"`. |
+| History | 30 days | Reads (feed, threads, the board, the summary, an agent's `get_messages`) leave out updates and messages older than 30 days. Nothing is deleted: on the Team plan they all show again. |
+
+A team over a limit keeps working; nobody and nothing is removed. Every `plan_limit` error also
+carries `upgradeUrl`, the control plane's page for the team (`CONTROL_PLANE_ORIGIN/teams/<slug>`, or
+`null` when unset), so an app can offer "Upgrade". Buying happens there, never in an app.
+`GET /api/plan` (any member) says the team's plan, its limits, what is used and `upgradeUrl`, for
+the apps' Settings; a team with no plan answers `{"plan": null}`.
+
+In SQL, reads say `created_at >= :since`; the database layer puts in the team's history floor (30
+days ago on the free plan, else 0), as it does `:team`. The plan is cached for 5 seconds.
+
 ### Keeping one team from slowing the rest
 
 - **Requests:** a per-team ceiling on top of the per-token one: 1,200 MCP calls a minute across all
@@ -475,7 +496,8 @@ Stored on the `teams` row, set by the control plane, enforced by the server:
 ### The admin API the control plane calls
 
 This is a fixed contract (version 1): the control plane is built against exactly this, so slice 4
-builds exactly this. It knows teams, people and numbers, never prices or plans.
+builds exactly this. It knows teams, people and numbers, and which plan a team is on (free or team);
+never prices.
 
 **Where.** Under `/admin/` on any address that is not a team's (the bare address in multi-team mode;
 on a self-hosted server, its own address, with the one team called `home`, so a self-hoster can use
@@ -528,7 +550,7 @@ Same key, different request: `422 idempotency_key_reused`. Same key still runnin
 ```json
 {"id": "01JD…", "slug": "acme", "name": "Acme", "address": "https://acme.feed.wildware.dev",
  "externalRef": "tm_01JD…", "limits": {"seats": 5, "storageBytes": 26843545600},
- "suspended": false, "suspendedReason": null, "state": "active", "ownerSetupDone": false,
+ "plan": "free", "suspended": false, "suspendedReason": null, "state": "active", "ownerSetupDone": false,
  "createdAt": "2026-11-20T09:00:00.000Z"}
 ```
 
@@ -536,19 +558,20 @@ Same key, different request: `422 idempotency_key_reused`. Same key still runnin
 `externalRef` is the control plane's own id (up to 64 characters), stored and echoed, never
 interpreted. `ownerSetupDone` says whether the team's first owner has a password: `true` once their
 setup link is used (or when they had a password already), `false` while it is waiting. Reading it
-makes no new link.
+makes no new link. `plan` is `free` or `team` (a team never given one reads as `team`).
 
 | Call | Body | Answer | Errors |
 |---|---|---|---|
-| `POST /admin/teams` | `{slug, name, owner: {email, name}, limits: {seats, storageBytes}, externalRef, allowReserved?}` (`allowReserved: true` lets the operator give a reserved name, never `home`) | `201 {team, owner: {accountId, membershipId, email, newAccount, setupUrl, setupExpiresAt}}`. Links an existing account by email (lower-cased) or makes one with no password. `setupUrl` is a one-time password link, 24 h, `null` if the account has a password. | `400 invalid_request`, `422 invalid_slug` (3–30 of `a-z0-9-`, starts with a letter, no trailing `-`, no `--`), `409 slug_taken` (team or alias), `409 slug_reserved` (reserved, or a team deleted in the last 30 days) |
+| `POST /admin/teams` | `{slug, name, owner: {email, name}, limits: {seats, storageBytes}, externalRef, plan?, allowReserved?}` (`plan`: `free` or `team`; left out, no plan) (`allowReserved: true` lets the operator give a reserved name, never `home`) | `201 {team, owner: {accountId, membershipId, email, newAccount, setupUrl, setupExpiresAt}}`. Links an existing account by email (lower-cased) or makes one with no password. `setupUrl` is a one-time password link, 24 h, `null` if the account has a password. | `400 invalid_request`, `422 invalid_slug` (3–30 of `a-z0-9-`, starts with a letter, no trailing `-`, no `--`), `409 slug_taken` (team or alias), `409 slug_reserved` (reserved, or a team deleted in the last 30 days) |
 | `GET /admin/teams/{id}` | – | `200 {team}` | `404 no_such_team` |
 | `GET /admin/teams?externalRef=` | – | `200 {teams: […]}` (empty if none) | – |
-| `GET /admin/teams/{id}/usage` | – | `200 {teamId, seats: {used, pendingInvites, limit}, storage: {bytes, limit}, agents, devices, projects: {active, archived}, databaseBytes, lastActivityAt, suspended}` | `404 no_such_team` |
+| `GET /admin/teams/{id}/usage` | – | `200 {teamId, seats: {used, pendingInvites, limit}, storage: {bytes, limit}, agents, plan, devices, projects: {active, archived}, databaseBytes, lastActivityAt, suspended}` | `404 no_such_team` |
 | `GET /admin/usage?since=&cursor=&limit=` | – | `200 {usage: […], nextCursor}`, teams changed since `since`, oldest first, `limit` 1–500 (100) | – |
 | `PUT /admin/teams/{id}/limits` | `{seats?, storageBytes?}` | `200 {team}`. A limit below use is accepted; new seats or uploads are refused until under it. | `404` |
+| `PUT /admin/teams/{id}/plan` | `{plan}` (`free` or `team`) | `200 {team}`. Going free removes nothing; over a free limit, only the next one is refused, and history older than 30 days is hidden until the team is on `team` again. | `400 invalid_request` (another plan, or the home team), `404` |
 | `PUT /admin/teams/{id}/suspended` | `{suspended, reason?, message?}` (`reason` a code ≤ 64; `message` ≤ 280, shown to the team) | `200 {team}`; setting the current state is fine | `404` |
 | `DELETE /admin/teams/{id}` | – | `202 {team}` with `state: "deleting"`; the address answers `404 no_such_team` at once; a job removes rows and the bucket prefix; repeats answer `202` until done, then `404`. Slug blocked 30 days. | – |
-| `POST /admin/teams/{id}/invites` | `{email, role}` (`owner`, `admin`, `member`) | `201 {inviteId, url, expiresAt}`: the TEAMS.md §5 invite | `409 seat_limit`, `409 already_member`, `404` |
+| `POST /admin/teams/{id}/invites` | `{email, role}` (`owner`, `admin`, `member`) | `201 {inviteId, url, expiresAt}`: the TEAMS.md §5 invite | `409 seat_limit`, `409 plan_limit`, `409 already_member`, `404` |
 | `POST /admin/teams/{id}/setup-links` | `{email}` | `201 {url, expiresAt}` for a member with no password yet; earlier setup links revoked | `404 no_such_member`, `409 already_set_up` |
 | `POST /admin/memberships/lookup` | `{email}` (a `POST`, so the email stays out of URLs and logs) | `200 {memberships: [{membershipId, role, team: {id, slug, name, address, suspended}}]}`: active memberships in teams not being deleted, of an account whose email was proved (below) | – |
 | `POST /admin/teams/{id}/sign-in-tickets` | `{email}` | `201 {ticket, expiresAt, address, membershipId}` | `404 no_such_member`, `404 no_such_team` |

@@ -78,7 +78,7 @@ class Board(private val feed: Feed) {
         if (ids != null && ids.isEmpty()) return Page(emptyList(), false)
         val states = if (column == DONE) FINISHED else listOf(column)
         val marks = states.joinToString(", ") { "?" }
-        val where = StringBuilder("team_id = :team AND status IN ($marks) AND deleted_at IS NULL")
+        val where = StringBuilder("team_id = :team AND status IN ($marks) AND deleted_at IS NULL AND created_at >= :since")
         val args = ArrayList<Any?>(states)
         if (ids != null) {
             where.append(" AND project_id IN (${ids.joinToString(", ") { "?" }})")

@@ -332,7 +332,7 @@ class Messages(private val feed: Feed) {
         val where = readerScope(scope, params)
         params.add(limit)
         return db.query(
-            "SELECT ${columns()} FROM messages AS m WHERE m.team_id = :team AND m.seq > ? AND m.author <> ? AND m.deleted_at IS NULL$where ORDER BY m.seq ASC LIMIT ?",
+            "SELECT ${columns()} FROM messages AS m WHERE m.team_id = :team AND m.seq > ? AND m.author <> ? AND m.deleted_at IS NULL AND m.created_at >= :since$where ORDER BY m.seq ASC LIMIT ?",
             *params.toTypedArray(),
         ) { MessageRow(Rows.message(it)) }
     }
@@ -341,7 +341,7 @@ class Messages(private val feed: Feed) {
         params.add(agentId)
         params.add(excludeAuthor)
         var where = " FROM messages AS m LEFT JOIN read_cursors AS rc ON rc.team_id = m.team_id AND rc.agent_id = ? AND rc.project_id = coalesce(m.project_id, '') " +
-            "WHERE m.team_id = :team AND m.seq > coalesce(rc.last_seen_message_seq, 0) AND m.deleted_at IS NULL AND m.author <> ?"
+            "WHERE m.team_id = :team AND m.seq > coalesce(rc.last_seen_message_seq, 0) AND m.deleted_at IS NULL AND m.created_at >= :since AND m.author <> ?"
         where += readerScope(Scope(scope.reach, agentId), params)
         if (within != null) {
             where += " AND coalesce(m.project_id, '') = ?"

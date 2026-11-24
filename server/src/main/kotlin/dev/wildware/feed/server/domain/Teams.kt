@@ -13,9 +13,12 @@ import dev.wildware.feed.server.media.MediaPaths
 /**
  * The teams on this server (docs/HOSTING.md §4, §7). A self-hosted server has one, the home team,
  * with no limits. A server with many ([Config.teamDomain]) gives each its own address and the
- * limits the control plane sets through the admin API: logins (seats), storage, a suspension.
+ * limits the control plane sets through the admin API: logins (seats), storage, a suspension, and
+ * a plan ([Plan]). The free plan has fixed limits of its own ([FREE]); a team over one keeps working,
+ * but the next person, agent or upload past it is refused, and history older than [Free.HISTORY_DAYS]
+ * is hidden (never deleted) until the team is on the Team plan again.
  *
- * The server knows only these numbers and switches, never what a plan or a price is.
+ * The server knows only these numbers and switches, never a price.
  */
 class Teams(
     private val db: Database,
@@ -24,6 +27,23 @@ class Teams(
     private val clock: () -> Long = System::currentTimeMillis,
 ) {
     enum class State(val wire: String) { ACTIVE("active"), DELETING("deleting"), DELETED("deleted") }
+
+    /** What the control plane says this team is on. A team with none (the home team, a self-hosted server) has no plan limits. */
+    enum class Plan(val wire: String) {
+        FREE("free"), TEAM("team");
+
+        companion object {
+            fun of(wire: String?): Plan? = entries.firstOrNull { it.wire == wire }
+        }
+    }
+
+    /** The free plan's limits, the same for every free team. */
+    object Free {
+        const val PEOPLE = 2L
+        const val AGENTS = 3L
+        const val STORAGE_BYTES = 500L * 1024 * 1024
+        const val HISTORY_DAYS = 30L
+    }
 
     data class Team(
         val id: String,
@@ -41,9 +61,12 @@ class Teams(
         val updatedAt: Long,
         /** This team took over the server's home team (`feed-server move-home`): see [homeHeir]. */
         val tookOverHome: Boolean = false,
+        /** Null: no plan was ever set (the home team, a team made before plans), so no plan limits. */
+        val plan: Plan? = null,
     ) {
         val suspended: Boolean get() = suspendedAt != null
         val open: Boolean get() = state == State.ACTIVE
+        val free: Boolean get() = plan == Plan.FREE
     }
 
     fun find(id: String): Team? = db.one("SELECT $COLUMNS FROM teams WHERE id = ?", id, row = ::team)
@@ -117,13 +140,13 @@ class Teams(
     }
 
     /** A new, empty team with the built-in apps and embed types every team has. */
-    fun create(slug: String, name: String, externalRef: String?, seats: Long?, storageBytes: Long?, allowReserved: Boolean = false): Team {
+    fun create(slug: String, name: String, externalRef: String?, seats: Long?, storageBytes: Long?, allowReserved: Boolean = false, plan: Plan? = null): Team {
         slugProblem(slug, allowReserved)?.let { throw it }
         val now = clock()
         val id = Ulid.next(now)
         db.update(
-            "INSERT INTO teams (id, slug, name, created_at, external_ref, seat_limit, storage_limit, state, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?)",
-            id, slug, name, now, externalRef, seats, storageBytes, now,
+            "INSERT INTO teams (id, slug, name, created_at, external_ref, seat_limit, storage_limit, state, updated_at, plan) VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)",
+            id, slug, name, now, externalRef, seats, storageBytes, now, plan?.wire,
         )
         // (SQLite keeps names unique across the file, and only ever holds one team: Config refuses more.)
         if (db.dialect == Dialect.POSTGRES) Tenant.allTeams { copyBuiltIns(id) }
@@ -161,6 +184,13 @@ class Teams(
         val now = clock()
         if (seats != null) db.update("UPDATE teams SET seat_limit = ?, updated_at = ? WHERE id = ? AND state <> 'deleted'", seats, now, id)
         if (storageBytes != null) db.update("UPDATE teams SET storage_limit = ?, updated_at = ? WHERE id = ? AND state <> 'deleted'", storageBytes, now, id)
+        return find(id)?.takeIf { it.state != State.DELETED }
+    }
+
+    /** Put the team on [plan]. Nothing is removed: going free only refuses what is past its limits, and hides old history. */
+    fun setPlan(id: String, plan: Plan): Team? {
+        db.update("UPDATE teams SET plan = ?, updated_at = ? WHERE id = ? AND state <> 'deleted'", plan.wire, clock(), id)
+        plans.remove(id)
         return find(id)?.takeIf { it.state != State.DELETED }
     }
 
@@ -284,12 +314,48 @@ class Teams(
 
     /** Refuse one more login when this team has none free. */
     fun checkSeat() {
-        val limit = current()?.seatLimit ?: return
+        val team = current() ?: return
         val (people, waiting) = seatsUsed()
+        if (team.free && people + waiting >= Free.PEOPLE) {
+            throw PlanLimit(
+                "people", "The free plan has room for ${Free.PEOPLE} people, counting invites still waiting. Upgrade to Team to add more.", 409, upgradeUrl(team),
+            )
+        }
+        val limit = team.seatLimit ?: return
         if (people + waiting >= limit) {
             throw DomainError("seat_limit", "This team has no free logins left ($limit). Remove someone or a waiting invite, or add logins.", 409)
         }
     }
+
+    /** Agents with a live token in this team. */
+    fun agentsLive(): Long = db.one("SELECT count(*) FROM agents WHERE team_id = :team AND revoked_at IS NULL") { it.getLong(1) } ?: 0
+
+    /** Refuse one more agent when this team is free and has its [Free.AGENTS] already. */
+    fun checkAgent() {
+        val team = current()?.takeIf { it.free } ?: return
+        if (agentsLive() >= Free.AGENTS) {
+            throw PlanLimit(
+                "agents", "The free plan has room for ${Free.AGENTS} agents. Remove one, or upgrade to Team to add more.", 409, upgradeUrl(team),
+            )
+        }
+    }
+
+    /** Where the team's owner upgrades: the control plane's page for this team, or null when this server has none. */
+    fun upgradeUrl(team: Team): String? = config.controlPlaneOrigin?.let { "$it/teams/${team.slug}" }
+
+    /**
+     * The oldest `created_at` a read may show in team [id]: 30 days ago on the free plan, else 0 (all of
+     * it). Statements say `created_at >= :since` and [TeamTables.expand] puts this in. The plan is read
+     * again every few seconds, so a change made by another process shows soon without a restart.
+     */
+    fun historyFloor(id: String): Long {
+        val now = clock()
+        val plan = plans[id]?.takeIf { now - it.first in 0 until HEIR_CACHE_MS }?.second
+            ?: (db.one("SELECT plan FROM teams WHERE id = ?", id) { Plan.of(it.getString(1)) ?: Plan.TEAM } ?: Plan.TEAM).also { plans[id] = now to it }
+        return if (plan == Plan.FREE) now - Free.HISTORY_DAYS * DAY_MS else 0
+    }
+
+    private val plans = java.util.concurrent.ConcurrentHashMap<String, Pair<Long, Plan>>()
 
     /** Bytes this team's media and their derivatives take. */
     fun storageUsed(): Long {
@@ -300,7 +366,11 @@ class Teams(
 
     /** Refuse [bytes] more when they would take this team past its storage. */
     fun checkStorage(bytes: Long) {
-        val limit = current()?.storageLimit ?: return
+        val team = current() ?: return
+        if (team.free && storageUsed() + bytes > Free.STORAGE_BYTES) {
+            throw PlanLimit("storage", "The free plan has room for 500 MB of files. Delete some, or upgrade to Team for more.", 413, upgradeUrl(team))
+        }
+        val limit = team.storageLimit ?: return
         if (storageUsed() + bytes > limit) {
             throw DomainError("storage_full", "This team's storage is full ($limit bytes). Delete media, or add storage.", 413)
         }
@@ -360,11 +430,12 @@ class Teams(
         suspendedAt = rs.longOrNull("suspended_at"), suspendedReason = rs.getString("suspended_reason"), suspendedMessage = rs.getString("suspended_message"),
         state = State.entries.first { it.wire == rs.getString("state") }, createdAt = rs.getLong("created_at"),
         deletedAt = rs.longOrNull("deleted_at"), updatedAt = rs.getLong("updated_at"), tookOverHome = rs.getLong("took_over_home") == 1L,
+        plan = Plan.of(rs.getString("plan")),
     )
 
     companion object {
         private const val COLUMNS =
-            "id, slug, name, external_ref, seat_limit, storage_limit, suspended_at, suspended_reason, suspended_message, state, created_at, deleted_at, updated_at, took_over_home"
+            "id, slug, name, external_ref, seat_limit, storage_limit, suspended_at, suspended_reason, suspended_message, state, created_at, deleted_at, updated_at, took_over_home, plan"
         private val SLUG = Regex("^[a-z][a-z0-9-]{1,28}[a-z0-9]$")
         const val SLUG_HOLD_DAYS = 30L
         const val HEIR_CACHE_MS = 5_000L

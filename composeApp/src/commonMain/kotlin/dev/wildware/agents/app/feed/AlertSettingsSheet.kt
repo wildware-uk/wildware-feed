@@ -133,7 +133,8 @@ fun AlertSettingsSheet(ui: FeedUi, safeArea: SafeArea) {
             LocalVoiceReview.current?.takeIf { LocalVoiceInput.current != null }?.let { VoiceNotesGroup(it) }
             LocalLiveActivities.current?.let { LiveActivitiesGroup(it) }
             LocalCrashReports.current?.let { CrashReportsGroup(it) }
-            // The dashboard's own settings, for whoever may change them.
+            // The hosted team's plan, then the dashboard's own settings, for whoever may change them.
+            PlanEntry(ui)
             KeepMediaEntry(ui)
             SecretsEntry(ui)
             DevicesEntry(ui)

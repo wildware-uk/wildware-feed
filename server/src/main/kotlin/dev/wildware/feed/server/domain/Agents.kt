@@ -12,9 +12,13 @@ class Agents(private val db: Database, private val tokenSecret: String, private 
     /** Why a bearer was refused, with the TS server's code and message. */
     data class Refusal(val code: String, val message: String)
 
+    /** Refuses one more agent when the team's plan has no room ([Teams.checkAgent]); set by the app. */
+    @Volatile var checkAgent: () -> Unit = {}
+
     /** A new agent and its token. [createdBy] is the membership id of the person letting it in, if a person is. */
     fun mint(name: String, createdBy: String? = null): Pair<Agent, String> {
         val clean = checkName(name)
+        checkAgent()
         val token = Tokens.random()
         val agent = Agent(Ulid.next(), clean, clock(), null, null)
         db.update(

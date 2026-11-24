@@ -191,6 +191,10 @@ sealed interface FeedEvent {
     data class SetAlertPrefs(val prefs: AlertPrefs?) : FeedEvent
     /** Read how long the dashboard keeps media again, after a read that failed. */
     data object ReadMediaRetention : FeedEvent
+    /** Read the team's plan and its limits, for Settings. */
+    data object ReadPlan : FeedEvent
+    /** Put away the "Upgrade" prompt a free-plan refusal raised. */
+    data object DismissUpgrade : FeedEvent
     /** Read the team's feedback and feature requests, for the Feedback sheet. */
     data object ReadFeedback : FeedEvent
     /** Send feedback or a feature request. [done] hears null once sent, or why not. */

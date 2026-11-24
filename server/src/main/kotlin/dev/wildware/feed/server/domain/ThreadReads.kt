@@ -150,7 +150,7 @@ class ThreadReads(private val feed: Feed) {
         }
         val args = if (thread.kind == "message") arrayOf<Any?>(thread.id, thread.id) else arrayOf<Any?>(thread.id)
         return db.query(
-            "SELECT ${columns()} FROM messages AS m WHERE m.team_id = :team AND $where AND m.task_id IS NULL AND m.deleted_at IS NULL ORDER BY m.seq ASC",
+            "SELECT ${columns()} FROM messages AS m WHERE m.team_id = :team AND $where AND m.task_id IS NULL AND m.deleted_at IS NULL AND m.created_at >= :since ORDER BY m.seq ASC",
             *args,
         ) { MessageRow(Rows.message(it)) }
     }

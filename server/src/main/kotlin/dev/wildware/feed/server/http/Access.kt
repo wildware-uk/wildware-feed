@@ -19,6 +19,7 @@ object Access {
     val rules: Map<String, People.Role> = mapOf(
         // Reading the feed, and the live stream.
         "GET /api/summary" to M,
+        "GET /api/plan" to M,
         "GET /api/snapshot" to M,
         "GET /api/snapshot/updates" to M,
         "GET /api/snapshot/requests" to M,

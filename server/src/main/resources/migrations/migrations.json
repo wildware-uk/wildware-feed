@@ -516,5 +516,12 @@
   "file": "074-work-is-assigned.sql",
   "rebuildsTables": false,
   "checksum": "29d3e1c697f5052bc0a4377cf0ae4a8d021fca850a61ede82ec0944769ad3b00"
+ },
+ {
+  "version": 75,
+  "name": "teams-have-a-plan",
+  "file": "075-teams-have-a-plan.sql",
+  "rebuildsTables": false,
+  "checksum": "c0ad8f7e123b415fce76305663951800c10c05d0fe3e4005cebcc00c0d64b552"
  }
 ]

@@ -26,12 +26,16 @@ object TeamTables {
     @Volatile var lintOn: Boolean = System.getProperty("feed.sqlLint") == "true"
 
     private val TEAM_MARK = Regex("""(?<![:\w]):team\b""")
+    private val SINCE_MARK = Regex("""(?<![:\w]):since\b""")
     private val TABLE_USE = Regex("""\b(?:FROM|JOIN|INTO|UPDATE)\s+"?([a-z_]+)"?""", RegexOption.IGNORE_CASE)
 
-    /** [sql] with each `:team` made a `?`, and [args] with the team put in at the same places. */
-    fun expand(sql: String, args: Array<out Any?>): Pair<String, Array<out Any?>> {
+    /**
+     * [sql] with each `:team` made a `?`, and [args] with the team put in at the same places; each
+     * `:since` likewise gets [floor] of the team, the oldest `created_at` its reads may show.
+     */
+    fun expand(sql: String, args: Array<out Any?>, floor: (String) -> Long = { 0L }): Pair<String, Array<out Any?>> {
         if (lintOn) lint(sql)
-        if (!sql.contains(":team")) return sql to args
+        if (!sql.contains(":team") && !sql.contains(":since")) return sql to args
         val out = StringBuilder()
         val bound = ArrayList<Any?>(args.size + 2)
         var next = 0
@@ -50,6 +54,13 @@ object TeamTables {
                 out.append('?')
                 bound += team
                 i += m.value.length
+                continue
+            }
+            val since = SINCE_MARK.matchAt(sql, i)
+            if (since != null) {
+                out.append('?')
+                bound += floor(team)
+                i += since.value.length
                 continue
             }
             out.append(ch)

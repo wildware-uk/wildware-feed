@@ -270,6 +270,8 @@ private fun FeedScreenBody(
             if (ui.connectOpen) ConnectAgentSheet(ui, if (phone) safeArea else SafeArea())
             // Over everything else: an agent asking to join waits on the owner, and only for ten minutes.
             JoinPrompt(ui, if (phone) safeArea else SafeArea())
+            // A free-plan refusal, with "Upgrade" to the billing site.
+            UpgradePrompt(ui, if (phone) safeArea else SafeArea())
         }
         FollowNavigation(ui, navigator)
         FollowHistory(ui)
