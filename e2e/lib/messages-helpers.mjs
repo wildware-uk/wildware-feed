@@ -1,7 +1,7 @@
 // Helpers for the message and search specs: a card's menu, sending with the keyboard, and what an
 // agent reads over MCP.
 import { expect } from '@playwright/test';
-import { find, openChannel, screenText } from './ui.mjs';
+import { find, openChannel, screenText, stillBox, tapTarget } from './ui.mjs';
 
 /** Sends what is in the focused message or reply box: Ctrl+Enter, as a multiline box wants. */
 export async function sendWithKeys(page) {
@@ -20,7 +20,6 @@ export async function openCardMenu(page, collapse) {
     for (let i = 0; i < 20 && (!box || box.width === 0 || box.y < 0 || box.y + box.height > height); i++) {
         await page.mouse.move(640, height / 2);
         await page.mouse.wheel(0, box && box.width > 0 && box.y < 0 ? -200 : 200);
-        await page.waitForTimeout(150);
         box = await settledBox(button);
     }
     if (!box || box.width === 0) throw new Error(`the card "${collapse}" is not on the screen`);
@@ -29,18 +28,8 @@ export async function openCardMenu(page, collapse) {
     await settledBox(page.getByRole('button', { name: 'Delete', exact: true }).last());
 }
 
-/** [locator]'s box once it has stopped moving (cards slide in and menus grow in). */
-export async function settledBox(locator, timeout = 5000) {
-    await locator.waitFor({ state: 'attached', timeout });
-    let last = null;
-    for (const end = Date.now() + timeout; Date.now() < end;) {
-        const box = await locator.boundingBox();
-        if (box && last && box.x === last.x && box.y === last.y && box.width === last.width && box.height === last.height) return box;
-        last = box;
-        await locator.page().waitForTimeout(150);
-    }
-    return last;
-}
+/** [locator]'s box once it has stopped moving (cards slide in and menus grow in): ui.stillBox. */
+export const settledBox = stillBox;
 
 /** A tool's JSON: its answer is a sentence for the agent, then the JSON. */
 export async function toolJson(agent, tool, args) {
@@ -85,8 +74,8 @@ export async function listMessages(person, query) {
 
 /**
  * Taps the button named [name] that belongs to the card whose Collapse button is named [collapse]:
- * the first one after it in the tree (e.g. that card's own "Reply"). A card's menu would do too,
- * but after a menu closes the tree keeps its rows until a reload.
+ * the first one after it in the tree (e.g. that card's own "Reply"), once it is drawn and still. A
+ * card's menu would do too, but after a menu closes the tree keeps its rows until a reload.
  */
 export async function tapOnCard(page, collapse, name) {
     await find(page, 'button', collapse);
@@ -94,11 +83,7 @@ export async function tapOnCard(page, collapse, name) {
     const start = labels.findIndex((l) => collapse.test(l));
     const index = labels.findIndex((l, i) => i > start && l === name);
     if (start < 0 || index < 0) throw new Error(`no "${name}" on the card ${collapse}`);
-    const target = page.getByRole('button').nth(index);
-    const box = await target.boundingBox();
-    if (!box || box.width === 0) throw new Error(`"${name}" on the card ${collapse} is not drawn`);
-    await page.mouse.click(box.x + Math.min(box.width / 2, 40), box.y + box.height / 2);
-    await page.waitForTimeout(400);
+    await tapTarget(page, page.getByRole('button').nth(index), `"${name}" on the card ${collapse}`);
 }
 
 /**

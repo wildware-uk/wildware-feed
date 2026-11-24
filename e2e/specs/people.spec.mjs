@@ -3,7 +3,7 @@
 import { expect, test } from '@playwright/test';
 import { strongPassword } from '../../server/deploy/journey.mjs';
 import { Team } from '../lib/team.mjs';
-import { expectShown, newBrowser, nextResponse, openApp, reload, screenText, signedIn, tap, typeInto } from '../lib/ui.mjs';
+import { expectShown, expectTyping, newBrowser, nextResponse, openApp, reload, screenText, signedIn, tap, tapTarget, typeInto } from '../lib/ui.mjs';
 
 test.describe.configure({ mode: 'serial' });
 let team;
@@ -51,6 +51,7 @@ test('they join in their own browser and see the feed', async ({ browser }) => {
     const accepted = nextResponse(page, '/api/invite/accept', 'POST', 30_000);
     // Join the team is drawn under the last box; Enter there joins, as for a keyboard user.
     await tap(page, 'textbox', 'Name for this device');
+    await expectTyping(page);
     await page.keyboard.press('Enter');
     expect((await accepted).status()).toBe(201);
     await expectShown(page, 'All channels');
@@ -67,9 +68,7 @@ test('the owner makes them an admin', async ({ browser }) => {
     await openPeople(page);
     await expectShown(page, sam.name);
     // The second Change is Sam's: the owner is listed first.
-    const change = page.getByRole('button', { name: 'Change' }).nth(1);
-    const box = await change.boundingBox();
-    await page.mouse.click(box.x + 20, box.y + box.height / 2);
+    await tapTarget(page, page.getByRole('button', { name: 'Change' }).nth(1), "Sam's Change");
     await expectShown(page, `Remove ${sam.name}`);
     const changed = nextResponse(page, /^\/api\/people\/[^/]+$/, 'PATCH');
     await tap(page, 'button', 'Admin');
@@ -82,9 +81,7 @@ test('removing them signs their browser out at once', async ({ browser }) => {
     const samPage = await signedIn(browser, await team.signIn(sam));
     const page = await signedIn(browser, team.owner);
     await openPeople(page);
-    const change = page.getByRole('button', { name: 'Change' }).nth(1);
-    const box = await change.boundingBox();
-    await page.mouse.click(box.x + 20, box.y + box.height / 2);
+    await tapTarget(page, page.getByRole('button', { name: 'Change' }).nth(1), "Sam's Change");
     await tap(page, 'button', `Remove ${sam.name}`);
     await expectShown(page, 'Their devices are signed out at once');
     const removed = nextResponse(page, /^\/api\/people\/[^/]+$/, 'DELETE');

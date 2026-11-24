@@ -4,7 +4,7 @@
 // all in, checks one with Show, and saves them together. Every value is made up.
 import { expect, test } from '@playwright/test';
 import { Team } from '../lib/team.mjs';
-import { expectGone, expectShown, find, nextResponse, screenText, signedIn, tap, typeInto } from '../lib/ui.mjs';
+import { expectGone, expectShown, nextResponse, screenText, signedIn, tap, typeInto } from '../lib/ui.mjs';
 import { mcp, openChannelSurely } from '../lib/cards-helpers.mjs';
 
 const value = 'sk-test-NOT-REAL-e2e-3a7f';
@@ -82,9 +82,7 @@ test('an agent asks for two secrets on one card and the owner saves both with Sh
 
     await typeInto(page, 'Value of AWS_ACCESS_KEY_ID, hidden as you type', keyId);
     // The first box's eye: what was typed shows until the box loses the cursor.
-    const eye = await find(page, 'button', 'Show secret');
-    const box = await eye.boundingBox();
-    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+    await tap(page, 'button', 'Show secret');
     await expectShown(page, 'Hide secret');
     await typeInto(page, 'Value of AWS_SECRET_ACCESS_KEY, hidden as you type', keySecret);
     // Moving to the second box hid the first again: both eyes say Show.

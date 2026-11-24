@@ -69,24 +69,88 @@ export async function has(page, role, name, timeout = 2000) {
 }
 
 /**
- * Clicks where [role] [name] is drawn: the canvas takes the click, not the tree's element. Something
- * scrolled out of its list (a zero-size box) or out of the window is scrolled to first, with the
- * wheel in small steps over the middle of the window.
+ * Clicks where [role] [name] is drawn: the canvas takes the click, not the tree's element. See
+ * [tapTarget].
  */
-export async function tap(page, role, name, { button = 'left', scrollAt } = {}) {
-    const target = await find(page, role, name);
+export async function tap(page, role, name, options = {}) {
+    await tapTarget(page, await find(page, role, name), `${role} "${name}"`, options);
+}
+
+/**
+ * Clicks where [target] (a locator in the tree) is drawn, once it has stopped moving ([stillBox]).
+ * Something scrolled out of its list (a zero-size box) or out of the window is scrolled to first,
+ * with the wheel in small steps over the middle of the window.
+ */
+export async function tapTarget(page, target, what = 'it', { button = 'left', scrollAt } = {}) {
     const { width, height } = page.viewportSize();
     const at = scrollAt ?? { x: width / 2, y: height / 2 };
-    let box = await target.boundingBox();
+    let box = await stillBox(target);
     for (let i = 0; i < 20 && (!box || box.width === 0 || box.y < 0 || box.y + box.height > height); i++) {
         await page.mouse.move(at.x, at.y);
         await page.mouse.wheel(0, box && box.width > 0 && box.y < 0 ? -200 : 200);
-        await page.waitForTimeout(150);
-        box = await target.boundingBox();
+        box = await stillBox(target);
     }
-    if (!box || box.width === 0 || box.y + box.height / 2 > height) throw new Error(`${role} "${name}" is not on the screen, even after scrolling`);
+    if (!box || box.width === 0 || box.y + box.height / 2 > height) throw new Error(`${what} is not on the screen, even after scrolling`);
     await page.mouse.click(box.x + Math.min(box.width / 2, 40), box.y + box.height / 2, { button });
     await page.waitForTimeout(250);
+}
+
+/** Resolves once the page has drawn [count] more frames (or after a second, for a page that draws none). */
+export function frames(page, count = 2) {
+    return page.evaluate((n) => new Promise((done) => {
+        setTimeout(done, 1000);
+        const tick = () => (--n <= 0 ? done() : requestAnimationFrame(tick));
+        requestAnimationFrame(tick);
+    }), count).catch(() => {});
+}
+
+/**
+ * [locator]'s box once it has stopped moving: the same box on three reads in a row, with frames
+ * drawn between them. Menus grow in from the pointer, sheets and dialogs slide in and cards move as
+ * the feed fills, and the tree has the new place of a thing before it is drawn there: a click on the
+ * way lands on whatever is under it (the menu row next to it, or outside a dialog, which closes it).
+ * A box that stays empty (scrolled out of its list) or missing counts as still too, so a caller can
+ * scroll to it. Returns the last box read if it never settles.
+ */
+export async function stillBox(locator, timeout = 10_000) {
+    const page = locator.page();
+    const read = () => locator.boundingBox({ timeout: 1000 }).catch(() => null);
+    const same = (a, b) => (a === null && b === null) || (!!a && !!b && a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height);
+    let last = await read();
+    let still = 0;
+    for (const end = Date.now() + timeout; Date.now() < end;) {
+        await frames(page, 2);
+        await page.waitForTimeout(80);
+        const box = await read();
+        still = same(box, last) ? still + 1 : 0;
+        last = box;
+        if (still >= 2) return box;
+    }
+    return last;
+}
+
+/**
+ * Where the browser's keyboard focus is, through the app's shadow root: "box" when a text box has
+ * the keys (Compose's hidden backing field has the focus), "app" when the canvas has them, or the
+ * tag of whatever else does.
+ */
+export const keyFocus = (page) => page.evaluate(() => {
+    let el = document.activeElement;
+    while (el?.shadowRoot?.activeElement) el = el.shadowRoot.activeElement;
+    if (!el || el === document.body) return 'none';
+    if (el.classList?.contains('compose-backing-field')) return 'box';
+    if (el.tagName === 'CANVAS') return 'app';
+    return el.tagName.toLowerCase();
+}).catch(() => 'none');
+
+/** Passes once a text box has the keys, so what is typed next goes into it. */
+export async function expectTyping(page, timeout = 5000) {
+    await expect.poll(() => keyFocus(page), { timeout, message: 'a text box should have the keyboard' }).toBe('box');
+}
+
+/** Passes once the app has the keys (its canvas or one of its boxes), so a shortcut reaches it. */
+export async function expectKeysInApp(page, timeout = 5000) {
+    await expect.poll(() => keyFocus(page), { timeout, message: 'the app should have the keyboard' }).toMatch(/^(app|box)$/);
 }
 
 /** What the box labelled [name] holds now: the tree mirrors it as the box's text. */
@@ -113,6 +177,7 @@ async function expectBox(page, name, want) {
 export async function typeInto(page, name, text) {
     const before = await boxText(page, name);
     await tap(page, 'textbox', name);
+    await expectTyping(page);
     await page.keyboard.type(text, { delay: 15 });
     await expectBox(page, name, before + text);
 }
@@ -120,6 +185,7 @@ export async function typeInto(page, name, text) {
 /** Replaces what the box labelled [name] holds with [text]; returns once the box shows exactly that. */
 export async function replaceText(page, name, text) {
     await tap(page, 'textbox', name);
+    await expectTyping(page);
     await page.keyboard.press('Control+a');
     // A key typed straight after select-all can be lost (the select-all itself lands late).
     await page.waitForTimeout(250);
@@ -127,21 +193,34 @@ export async function replaceText(page, name, text) {
     await expectBox(page, name, text);
 }
 
-/** The web app at [address], drawn and settled. */
+/** The web app at [address], drawn. */
 export async function openApp(page, address) {
     await page.goto(address);
     await settle(page);
 }
 
-/** A reload, settled. The accessibility tree keeps a closed dialog's contents until the page is drawn afresh. */
+/**
+ * A reload of a signed-in page, drawn and live again. The accessibility tree keeps a closed
+ * dialog's contents until the page is drawn afresh.
+ */
 export async function reload(page) {
     await page.reload();
     await settle(page);
+    await expectLive(page);
 }
 
+/** The app has taken over from the page's "Loading" and drawn its first screen into the tree. */
 async function settle(page) {
     await page.waitForFunction(() => !document.getElementById('loading'), null, { timeout: 60_000 });
-    await page.waitForTimeout(1200);
+    await expect.poll(async () => (await screenText(page)).length > 0, { timeout: 30_000, message: 'the app should draw its first screen' }).toBe(true);
+}
+
+/**
+ * Passes once a signed-in app is connected: its live stream is open (the header says "Live"), so
+ * the feed has been read and what agents do next shows without a reload.
+ */
+export async function expectLive(page) {
+    await expectShown(page, 'Connection: Live', 30_000);
 }
 
 /** The next response to [method] on a path ending with [path] (or matching it, a RegExp), as a promise to await after acting. */
@@ -178,9 +257,10 @@ export async function signInPage(page, person) {
     await page.evaluate((session) => localStorage.setItem('feed.session', JSON.stringify(session)), { server: address, token: '', deviceName: device.name, deviceId: device.id });
     await openApp(page, address);
     await expectShown(page, 'All channels');
+    await expectLive(page);
 }
 
-/** A tab the web app opened ([popup], from `context.waitForEvent('page')`), drawn and settled. */
+/** A tab the web app opened ([popup], from `context.waitForEvent('page')`), drawn. */
 export async function settledTab(popup) {
     await popup.waitForLoadState();
     await settle(popup);

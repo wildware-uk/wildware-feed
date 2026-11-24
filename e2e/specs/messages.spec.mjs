@@ -2,7 +2,7 @@
 // screen shows, what the server answers, and what agents read over MCP.
 import { expect, test } from '@playwright/test';
 import { Team } from '../lib/team.mjs';
-import { expectGone, expectShown, find, screenText, nextResponse, post, reload, signedIn, tap, typeInto } from '../lib/ui.mjs';
+import { expectGone, expectShown, expectTyping, find, screenText, nextResponse, post, reload, signedIn, stillBox, tap, typeInto } from '../lib/ui.mjs';
 import { expectAgentGets, goToChannel, inbox, listMessages, openCardMenu, sendWithKeys, settledBox, tapOnCard, toolJson } from '../lib/messages-helpers.mjs';
 
 // Not serial: a failure doesn't skip the rest (the next test gets a fresh worker and team).
@@ -50,7 +50,7 @@ test("the owner opens a card's thread and replies; the agent gets the reply and 
     // The thread's reply box opens with the focus in it. (A click in it would take the focus away:
     // see the test below.)
     await find(page, 'textbox', 'Reply');
-    await page.waitForTimeout(300);
+    await expectTyping(page);
     await page.keyboard.type('Go ahead on Saturday', { delay: 15 });
     const sent = nextResponse(page, '/api/messages');
     await sendWithKeys(page);
@@ -75,12 +75,13 @@ test('a click inside the focused thread reply box keeps the focus', async ({ bro
     await builder.call('post_update', { project: 'alpha', title: 'Focus check', body: 'Click in the reply box.' });
     const page = await inAlpha(browser);
     await tapOnCard(page, /^Collapse update: Focus check/, 'Reply');
-    const box = await (await find(page, 'textbox', 'Reply')).boundingBox();
-    await page.waitForTimeout(300);
+    // The thread opens with the reply box focused; where it ends up once the thread has opened.
+    const box = await stillBox(await find(page, 'textbox', 'Reply'));
+    await expectTyping(page);
     await page.keyboard.type('one ', { delay: 15 });
     for (const word of ['two ', 'three']) {
         await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
-        await page.waitForTimeout(300);
+        await expectTyping(page);
         await page.keyboard.type(word, { delay: 15 });
     }
     const sent = nextResponse(page, '/api/messages', 'POST', 5000);
@@ -121,7 +122,7 @@ test('replying on a card further down takes the feed to the top with it', async 
     expect(onScreen(await boxOf(newest)), 'the newest card is out of sight').toBe(false);
     await tapOnCard(page, /^Collapse update: Pile card 11/, 'Reply');
     await find(page, 'textbox', 'Reply');
-    await page.waitForTimeout(300);
+    await expectTyping(page);
     await page.keyboard.type('Picking this one up', { delay: 15 });
     const sent = nextResponse(page, '/api/messages');
     await sendWithKeys(page);
@@ -138,6 +139,7 @@ test('"Mention an agent" names one agent: it gets the message, and so does the c
     const page = await inAlpha(browser);
     await inbox(builder); await inbox(reviewer); // start both with nothing unread
     await tap(page, 'button', 'Mention an agent');
+    await expectTyping(page);
     await page.keyboard.type('rev', { delay: 15 });
     await find(page, 'button', /^Mention reviewer/);
     await page.keyboard.press('Enter'); // picks the highlighted name
@@ -159,6 +161,7 @@ test('"Mention an agent" opens the list of agents and keeps typing in the box', 
     const page = await inAlpha(browser);
     await tap(page, 'textbox', 'Message');
     await tap(page, 'button', 'Mention an agent');
+    await expectTyping(page);
     await page.keyboard.type('rev', { delay: 15 });
     await find(page, 'button', /^Mention reviewer/, 3000);
 });

@@ -3,7 +3,7 @@
 // has loaded, so the server's part is having the things to find.
 import { expect, test } from '@playwright/test';
 import { Team } from '../lib/team.mjs';
-import { expectGone, expectShown, find, has, signedIn, tap, typeInto } from '../lib/ui.mjs';
+import { expectGone, expectKeysInApp, expectShown, find, has, signedIn, tap, typeInto } from '../lib/ui.mjs';
 import { goToChannel, settledBox, toolJson } from '../lib/messages-helpers.mjs';
 
 test.describe.configure({ mode: 'default' });
@@ -35,8 +35,8 @@ const SEARCH = 'Search or run a command';
 test('Ctrl+K finds a card by a word; opening it shows the card from another channel', async ({ browser }) => {
     const page = await inChannel(browser, 'Beta');
     await expectGone(page, 'Quarterly kumquat report');
-    // The page needs the keyboard first: see the last test.
-    await page.mouse.click(640, 30);
+    // The app has the keyboard after a tap in it (and after a load: see the last test).
+    await expectKeysInApp(page);
     await page.keyboard.press('Control+k');
     await typeInto(page, SEARCH, 'kumquat');
     await expectShown(page, /FOUND\nQuarterly kumquat report\. Card · builder · Alpha/);
