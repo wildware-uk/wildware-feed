@@ -26,6 +26,9 @@ import kotlin.time.Instant
  * with the text as it is now, never saved over it.
  */
 
+/** Whether [title] names a channel's Index: the doc titled "Index", in any case, says what the channel is for. */
+fun isIndexTitle(title: String): Boolean = title.trim().equals("Index", ignoreCase = true)
+
 /** Who saved a doc: [kind] is "person" or "agent". */
 @Serializable
 data class DocAuthor(val principal: String = "", val kind: String = "person", val name: String = "")
@@ -55,9 +58,12 @@ data class DocRef(val id: String, val title: String)
 @Serializable
 data class DocPage(val doc: DocView, val backlinks: List<DocRef> = emptyList(), val canEdit: Boolean = false)
 
-/** A channel's docs, newest change first, without their text. */
+/**
+ * A channel's docs, its Index first, then newest change first, without their text. [indexTemplate]
+ * is a first Index to write when the channel has none: nothing is saved until someone saves it.
+ */
 @Serializable
-data class DocList(val projectId: String = "", val docs: List<DocView> = emptyList(), val canEdit: Boolean = false)
+data class DocList(val projectId: String = "", val docs: List<DocView> = emptyList(), val canEdit: Boolean = false, val indexTemplate: String? = null)
 
 /** One kept version. [body] only when read on its own. */
 @Serializable

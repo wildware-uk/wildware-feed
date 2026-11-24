@@ -176,6 +176,23 @@ private fun DocList(ui: FeedUi, docs: DocsState, modifier: Modifier) {
             docs.docs.isEmpty() -> MetaText(if (docs.canEdit) "No docs yet. Press + to write the first." else "No docs yet.", Modifier.padding(vertical = 8.dp))
         }
         LazyColumn(Modifier.fillMaxWidth().weight(1f)) {
+            // No Index yet: the first row offers to write one, from the template. Nothing is saved until they save.
+            if (docs.indexTemplate != null && docs.query.isBlank()) item(key = "no-index") {
+                val shape = AgentTheme.shapes.medium
+                val writing = docs.open?.draft == true
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(shape)
+                        .background(if (writing) colors.text.copy(alpha = if (colors.isDark) 0.12f else 0.06f) else colors.background.copy(alpha = 0f))
+                        .then(if (docs.canEdit) Modifier.pressable("No Index yet. Write one", shape) { ui.emit(FeedEvent.Docs(DocsAction.WriteIndex)) } else Modifier)
+                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(Icons.Pin, null, tint = colors.accent, modifier = Modifier.padding(end = 6.dp).size(13.dp))
+                    Text(if (docs.canEdit) "No Index yet. Write one" else "No Index yet.", color = colors.text, style = AgentTheme.type.label)
+                }
+            }
             items(docs.docs, key = { it.id }) { doc ->
                 val chosen = docs.open?.id == doc.id
                 val shape = AgentTheme.shapes.medium
@@ -187,8 +204,11 @@ private fun DocList(ui: FeedUi, docs: DocsState, modifier: Modifier) {
                         .pressable("${doc.title}, saved by ${doc.savedBy} ${doc.savedAgo}", shape) { ui.emit(FeedEvent.Docs(DocsAction.Open(doc.id))) }
                         .padding(horizontal = 10.dp, vertical = 8.dp),
                 ) {
-                    Text(doc.title, color = colors.text, style = AgentTheme.type.label, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    MetaText("${doc.savedBy} · ${doc.savedAgo}")
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (doc.index) Icon(Icons.Pin, "Pinned", tint = colors.accent, modifier = Modifier.padding(end = 6.dp).size(13.dp))
+                        Text(doc.title, color = colors.text, style = AgentTheme.type.label, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    }
+                    MetaText(if (doc.index) "What this channel is for · ${doc.savedAgo}" else "${doc.savedBy} · ${doc.savedAgo}")
                 }
             }
         }

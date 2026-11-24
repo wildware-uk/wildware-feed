@@ -22,6 +22,7 @@ import dev.wildware.agents.docByTitle
 import dev.wildware.agents.docVersion
 import dev.wildware.agents.docVersions
 import dev.wildware.agents.docs
+import dev.wildware.agents.isIndexTitle
 import dev.wildware.agents.restoreDoc
 import dev.wildware.agents.saveDoc
 import kotlinx.coroutines.CancellationException
@@ -55,6 +56,8 @@ class DocsWatch(
 
     private var live: Job? = null
     private var listing: Job? = null
+    /** The tab was just put on screen: once the list is read, open the Index if nothing else is open. */
+    private var openIndex = false
 
     /** The channel's id, from its last list: a live change names its channel by id. */
     private var channelId: String? = null
@@ -67,7 +70,10 @@ class DocsWatch(
             is DocsAction.OpenTitle -> openTitle(action.channel, action.title)
             DocsAction.Close -> mutable.value = mutable.value.copy(open = null, opening = null, missing = null)
             is DocsAction.Create -> create(action.title)
-            is DocsAction.Edit -> openDoc { it.copy(editing = action.on, newerVersion = if (action.on) it.newerVersion else null, problem = null) }
+            DocsAction.WriteIndex -> writeIndex()
+            // Leaving an unsaved Index closes it: nothing was ever saved.
+            is DocsAction.Edit -> if (!action.on && mutable.value.open?.draft == true) mutable.value = mutable.value.copy(open = null)
+            else openDoc { it.copy(editing = action.on, newerVersion = if (action.on) it.newerVersion else null, problem = null) }
             is DocsAction.Save -> save(action.title, action.body, action.baseVersion)
             DocsAction.Delete -> delete()
             is DocsAction.History -> history(action.open)
@@ -91,6 +97,7 @@ class DocsWatch(
         }
         if (channel == mutable.value.channel && live != null) return
         live?.cancel()
+        openIndex = true
         if (channel != mutable.value.channel) {
             channelId = null
             mutable.value = DocsState(channel = channel)
@@ -137,7 +144,16 @@ class DocsWatch(
             val read = client.docs(channel, query.ifBlank { null })
             if (mutable.value.channel != channel || mutable.value.query != query) return
             channelId = read.projectId.ifEmpty { null }
-            mutable.value = mutable.value.copy(docs = read.docs.map(::itemOf), canEdit = read.canEdit, loaded = true, loading = false, problem = null)
+            // The Index leads, whatever the order the server gave.
+            val docs = read.docs.map(::itemOf).sortedBy { !it.index }
+            val template = read.indexTemplate?.takeIf { docs.none { it.index } }
+            mutable.value = mutable.value.copy(docs = docs, canEdit = read.canEdit, loaded = true, loading = false, problem = null, indexTemplate = template)
+            if (openIndex && query.isBlank()) {
+                openIndex = false
+                val index = docs.firstOrNull { it.index }
+                val now = mutable.value
+                if (index != null && now.open == null && now.opening == null && now.missing == null) open(index.id)
+            }
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (failed: Throwable) {
@@ -206,8 +222,20 @@ class DocsWatch(
         }
     }
 
+    /** The editor, on the template: the channel's first Index, saved only when this person saves it. */
+    private fun writeIndex() {
+        val template = mutable.value.indexTemplate ?: return
+        if (!mutable.value.canEdit) return
+        mutable.value = mutable.value.copy(
+            open = OpenDoc(id = "", title = "Index", body = template, version = 0, canEdit = true, editing = true, draft = true),
+            opening = null,
+            missing = null,
+        )
+    }
+
     private fun save(title: String, body: String, baseVersion: Long) {
         val open = mutable.value.open ?: return
+        if (open.draft) return saveDraft(title, body)
         openDoc { it.copy(saving = true, problem = null) }
         scope.launch {
             try {
@@ -227,6 +255,22 @@ class DocsWatch(
                         )
                     }
                 }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failed: Throwable) {
+                openDoc { it.copy(saving = false, problem = problemOf(failed, "save it")) }
+            }
+        }
+    }
+
+    /** The first save of a drafted Index creates it. */
+    private fun saveDraft(title: String, body: String) {
+        val channel = mutable.value.channel ?: return
+        openDoc { it.copy(saving = true, problem = null) }
+        scope.launch {
+            try {
+                showPage(client.createDoc(channel, title.trim().ifEmpty { "Index" }, body), keep = null)
+                launchList()
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failed: Throwable) {
@@ -338,7 +382,8 @@ class DocsWatch(
         mutable.value = mutable.value.copy(open = change(open))
     }
 
-    private fun itemOf(d: DocView) = DocItem(d.id, d.title, nameOf(d.updatedBy), d.updatedBy?.kind == "agent", ago(d.updatedAtMillis), d.size)
+    private fun itemOf(d: DocView) =
+        DocItem(d.id, d.title, nameOf(d.updatedBy), d.updatedBy?.kind == "agent", ago(d.updatedAtMillis), d.size, index = isIndexTitle(d.title))
 
     private fun nameOf(who: DocAuthor?) = who?.name?.ifBlank { null } ?: "Someone"
 

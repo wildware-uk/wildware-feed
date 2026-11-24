@@ -10,6 +10,7 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onRoot
@@ -110,6 +111,48 @@ class DocsTest {
         waitForNode(hasText("Save merged") and hasClickAction()).performClick()
         assertTrue(waitForWrite("PUT", "/api/docs/d1").contains("\"baseVersion\":2"), "the merge saves on top of their version")
         waitForNode(hasText("Version 3 · saved by Sam", substring = true))
+    }
+
+    @Test
+    fun theDocsTabOpensOnTheChannelsIndexPinnedAtTheTop() = runDesktopComposeUiTest(width = 1440, height = 900) {
+        fun index(body: String) = """{"id":"i1","projectId":"p1","title":"Index","body":"$body","version":1,"size":10,""" +
+            """"createdAt":"2026-11-20T09:00:00Z","createdBy":$sam,"updatedAt":"2026-11-20T09:00:00Z","updatedBy":$sam}"""
+        // The server lists the Index second here: the app still pins it first.
+        server.docAnswers["GET /api/projects/mega/docs"] = 200 to """{"projectId":"p1","docs":[${doc(1, "")},${index("")}],"canEdit":true}"""
+        server.docAnswers["GET /api/docs/i1"] = 200 to """{"doc":${index("Mega ships the app. See [[Runbook]].")},"backlinks":[],"canEdit":true}"""
+        val platform = AppPlatform.inMemory(engine = { server.engine() }, sessions = MemorySessionStore(SavedSession("https://dash.test", "key-1", "Test device")))
+        setContent { Box(Modifier.size(1440.dp, 900.dp)) { AgentsApp(platform, dark = true, accessibility = AccessibilityPrefs()) } }
+        waitForNode(hasText("Fixed the unread counts"))
+        waitForNode(hasText("Mega") and hasClickAction()).performClick()
+        waitForNode(hasText("Docs") and hasClickAction()).performClick()
+        // Nothing tapped: the Index is open.
+        waitForNode(hasText("Mega ships the app.", substring = true))
+        assertTrue(synchronized(server.calls) { server.calls.toList() }.none { it == "/api/docs/d1" }, "only the Index was opened")
+        val indexRow = waitForNode(hasContentDescription("Index, saved by", substring = true)).fetchSemanticsNode().boundsInRoot.top
+        val runbookRow = waitForNode(hasContentDescription("Runbook, saved by", substring = true)).fetchSemanticsNode().boundsInRoot.top
+        assertTrue(indexRow < runbookRow, "the Index is listed first")
+    }
+
+    @Test
+    fun aChannelWithNoIndexOffersOneFromTheTemplateSavedOnlyWhenSaved() = runDesktopComposeUiTest(width = 1440, height = 900) {
+        server.docAnswers["GET /api/projects/mega/docs"] = 200 to
+            """{"projectId":"p1","docs":[${doc(1, "")}],"canEdit":true,"indexTemplate":"# Mega\n\nTemplate words. [[Runbook]]"}"""
+        val index = """{"id":"i1","projectId":"p1","title":"Index","body":"# Mega","version":1,"size":6,""" +
+            """"createdAt":"2026-11-20T09:00:00Z","createdBy":$sam,"updatedAt":"2026-11-20T09:00:00Z","updatedBy":$sam}"""
+        server.docAnswers["POST /api/projects/mega/docs"] = 201 to """{"doc":$index,"backlinks":[],"canEdit":true}"""
+        val platform = AppPlatform.inMemory(engine = { server.engine() }, sessions = MemorySessionStore(SavedSession("https://dash.test", "key-1", "Test device")))
+        setContent { Box(Modifier.size(1440.dp, 900.dp)) { AgentsApp(platform, dark = true, accessibility = AccessibilityPrefs()) } }
+        waitForNode(hasText("Fixed the unread counts"))
+        waitForNode(hasText("Mega") and hasClickAction()).performClick()
+        waitForNode(hasText("Docs") and hasClickAction()).performClick()
+        waitForNode(hasContentDescription("No Index yet. Write one") and hasClickAction()).performClick()
+        // The editor holds the template; nothing is saved yet.
+        waitForNode(hasText("Template words.", substring = true))
+        assertTrue(server.writes.none { it.first == "POST /api/projects/mega/docs" }, "nothing saved before Save")
+        waitForNode(hasText("Save") and hasClickAction()).performClick()
+        val sent = waitForWrite("POST", "/api/projects/mega/docs")
+        assertTrue(sent.contains("\"title\":\"Index\"") && sent.contains("Template words."), sent)
+        waitForNode(hasText("Version 1 · saved by Sam", substring = true))
     }
 
     @Test

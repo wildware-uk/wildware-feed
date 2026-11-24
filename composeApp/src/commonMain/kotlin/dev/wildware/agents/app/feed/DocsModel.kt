@@ -18,6 +18,8 @@ data class DocItem(
     /** "5m ago". */
     val savedAgo: String,
     val size: Int,
+    /** The channel's Index (titled "Index", any case): pinned at the top, and what the tab opens on. */
+    val index: Boolean = false,
 )
 
 /** A doc that links to the open one: its "Linked from" row. */
@@ -66,6 +68,8 @@ data class OpenDoc(
     /** Being edited: the editor holds the words; the engine only knows it is open. */
     val editing: Boolean = false,
     val saving: Boolean = false,
+    /** Not saved yet: the channel's first Index, written from the server's template. Saving creates it. */
+    val draft: Boolean = false,
     /** Someone else saved while this person was editing: their save will ask to merge. */
     val newerVersion: Long? = null,
     val conflict: DocConflict? = null,
@@ -96,6 +100,8 @@ data class DocsState(
     /** A doc being opened by its title or id: shown as loading. */
     val opening: String? = null,
     val missing: String? = null,
+    /** The channel has no Index yet: this is a first one to write. Nothing is saved until someone saves it. */
+    val indexTemplate: String? = null,
 )
 
 /** What the owner does in the Docs tab. Each goes to the engine as [FeedEvent.Docs]. */
@@ -108,6 +114,8 @@ sealed interface DocsAction {
     data class OpenTitle(val channel: String, val title: String) : DocsAction
     data object Close : DocsAction
     data class Create(val title: String) : DocsAction
+    /** Open the editor on the channel's first Index, from the template. Saving creates it. */
+    data object WriteIndex : DocsAction
     data class Edit(val on: Boolean) : DocsAction
     /** Saves [body] and [title] on top of [baseVersion]. */
     data class Save(val title: String, val body: String, val baseVersion: Long) : DocsAction
