@@ -435,6 +435,17 @@ data class FormField(
     }
 }
 
+/**
+ * A form with fields to fill in: its inputs in order and the agent's own actions, each of which
+ * sends them all. [understood] is false when a field is of a type newer than this app.
+ */
+@Immutable
+data class FieldsForm(
+    val fields: List<dev.wildware.agents.FormFieldView>,
+    val actions: List<String>,
+    val understood: Boolean = true,
+)
+
 /** A card that can have a thread under it. */
 sealed interface Threaded : FeedItem {
     val title: String
@@ -516,8 +527,10 @@ sealed interface FeedItem {
         val files: List<FileAttachment> = emptyList(),
         /** Things shown in the look of where they came from: a Slack message, a Jira ticket. */
         val embeds: List<Embed> = emptyList(),
-        /** A form question's field and actions; null for every other kind. */
+        /** A form question's field and actions; null for every other kind, and for a form with fields. */
         val form: FormField? = null,
+        /** A form with fields to fill in: [form] is then null. */
+        val fieldsForm: FieldsForm? = null,
         /** A text question's box: the agent's placeholder, draft, lines and length. Null for every other kind. */
         val text: FormField? = null,
         /** When it times out, in epoch milliseconds, for a live countdown. Null shows [expiresIn] as it is. */
@@ -570,7 +583,13 @@ sealed interface FeedItem {
 
     /** Who answered a question ("you", or a person's name) and what they said, when it can be said. */
     @Immutable
-    data class Answered(val by: String, val said: String? = null, val time: String = "")
+    data class Answered(
+        val by: String,
+        val said: String? = null,
+        val time: String = "",
+        /** A form with fields: what was sent, field by field, as label and value in words. */
+        val values: List<Pair<String, String>> = emptyList(),
+    )
 
     /** Something written straight into the feed, by the owner or by an agent. */
     @Immutable

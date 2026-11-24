@@ -521,11 +521,13 @@ class Reads(private val db: Database, private val clock: () -> Long = System::cu
      * Questions answered in the last [ANSWERED_WINDOW_MS], newest answer first, at most
      * [ANSWERED_LIMIT]: on a team the apps keep them in the feed, saying who answered (`answeredBy`).
      */
-    fun answeredRequests(now: Long = clock()): List<JsonObject> = withCards(
+    fun answeredRequests(now: Long = clock(), formsOnly: Boolean = false): List<JsonObject> = withCards(
         db.query(
-            "SELECT ${Rows.APPROVAL} FROM approvals WHERE team_id = :team AND state IN ('approved', 'rejected') AND decided_at >= ?${access.notHidden("project_id")} ORDER BY decided_at DESC, seq DESC LIMIT ?",
-            now - ANSWERED_WINDOW_MS, ANSWERED_LIMIT,
-        ) { Rows.request(it) },
+            "SELECT ${Rows.APPROVAL} FROM approvals WHERE team_id = :team AND state IN ('approved', 'rejected') AND decided_at >= ?" +
+                (if (formsOnly) " AND kind = 'form' AND config LIKE ?" else "") +
+                "${access.notHidden("project_id")} ORDER BY decided_at DESC, seq DESC LIMIT ?",
+            *listOfNotNull<Any>(now - ANSWERED_WINDOW_MS, FORM_FIELDS_LIKE.takeIf { formsOnly }, ANSWERED_LIMIT).toTypedArray(),
+        ) { Rows.request(it) }.filter { !formsOnly || FormFields.of(it["config"] as? JsonObject) != null },
     )
 
     /** The banner's list: each request with its media, embeds and reactions. */
@@ -778,6 +780,8 @@ class Reads(private val db: Database, private val clock: () -> Long = System::cu
         const val MESSAGES_MAX = 200
         const val PENDING_REQUEST_LIMIT = 200
         const val ANSWERED_LIMIT = 50
+        /** A form with fields, as its config column is written (no spaces): see [FormFields]. */
+        private const val FORM_FIELDS_LIKE = "%\"fields\":[%"
         const val ANSWERED_WINDOW_MS = 7L * 24 * 60 * 60 * 1000
         const val PRESENCE_WINDOW_MS = Sessions.PRESENCE_WINDOW_MS
         val RENDERABLE_MIMES = setOf(

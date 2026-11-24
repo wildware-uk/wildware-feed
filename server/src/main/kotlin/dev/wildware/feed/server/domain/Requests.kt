@@ -92,6 +92,11 @@ data class NewRequest(
      * Set by the server, never by an agent. A yes then shares that secret ([Secrets.answerAccess]).
      */
     val secretAccess: JsonObject? = null,
+    /**
+     * For kind "form": several fields on one card, as the agent wrote them (checked by
+     * [FormFields.check]). The options are then its action buttons, "Submit" when it names none.
+     */
+    val fields: JsonArray? = null,
 )
 
 data class NewEmbed(val type: String, val data: JsonElement?, val sourceUrl: String?)
@@ -141,7 +146,8 @@ class Requests(
         val kind = assertKind(input.kind)
         val question = requiredText(input.question, "question", QUESTION_MAX_LENGTH)
         val detail = optionalText(input.detail, "detail", DETAIL_MAX_LENGTH)
-        val options = assertOptions(kind, input.options)
+        // A form with fields needs no buttons named: it gets one Submit.
+        val options = assertOptions(kind, if (kind == "form" && input.fields != null && input.options.isNullOrEmpty()) listOf(FORM_SUBMIT) else input.options)
         val baseConfig = assertConfig(kind, options, input)
         val anchor = anchor(input)
         // Asking needs Post on the channel (spec/15); one the agent can't read is missing.
@@ -352,6 +358,7 @@ class Requests(
         val current = request.config
 
         if (input.defaultGiven && request.kind == "secret") throw invalid("a secret request takes no default")
+        if (input.defaultGiven && FormFields.of(request.config) != null) throw invalid("a form with fields has a default on each field: withdraw it and ask again to change them")
         if (input.defaultGiven) {
             val fallback = optionalText(input.default, "default", TEXT_ANSWER_MAX_LENGTH)
             if (fallback != null) {
@@ -574,6 +581,20 @@ class Requests(
             if (kind == "secret") throw invalid("a secret request takes no default")
             config["default"] = JsonPrimitive(fallback)
         }
+        input.fields?.let { raw ->
+            if (kind != "form") throw invalid("fields are for a form request")
+            val single = listOfNotNull(
+                "placeholder".takeIf { input.placeholder != null }, "multiline".takeIf { input.multiline != null },
+                "label".takeIf { input.label != null }, "default".takeIf { input.default != null },
+                "min".takeIf { input.min != null }, "max".takeIf { input.max != null },
+            )
+            if (single.isNotEmpty()) throw invalid("a form with fields sets ${single.joinToString(", ")} on each field, not on the request")
+            config["fields"] = FormFields.check(raw)
+            // An app older than fields shows one box under this label: it says to update, and the
+            // server refuses what that box sends, so it can't answer the form wrongly.
+            config["label"] = JsonPrimitive(FormFields.OLD_APP_LABEL)
+            config["placeholder"] = JsonPrimitive(FormFields.OLD_APP_PLACEHOLDER)
+        }
         input.feedbackId?.let { config["feedbackId"] = JsonPrimitive(it) }
         input.secretAccess?.let {
             if (kind != "confirm") throw invalid("secretAccess is for a confirm request")
@@ -762,6 +783,7 @@ class Requests(
                 return answer(JsonArray(picked.map(::JsonPrimitive)))
             }
             "form" -> {
+                FormFields.of(config)?.let { fields -> return answer(FormFields.answer(fields, options, value)) }
                 if (value !is JsonObject) throw invalid("a form is answered with { action, text }")
                 val action = value["action"]
                 val actionText = action.jsString
@@ -790,6 +812,8 @@ class Requests(
 
     companion object {
         val KINDS = listOf("text", "confirm", "buttons", "choice", "multi_choice", "form")
+        /** The one action a form with fields gets when the agent names none. */
+        const val FORM_SUBMIT = "Submit"
         private val LISTED = setOf("buttons", "choice", "multi_choice", "form")
         private val TEXTUAL = setOf("text", "form")
         private val PICTURED = setOf("buttons", "choice", "multi_choice")

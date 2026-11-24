@@ -352,6 +352,13 @@ data class RequestConfig(
      * shares it with that agent. Never its value.
      */
     val secretAccess: SecretAccessView? = null,
+    /**
+     * A form to fill in (kind "form" with `fields`): its inputs, in order, answered as
+     * `{ action, values }` ([FormFill]). Null for a form with one box, answered `{ action, text }`;
+     * then [label] and [placeholder] name that box. With fields they are words for apps older
+     * than fields, which this app doesn't show.
+     */
+    val fields: List<FormFieldView>? = null,
 )
 
 /** The secret a request_secret_access question is about: its name, note and who saved it ("owner" or "agent:<id>"). */

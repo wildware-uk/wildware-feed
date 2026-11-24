@@ -29,6 +29,8 @@ sealed interface FeedEvent {
     data class AnswerText(val questionId: String, val text: String) : FeedEvent
     /** A form's answer: the agent's [action] the owner chose, with the field's [text]. */
     data class AnswerForm(val questionId: String, val action: String, val text: String) : FeedEvent
+    /** A form with fields, filled in: `{ action, values }` as [dev.wildware.agents.FormFill.answer] makes it. */
+    data class AnswerFields(val questionId: String, val value: kotlinx.serialization.json.JsonObject) : FeedEvent
     data class DismissQuestion(val questionId: String) : FeedEvent
     /** Let an agent that asked to join in, under [name]. */
     data class AllowAgent(val pairingId: String, val name: String) : FeedEvent
@@ -1198,7 +1200,7 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
                 val mineNow = reactionsFor(event.targetId, reactionsOn(event.targetId)).any { it.emoji == event.emoji && it.mine }
                 wanted[event.targetId] = wanted[event.targetId].orEmpty() + (event.emoji to !mineNow)
             }
-            is FeedEvent.Answer, is FeedEvent.AnswerText, is FeedEvent.AnswerForm, is FeedEvent.DismissQuestion -> picks.remove(questionIdOf(event))
+            is FeedEvent.Answer, is FeedEvent.AnswerText, is FeedEvent.AnswerForm, is FeedEvent.AnswerFields, is FeedEvent.DismissQuestion -> picks.remove(questionIdOf(event))
             // "Reply" on a card opens its thread; on a line in a thread it answers that line.
             is FeedEvent.Reply -> if (state.item(event.targetId) is Threaded) {
                 openThread(event.targetId, phone = isPhone)
@@ -1255,6 +1257,7 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
         is FeedEvent.Answer -> event.questionId
         is FeedEvent.AnswerText -> event.questionId
         is FeedEvent.AnswerForm -> event.questionId
+        is FeedEvent.AnswerFields -> event.questionId
         is FeedEvent.DismissQuestion -> event.questionId
         else -> null
     }

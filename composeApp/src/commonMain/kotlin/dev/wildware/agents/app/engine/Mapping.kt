@@ -2,6 +2,8 @@ package dev.wildware.agents.app.engine
 
 import dev.wildware.agents.app.feed.PickBounds
 import dev.wildware.agents.app.feed.SecretAsk
+import dev.wildware.agents.FormFill
+import dev.wildware.agents.app.feed.FieldsForm
 import dev.wildware.agents.CardRefView
 import dev.wildware.agents.CardKinds
 import dev.wildware.agents.HumanAuthor
@@ -129,7 +131,9 @@ internal class FeedMapper(
             val pinned = feed.pinned.mapNotNull { it.toItem(agents, ::project, index) }
             if (pinned.isNotEmpty()) add(FeedSection("Pinned", pinned))
             // On a team, a question someone answered stays, settled, by when it was answered (migration 055).
-            val answered = if (team.team) feed.answered.map { (it.request.answeredAt ?: 0L) to it.toAnswered(agents, ::project, index) } else emptyList()
+            // A form with fields stays for everyone, showing what was sent.
+            val answered = feed.answered.filter { team.team || it.request.config?.fields != null }
+                .map { (it.request.answeredAt ?: 0L) to it.toAnswered(agents, ::project, index) }
             val timeline = feed.cards.map { it.activityAt to it }
             (timeline + answered)
                 .sortedByDescending { it.first }
@@ -369,7 +373,7 @@ internal class FeedMapper(
             sounds = request.cardMedia.sounds(),
             files = request.cardMedia.files(),
             embeds = request.embeds.embeds(),
-            form = if (kind == QuestionKind.Form) {
+            form = if (kind == QuestionKind.Form && config?.fields == null) {
                 FormField(
                     label = config?.label?.takeIf { it.isNotBlank() },
                     placeholder = config?.placeholder.orEmpty(),
@@ -382,6 +386,7 @@ internal class FeedMapper(
             } else {
                 null
             },
+            fieldsForm = config?.fields?.takeIf { kind == QuestionKind.Form }?.let { FieldsForm(it, options, FormFill.understands(it)) },
             // A text question exists because something must be typed: at least one character unless the agent says.
             text = if (kind == QuestionKind.Text) {
                 FormField(
@@ -427,7 +432,12 @@ internal class FeedMapper(
         }
         val at = request.answeredAt ?: 0L
         return toQuestion(agents, project, index).copy(
-            answered = FeedItem.Answered(by, answerSaid(request.answer, access = request.config?.secretAccess != null), if (at > 0) relativeLabel(at) else ""),
+            answered = FeedItem.Answered(
+                by,
+                answerSaid(request.answer, access = request.config?.secretAccess != null),
+                if (at > 0) relativeLabel(at) else "",
+                values = request.config?.fields?.let { FormFill.said(it, FormFill.valuesOf(request.answer)) }.orEmpty(),
+            ),
             sending = false,
             unsent = null,
         )

@@ -66,8 +66,11 @@ fun Route.readRoutes(app: App, lastSeq: () -> Long) {
         HttpMethod.Get to {
             stamped {
                 // On a team (migration 055), what was answered lately too, with who answered it:
-                // the apps keep those in the feed. A team of one reads exactly as before.
-                val answered = if (app.people.isTeam()) listOf("answered" to JsonArray(reads.answeredRequests())) else emptyList()
+                // the apps keep those in the feed. A team of one reads as before, but for forms
+                // with fields, which stay too, showing what was filled in.
+                val team = app.people.isTeam()
+                val settled = reads.answeredRequests(formsOnly = !team)
+                val answered = if (team || settled.isNotEmpty()) listOf("answered" to JsonArray(settled)) else emptyList()
                 listOf("requests" to JsonArray(reads.requestsSnapshot())) + answered
             }
         },

@@ -198,6 +198,16 @@ Fields: `question?`, `detail?` (null clears), `options?`, `default?` (null clear
 | form | `action` string in options | `<JSON.stringify(action)> is not one of the actions offered` |
 | form | `text` string | `a form’s text is a string` (U+2019) |
 | form | `trim()` len ≥ `min ?? 0`, ≤ `max ?? 10000` | `the text must be at least <n> characters` / `at most <n>` |
+
+A form with `config.fields` (Kotlin server only) is answered `{ action, values }` instead,
+checked by `FormFields.answer`: `values` by field id, no other keys (`this form has no field "<id>"`),
+each value by its field's type (string; number in min/max; true/false; a list of its options
+for checkboxes), required fields filled, email/url/date well formed. A `text` key or no `values`
+(an app older than fields) → `This form has <n> fields. Update the app, or answer it on the web, to fill them in.`
+The kept value lists every field in the agent's order; an optional field left empty is left
+out, a checkbox or toggle is always there, checkboxes in the order offered. On a team of one,
+`GET /api/snapshot/requests` still lists these, once answered, under `answered`, so the app
+can show what was sent.
 | buttons, choice | string in options (exact) | `<JSON.stringify(value)> is not one of the options offered` |
 
 `JSON.stringify` of a missing value is `undefined`, so a missing form action reads

@@ -51,7 +51,7 @@ It doesn't, beyond oldest first.
 | 10 | Kind `choice` | Done | Radio list, pre-picked from `config.default` (`:508-533`) | Yes: opens on the agent's default, picked and ready to send | Yes | — | P2 |
 | 11 | Kind `multi_choice` | Done | Checkboxes, enforce `config.min`/`max`, "Choose between X and Y" (`:535-564`) | Yes: checkboxes; picks bounded by `config.min`/`max`; a "Choose between 2 and 3" style hint (#57) | Yes | — | P1 |
 | 12 | Kind `text` | Done | Input/textarea (`multiline`), placeholder, maxlength, default, min chars (`:469-506`) | Yes: multiline, placeholder, default, min/max length, with a problem line (#60) | Yes | — | P1 |
-| 13 | Kind `form` | Done | Labelled field + agent's own action buttons, sends `{action,text}` (`:588-602`) | Yes: Form answers (PR #12) | Yes | — | P0 |
+| 13 | Kind `form` | Done | Labelled field + agent's own action buttons, sends `{action,text}` (`:588-602`); with `fields`, a form to fill in (11 field types, app only), sends `{action,values}` | Yes: Form answers (PR #12) | Yes | — | P0 |
 | 14 | number / date kinds | N/A | Don't exist | — | — | Not a gap | — |
 | 15 | Picture options | Done | Thumbnail on each option; excluded from card grid (`:298-305`) | Yes: PictureGrid, hold to look closer (`PictureGrid.kt`) | Yes | App richer | — |
 | 16 | Dismiss | Done | "Dismiss" → agent told cancelled | Yes "Not now" / swipe left | Yes, N key | — | — |

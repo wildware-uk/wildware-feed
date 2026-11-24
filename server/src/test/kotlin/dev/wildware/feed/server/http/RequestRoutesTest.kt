@@ -101,6 +101,51 @@ class RequestRoutesTest {
     }
 
     @Test
+    fun `a form with fields goes from MCP to the app and back through await_request`() = withApp { app, key ->
+        val (agent, _) = app.agents.mint("scout")
+        fun text(result: JsonObject) = (result["content"] as kotlinx.serialization.json.JsonArray)[0].jsonObject["text"]!!.jsonPrimitive.content
+        val fields = kotlinx.serialization.json.Json.parseToJsonElement(
+            """[{"id":"name","label":"Name","type":"text","required":true},
+                {"id":"plan","label":"Plan","type":"select","options":["Free","Team"],"default":"Free"},
+                {"id":"seats","label":"Seats","type":"number","min":1,"max":9},
+                {"id":"notify","label":"Notify me","type":"toggle"}]""",
+        )
+        val args = { f: kotlinx.serialization.json.JsonElement ->
+            buildJsonObject { put("kind", "form"); put("question", "Set it up?"); put("project", "web"); put("fields", f) }
+        }
+        // A key the field doesn't take refuses the call, with what it does take.
+        val wrong = tool(app, agent, "request_input", args(kotlinx.serialization.json.Json.parseToJsonElement("""[{"id":"a","label":"A","type":"text","colour":"red"}]""")))
+        assertEquals("invalid_argument: fields[0]: unknown key \"colour\" (a field takes id, label, type, hint, required, default, options, min, max, placeholder)", text(wrong))
+
+        val pending = tool(app, agent, "request_input", args(fields))["structuredContent"]!!.jsonObject
+        val id = pending["request_id"]!!.jsonPrimitive.content
+        assertEquals("""["Submit"]""", Wire.encode(pending["request"]!!.jsonObject["options"]!!))
+        // The app reads the fields from the question's config.
+        val waiting = send(key, "GET", "/api/snapshot/requests").bodyAsText()
+        assertTrue(""""fields":[{"id":"name","label":"Name","type":"text","required":true}""" in waiting)
+        assertTrue("\"answered\"" !in waiting)
+
+        // An older app's one box is refused, and the question still waits.
+        val old = send(key, "POST", "/api/requests/$id/answer", """{"value":{"action":"Submit","text":"hi"}}""")
+        assertEquals(400, old.status.value)
+        assertEquals("""{"error":"invalid_argument","message":"This form has 4 fields. Update the app, or answer it on the web, to fill them in."}""", old.bodyAsText())
+        val short = send(key, "POST", "/api/requests/$id/answer", """{"value":{"action":"Submit","values":{"plan":"Free"}}}""")
+        assertEquals("""{"error":"invalid_argument","message":"\"Name\" is required"}""", short.bodyAsText())
+
+        val ok = send(key, "POST", "/api/requests/$id/answer", """{"value":{"action":"Submit","values":{"name":"Sam","plan":"Team","seats":3,"notify":true}}}""")
+        assertEquals(200, ok.status.value)
+        val awaited = tool(app, agent, "await_request", buildJsonObject { put("request_id", id) })
+        assertEquals(
+            """{"kind":"form","value":{"action":"Submit","values":{"name":"Sam","plan":"Team","seats":3,"notify":true}}}""",
+            Wire.encode(awaited["structuredContent"]!!.jsonObject["response"]!!),
+        )
+        assertTrue(text(awaited).startsWith("Your owner answered: \"Submit\" with values for name, plan, seats, notify."))
+        // Answered, it stays in a team of one's feed, so the card can show what was sent.
+        val after = kotlinx.serialization.json.Json.parseToJsonElement(send(key, "GET", "/api/snapshot/requests").bodyAsText()).jsonObject
+        assertEquals(listOf(id), (after["answered"] as kotlinx.serialization.json.JsonArray).map { it.jsonObject["id"]!!.jsonPrimitive.content })
+    }
+
+    @Test
     fun `withdraw and edit speak the TS summaries`() = withApp { app, _ ->
         val (agent, _) = app.agents.mint("scout")
         val id = app.requests.create(agent.id, dev.wildware.feed.server.domain.NewRequest(kind = "text", question = "Name?")).first.id

@@ -1045,6 +1045,7 @@ class DashboardSession(
             is FeedEvent.Answer -> dropRefused(event.questionId)
             is FeedEvent.AnswerText -> dropRefused(event.questionId)
             is FeedEvent.AnswerForm -> dropRefused(event.questionId)
+            is FeedEvent.AnswerFields -> dropRefused(event.questionId)
             is FeedEvent.DismissQuestion -> dropRefused(event.questionId)
             else -> Unit
         }
@@ -1061,6 +1062,7 @@ class DashboardSession(
                     put("text", event.text.trim())
                 })
             }
+            is FeedEvent.AnswerFields -> request(event.questionId)?.let { card -> actions.answer(card.request, card.agentName, event.value) }
             is FeedEvent.DismissQuestion -> request(event.questionId)?.let { actions.dismiss(it.request, it.agentName) }
             is FeedEvent.AllowAgent -> decideJoin(event.pairingId) { client.approvePairing(event.pairingId, event.name) }
             is FeedEvent.DenyAgent -> decideJoin(event.pairingId) { client.denyPairing(event.pairingId) }

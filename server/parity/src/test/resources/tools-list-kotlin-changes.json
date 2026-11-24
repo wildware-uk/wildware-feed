@@ -2438,5 +2438,62 @@
     "taskSupport": "forbidden"
    }
   }
+ },
+ {
+  "tool": "request_input",
+  "path": [
+   "description"
+  ],
+  "why": "Forms to fill in: request_input kind \"form\" takes fields, several typed inputs on one card (text, dropdowns, radios, ticks and more), answered as { action, values }.",
+  "replace": "  approval and asking for edits separately means one of the two is answered about text\n  that has already changed.\n",
+  "with": "  approval and asking for edits separately means one of the two is answered about text\n  that has already changed.\n  Or give a form `fields` to fill in: up to 20 inputs on one card, each { id, label,\n  type, hint?, required?, default?, options?, min?, max?, placeholder? }. type is text,\n  textarea, number, email, url, date, select (a dropdown), radio, checkbox (one tick),\n  checkboxes (several; min and max say how many) or toggle. options are a select's,\n  radio's or checkboxes' choices; min and max bound a text's length, a number's value or\n  a date (\"2026-12-31\"). `options` are then the buttons (\"Submit\" if you leave it out),\n  and the answer is { action, values }. For example:\n    { kind: \"form\", question: \"Set up the new project?\", options: [\"Create\", \"Cancel\"],\n      fields: [\n        { id: \"name\", label: \"Project name\", type: \"text\", required: true, max: 40 },\n        { id: \"plan\", label: \"Plan\", type: \"select\", options: [\"Free\", \"Team\"], default: \"Free\" },\n        { id: \"seats\", label: \"Seats\", type: \"number\", min: 1, max: 50, default: 5 },\n        { id: \"regions\", label: \"Regions\", type: \"checkboxes\", options: [\"EU\", \"US\", \"Asia\"], min: 1 },\n        { id: \"notify\", label: \"Email me when it is ready\", type: \"toggle\" } ] }\n"
+ },
+ {
+  "tool": "request_input",
+  "path": [
+   "description"
+  ],
+  "why": "Forms to fill in: request_input kind \"form\" takes fields, several typed inputs on one card (text, dropdowns, radios, ticks and more), answered as { action, values }.",
+  "replace": "placeholder, multiline, label, default, min, max are the kind-specific knobs\nlisted above.",
+  "with": "placeholder, multiline, label, default, min, max are the kind-specific knobs\nlisted above; fields is a form's inputs, and takes none of those six."
+ },
+ {
+  "tool": "request_input",
+  "path": [
+   "description"
+  ],
+  "why": "Forms to fill in: request_input kind \"form\" takes fields, several typed inputs on one card (text, dropdowns, radios, ticks and more), answered as { action, values }.",
+  "replace": "and { \"action\", \"text\" } for \"form\".",
+  "with": "{ \"action\", \"text\" } for \"form\"; and { \"action\", \"values\" } for a form with fields,\nwhere values holds each field by id: a string, a number, true or false, or a list for\ncheckboxes. An optional field left empty is left out; a checkbox or toggle is always\nthere."
+ },
+ {
+  "tool": "request_input",
+  "path": [
+   "inputSchema",
+   "properties",
+   "kind",
+   "description"
+  ],
+  "why": "Forms to fill in: request_input kind \"form\" takes fields, several typed inputs on one card (text, dropdowns, radios, ticks and more), answered as { action, values }.",
+  "replace": "\"form\" for an editable draft plus your own action buttons.",
+  "with": "\"form\" for an editable draft plus your own action buttons, or with fields for a form to fill in."
+ },
+ {
+  "tool": "request_input",
+  "path": [
+   "inputSchema",
+   "properties",
+   "fields"
+  ],
+  "why": "Forms to fill in: request_input kind \"form\" takes fields, several typed inputs on one card (text, dropdowns, radios, ticks and more), answered as { action, values }.",
+  "now": {
+   "description": "kind \"form\" only: a form to fill in, up to 20 inputs on one card. Each is { id, label, type, hint?, required?, default?, options?, min?, max?, placeholder? }, type one of text, textarea, number, email, url, date, select, radio, checkbox, checkboxes, toggle. id is 1-64 letters, digits, _ . or -; label up to 100 characters; hint up to 300; options (select, radio, checkboxes) up to 25. Checked strictly: an unknown key or type, or anything over a limit, refuses the request.",
+   "maxItems": 20,
+   "type": "array",
+   "items": {
+    "type": "object",
+    "additionalProperties": {}
+   }
+  }
  }
 ]

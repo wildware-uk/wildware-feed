@@ -7,7 +7,8 @@ state: "thinking"}}). Describe a tool before you first use it, except these ever
 - post_message {body, plus its thread: update_id, message_id or request_id; or channel}
 - get_messages {} for what is new; {message_id}, {update_id} or {request_id} for a whole thread
 - request_input {kind: "text" | "confirm" | "buttons" | "choice" | "multi_choice" | "form",
-  question, detail?, options? (strings, for buttons, choice, multi_choice and form), channel?}
+  question, detail?, options? (strings, for buttons, choice, multi_choice and form), channel?};
+  a form to fill in (text boxes, dropdowns, ticks) is kind "form" with fields: describe it first
 - await_request {request_id}
 - heartbeat {session_id}, the id register_session {} gave you
 - read_doc {doc_id}, or {title, channel}

@@ -800,6 +800,12 @@ then `resolveCard`: missing or deleted → `not_found` `no such <kind>: <id>` (`
       `<option> is not one of the options`, `each picture may be used once`, media checks,
       `media <id> must be an image to go on an option`
   11. `a picture on an option cannot also be in media_ids`; `a request may carry at most 24 media items, pictures included`
+  12. fields (Kotlin server only, `FormFields.check`): `fields are for a form request`; with
+      fields, placeholder/multiline/label/default/min/max → `a form with fields sets <keys> on each
+      field, not on the request`; 1-20 fields, each `{ id, label, type, hint?, required?, default?,
+      options?, min?, max?, placeholder? }`, an unknown key or type refused by name. options
+      default to `["Submit"]`. Stored as `config.fields`, with `config.label`/`placeholder` set
+      to words an older app shows over its one box ("This form needs a newer app").
 - Writes: `approvals` row (`state='pending'`, `expires_at = now + timeout_s*1000`), media `request_id`, `embeds`.
 - Event `request.created {requestId, agentId, projectId, kind}` → notification row
   (`<name> is waiting on you`), Web Push (confirm → Approve/Reject actions; buttons/choice → first 2 options),
@@ -807,7 +813,8 @@ then `resolveCard`: missing or deleted → `not_found` `no such <kind>: <id>` (`
 - Then holds (section 4). Result per section 3.2. Captured pending:
   `{"state":"pending","request_id":"…","request":{…,"expires_at":"2026-08-25T10:30:00.000Z"},"poll_after_ms":1000}`.
 - `response` (answered) = `{kind, value}`: confirm boolean; text string; buttons/choice option string;
-  multi_choice string[]; form `{action, text}` (`src/domain/requests.ts:703-766`).
+  multi_choice string[]; form `{action, text}` (`src/domain/requests.ts:703-766`), or
+  `{action, values}` for a form with fields (spec/03 §2).
 
 ### 7.29 `await_request` — `src/mcp/tools/await-request.ts`
 

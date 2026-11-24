@@ -50,6 +50,7 @@ fun ToolRegistry.registerRequestTools(app: App) {
             },
             refs = refsArg(a),
             blocks = a["blocks"] as? JsonArray,
+            fields = a["fields"] as? JsonArray,
         )
         requestResult(app.requests.requestInput(call.agent.id, input), app.db)
     }
@@ -164,6 +165,7 @@ private fun answeredSummary(result: RequestResult, byName: String? = null): Stri
 private fun describe(value: JsonElement): String {
     value.jsBoolean?.let { return if (it) "yes." else "no." }
     if (value is JsonArray) return if (value.isEmpty()) "nothing." else value.joinToString(", ") { jsonStringifyJs(it) }
+    if (value is JsonObject && value["values"] is JsonObject) return dev.wildware.feed.server.domain.FormFields.describe(value)
     if (value is JsonObject) {
         val text = value["text"].jsString ?: ""
         return "${jsonStringifyJs(value["action"])} on text of ${text.length} characters."

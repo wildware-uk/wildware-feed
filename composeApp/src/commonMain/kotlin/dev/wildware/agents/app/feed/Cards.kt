@@ -694,6 +694,9 @@ fun QuestionCard(
                 }
             }
         }
+        item.fieldsForm?.let { form ->
+            FieldsFormAnswer(item.id, form, enabled = !item.sending) { value -> ui?.emit(FeedEvent.AnswerFields(item.id, value)) }
+        }
         if (item.kind == QuestionKind.Secret) {
             key(item.id) { SecretAnswer(item, ui, dismiss) }
         }
@@ -811,6 +814,7 @@ private fun AnsweredQuestionCard(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
+            if (answered.values.isNotEmpty()) AnsweredValues(answered.values, Modifier.padding(top = 10.dp))
             if (reactions.isNotEmpty()) ReactionRow(reactions, item.id, Modifier.padding(top = 10.dp))
             if (showDiscussion && !inThread && item.replies.isNotEmpty()) DiscussButton(item)
         }
