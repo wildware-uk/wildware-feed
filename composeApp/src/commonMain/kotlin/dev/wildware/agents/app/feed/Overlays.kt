@@ -52,6 +52,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MenuDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
@@ -564,6 +565,8 @@ fun InteractiveReply(reply: Reply, modifier: Modifier = Modifier) {
     val hover = remember { MutableInteractionSource() }
     // A linked card opened its thread at this reply: bring it into view, ring it a moment.
     val focused = ui != null && ui.focusedReply == reply.id
+    // Open to edit in the message box: ringed while it is.
+    val lit = focused || (ui != null && ui.boxEditing == reply.id)
     val bring = remember { BringIntoViewRequester() }
     val size = remember { intArrayOf(0, 0) }
     if (focused) {
@@ -596,8 +599,8 @@ fun InteractiveReply(reply: Reply, modifier: Modifier = Modifier) {
                 Modifier
                     .clip(shape)
                     .background(replySurface(colors, own = reply.author is Author.Owner))
-                    .border(if (focused) 2.dp else 1.dp, if (focused) colors.accent else colors.border, shape)
-                    .semantics { if (focused) this[Highlighted] = true }
+                    .border(if (lit) 2.dp else 1.dp, if (lit) colors.accent else colors.border, shape)
+                    .semantics { if (lit) this[Highlighted] = true }
                     .feedItemGestures(target)
                     .padding(horizontal = 12.dp, vertical = 10.dp),
             )
@@ -725,7 +728,10 @@ fun PhoneThreadScreen(ui: FeedUi, item: Threaded, widthPx: Float, safeArea: Safe
                 // A touch on the card or the replies puts the open box away; one on the box itself never does.
                 Column(Modifier.closesComposer(ui)) {
                     Spacer(Modifier.height(8.dp))
-                    FeedItemView(item, selected = false, density = Density.Compact, inThread = true)
+                    // Lit while it is open to edit in the box below.
+                    CompositionLocalProvider(LocalLit provides (ui.boxEditing == item.id)) {
+                        FeedItemView(item, selected = false, density = Density.Compact, inThread = true)
+                    }
                     HeadQuestions(item)
                     Spacer(Modifier.height(14.dp))
                     Row(Modifier.onPlaced { repliesAt[0] = it.positionInParent().y.roundToInt() }, verticalAlignment = Alignment.CenterVertically) {
@@ -786,6 +792,7 @@ fun ThreadComposer(ui: FeedUi?, threadId: String, modifier: Modifier = Modifier,
             onSendVoice = { text, files, voice -> ui?.emit(FeedEvent.SendReply(threadId, text, replying?.id, files, voice)) },
             focus = focus,
             draftKey = "thread:$threadId",
+            lastOwn = ui?.let { u -> { LastOwn.inThread((u.cardOrLone(threadId) ?: u.state.openThread?.takeIf { it.id == threadId }) as? Threaded) } },
             ask = ui?.mentionAsk?.takeIf { it.threadId == threadId },
             onAsked = { ui?.mentionAsk = null },
         )

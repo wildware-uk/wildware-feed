@@ -313,6 +313,7 @@ internal class FeedMapper(
             questions = post.questions.map { it.toQuestion(agents, project, index) },
             edited = editedLabel(post.message.editedAt),
             activityAt = activityAt,
+            createdAt = createdAt,
             status = workStatus(status),
             pinned = pinned,
             // Work says where it has got to, which answers "has anybody got this" better.

@@ -610,6 +610,8 @@ sealed interface FeedItem {
         val timeDetail: String = "",
         /** When something last happened on it (posted, replied to, work state), to mark it when that moves on. */
         val activityAt: Long = 0,
+        /** When it was posted (epoch millis), for Up in the message box to find the owner's newest. */
+        val createdAt: Long = 0,
         val tags: List<CardTag> = emptyList(),
         val fields: List<CardField> = emptyList(),
         /** Its work state, when someone marked it as work. */

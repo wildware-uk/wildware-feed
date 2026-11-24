@@ -384,6 +384,15 @@ class MappingTest {
             reactions = emptyList(), acks = acks, deliveries = deliveries, questions = emptyList(), sending = sending,
         )
 
+    @Test
+    fun anAgentsEditedPostSaysSoAsAPersonsDoes() {
+        val edited = { who: String -> line("m1", who, noon).let { it.copy(message = it.message.copy(editedAt = noon + 5 * 60_000)) } }
+        assertEquals("Edited Wednesday 18 November 2026 at 12:05", postOf(edited("agent:a1")).edited)
+        assertEquals("Edited Wednesday 18 November 2026 at 12:05", postOf(edited("human")).edited)
+        // When it was posted, for Up in the message box to find the newest.
+        assertEquals(noon, postOf(line("m1", "human", noon)).createdAt)
+    }
+
     private fun postOf(head: ThreadLine, replies: List<ThreadLine> = emptyList()): FeedItem.Post {
         val card = PostCard(head, projectName = null, activityAt = head.message.createdAt, replies = replies, unread = 0, tags = emptyList(), fields = emptyList(), apps = emptyList())
         val engine = EngineFeed(null, null, StreamStatus.Live, true, false, false, emptyList(), emptyList(), listOf(card), 0, false, emptyList())

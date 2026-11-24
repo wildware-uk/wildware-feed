@@ -131,6 +131,7 @@ fun keyboardShortcuts(mac: Boolean, web: Boolean): List<ShortcutGroup> {
                 Shortcut(if (mac) "⌘↵" else "Ctrl+Enter", "Send"),
                 Shortcut("Enter", "New line"),
                 Shortcut("Esc", "Put the box away, keeping what you wrote"),
+                Shortcut("↑", "Edit your last message, from an empty box. Enter saves it, Esc stops"),
             ),
         ),
     )

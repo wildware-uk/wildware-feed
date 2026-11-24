@@ -403,6 +403,7 @@ private fun DesktopComposer(ui: FeedUi, target: Project, postTo: String?, pickin
                 onSendVoice = { text, files, voice -> ui.emit(FeedEvent.Post(text, files, project = postTo, tags = ui.takePostTags(target.id), voice = voice)) },
                 draftKey = "project:${target.slug}",
                 tagProject = target.id,
+                lastOwn = { LastOwn.inChannel(ui.state.sections, target.id) },
             )
         }
     }
@@ -528,6 +529,7 @@ private fun PhoneFeed(ui: FeedUi, safeArea: SafeArea, startAt: String?, widthPx:
                     draftKey = "project:${target.slug}",
                     tagProject = target.id,
                     compact = true,
+                    lastOwn = { LastOwn.inChannel(ui.state.sections, target.id) },
                 )
             }
         }
@@ -785,8 +787,8 @@ private fun LazyListScope.feedItems(ui: FeedUi, density: Density, list: LazyList
             // By kind, so a card scrolling in takes over the layout of one of its kind that scrolled out.
             item(key = item.id, contentType = item::class) {
                 // Only the card a link opened changes when the ring comes and goes.
-                // The keyboard's card (J and K) wears the same ring while it is on it.
-                val lit by remember(item.id) { derivedStateOf { ui.highlighted == item.id || ui.cursor == item.id } }
+                // The keyboard's card (J and K) wears the same ring while it is on it, as does one open to edit in the box.
+                val lit by remember(item.id) { derivedStateOf { ui.highlighted == item.id || ui.cursor == item.id || ui.boxEditing == item.id } }
                 val spot = when (item.id) {
                     tourCard -> Modifier.tourTarget(ui.tour, TourTarget.Card)
                     tourQuestion -> Modifier.tourTarget(ui.tour, TourTarget.Question)

@@ -1121,6 +1121,9 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
     /** The owner's own line open to edit; null when none is. */
     var editing by mutableStateOf<EditAsk?>(null)
 
+    /** The owner's own line open in a message box to change (Up in an empty box), so the feed marks it. */
+    var boxEditing by mutableStateOf<String?>(null)
+
     /** Saves the edit open in [editing]: unchanged or empty words change nothing. */
     fun saveEdit(text: String) {
         val ask = editing ?: return

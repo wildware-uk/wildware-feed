@@ -75,6 +75,8 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isAltPressed
+import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.isMetaPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
@@ -551,6 +553,11 @@ fun Composer(
      * sends; then the mic always puts the words in the box to check.
      */
     onSendVoice: ((String, List<PendingFile>, OwnerActions.Voice) -> Unit)? = null,
+    /**
+     * The owner's own newest message here, for Up in the empty box to open it to change ([LastOwn]).
+     * Null where there is nothing to edit.
+     */
+    lastOwn: (() -> EditAsk?)? = null,
 ) {
     val colors = AgentTheme.colors
     val shape = AgentTheme.shapes.large
@@ -560,11 +567,21 @@ fun Composer(
     val text = remember(draftKey) {
         TextFieldState(draftKey?.let { ui?.drafts?.get(it) } ?: preview.composerText.takeIf { focus != null }.orEmpty())
     }
+    // The owner's own message open in the box to change, after Up in the empty box; null when writing a new one.
+    var editing by remember(draftKey) { mutableStateOf<EditAsk?>(null) }
     if (draftKey != null && ui != null) {
         LaunchedEffect(text) {
-            snapshotFlow { text.text.toString() }.collect { ui.drafts[draftKey] = it }
+            // A message open to edit is not a draft: the box was empty, and is again once it closes.
+            snapshotFlow { text.text.toString().takeIf { editing == null } }.collect { if (it != null) ui.drafts[draftKey] = it }
         }
     }
+    val stopEditing: () -> Unit = {
+        if (ui != null && ui.boxEditing == editing?.targetId) ui.boxEditing = null
+        editing = null
+        text.clearText()
+    }
+    // Leaving the box (another channel or thread) while editing puts the edit away.
+    DisposableEffect(draftKey) { onDispose { if (editing != null && ui != null && ui.boxEditing == editing?.targetId) ui.boxEditing = null } }
     val focusManager = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
     var open by remember { mutableStateOf(false) }
@@ -664,8 +681,16 @@ fun Composer(
             }
         }
     }
-    val send = {
+    val send = send@{
         val typed = text.text.toString().trim()
+        val edit = editing
+        if (edit != null) {
+            // Saved by the same path as the menu's Edit: unchanged words send nothing, empty ones keep the box open.
+            if (typed.isEmpty()) return@send
+            if (typed != edit.text.trim()) ui?.emit(FeedEvent.SaveEdit(edit.targetId, typed))
+            stopEditing()
+            return@send
+        }
         if (typed.isNotEmpty() || files.isNotEmpty()) {
             val voice = onSendVoice
             if (dictated && voice != null) voice(typed, files.toList(), OwnerActions.Voice()) else onSend(typed, files.toList())
@@ -676,6 +701,7 @@ fun Composer(
         }
     }
     Column(modifier.fillMaxWidth()) {
+    if (editing != null) EditingStrip(onCancel = stopEditing)
     if (mentionChoices.isNotEmpty()) MentionList(mentionChoices, mentionSelected, pickMention)
     // Files dropped anywhere on the card attach, as the paperclip does; a picture too.
     Box(
@@ -715,7 +741,8 @@ fun Composer(
         Row(verticalAlignment = Alignment.CenterVertically) {
             // On a phone the open box says how to put it away, as the keyboard covers the feed.
             if (open && LocalIsPhone.current) IconAction(Icons.ChevronDown, "Close the message box", onClick = close)
-            if (picker != null) {
+            // Files can't be added to a message already sent, so none while one is open to edit.
+            if (picker != null && editing == null) {
                 IconAction(Icons.Paperclip, "Attach files") { picker.pick { picked -> add(picked) } }
             } else {
                 Spacer(Modifier.width(8.dp))
@@ -744,9 +771,30 @@ fun Composer(
                             else -> {}
                         }
                     }
+                    if (e.type == KeyEventType.KeyDown && editing != null) {
+                        // Escape puts the edit away and empties the box; Enter saves (Shift+Enter, a new line).
+                        if (e.key == Key.Escape) { stopEditing(); return@onPreviewKeyEvent true }
+                        if ((e.key == Key.Enter || e.key == Key.NumPadEnter) && !e.isShiftPressed) { send(); return@onPreviewKeyEvent true }
+                    }
                     if (e.type == KeyEventType.KeyDown && e.key == Key.Escape) {
                         close()
                         return@onPreviewKeyEvent true
+                    }
+                    // Up in the empty box opens the owner's own newest message here to change, as chat apps do.
+                    val plainUp = e.key == Key.DirectionUp && !e.isShiftPressed && !e.isAltPressed && !e.isCtrlPressed && !e.isMetaPressed
+                    if (e.type == KeyEventType.KeyDown && plainUp && editing == null && text.text.isEmpty() && files.isEmpty()) {
+                        val ask = lastOwn?.invoke()
+                        if (ask != null) {
+                            editing = ask
+                            ui?.boxEditing = ask.targetId
+                            // A post in the feed is scrolled to, so the owner sees which one they are changing.
+                            if (ui?.state?.item(ask.targetId) != null) ui.reveal(ask.targetId)
+                            text.edit {
+                                replace(0, length, ask.text)
+                                selection = TextRange(length)
+                            }
+                            return@onPreviewKeyEvent true
+                        }
                     }
                     // Paste a picture or files from the clipboard; plain text pastes as usual.
                     val paste = e.type == KeyEventType.KeyDown && e.key == Key.V && (e.isMetaPressed || e.isCtrlPressed)
