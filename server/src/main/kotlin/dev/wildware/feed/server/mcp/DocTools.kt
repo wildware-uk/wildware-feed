@@ -30,6 +30,7 @@ fun ToolRegistry.registerDocTools(app: App) {
         put("id", doc.id)
         put("channel", channelSlug(doc.projectId))
         put("title", doc.title)
+        put("index", Docs.isIndex(doc))
         put("version", doc.version)
         put("size", Docs.utf8Size(doc.body))
         put("updated_at", Wire.isoOf(doc.updatedAt))
@@ -64,18 +65,38 @@ fun ToolRegistry.registerDocTools(app: App) {
 
     register("list_docs") { call ->
         val docs = app.feed.docs
-        val list = docs.list(call.requiredChannel())
+        val channel = call.requiredChannel()
+        val list = docs.list(channel)
         val names = docs.namesFor(list)
-        val text = if (list.isEmpty()) "No docs in this channel yet. create_doc makes one." else "${list.size} doc${if (list.size == 1) "" else "s"}, newest change first."
+        val hasIndex = list.any { Docs.isIndex(it) }
+        val count = "${list.size} doc${if (list.size == 1) "" else "s"}"
+        val text = when {
+            hasIndex -> "$count: the Index first (read it to learn what this channel is for), then newest change first."
+            list.isEmpty() -> "No docs in this channel yet, and no Index. ${noIndex(docs.canEdit(app.feed.projects.resolve(channel).id))}"
+            else -> "$count, newest change first. This channel has no Index yet. ${noIndex(docs.canEdit(app.feed.projects.resolve(channel).id))}"
+        }
         ToolResult.ok(text, buildJsonObject {
             put("docs", JsonArray(list.map { summary(it, names) }))
-            put("can_edit", app.feed.projects.resolve(call.requiredChannel()).let { docs.canEdit(it.id) })
+            put("can_edit", app.feed.projects.resolve(channel).let { docs.canEdit(it.id) })
+            if (!hasIndex) put("index_template", docs.indexDraft(channel))
         })
     }
 
     register("read_doc") { call ->
         val docs = app.feed.docs
-        val doc = call.doc()
+        val onlyChannel = call.args["doc_id"].jsString.isNullOrBlank() && call.args["title"].jsString.isNullOrBlank()
+        val channel = call.channel()
+        if (onlyChannel && channel == null) throw invalid("name a doc by doc_id, by title with its channel, or a channel alone for its Index")
+        if (onlyChannel && docs.index(channel!!) == null) {
+            val canEdit = docs.canEdit(app.feed.projects.resolve(channel).id)
+            return@register ToolResult.ok("This channel has no Index yet. ${noIndex(canEdit)}", buildJsonObject {
+                put("doc", JsonNull)
+                put("no_index", true)
+                put("index_template", docs.indexDraft(channel))
+                put("can_edit", canEdit)
+            })
+        }
+        val doc = if (onlyChannel) docs.index(channel!!)!! else call.doc()
         val names = docs.namesFor(listOf(doc))
         val backlinks = docs.backlinks(doc)
         val links = DocLinks.parse(doc.body).map { it.target }.distinctBy { Docs.key(it) }.take(100).map { target ->
@@ -149,6 +170,11 @@ fun ToolRegistry.registerDocTools(app: App) {
         ToolResult.ok(text, buildJsonObject { put("doc", summary(saved, docs.namesFor(listOf(saved)))) })
     }
 }
+
+/** What to do about a channel with no Index, for someone who [canEdit] it or may only read it. */
+private fun noIndex(canEdit: Boolean): String =
+    "index_template is a first one, from the channel's name and description, linking its docs. Nothing is saved until someone saves it. " +
+        if (canEdit) "Fill it in and save it with create_doc({ channel, title: \"Index\", body })." else "You may only read this channel, so ask someone who can post here to write it."
 
 /** A little of [body] around the first place [needle] is found, on one line. */
 private fun snippet(body: String, needle: String): String? {

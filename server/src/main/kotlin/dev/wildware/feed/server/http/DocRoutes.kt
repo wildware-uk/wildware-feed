@@ -66,6 +66,8 @@ fun Route.docRoutes(app: App) {
                 put("projectId", project.id)
                 put("docs", docs.listJson(list))
                 put("canEdit", docs.canEdit(project.id))
+                // No Index yet: a first one to write, saved only when someone saves it.
+                if (docs.index(project.id) == null) put("indexTemplate", docs.indexDraft(project.id))
             })
         },
         HttpMethod.Post to {

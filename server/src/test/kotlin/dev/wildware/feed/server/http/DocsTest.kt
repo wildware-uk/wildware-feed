@@ -7,6 +7,7 @@ import dev.wildware.feed.server.db.Database
 import dev.wildware.feed.server.domain.Agents
 import dev.wildware.feed.server.domain.DocLinks
 import dev.wildware.feed.server.domain.Docs
+import dev.wildware.feed.server.domain.docs
 import dev.wildware.feed.server.domain.People
 import dev.wildware.feed.server.domain.feed
 import dev.wildware.feed.server.events.AppEvent
@@ -20,6 +21,7 @@ import io.ktor.http.HttpMethod
 import io.ktor.server.testing.testApplication
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
@@ -336,6 +338,110 @@ class DocsTest {
         assertEquals(listOf("Migration notes", "Deploy steps"), found.map { it.text("title") }, "title matches first")
         assertContains(found[1].text("snippet"), "Run the migration")
         assertEquals("ops", found[0].text("channel"))
+    }
+
+    // ---- the Index ------------------------------------------------------------------------------
+
+    private fun Team.indexCount(slug: String): Int {
+        val project = app.feed.projects.resolve(slug)
+        return app.db.one("SELECT count(*) FROM docs WHERE team_id = :team AND project_id = ? AND title_key = 'index'", project.id) { it.getInt(1) }!!
+    }
+
+    private fun Team.docCount(): Int = app.db.one("SELECT count(*) FROM docs WHERE team_id = :team") { it.getInt(1) }!!
+
+    @Test
+    fun `a channel with no Index offers a template from its name, description and docs, and saves nothing`() = withTeam { client ->
+        client.json(ownerKey, "POST", "/api/projects", """{"name":"Ops","slug":"ops","description":"Deploys and incidents."}""", status = 201)
+        assertEquals(0, docCount(), "a new channel gets no doc nobody wrote")
+        client.json(ownerKey, "POST", "/api/projects/ops/docs", """{"title":"Runbook","body":"steps"}""", status = 201)
+        client.json(ownerKey, "POST", "/api/projects/ops/docs", """{"title":"Alerts","body":"pages"}""", status = 201)
+
+        val read = client.tool(roverToken, "read_doc", args("channel" to "ops"))
+        assertEquals(null, read.error(), read.toString())
+        assertEquals("true", read.data().text("no_index"))
+        assertEquals(JsonNull, read.data()["doc"])
+        assertEquals("true", read.data().text("can_edit"))
+        val template = read.data().text("index_template")
+        for (part in listOf("# Ops", "## What this channel is for", "Deploys and incidents.", "## Docs", "- [[Alerts]]\n- [[Runbook]]\n", "## Keep this current")) {
+            assertContains(template, part)
+        }
+        val listed = client.tool(roverToken, "list_docs", args("channel" to "ops")).data()
+        assertEquals(template, listed.text("index_template"))
+        assertContains(client.tool(roverToken, "list_docs", args("channel" to "ops")).toString(), "no Index yet")
+        val page = client.json(ownerKey, "GET", "/api/projects/ops/docs")
+        assertEquals(template, page.text("indexTemplate"))
+        assertEquals(listOf("Alerts", "Runbook"), page["docs"]!!.jsonArray.map { it.jsonObject.text("title") }.sorted())
+        assertEquals(0, indexCount("ops"), "reading and listing write nothing")
+        assertEquals(2, docCount())
+
+        // Saved by an agent, the template is the Index: read by channel, listed first, no template offered.
+        val made = client.tool(roverToken, "create_doc", args("channel" to "ops", "title" to "Index", "body" to template))
+        assertEquals(null, made.error(), made.toString())
+        val index = client.tool(scoutToken, "read_doc", args("channel" to "ops")).data()
+        assertEquals("Index", index.doc().text("title"))
+        assertEquals("true", index.doc().text("index"))
+        assertEquals("rover", index.doc()["created_by"]!!.jsonObject.text("name"))
+        assertFalse("index_template" in index)
+        val list = client.tool(scoutToken, "list_docs", args("channel" to "ops")).data()
+        assertEquals(listOf("Index", "true"), list["docs"]!!.jsonArray.first().jsonObject.let { listOf(it.text("title"), it.text("index")) })
+        assertEquals(listOf("true", "false", "false"), list["docs"]!!.jsonArray.map { it.jsonObject.text("index") })
+        assertFalse("index_template" in list)
+        assertFalse("indexTemplate" in client.json(ownerKey, "GET", "/api/projects/ops/docs"))
+        // Its docs now list it as linking to them.
+        val runbook = app.feed.docs.byTitle("ops", "Runbook")!!
+        assertEquals(listOf("Index"), app.feed.docs.backlinks(runbook).map { it.title })
+    }
+
+    @Test
+    fun `a doc an agent called index in lower case is the Index`() = withTeam { client ->
+        ops(client)
+        client.tool(roverToken, "create_doc", args("channel" to "ops", "title" to "index", "body" to "Hand made."))
+        val read = client.tool(scoutToken, "read_doc", args("channel" to "ops")).data()
+        assertEquals("Hand made.", read.doc().text("body"))
+        assertEquals("true", read.doc().text("index"))
+        assertEquals(1, indexCount("ops"))
+    }
+
+    @Test
+    fun `the Index can be edited but not deleted or renamed`() = withTeam { client ->
+        ops(client)
+        val id = client.json(ownerKey, "POST", "/api/projects/ops/docs", """{"title":"Index","body":"Ops."}""", status = 201).doc().text("id")
+        val refused = client.json(ownerKey, "DELETE", "/api/docs/$id", status = 400)
+        assertContains(refused.text("message"), "The Index can't be deleted")
+        assertEquals(400, client.call(ownerKey, "PUT", "/api/docs/$id", """{"baseVersion":1,"title":"Home"}""").status.value)
+        assertEquals("invalid_argument", client.tool(roverToken, "edit_doc", args("doc_id" to id, "base_version" to 1, "new_title" to "Home")).error())
+        // Its case may change; it is still the Index.
+        val edited = client.json(ownerKey, "PUT", "/api/docs/$id", """{"baseVersion":1,"title":"INDEX","body":"What ops is for."}""")
+        assertEquals("true", edited.doc().text("index"))
+        assertEquals(200, client.call(ownerKey, "GET", "/api/docs/$id").status.value)
+    }
+
+    @Test
+    fun `read only gets the template but can't save it, and no access gets nothing`() = withTeam { client ->
+        ops(client)
+        client.json(ownerKey, "PUT", "/api/projects/ops/access/agent/${rover.id}", """{"level":"read"}""")
+        client.json(ownerKey, "PUT", "/api/projects/ops/access", """{"private":true}""")
+
+        // scout and Sam have no access: not found.
+        assertEquals("not_found", client.tool(scoutToken, "read_doc", args("channel" to "ops")).error())
+        assertEquals("not_found", client.tool(scoutToken, "list_docs", args("channel" to "ops")).error())
+        assertEquals(404, client.call(samKey, "GET", "/api/projects/ops/docs").status.value)
+
+        // rover may only read: it sees the template and that it can't save it.
+        val read = client.tool(roverToken, "read_doc", args("channel" to "ops"))
+        assertEquals(null, read.error(), read.toString())
+        assertEquals("false", read.data().text("can_edit"))
+        assertContains(read.toString(), "You may only read this channel")
+        assertContains(read.data().text("index_template"), "# Ops")
+        assertEquals("forbidden", client.tool(roverToken, "create_doc", args("channel" to "ops", "title" to "Index", "body" to "x")).error())
+        assertEquals(0, docCount())
+    }
+
+    @Test
+    fun `read_doc with nothing to name a doc by says how`() = withTeam { client ->
+        val none = client.tool(roverToken, "read_doc", args())
+        assertEquals("invalid_argument", none.error())
+        assertContains(none.message(), "a channel alone for its Index")
     }
 
     @Test

@@ -30,6 +30,11 @@ import java.sql.SQLException
  * with who saved it, and an old one can be restored, which is a new save.
  *
  * Docs are reference material: the free plan's 30-day history never hides them.
+ *
+ * The doc titled "Index" (any case) is the channel's index: what the channel is for and links to
+ * its docs. Agents read it first. It is listed first, and can be edited but not deleted or
+ * renamed. The server never writes one: a channel without one offers [indexTemplate], a first
+ * draft from its name and description for someone to save.
  */
 class Docs(private val feed: Feed) {
     private val db get() = feed.db
@@ -60,13 +65,30 @@ class Docs(private val feed: Feed) {
 
     // ---- reading -------------------------------------------------------------------------------
 
-    /** The channel's docs, newest change first, without their text. */
+    /** The channel's docs, its Index first, then newest change first, without their text. */
     fun list(projectRef: String): List<DocRow> {
         val project = feed.projects.resolve(projectRef)
         return db.query(
-            "SELECT $COLUMNS FROM docs WHERE team_id = :team AND project_id = ? AND deleted_at IS NULL ORDER BY updated_at DESC, seq DESC LIMIT ?",
-            project.id, MAX_DOCS,
+            "SELECT $COLUMNS FROM docs WHERE team_id = :team AND project_id = ? AND deleted_at IS NULL " +
+                "ORDER BY CASE WHEN title_key = ? THEN 0 ELSE 1 END, updated_at DESC, seq DESC LIMIT ?",
+            project.id, INDEX_KEY, MAX_DOCS,
         ) { row(it) }
+    }
+
+    /** The channel's Index, or null when nobody has written one yet. */
+    fun index(projectRef: String): DocRow? = byKey(feed.projects.resolve(projectRef).id, INDEX_KEY)
+
+    /**
+     * A first Index for [projectRef], for someone to save as the doc titled [INDEX]: from the
+     * channel's name and description, linking the docs already there. Nothing is saved.
+     */
+    fun indexDraft(projectRef: String): String {
+        val project = feed.projects.resolve(projectRef)
+        val titles = db.query(
+            "SELECT title FROM docs WHERE team_id = :team AND project_id = ? AND deleted_at IS NULL ORDER BY lower(title), seq LIMIT ?",
+            project.id, MAX_DOCS,
+        ) { it.getString(1) }
+        return indexTemplate(project.name, project.description, titles)
     }
 
     /** One doc. A doc in a channel this viewer can't read, or deleted, answers as missing. */
@@ -177,6 +199,7 @@ class Docs(private val feed: Feed) {
         val name = title?.let(::checkTitle) ?: doc.title
         val text = body ?: doc.body
         checkBody(text)
+        if (isIndex(doc) && key(name) != INDEX_KEY) throw invalid(INDEX_STAYS)
         if (key(name) != key(doc.title)) {
             byKey(doc.projectId, key(name))?.let { throw conflict("a doc called ${JsText.quote(it.title)} is already in this channel (id ${it.id})") }
         }
@@ -237,6 +260,7 @@ class Docs(private val feed: Feed) {
     fun delete(id: String, actor: String): DocRow = feed.op {
         val doc = get(id)
         feed.access.requirePost(doc.projectId) { notFound("no such doc: ${doc.id}") }
+        if (isIndex(doc)) throw invalid(INDEX_STAYS)
         val now = feed.now()
         db.update(
             "UPDATE docs SET deleted_at = ?, title_key = ?, updated_by = ?, updated_at = ? WHERE team_id = :team AND id = ?",
@@ -304,6 +328,7 @@ class Docs(private val feed: Feed) {
         put("id", doc.id)
         put("projectId", doc.projectId)
         put("title", doc.title)
+        put("index", isIndex(doc))
         if (withBody) put("body", doc.body)
         put("version", doc.version)
         put("size", utf8Size(doc.body))
@@ -352,6 +377,28 @@ class Docs(private val feed: Feed) {
         const val MAX_TITLE = 200
         const val MAX_EDITS = 50
         private const val MAX_LINKS = 500
+
+        /** The title of a channel's index doc, and its key: any case finds it. */
+        const val INDEX = "Index"
+        const val INDEX_KEY = "index"
+
+        private const val INDEX_STAYS =
+            "The Index can't be deleted or renamed, only edited: it is where people and agents learn what this channel is for"
+
+        fun isIndex(doc: DocRow): Boolean = key(doc.title) == INDEX_KEY
+
+        /** A first Index: what the channel is for, links to the [docs] already there, and a note to keep it current. */
+        fun indexTemplate(name: String, description: String?, docs: List<String>): String = buildString {
+            append("# ").append(name).append("\n\n")
+            append("## What this channel is for\n\n")
+            append(description?.jsTrim()?.takeIf { it.isNotEmpty() } ?: "Nobody has said yet. Write a few lines: what this channel is for, and what it is not for.")
+            append("\n\n## Docs\n\n")
+            val linked = docs.filter { key(it) != INDEX_KEY }
+            if (linked.isEmpty()) append("No other docs yet.\n") else linked.forEach { append("- [[").append(it).append("]]\n") }
+            append("\n## Keep this current\n\n")
+            append("Read this first when you start work here. When the channel's purpose changes, change it here. ")
+            append("Link every doc from this page, or from a doc this page links to.\n")
+        }
 
         /** A title as links find it: trimmed, any case. */
         fun key(title: String): String = title.jsTrim().lowercase()

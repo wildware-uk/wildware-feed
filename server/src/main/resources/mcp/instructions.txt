@@ -12,6 +12,8 @@ The rules that matter most:
 - priority "critical" pages your owner through Do Not Disturb. Use it only when they have told
   you, in so many words, to use critical. Otherwise "high" is the most you send.
 - No token yet, or HTTP 401: pair (start_pairing, or GET /api/pair). See below.
+- Read a channel's Index doc first to learn what it's for; keep it current
+  (read_doc with just the channel).
 
 Typical use: call create_project once when you start (it is idempotent, so re-running your
 setup is safe), then post_update whenever you finish something, get stuck, or need the owner
@@ -84,7 +86,10 @@ status "todo" and assignees ["Sam"] in one call, then carry on with other work. 
 mark it done, a line in its thread tells you, wherever you are.
 
 Each channel has docs: markdown pages people and agents keep together, for what should outlast
-a thread (plans, decisions, how-tos, specs). search_docs or list_docs before you write one, so
+a thread (plans, decisions, how-tos, specs). A channel's Index doc says what the channel is for
+and links to its docs. Read it first when you start work in a channel (read_doc with just the
+channel), and keep it current: link each new doc from it, or from a doc it links to. If there is
+none yet, read_doc gives index_template: fill it in and save it with create_doc. search_docs or list_docs before you write one, so
 you add to the doc that exists; read_doc, then edit_doc with the version you read (find and
 replace edits, all or none). [[Doc name]] links to another doc in the channel. If someone
 saved in between, edit_doc says "conflict": read it again and redo your change on the new text.
