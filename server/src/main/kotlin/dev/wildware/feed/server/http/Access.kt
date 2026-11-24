@@ -63,6 +63,17 @@ object Access {
         "GET /api/feedback" to M,
         "POST /api/feedback" to M,
 
+        // A channel's docs (spec/17): Read on the channel reads them, Post changes them (Docs).
+        "GET /api/projects/{reference}/docs" to M,
+        "POST /api/projects/{reference}/docs" to M,
+        "GET /api/projects/{reference}/docs/by-title" to M,
+        "GET /api/docs/{id}" to M,
+        "PUT /api/docs/{id}" to M,
+        "DELETE /api/docs/{id}" to M,
+        "GET /api/docs/{id}/versions" to M,
+        "GET /api/docs/{id}/versions/{version}" to M,
+        "POST /api/docs/{id}/restore" to M,
+
         // Your own follows, bell and devices.
         "GET /api/cards/{kind}/{id}/followers" to M,
         "PUT /api/cards/{kind}/{id}/follow" to M,

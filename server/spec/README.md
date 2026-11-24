@@ -45,6 +45,7 @@ for those parts are tagged `tsOnly`.
 | [13-people.md](13-people.md) | People on a team: roles, invites, sign-in, alerts per person |
 | [15-permissions.md](15-permissions.md) | Per channel and per project permissions: levels, private channels, where they are enforced, the Permissions panel API, the audit log |
 | [16-assigning-work.md](16-assigning-work.md) | Assigning work (migration 074): up to five people or agents on a work card, who may assign, the thread line that tells an agent, the bell and phone for a person, list_work and board filters |
+| [17-docs.md](17-docs.md) | Docs (migration 076): linked markdown docs in each channel, who may read and edit, [[links]] and backlinks, versions, conflicts on a stale save, the owner API, the live event and the agents' tools |
 
 ## Rules that cut across every file
 

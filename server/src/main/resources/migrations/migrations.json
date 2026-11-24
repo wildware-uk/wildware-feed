@@ -523,5 +523,12 @@
   "file": "075-teams-have-a-plan.sql",
   "rebuildsTables": false,
   "checksum": "c0ad8f7e123b415fce76305663951800c10c05d0fe3e4005cebcc00c0d64b552"
+ },
+ {
+  "version": 76,
+  "name": "channels-keep-docs",
+  "file": "076-channels-keep-docs.sql",
+  "rebuildsTables": false,
+  "checksum": "9ee15510b34a690151a81ff06f2d440bbade7b413dd3392fa871be5322fcbe15"
  }
 ]

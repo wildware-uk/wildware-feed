@@ -67,7 +67,7 @@ object Suspension {
     val READ_ONLY_TOOLS = setOf(
         "list_projects", "list_work", "list_tags", "get_card_fields", "get_messages", "await_request", "list_embed_types",
         "list_apps", "list_subscriptions", "list_secrets", "secret_url", "register_session", "heartbeat", "end_session",
-        "acknowledge", "await_pairing", "list_feedback",
+        "acknowledge", "await_pairing", "list_feedback", "list_docs", "read_doc", "search_docs",
     )
 
     fun refuses(call: ApplicationCall): Boolean {

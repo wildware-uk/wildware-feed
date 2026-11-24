@@ -148,6 +148,7 @@ fun Application.feed(app: App, placeOf: (ApplicationCall) -> Place = { Hosts.pla
         agentRoutes(app)
         streamRoutes(app)
         feedRoutes(app)
+        docRoutes(app)
         accessRoutes(app)
         requestRoutes(app)
         sessionRoutes(app)

@@ -127,6 +127,11 @@ class ChannelAccessLeakTest {
         assertTrue("\"isError\":true" !in tool(scout, "assign_work", args("update_id" to update, "assignees" to JsonArray(listOf(JsonPrimitive("me"))))))
         assertEquals(200, send(ownerKey, "POST", "/api/cards/message/$finished/assignees", """{"assignees":["scout"]}""").status.value)
         send(ownerKey, "POST", "/api/messages", """{"project":"vault","body":"@other zebra for you"}""")
+        // Docs (migration 076): scout writes one that links to another, and the owner saves it again.
+        assertTrue("\"isError\":true" !in tool(scout, "create_doc", args("project" to "vault", "title" to "Zebra notes", "body" to "zebra doc, see [[Zebra plan doc]]")))
+        assertTrue("\"isError\":true" !in tool(scout, "create_doc", args("project" to "vault", "title" to "Zebra plan doc", "body" to "zebra plan text")))
+        val doc = latest(app, "docs", "project_id = '$vault'")
+        assertEquals(200, send(ownerKey, "PUT", "/api/docs/$doc", """{"baseVersion":1,"body":"zebra doc, saved again"}""").status.value)
         // And the rest of the team's ordinary life, in web, where everyone is.
         tool(scout, "post_update", args("project" to "web", "title" to "Web plan", "body" to "an ordinary update"))
         send(ownerKey, "POST", "/api/messages", """{"project":"web","body":"an ordinary post"}""")
@@ -166,6 +171,7 @@ class ChannelAccessLeakTest {
             "update" to updates, "message" to messages, "request" to requests,
             "project" to listOf(vault), "group" to ids("project_groups", "slug = 'lockers'"),
             "tag" to ids("tags", "project_id = '$vault'"),
+            "doc" to ids("docs", "project_id = '$vault'"),
             "media" to ids("media", "update_id IN ($cardIn) OR message_id IN ($cardIn) OR request_id IN ($cardIn)"),
             "view" to ids("app_views", "update_id IN ($cardIn) OR message_id IN ($cardIn) OR request_id IN ($cardIn)"),
         )
@@ -187,6 +193,7 @@ class ChannelAccessLeakTest {
             pattern.startsWith("/api/updates") -> "update"
             pattern.startsWith("/api/requests") -> "request"
             pattern.startsWith("/api/tags") -> "tag"
+            pattern.startsWith("/api/docs") -> "doc"
             pattern.contains("media") -> "media"
             else -> null
         }
@@ -196,6 +203,7 @@ class ChannelAccessLeakTest {
         sub("variant", listOf("original", "thumb"))
         sub("agentId", listOf("x"))
         sub("block", listOf("ship"))
+        sub("version", listOf("1", "2"))
         for (slot in listOf("connection", "token", "name")) sub(slot, listOf("x"))
         return paths
     }
@@ -214,6 +222,9 @@ class ChannelAccessLeakTest {
             put("removed", true); put("autoRemoveDays", 7)
             put("assignees", JsonArray(listOf(JsonPrimitive("scout"), JsonPrimitive("Sam"), JsonPrimitive("me")))); put("mode", "set")
             put("assigned_to", "scout"); put("assigned", "scout")
+            put("doc_id", pick("doc")); put("docId", pick("doc")); put("title", "Zebra notes"); put("query", "zebra")
+            put("base_version", 1); put("baseVersion", 1); put("version", 1); put("new_title", "Renamed")
+            put("edits", JsonArray(listOf(buildJsonObject { put("old_str", "zebra"); put("new_str", "horse") })))
             put("value", true); put("kind", "confirm"); put("question", "q?"); put("level", "read"); put("follow", true); put("following", true); put("pinned", true)
             put("private", false); put("item", "1"); put("done", true); put("options", JsonArray(listOf(JsonPrimitive("a"))))
             put("ids", JsonArray(listOf(JsonPrimitive(pick("update")))))

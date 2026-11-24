@@ -188,6 +188,12 @@ class TeamLeakTest {
         tool(team, t, "assign_work", args("update_id" to update, "assignees" to JsonArray(listOf(JsonPrimitive("me"))))).let { assertTrue("\"isError\":true" !in it, it) }
         val agentName = Tenant.allTeams { app.db.one("SELECT name FROM agents WHERE team_id = ? ORDER BY seq LIMIT 1", team.id) { it.getString(1) } }!!
         assertEquals(200, send(team, k, "POST", "/api/cards/message/$finished/assignees", """{"assignees":["$agentName"],"mode":"set"}""").status.value)
+        // Docs (migration 076): the same title on both teams when they look alike, saved twice, linked.
+        val docTitle = if (lookAlike) "Plan" else "Plan $m"
+        tool(team, t, "create_doc", args("project" to slug, "title" to docTitle, "body" to "Doc $m, see [[Notes]]")).let { assertTrue("\"isError\":true" !in it, it) }
+        tool(team, t, "create_doc", args("project" to slug, "title" to "Notes", "body" to "Notes $m")).let { assertTrue("\"isError\":true" !in it, it) }
+        val doc = latest(app, team, "docs")
+        assertEquals(200, send(team, k, "PUT", "/api/docs/$doc", """{"baseVersion":1,"body":"Notes $m, saved again"}""").status.value)
         val client = send(team, null, "POST", "/oauth/register", """{"redirect_uris":["http://localhost:9/cb"],"client_name":"Client $m"}""")
         assertTrue(client.status.value in 200..299, client.bodyAsText())
     }
@@ -215,7 +221,7 @@ class TeamLeakTest {
             "project" to ids("projects"), "group" to ids("project_groups"), "tag" to ids("tags"), "device" to ids("owner_devices"),
             "agent" to ids("agents"), "invite" to ids("invites"), "person" to ids("memberships"), "pairing" to ids("agent_pairings"),
             "secret" to ids("secrets"), "media" to ids("media"), "view" to ids("app_views"), "session" to ids("sessions"),
-            "feedback" to ids("feedback"),
+            "feedback" to ids("feedback"), "doc" to ids("docs"),
             "token" to team.tokens,
         )
     }
@@ -239,6 +245,7 @@ class TeamLeakTest {
             pattern.startsWith("/api/secrets") -> "secret"
             pattern.startsWith("/api/tags") -> "tag"
             pattern.startsWith("/api/feedback") -> "feedback"
+            pattern.startsWith("/api/docs") -> "doc"
             pattern.contains("media") -> "media"
             else -> null
         }
@@ -254,6 +261,7 @@ class TeamLeakTest {
         sub("connection", b["session"].orEmpty())
         sub("token", b["token"].orEmpty())
         sub("name", listOf("KEY_ONE", "KEY_TWO"))
+        sub("version", listOf("1", "2"))
         return paths
     }
 
@@ -283,6 +291,9 @@ class TeamLeakTest {
             put("removed", true); put("autoRemoveDays", 7)
             put("assignees", JsonArray(listOf(JsonPrimitive(pick("agent")), JsonPrimitive(pick("person")), JsonPrimitive("me"))))
             put("mode", "set"); put("assigned_to", pick("agent")); put("assigned", pick("person"))
+            put("doc_id", pick("doc")); put("docId", pick("doc")); put("title", "Notes"); put("query", "notes")
+            put("base_version", 1); put("baseVersion", 1); put("version", 1); put("new_title", "Renamed")
+            put("edits", JsonArray(listOf(buildJsonObject { put("old_str", "Notes"); put("new_str", "Changed") })))
             put("value", true); put("kind", "confirm"); put("question", "q?"); put("level", "all"); put("follow", true); put("pinned", true)
             put("ids", JsonArray(listOf(JsonPrimitive(pick("update")))))
             put("cards", JsonArray(listOf(buildJsonObject { put("kind", "update"); put("id", pick("update")) })))

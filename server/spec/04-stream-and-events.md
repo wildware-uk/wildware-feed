@@ -114,6 +114,7 @@ map: `src/events/types.ts:61-290`.
 | `subscriptions.updated` | `subscriber` | Kotlin server only (migration 052): MCP `subscribe` / `unsubscribe`, the owner's follow and level routes, and the owner's first post in a thread, when something changed. The agent stream recounts on it (§4.8). |
 | `notifications.cleared` | `tags` | Kotlin addition (spec/08 §6.9). Alerts the owner has dealt with, by the tag each carried: `update-<id>` and `message-<id>` when their bell rows become seen (`/seen`, `/cards-seen`, or the line or update deleted), `request-<id>` when the request settles (any `request.answered`), `pairing-<id>` when a `pairing.updated` leaves `pending`. Published right after `notifications.seen` where both apply; never with an empty list. |
 | `agent.presence` | `agentId, sessionId, online` | `announce` — `src/domain/sessions.ts:432`. `online:true` from `registerSession` (`:130`) / `heartbeat` (`:166`) only when the agent was not already online; `online:false` from `endSession` (`:194-195`) when no other session keeps it online, and from the sweeper with `sessionId: null` (`:316`). Going quiet past the 90 s window (`PRESENCE_WINDOW_MS`, `:71`) publishes **nothing**. |
+| `doc.updated` | `projectId, docId, title, version, by, change` | Kotlin addition (migration 076, spec/17). A doc created, saved, restored or deleted (`change`), by the owner API or MCP `create_doc` / `edit_doc`. `by` is `member:<id>` or `agent:<id>`. |
 
 `card.kind` ∈ `update, message, request` (`src/db/cards.ts:30`). Card objects
 are built `{ kind, id }`.

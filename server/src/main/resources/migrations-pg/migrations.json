@@ -172,5 +172,11 @@
   "name": "teams-have-a-plan",
   "file": "075-teams-have-a-plan.sql",
   "checksum": "db7e14a3f9d93a13413f4152eab999ad475323e8ba986fdb48263dc07414a2d2"
+ },
+ {
+  "version": 76,
+  "name": "channels-keep-docs",
+  "file": "076-channels-keep-docs.sql",
+  "checksum": "8b164311aea62f238086d6ff64b1e0a8ec7bd2120a446b2bc02f402d081f36ae"
  }
 ]
