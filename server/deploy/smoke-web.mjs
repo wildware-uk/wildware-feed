@@ -28,6 +28,8 @@ const errors = [];
 
 async function open(options) {
     const context = await browser.newContext(options);
+    // The guided tour would cover the screen after signing in: this run takes it as seen.
+    await context.addInitScript(() => localStorage.setItem('feed.tour', 'off'));
     const page = await context.newPage();
     page.on('pageerror', (e) => errors.push(e.message));
     await page.goto(base);

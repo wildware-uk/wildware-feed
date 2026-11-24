@@ -21,6 +21,8 @@ export async function newBrowser(browser) {
         extraHTTPHeaders: local ? { 'x-journey-client': someAddress() } : {},
     });
     open.add(context);
+    // The guided tour would cover the screen after a first sign-in: these tests take it as seen.
+    await context.addInitScript(() => localStorage.setItem('feed.tour', 'off'));
     const page = await context.newPage();
     const errors = [];
     page.on('pageerror', (e) => errors.push(e.message));
