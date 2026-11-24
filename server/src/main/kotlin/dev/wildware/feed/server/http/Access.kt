@@ -74,6 +74,9 @@ object Access {
         "GET /api/docs/{id}/versions/{version}" to M,
         "POST /api/docs/{id}/restore" to M,
 
+        // A channel's Media tab: Read on the channel reads it (ChannelMedia).
+        "GET /api/projects/{reference}/media" to M,
+
         // Your own follows, bell and devices.
         "GET /api/cards/{kind}/{id}/followers" to M,
         "PUT /api/cards/{kind}/{id}/follow" to M,

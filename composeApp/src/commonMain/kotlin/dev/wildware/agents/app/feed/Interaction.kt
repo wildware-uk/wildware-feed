@@ -175,6 +175,8 @@ sealed interface FeedEvent {
     data class SetStatus(val targetId: String, val status: WorkStatus?) : FeedEvent
     /** Something done in the Docs tab (server migration 076). */
     data class Docs(val action: DocsAction) : FeedEvent
+    /** Something done in the Media tab. */
+    data class Media(val action: MediaAction) : FeedEvent
     /** The board is on screen for [scope], or (null) put away: the dashboard reads it while it shows. */
     data class ShowBoard(val scope: dev.wildware.agents.BoardScope?) : FeedEvent
     /** Move a card on the board to [status]'s column: the same work-state change as [SetStatus]. */
@@ -583,6 +585,7 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
         menu = null
         boardMenu = null
         docsOpen = false
+        mediaOpen = false
         boardOpen = !boardOpen
     }
 
@@ -591,6 +594,7 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
         menu = null
         boardGroup = groupId
         docsOpen = false
+        mediaOpen = false
         boardOpen = true
     }
 
@@ -602,7 +606,27 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
         menu = null
         boardMenu = null
         boardOpen = false
+        mediaOpen = false
         docsOpen = on && state.current.slug != null
+    }
+
+    /** The channel's Media tab in the main pane instead of the feed: its pictures, videos and files. */
+    var mediaOpen by mutableStateOf(false)
+
+    /** Shows the Media tab, or (false) goes back to the feed. */
+    fun showMedia(on: Boolean = true) {
+        menu = null
+        boardMenu = null
+        boardOpen = false
+        docsOpen = false
+        mediaOpen = on && state.current.slug != null
+    }
+
+    /** "Go to message" on a file in the Media tab: the card it is on, open with its thread. */
+    fun openMediaCard(cardId: String) {
+        mediaOpen = false
+        viewer = null
+        openAlone(cardId)
     }
 
     /**
@@ -624,6 +648,7 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
         menu = null
         boardMenu = null
         boardOpen = false
+        mediaOpen = false
         docsOpen = true
     }
 
@@ -1259,7 +1284,10 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
                 boardGroup = null
                 boardFocus = null
                 // Docs are a channel's: on All channels the feed comes back.
-                if (event.slug == null) docsOpen = false
+                if (event.slug == null) {
+                    docsOpen = false
+                    mediaOpen = false
+                }
                 askedProject = AskedProject(event.slug)
             }
             else -> Unit

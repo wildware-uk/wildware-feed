@@ -1,5 +1,6 @@
 package dev.wildware.agents.app.engine
 
+import dev.wildware.agents.channelMedia
 import dev.wildware.agents.UpdateCard
 import kotlinx.coroutines.flow.distinctUntilChanged
 import dev.wildware.agents.CardKinds
@@ -119,6 +120,15 @@ class DashboardSession(
 
     /** The Docs tab, read while it is on screen and again whenever one of its docs changes. */
     private val docs = DocsWatch(client, scope, dashboard.docChanges, mapper::relativeLabel)
+
+    /** The Media tab: a channel's pictures, videos and files, read while it is on screen, a page at a time. */
+    private val mediaTab = MediaWatch(
+        read = { channel, filter, cursor -> client.channelMedia(channel, filter.kind, cursor) },
+        scope = scope,
+        tile = mapper::mediaTabTile,
+        file = mapper::mediaTabFile,
+        ago = mapper::relativeLabel,
+    )
 
     /** The Assign picker while it is open; a save reads the board again. */
     private val assign = AssignWatch(client, scope) { board.reread() }
@@ -366,6 +376,7 @@ class DashboardSession(
         combine(feed, board.state, assign.state, mutablePlan, mutableUpgrade) { shown, onBoard, assigning, plan, upgrade ->
             shown.copy(board = onBoard, assign = assigning, plan = plan, upgrade = upgrade)
         }.combine(docs.state) { shown, onDocs -> shown.copy(docs = onDocs) }
+            .combine(mediaTab.state) { shown, onMedia -> shown.copy(media = onMedia) }
     }
         .stateIn(scope, SharingStarted.Eagerly, mapper.map(feed.state.value, emptyList(), emptyList(), emptyList(), null))
 
@@ -1120,6 +1131,7 @@ class DashboardSession(
             is FeedEvent.SetStatus -> cardRef(event.targetId)?.let { actions.setStatus(it, event.status?.wire) }
             is FeedEvent.ShowBoard -> board.show(event.scope)
             is FeedEvent.Docs -> docs.handle(event.action)
+            is FeedEvent.Media -> mediaTab.handle(event.action)
             is FeedEvent.BoardMove -> board.move(event.kind, event.id, event.status)
             is FeedEvent.BoardRemove -> board.remove(event.kind, event.id, event.removed)
             is FeedEvent.BoardShowRemoved -> board.showRemoved(event.show)

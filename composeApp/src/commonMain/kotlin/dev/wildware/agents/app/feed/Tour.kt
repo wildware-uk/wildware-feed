@@ -271,6 +271,7 @@ fun FeedUi.startTour() {
     menu = null
     boardOpen = false
     docsOpen = false
+    mediaOpen = false
     askForTop()
     val card = tourCardIn(sections) != null
     tour.start(

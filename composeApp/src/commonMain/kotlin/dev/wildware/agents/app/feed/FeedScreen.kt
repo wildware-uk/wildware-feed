@@ -347,6 +347,7 @@ private fun DesktopColumns(ui: FeedUi, showRail: Boolean, startAt: String?) {
         CriticalBanner(ui)
         // The board takes the feed's place; the feed keeps where it was scrolled to for coming back.
         if (ui.docsOpen && !ui.boardOpen) DocsPane(ui, Modifier.weight(1f).fillMaxWidth()) else
+        if (ui.mediaOpen && !ui.boardOpen) MediaPane(ui, Modifier.weight(1f).fillMaxWidth()) else
         if (ui.boardOpen) BoardPane(ui, Modifier.weight(1f).fillMaxWidth()) else Box(Modifier.weight(1f).fillMaxWidth()) {
             LazyColumn(
                 Modifier.fillMaxSize().closesComposer(ui).listActions(refresh, toTop, null),
@@ -462,6 +463,10 @@ private fun PhoneFeed(ui: FeedUi, safeArea: SafeArea, startAt: String?, widthPx:
         }
         if (ui.docsOpen && !ui.boardOpen) {
             DocsPane(ui, Modifier.fillMaxSize().safePadding(safeArea, top = 0.dp, bottom = 0.dp), phone = true) {
+                PhoneTopBar(state, onProjects = openDrawer, onTapBar = {}, onSearch = { ui.commandOpen = true }, onBell = { ui.bellOpen = !ui.bellOpen }, onAccount = { ui.alertsOpen = true })
+            }
+        } else if (ui.mediaOpen && !ui.boardOpen) {
+            MediaPane(ui, Modifier.fillMaxSize().safePadding(safeArea, top = 0.dp, bottom = 0.dp), phone = true) {
                 PhoneTopBar(state, onProjects = openDrawer, onTapBar = {}, onSearch = { ui.commandOpen = true }, onBell = { ui.bellOpen = !ui.bellOpen }, onAccount = { ui.alertsOpen = true })
             }
         } else if (ui.boardOpen) {

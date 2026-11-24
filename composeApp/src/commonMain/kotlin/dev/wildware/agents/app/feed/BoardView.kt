@@ -92,15 +92,16 @@ import kotlin.math.roundToInt
  * setting takes them off by age too.
  */
 
-/** "Feed | Board | Docs", at the top of the main pane. Docs are a channel's, so only on a channel. */
+/** "Feed | Board | Docs | Media", at the top of the main pane. Docs and media are a channel's, so only on a channel. */
 @Composable
 fun ViewToggle(ui: FeedUi, onChannel: Boolean, modifier: Modifier = Modifier) {
     val colors = AgentTheme.colors
     val shape = AgentTheme.shapes.small
     // Whether a channel is open comes in as a value, so a new state from the engine skips this.
-    val views = if (onChannel) listOf("Feed", "Board", "Docs") else listOf("Feed", "Board")
+    val views = if (onChannel) listOf("Feed", "Board", "Docs", "Media") else listOf("Feed", "Board")
     val now = when {
         ui.docsOpen -> "Docs"
+        ui.mediaOpen -> "Media"
         ui.boardOpen -> "Board"
         else -> "Feed"
     }
@@ -116,12 +117,13 @@ fun ViewToggle(ui: FeedUi, onChannel: Boolean, modifier: Modifier = Modifier) {
                     .pressable(label, shape, role = Role.Tab, labelIsShown = true) {
                         if (!chosen) when (label) {
                             "Docs" -> ui.showDocs()
+                            "Media" -> ui.showMedia()
                             "Board" -> ui.showBoard(ui.boardGroup)
                             else -> if (ui.boardOpen) ui.toggleBoard() else ui.showDocs(false)
                         }
                     }
                     .background(if (chosen) colors.text.copy(alpha = if (colors.isDark) 0.12f else 0.08f) else Color.Transparent)
-                    .padding(horizontal = 14.dp, vertical = 6.dp),
+                    .padding(horizontal = if (views.size > 3) 11.dp else 14.dp, vertical = 6.dp),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(label, color = if (chosen) colors.text else colors.textMuted, style = AgentTheme.type.label, maxLines = 1)

@@ -325,6 +325,21 @@ data: {..., "payload": {"mediaId", "updateId", "messageId", "requestId", "taskId
   and no `download_url`.
 - A new upload with the same bytes is stored again, never linked to the removed one.
 
+## 13. A channel's media (the Media tab)
+
+`GET /api/projects/{reference}/media[?kind=all|image|video|file][&cursor=][&limit=]` (any member) →
+200 `{projectId, kind, items: [{media, card: {kind, id}, sentBy: {principal, kind, name}, at}], nextCursor}`.
+
+- Every picture, video and file on the channel's updates, messages (posts and replies) and requests,
+  newest upload first. `media` is the same object a card's `media` list holds.
+- `kind=file` also holds sounds. Anything else is 400 `kind must be one of all, image, video or file`.
+- 60 a page by default, 100 at most. `nextCursor` (a string) asks for the next page; null at the end.
+- Left out: media on a deleted update or message, replies in a deleted update's thread, media the
+  retention removed, media sent with feedback, unattached uploads, and history older than the free
+  plan keeps.
+- `sentBy`: the agent that uploaded it, else the person who wrote the message or answered the request.
+- A channel the caller can't read is 404 `not_found`, as for its docs.
+
 ## Surprises
 
 1. **Shard is always `01`.** `id[0:2]` of a ULID is the timestamp's top bits; every id minted between 2005 and 2039 starts `01`, so all media sits in `media/01/` (`src/media/paths.ts:51`).

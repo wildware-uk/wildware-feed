@@ -695,6 +695,31 @@ internal class FeedMapper(
             )
         }
 
+    /**
+     * A picture or video for the Media tab: as the viewer shows it, and with the grid's smaller
+     * thumbnail where the dashboard made one.
+     */
+    fun mediaTabTile(media: MediaView): Pair<Attachment, Attachment> {
+        val shown = tile(media)
+        val small = if (media.kind == "image" && shown.url != null && "thumb-640" in media.variants) shown.copy(url = url(media, "thumb-640")) else shown
+        return shown to small
+    }
+
+    /** A file or sound for the Media tab's list: a download, or a placeholder saying why there is none. */
+    fun mediaTabFile(media: MediaView): FileAttachment {
+        val removed = media.removed
+        val ready = removed == null && media.isReady && "original" in media.variants
+        return FileAttachment(
+            media.id,
+            if (ready) url(media, "original") else "",
+            MediaLabels.fileName(media.filename),
+            MediaLabels.size(media.bytes),
+            media.mime,
+            removedAfterDays = removed?.afterDays,
+            notReady = if (removed == null && !media.isReady) notReady(media) else null,
+        )
+    }
+
     private fun notReady(media: MediaView) = when (media.status) {
         "failed" -> NotReady.Failed
         dev.wildware.agents.UploadingStatus -> NotReady.Uploading

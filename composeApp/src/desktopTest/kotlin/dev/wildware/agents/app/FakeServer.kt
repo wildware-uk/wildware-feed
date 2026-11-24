@@ -68,7 +68,7 @@ class FakeServer {
     )
     var notifications = listOf<NotificationView>()
     /** `GET /api/board`, as the dashboard answers it (migration 070). */
-    /** Docs answers by "METHOD /path" (no query): status and body. */
+    /** Docs and media answers by "METHOD /path", or "METHOD /path?query" for one query only: status and body. */
     val docAnswers: MutableMap<String, Pair<Int, String>> = Collections.synchronizedMap(mutableMapOf())
     @Volatile var board: String = """{"columns":[],"autoRemoveDays":7}"""
     /** `GET /api/cards/{kind}/{id}/assignees` (migration 074): who it is assigned to, and who could be. */
@@ -173,7 +173,9 @@ class FakeServer {
         if (path == "/api/messages" && request.method == HttpMethod.Get && messagesDelayMs > 0) delay(messagesDelayMs)
         authorizations += request.headers[HttpHeaders.Authorization]
         // Docs (server migration 076): whatever a test set for "METHOD /path", writes recorded too.
-        docAnswers["${request.method.value} $path"]?.let { (status, answer) ->
+        // One set for "METHOD /path?query" answers that query alone (the Media tab's pages and filters).
+        val query = request.url.encodedQuery
+        (docAnswers["${request.method.value} $path?$query"].takeIf { query.isNotEmpty() } ?: docAnswers["${request.method.value} $path"])?.let { (status, answer) ->
             if (request.method != HttpMethod.Get) writes += "${request.method.value} $path" to request.text()
             return ok(answer, HttpStatusCode.fromValue(status))
         }

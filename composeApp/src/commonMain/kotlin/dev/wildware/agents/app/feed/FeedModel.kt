@@ -732,6 +732,8 @@ data class FeedState(
     val assign: AssignState? = null,
     /** The Docs tab, while it is on screen: the channel's linked docs (server migration 076). */
     val docs: DocsState = DocsState(),
+    /** The Media tab, while it is on screen: the channel's pictures, videos and files. */
+    val media: MediaTabState = MediaTabState(),
     /** The hosted team's plan, read when Settings opens. */
     val plan: PlanState = PlanState(),
     /** A free-plan refusal still to answer: its words and an "Upgrade" link, until put away. */
