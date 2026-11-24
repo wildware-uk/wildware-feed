@@ -128,6 +128,8 @@ class TeamLeakTest {
         }
         tool(team, t, "create_project", args("name" to "Web $m", "slug" to slug))
         tool(team, t, "register_session", args("meta" to buildJsonObject { put("host", "box $m") }))
+        // A profile (migration 077): what the agent says it does, which list_members hands out.
+        tool(team, t, "set_profile", args("role" to "Role $m", "description" to "Description $m")).let { assertTrue("\"isError\":true" !in it, it) }
         tool(team, t, "post_update", args("project" to slug, "title" to "Title $m", "body" to "Update $m"))
         val update = latest(app, team, "updates")
         // A block on a card (migration 057): a checklist, the same block id in both teams.

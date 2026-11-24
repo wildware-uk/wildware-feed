@@ -43,6 +43,11 @@ class People(
         val createdAt: Long,
         val removedAt: Long?,
         val hasPassword: Boolean,
+        /** Their role line and description (migration 077, [Profiles]); null for none yet. */
+        val profileRole: String? = null,
+        val description: String? = null,
+        /** Their picture's media id, served as `/media/<id>/avatar`; null for the letter avatar. */
+        val avatarMediaId: String? = null,
     ) {
         val active get() = removedAt == null
     }
@@ -397,6 +402,10 @@ class People(
         val agents = linkedMapOf<String, List<String>>()
         for (m in memberships) {
             db.update("UPDATE memberships SET removed_at = ? WHERE team_id = ? AND id = ? AND removed_at IS NULL", now, m.team, m.id)
+            // What they said about themselves, and their picture, go with the account (migration 077).
+            db.update(
+                "UPDATE memberships SET profile_role = NULL, profile_description = NULL, avatar_media_id = NULL WHERE team_id = ? AND id = ?", m.team, m.id,
+            )
             db.update(
                 "UPDATE invites SET revoked_at = ? WHERE team_id = ? AND created_by = ? AND accepted_at IS NULL AND revoked_at IS NULL",
                 now, m.team, m.id,
@@ -639,6 +648,9 @@ class People(
         createdAt = rs.getLong("created_at"),
         removedAt = rs.longOrNull("removed_at"),
         hasPassword = rs.getString("password_hash") != null,
+        profileRole = rs.getString("profile_role"),
+        description = rs.getString("profile_description"),
+        avatarMediaId = rs.getString("avatar_media_id"),
     )
 
     private fun invite(rs: java.sql.ResultSet) = Invite(
@@ -707,7 +719,7 @@ class People(
         /** Words `@` already means something by: groups of agents, and the owner. */
         private val RESERVED_HANDLES = setOf("here", "everyone", "you", "owner", "all")
 
-        private const val SELECT = "SELECT m.id, m.user_id, u.name, u.email, m.role, m.handle, m.founder, m.created_at, m.removed_at, u.password_hash " +
+        private const val SELECT = "SELECT m.id, m.user_id, u.name, u.email, m.role, m.handle, m.founder, m.created_at, m.removed_at, u.password_hash, m.profile_role, m.profile_description, m.avatar_media_id " +
             "FROM memberships AS m JOIN users AS u ON u.id = m.user_id WHERE m.team_id = :team"
         private const val INVITE = "id, email, role, created_by, created_at, expires_at, accepted_at, accepted_by, revoked_at"
     }

@@ -42,7 +42,7 @@ for those parts are tagged `tsOnly`.
 | [11-oauth.md](11-oauth.md) | OAuth 2.1 for MCP clients (Kotlin only): discovery metadata, client registration, the authorize page, tokens and refresh, and how an access token stands in for an agent token |
 | [14-feedback.md](14-feedback.md) | Feedback and feature requests (migration 067): people send, agents propose and their team approves, the admin API and the operator's channel |
 | [12-channels-and-projects.md](12-channels-and-projects.md) | Channels and projects (groups of channels), following and reach, the owner adding and removing agents |
-| [13-people.md](13-people.md) | People on a team: roles, invites, sign-in, alerts per person |
+| [13-people.md](13-people.md) | People on a team: roles, invites, sign-in, alerts per person, and profiles (migration 077): what each person and agent does, their picture, `list_members` and `set_profile` |
 | [15-permissions.md](15-permissions.md) | Per channel and per project permissions: levels, private channels, where they are enforced, the Permissions panel API, the audit log |
 | [16-assigning-work.md](16-assigning-work.md) | Assigning work (migration 074): up to five people or agents on a work card, who may assign, the thread line that tells an agent, the bell and phone for a person, list_work and board filters |
 | [17-docs.md](17-docs.md) | Docs (migration 076): linked markdown docs in each channel, who may read and edit, [[links]] and backlinks, versions, conflicts on a stale save, the owner API, the live event and the agents' tools |

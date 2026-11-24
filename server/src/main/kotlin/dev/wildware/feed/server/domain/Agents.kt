@@ -7,7 +7,13 @@ import dev.wildware.feed.server.db.longOrNull
 
 /** Agents and their bearer tokens (spec/01-config-and-auth.md §7). */
 class Agents(private val db: Database, private val tokenSecret: String, private val clock: () -> Long = System::currentTimeMillis) {
-    data class Agent(val id: String, val name: String, val createdAt: Long, val revokedAt: Long?, val lastSeenAt: Long?)
+    /** [profileRole] and [description]: what it says it does (migration 077, [Profiles]); null for none yet. */
+    data class Agent(
+        val id: String, val name: String, val createdAt: Long, val revokedAt: Long?, val lastSeenAt: Long?,
+        val profileRole: String? = null, val description: String? = null,
+        /** Its picture's media id, served as `/media/<id>/avatar`; null for the letter avatar. */
+        val avatarMediaId: String? = null,
+    )
 
     /** Why a bearer was refused, with the TS server's code and message. */
     data class Refusal(val code: String, val message: String)
@@ -124,5 +130,6 @@ class Agents(private val db: Database, private val tokenSecret: String, private 
 
     private fun row(rs: java.sql.ResultSet) = Agent(
         rs.getString("id"), rs.getString("name"), rs.getLong("created_at"), rs.longOrNull("revoked_at"), rs.longOrNull("last_seen_at"),
+        rs.getString("profile_role"), rs.getString("profile_description"), rs.getString("avatar_media_id"),
     )
 }

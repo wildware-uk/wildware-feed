@@ -22,7 +22,17 @@ class Serve(private val db: Database, private val paths: MediaPaths) {
         val download = row.kind == "file"
         if (!download && !Mime.isAllowed(row.mime)) return null
         if (download && variant != "original") return null
-        val (key, mime) = if (variant == "original") {
+        // A profile picture (migration 077): its 256 px square, or the original while there is none.
+        val avatar = if (variant == "avatar" && !download) {
+            db.one(
+                "SELECT path FROM derivatives WHERE team_id = :team AND media_id = ? AND kind = 'thumb' AND width = ?", id, Derive.AVATAR_SIZE.toLong(),
+            ) { it.getString(1) }?.takeIf { paths.stored(it) != null }
+        } else {
+            null
+        }
+        val (key, mime) = if (avatar != null) {
+            avatar to "image/webp"
+        } else if (variant == "original" || variant == "avatar") {
             if (row.sha256.isEmpty()) return null
             paths.originalKey(id, row.mime) to if (download) Mime.DOWNLOAD else row.mime
         } else {
@@ -46,11 +56,13 @@ class Serve(private val db: Database, private val paths: MediaPaths) {
         val size = paths.store.size(key) ?: return null
         val attach = download || (save && variant == "original")
         val name = if (download) row.filename else savedName(row.filename, row.kind, row.mime)
-        return MediaFile(key, size, mime, "\"${row.sha256}-$variant\"", disposition(attach, name))
+        // An avatar served from its original shares the original's tag, so a later square replaces it.
+        val tag = if (variant == "avatar" && avatar == null) "original" else variant
+        return MediaFile(key, size, mime, "\"${row.sha256}-$tag\"", disposition(attach, name))
     }
 
     companion object {
-        val VARIANTS = listOf("original", "thumb-640", "thumb-1600", "poster", "video")
+        val VARIANTS = listOf("original", "thumb-640", "thumb-1600", "poster", "video", "avatar")
         private val ULID = Regex("^[0-9A-HJKMNP-TV-Z]{26}$")
 
         /**

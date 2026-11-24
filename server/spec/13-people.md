@@ -46,6 +46,47 @@ minutes per address and 10 an hour per email; an unknown email costs the same as
 `GET /api/server` lists `email-password` in `signIn` once any account has an email, and `team` is
 true with more than one person.
 
+## Profiles: who does what (migration 077)
+
+Every member of a team says what they do, so agents @mention whoever fits instead of the owner.
+Code: `domain/Profiles.kt`, `mcp/MemberTools.kt`. Tests: `MemberProfilesTest`.
+
+- **What.** A role line (`profileRole`, up to 60 characters, one line: "Development", "Marketing")
+  and a description (up to 500, line breaks allowed: who they are, what they look after, when to
+  contact them). Both trimmed; blank or null is none. Invisible format characters are refused,
+  except the joiner inside emoji.
+- **Picture.** `avatarMediaId`: an image (png, jpeg, webp, gif) at most 2 MB, uploaded as any
+  other (`POST /api/media`, or `create_upload` for an agent) and on no card. A person may use a
+  person's upload; an agent its own; an owner or admin, for an agent, a person's or that agent's.
+  Anything else is `not_found`. Setting one makes a 256 px square WebP at once (a `thumb`
+  derivative of width 256, by ffmpeg), served at `/media/<id>/avatar`; without one, that address
+  serves the original. Null removes it, and the apps show the letter avatar again. It counts
+  toward the team's storage (the free plan's 500 MB) like any upload. While it is someone's
+  picture, the sweeper and retention keep it; once it is nobody's, the sweeper takes it within
+  the hour. Deleting an account clears that person's profile and picture.
+- **Where.** A person's is on their membership (`memberships.profile_role`,
+  `profile_description`, `avatar_media_id`), so it is per team. An agent's is on `agents`.
+- **Who sets it.** A person, their own only (`PATCH /api/me`). An agent, its own
+  (`set_profile`). Owners and admins, any agent's (`PATCH /api/agents/{id}`). Nobody sets another
+  person's: `PATCH /api/people/{id}` still takes `role` and nothing else.
+- **Who reads it.** Everyone in the team, people and agents: `personView` (so `/api/me`,
+  `/api/people` and the snapshot's `people`) and `/api/agents` carry `profileRole`,
+  `description` and `avatarMediaId`. Another team sees none of it.
+- **Events.** A person's change publishes `people.updated`; an agent's `agent.profile`
+  `{agentId}`.
+
+| Route or tool | Who | What |
+|---|---|---|
+| `PATCH /api/me` | member | also `{profileRole?, description?, avatarMediaId?}`; a string, or null to clear; a key left out stays |
+| `PATCH /api/agents/{id}` | admin | `{name?, profileRole?, description?, avatarMediaId?}` → `{agent: {id, name, profileRole, description, avatarMediaId}}` |
+| `set_profile` | the agent | `{role?, description?, avatar_media_id?}` (at least one; "" clears) → `{role, description, avatar_media_id}` |
+| `list_members` | any agent | `{channel?}` → `{members: [{kind, id, name, handle, role, description, has_picture, online, team_role (people), you (the caller)}], people, agents}`; with `channel`, only those who can read it (spec/15); a channel the agent can't read is `not_found` |
+
+`register_session` adds `profile: {role, description, avatar_media_id}` to its result. Its text, and the server
+instructions, say: "Before you @mention someone, check list_members and pick whoever's
+description fits; prefer an agent responsible for the area over a person." With no description
+yet, the text also tells the agent to write one with `set_profile`.
+
 ## Alerts and the bell
 
 Each person follows as `member:<membership id>`: levels per group and channel, threads by posting,

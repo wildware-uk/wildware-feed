@@ -186,7 +186,8 @@ class McpToolsTest : ParityTest() {
     fun `sessions - register, heartbeat, end`() = parity {
         val agent = Parity.mintAgent(uniq("sessions"))
         val session = agent.ok("register_session", obj("meta" to obj("host" to "box", "cwd" to "/w", "model" to "m")))
-        assertEquals(listOf("session_id", "heartbeat_interval_s"), session.keys.toList())
+        // The Kotlin server adds the agent's profile (migration 077), so it knows to write one.
+        assertEquals(listOf("session_id", "heartbeat_interval_s") + if (Parity.kotlin) listOf("profile") else emptyList(), session.keys.toList())
         assertEquals(30, session["heartbeat_interval_s"].int)
         val id = session["session_id"].s
 

@@ -293,7 +293,7 @@ class Uploads(
 
     /**
      * The media sweeper (spec/07 §10): up to 200 unattached media over an hour old, that no project
-     * logo and no embed names, lose their directory and row; so do up to 200 on an update or message
+     * logo, no embed and nobody's picture names, lose their directory and row; so do up to 200 on an update or message
      * deleted over an hour ago. Then unused expired tokens go.
      */
     fun sweep() {
@@ -305,6 +305,7 @@ class Uploads(
                     OR EXISTS (SELECT 1 FROM messages AS x WHERE x.team_id = :team AND x.id = m.message_id AND x.deleted_at IS NOT NULL AND x.deleted_at < ?))
                   AND m.id NOT IN (${logoIds()})
                   AND m.id NOT IN (${embedStrings()})
+                  AND m.id NOT IN (${dev.wildware.feed.server.domain.Profiles.AVATAR_IDS})
                 ORDER BY m.seq LIMIT 200""",
             now - 3_600_000, now - 3_600_000,
         ) { it.getString(1) }
@@ -316,6 +317,7 @@ class Uploads(
                   AND created_at < ?
                   AND id NOT IN (${logoIds()})
                   AND id NOT IN (${embedStrings()})
+                  AND id NOT IN (${dev.wildware.feed.server.domain.Profiles.AVATAR_IDS})
                 ORDER BY seq LIMIT 200""",
             now - 3_600_000,
         ) { it.getString(1) }

@@ -2,7 +2,9 @@ package dev.wildware.feed.server.http
 
 import dev.wildware.feed.server.App
 import dev.wildware.feed.server.auth.Passwords
+import dev.wildware.feed.server.domain.Given
 import dev.wildware.feed.server.domain.People
+import dev.wildware.feed.server.domain.Profiles
 import dev.wildware.feed.server.domain.invalid
 import dev.wildware.feed.server.domain.jsBoolean
 import dev.wildware.feed.server.domain.jsString
@@ -49,16 +51,30 @@ fun Route.peopleRoutes(app: App) {
         HttpMethod.Patch to {
             val body = call.jsonObjectBody()
             fun optional(key: String) = if (key in body) body[key].jsString ?: throw invalid("$key must be a string") else null
-            val unknown = body.keys - setOf("name", "email", "password", "currentPassword")
-            if (unknown.isNotEmpty()) throw invalid("a change to you takes name, email, password and currentPassword, not ${unknown.joinToString(", ")}")
-            val update = { app.people.updateMe(call.person, optional("name"), optional("email"), optional("password"), optional("currentPassword")) }
+            val profileKeys = setOf("profileRole", "description", "avatarMediaId")
+            val unknown = body.keys - setOf("name", "email", "password", "currentPassword") - profileKeys
+            if (unknown.isNotEmpty()) {
+                throw invalid("a change to you takes name, email, password, currentPassword, profileRole, description and avatarMediaId, not ${unknown.joinToString(", ")}")
+            }
+            // Your role line and description (migration 077): checked first, so a bad one changes nothing.
+            val profile = profileChange(body)
+            if (!profile.empty) app.profiles.check(profile, Profiles.Setter.Person)
+            val update = {
+                val changed = if (body.keys.any { it !in profileKeys }) {
+                    app.people.updateMe(call.person, optional("name"), optional("email"), optional("password"), optional("currentPassword"))
+                } else {
+                    call.person
+                }
+                if (!profile.empty) app.profiles.setMember(changed.id, profile)
+                app.people.find(changed.id)!!
+            }
             // A new email or password checks the current one: password work, so it waits its turn.
             val me = if ("email" in body || "password" in body) {
                 app.accountPasswordCheck(app.people.accountKey(call.person), "device:" + call.caller.device.id) { Passwords.gate.run(update) }
             } else {
                 update()
             }
-            if ("name" in body) changed()
+            if ("name" in body || !profile.empty) changed()
             // A new password signs out every other device: a key someone else holds stops working too.
             if ("password" in body) {
                 for ((team, devices) in app.people.signOutOtherDevices(me, call.caller.device.id)) {
@@ -265,6 +281,24 @@ fun personView(p: People.Person, email: Boolean): JsonElement = buildJsonObject 
     if (email) put("email", p.email)
     put("createdAt", Wire.isoOf(p.createdAt))
     put("removedAt", p.removedAt?.let { JsonPrimitive(Wire.isoOf(it)) } ?: JsonNull)
+    // What they say about themselves (migration 077): everyone in the team may read it.
+    put("profileRole", p.profileRole)
+    put("description", p.description)
+    put("avatarMediaId", p.avatarMediaId)
+}
+
+/**
+ * The profile half of a change to a person or an agent: `profileRole`, `description` and
+ * `avatarMediaId` (an uploaded image), each a string, or null (or "") to clear it. A key left out
+ * leaves it as it is.
+ */
+internal fun profileChange(body: JsonObject): Profiles.Change {
+    fun given(key: String): Given<String?>? = when {
+        key !in body -> null
+        body[key] is JsonNull -> Given(null)
+        else -> Given(body[key].jsString ?: throw invalid("$key must be a string, or null"))
+    }
+    return Profiles.Change(role = given("profileRole"), description = given("description"), avatar = given("avatarMediaId"))
 }
 
 fun inviteView(i: People.Invite): JsonElement = buildJsonObject {

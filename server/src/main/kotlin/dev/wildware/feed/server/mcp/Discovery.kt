@@ -43,6 +43,7 @@ object Discovery {
         "work" to listOf("set_status", "list_work", "assign_work", "list_tags", "tag_card", "set_card_field", "get_card_fields"),
         "requests" to listOf("request_input", "await_request", "edit_request", "withdraw_request"),
         "docs" to listOf("list_docs", "read_doc", "search_docs", "create_doc", "edit_doc"),
+        "people" to listOf("list_members", "set_profile"),
         "channels" to listOf("create_project", "list_projects", "set_project_theme", "subscribe", "unsubscribe", "list_subscriptions"),
         "sessions" to listOf("register_session", "heartbeat", "end_session", "start_pairing", "await_pairing"),
         "secrets" to listOf("list_secrets", "secret_url", "create_secret_upload", "request_secret", "request_secret_access"),

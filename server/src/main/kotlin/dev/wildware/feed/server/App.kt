@@ -11,6 +11,7 @@ import dev.wildware.feed.server.domain.Reads
 import dev.wildware.feed.server.mcp.registerEmbedAppTools
 import dev.wildware.feed.server.mcp.registerFeedTools
 import dev.wildware.feed.server.mcp.registerDocTools
+import dev.wildware.feed.server.mcp.registerMemberTools
 import dev.wildware.feed.server.mcp.registerRequestTools
 import dev.wildware.feed.server.mcp.registerSessionTools
 import dev.wildware.feed.server.mcp.registerMediaTools
@@ -55,6 +56,9 @@ class App(val config: Config, val db: Database, val clock: () -> Long = System::
     /** The people of the team and their invites (migration 055). */
     val people = dev.wildware.feed.server.domain.People(db, config.tokenSecret, config.adminPasswordHash, clock)
     val reads = Reads(db, clock)
+
+    /** What each person and agent says about themselves (migration 077). */
+    val profiles = dev.wildware.feed.server.domain.Profiles(db)
 
     /** The web app's bundle, served at the root, when this server has one ([Config.webDir]). */
     val web: dev.wildware.feed.server.http.WebApp? =
@@ -191,6 +195,11 @@ class App(val config: Config, val db: Database, val clock: () -> Long = System::
         perTeam = if (config.multiTeam) 1 else dev.wildware.feed.server.media.Derive.BATCH,
     )
 
+    init {
+        // A new picture gets its 256 px square at once (migration 077).
+        profiles.makeAvatar = { derive.avatar(it) }
+    }
+
     /** How long media is kept (migration 048), and the nightly removal. */
     val retention = dev.wildware.feed.server.media.Retention(db, bus, mediaPaths, clock)
 
@@ -303,6 +312,7 @@ class App(val config: Config, val db: Database, val clock: () -> Long = System::
         tools.registerSecretTools(this)
         tools.registerFeedbackTools(this)
         tools.registerBlockTools(this)
+        tools.registerMemberTools(this)
     }
 
     override fun close() {

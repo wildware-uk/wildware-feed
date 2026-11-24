@@ -497,8 +497,11 @@ class FeedApiTest : ParityTest() {
     fun `26 agents can be renamed by the owner`() = parity {
         val agent = Parity.mintAgent(uniq("rename-me"))
         val id = agent.ok("post_update", obj("project" to Fixtures.project(agent).slug, "body" to "hi"))["update"]["agent_id"].s
-        assertEquals("""{"agent":{"id":"$id","name":"Scout"}}""", owner.patch("/api/agents/$id", obj("name" to " Scout ")).bodyAsText())
-        owner.patch("/api/agents/$id", obj("name" to "x", "tokenHash" to "y")).expectError(400, "invalid_argument", "an agent patch changes name and nothing else")
+        // The Kotlin server's patch also sets the agent's role line, description and picture (migration 077), and answers with them.
+        val answer = if (Parity.kotlin) """{"agent":{"id":"$id","name":"Scout","profileRole":null,"description":null,"avatarMediaId":null}}""" else """{"agent":{"id":"$id","name":"Scout"}}"""
+        assertEquals(answer, owner.patch("/api/agents/$id", obj("name" to " Scout ")).bodyAsText())
+        val refusal = if (Parity.kotlin) "an agent patch changes name, profileRole, description and avatarMediaId, and nothing else" else "an agent patch changes name and nothing else"
+        owner.patch("/api/agents/$id", obj("name" to "x", "tokenHash" to "y")).expectError(400, "invalid_argument", refusal)
     }
 
     @Test

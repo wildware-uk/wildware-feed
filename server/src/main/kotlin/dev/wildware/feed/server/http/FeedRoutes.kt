@@ -13,6 +13,8 @@ import dev.wildware.feed.server.domain.Subscriptions
 import dev.wildware.feed.server.domain.feed
 import dev.wildware.feed.server.domain.agentMembers
 import dev.wildware.feed.server.domain.invalid
+import dev.wildware.feed.server.domain.notFound
+import dev.wildware.feed.server.domain.Profiles
 import dev.wildware.feed.server.domain.jsBoolean
 import dev.wildware.feed.server.domain.jsString
 import dev.wildware.feed.server.domain.jsTrim
@@ -567,6 +569,9 @@ fun Route.feedRoutes(app: App) {
                         put("createdAt", Wire.isoOf(a.createdAt))
                         put("lastSeenAt", a.lastSeenAt?.let { JsonPrimitive(Wire.isoOf(it)) } ?: JsonNull)
                         put("revokedAt", a.revokedAt?.let { JsonPrimitive(Wire.isoOf(it)) } ?: JsonNull)
+                        put("profileRole", a.profileRole)
+                        put("description", a.description)
+                        put("avatarMediaId", a.avatarMediaId)
                     }
                 }))
             })
@@ -588,10 +593,31 @@ fun Route.feedRoutes(app: App) {
         },
         HttpMethod.Patch to {
             val body = call.jsonObjectBody()
-            if (body.keys.toList() != listOf("name")) throw invalid("an agent patch changes name and nothing else")
-            val agent = app.agents.rename(param("id"), text(body["name"], "name"))
-            app.bus.publish("agent.renamed", buildJsonObject { put("agentId", agent.id); put("name", agent.name) })
-            call.respondOwner(200, buildJsonObject { put("agent", buildJsonObject { put("id", agent.id); put("name", agent.name) }) })
+            val unknown = body.keys - setOf("name", "profileRole", "description", "avatarMediaId")
+            if (body.isEmpty() || unknown.isNotEmpty()) throw invalid("an agent patch changes name, profileRole, description and avatarMediaId, and nothing else")
+            // Owners and admins say what an agent does (migration 077), as the agent can itself with set_profile.
+            val profile = profileChange(body)
+            val id = param("id")
+            val setter = Profiles.Setter.ForAgent(id)
+            if (!profile.empty) app.profiles.check(profile, setter)
+            if ("name" in body) {
+                val renamed = app.agents.rename(id, text(body["name"], "name"))
+                app.bus.publish("agent.renamed", buildJsonObject { put("agentId", renamed.id); put("name", renamed.name) })
+            }
+            if (!profile.empty) {
+                app.profiles.setAgent(id, profile, setter)
+                app.bus.publish("agent.profile", buildJsonObject { put("agentId", id) })
+            }
+            val agent = app.agents.find(id) ?: throw notFound("no such agent: $id")
+            call.respondOwner(200, buildJsonObject {
+                put("agent", buildJsonObject {
+                    put("id", agent.id)
+                    put("name", agent.name)
+                    put("profileRole", agent.profileRole)
+                    put("description", agent.description)
+                    put("avatarMediaId", agent.avatarMediaId)
+                })
+            })
         },
     )
 }

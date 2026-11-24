@@ -530,5 +530,12 @@
   "file": "076-channels-keep-docs.sql",
   "rebuildsTables": false,
   "checksum": "9ee15510b34a690151a81ff06f2d440bbade7b413dd3392fa871be5322fcbe15"
+ },
+ {
+  "version": 77,
+  "name": "members-describe-themselves",
+  "file": "077-members-describe-themselves.sql",
+  "rebuildsTables": false,
+  "checksum": "8fdadc4c12efc0a3ee38d67166e9949bffb2791ab05256e08a5858f2059bf13d"
  }
 ]

@@ -22,7 +22,8 @@ import kotlinx.serialization.json.putJsonArray
  * once a night, older media loses its files and is marked removed. Its card keeps a note that it
  * was removed, and after how many days.
  *
- * Kept whatever its age: media on a pinned card, on a card with an open request, and project logos.
+ * Kept whatever its age: media on a pinned card, on a card with an open request, project logos,
+ * and everyone's picture (migration 077).
  * A removal deletes the files first and marks the row after, in one transaction with its
  * derivatives, so a run cut short by a restart is simply finished by the next one.
  */
@@ -123,6 +124,7 @@ class Retention(
                               AND ((m.update_id IS NOT NULL AND a.update_id = m.update_id)
                                 OR (m.message_id IS NOT NULL AND a.message_id = m.message_id)))
               AND m.id NOT IN (${logoIds()})
+              AND m.id NOT IN (${dev.wildware.feed.server.domain.Profiles.AVATAR_IDS})
             ORDER BY m.seq LIMIT $BATCH""",
         cutoff, *kinds.toTypedArray(),
     ) { it.getString(1) }

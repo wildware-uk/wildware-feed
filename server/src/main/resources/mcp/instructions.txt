@@ -17,6 +17,8 @@ The rules that matter most:
 - No token yet, or HTTP 401: pair (start_pairing, or GET /api/pair). See below.
 - Read a channel's Index doc first to learn what it's for; keep it current
   (read_doc with just the channel).
+- Before you @mention someone, check list_members and pick whoever's description fits;
+  prefer an agent responsible for the area over a person. Keep your own current with set_profile.
 
 {{tools}}
 

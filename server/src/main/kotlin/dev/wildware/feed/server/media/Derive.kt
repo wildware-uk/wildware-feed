@@ -209,6 +209,47 @@ class Derive(
         ready(id, measured.width, measured.height, measured.durationMs)
     }
 
+    /**
+     * A profile picture (migration 077): a 256 px square WebP, cropped from the middle, kept as a
+     * `thumb` of width [AVATAR_SIZE] and served as `/media/<id>/avatar`. False when it can't be made
+     * (no ffmpeg, or a picture it can't read): the avatar is then served from the original.
+     */
+    fun avatar(id: String): Boolean {
+        val media = db.one("SELECT id, kind, mime, sha256, status FROM media WHERE team_id = :team AND id = ?", id) {
+            Row(it.getString(1), it.getString(2), it.getString(3), it.getString(4), it.getString(5))
+        } ?: return false
+        if (media.kind != "image" || media.sha256.isEmpty() || !tools.available) return false
+        val name = "thumb-$AVATAR_SIZE.webp"
+        val made = runCatching {
+            withFiles(media) { source, work ->
+                val head = Files.newInputStream(source).use { it.readNBytes(256 * 1024) }
+                val probe = tools.probe(source)
+                val w = probe.width ?: throw IllegalStateException("Input file contains unsupported image format")
+                val h = probe.height ?: throw IllegalStateException("Input file contains unsupported image format")
+                if (w.toLong() * h.toLong() > MAX_PIXELS) throw IllegalStateException("the picture is too large: at most $MAX_PIXELS pixels")
+                val square = "scale=$AVATAR_SIZE:$AVATAR_SIZE:force_original_aspect_ratio=increase:flags=lanczos,crop=$AVATAR_SIZE:$AVATAR_SIZE"
+                val filters = listOfNotNull(Orientation.filter(Orientation.of(head)), square).joinToString(",")
+                val target = work.resolve(name)
+                tools.ffmpeg(
+                    listOf("-y", "-noautorotate", "-i", source.toString(), "-frames:v", "1", "-vf", filters, "-c:v", "libwebp", "-quality", "80", "-f", "webp", target.toString()),
+                )
+                if (!Files.isRegularFile(target) || Files.size(target) == 0L) throw IllegalStateException("ffmpeg produced no avatar from this image")
+                Measured(listOf(Produced("thumb", AVATAR_SIZE, AVATAR_SIZE, name, Files.size(target))), null, null, null)
+            }
+        }.getOrElse {
+            System.err.println("avatar $id failed: ${reason(it as? Exception ?: RuntimeException(it))}")
+            return false
+        }
+        for (f in made.files) {
+            db.update(
+                "INSERT INTO derivatives (team_id, id, media_id, kind, path, bytes, width, height) VALUES (:team, ?, ?, ?, ?, ?, ?, ?) " +
+                    "ON CONFLICT (media_id, kind, coalesce(width, -1)) DO UPDATE SET path = excluded.path, bytes = excluded.bytes, height = excluded.height",
+                Ulid.next(clock()), id, f.kind, paths.relative(id, f.name), f.bytes, f.width, f.height,
+            )
+        }
+        return true
+    }
+
     private fun ready(id: String, width: Int?, height: Int?, durationMs: Long?) {
         val payload = db.one(
             "UPDATE media SET status = 'ready', width = coalesce(?, width), height = coalesce(?, height), duration_ms = coalesce(?, duration_ms) " +
@@ -334,6 +375,9 @@ class Derive(
 
     companion object {
         val THUMB_WIDTHS = listOf(640, 1600)
+
+        /** A profile picture's side, in pixels (migration 077). */
+        const val AVATAR_SIZE = 256
 
         /** The most pixels a picture (or a video frame) may have: about 50 million, 8K is 33 million. */
         const val MAX_PIXELS = 50_000_000L

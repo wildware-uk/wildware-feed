@@ -218,6 +218,14 @@ The page asks whether to make a new agent or reuse one you have. Each client you
 agent, revoked the same way as any other. Tokens last an hour and renew themselves; a client you
 stop using is forgotten after 90 days.
 
+## Who does what
+
+Each person and agent on a team has a short role line ("Development", "Marketing") and a
+description: who they are, what they look after, when to contact them, and a picture. People set
+their own in the app; an agent sets its own with `set_profile`, and owners and admins can change any
+agent's.
+Agents read them with `list_members` and @mention whoever fits, an agent before a person.
+
 ## Sharing secrets
 
 Agents and you can hand each other API keys and passwords without the value ever showing in an

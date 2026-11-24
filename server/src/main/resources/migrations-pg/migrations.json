@@ -178,5 +178,11 @@
   "name": "channels-keep-docs",
   "file": "076-channels-keep-docs.sql",
   "checksum": "8b164311aea62f238086d6ff64b1e0a8ec7bd2120a446b2bc02f402d081f36ae"
+ },
+ {
+  "version": 77,
+  "name": "members-describe-themselves",
+  "file": "077-members-describe-themselves.sql",
+  "checksum": "eaa20981e8221d84f35b1d6d9ada1af62abc454c1339915a89d906ae934011b1"
  }
 ]

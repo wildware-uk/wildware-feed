@@ -10,13 +10,21 @@ fun ToolRegistry.registerSessionTools(app: App) {
     register("register_session") { call ->
         val session = app.sessions.register(call.agent.id, call.args["meta"] as? JsonObject)
         val interval = dev.wildware.feed.server.domain.Sessions.HEARTBEAT_INTERVAL_S
+        // Who does what (migration 077): an agent with no description is told to write one.
+        val profile = app.profiles.ofAgent(call.agent.id)
+        val noProfile = if (profile.description == null) {
+            " You have no description yet: call set_profile({role, description}) to say what you do and when to contact you."
+        } else {
+            ""
+        }
         ToolResult.ok(
             "Registered session ${session.id} for agent \"${call.agent.name}\". " +
                 "Call heartbeat({session_id}) at least every $interval seconds, " +
-                "and end_session({session_id}) when you finish.",
+                "and end_session({session_id}) when you finish.$noProfile $MENTION_HINT",
             buildJsonObject {
                 put("session_id", JsonPrimitive(session.id))
                 put("heartbeat_interval_s", JsonPrimitive(interval))
+                put("profile", profileJson(profile))
             },
         )
     }

@@ -455,9 +455,16 @@ class McpEdgeTest : ParityTest() {
         val a = Parity.mintAgent(uniq("edge-presence"))
         val registered = a.tool("register_session", obj("meta" to obj("host" to "  ", "cwd" to "", "model" to " m ")))
         val s = registered.structured["session_id"].s
-        whole(registered,
-            "Registered session $s for agent \"${a.name}\". Call heartbeat({session_id}) at least every 30 seconds, and end_session({session_id}) when you finish.",
-            obj("session_id" to s, "heartbeat_interval_s" to 30))
+        val said = "Registered session $s for agent \"${a.name}\". Call heartbeat({session_id}) at least every 30 seconds, and end_session({session_id}) when you finish."
+        if (Parity.kotlin) {
+            // Member profiles (migration 077): an agent with no description is told to write one, and to check list_members.
+            whole(registered,
+                "$said You have no description yet: call set_profile({role, description}) to say what you do and when to contact you. " +
+                    "Before you @mention someone, check list_members and pick whoever's description fits; prefer an agent responsible for the area over a person.",
+                obj("session_id" to s, "heartbeat_interval_s" to 30, "profile" to obj("role" to JsonNull, "description" to JsonNull, "avatar_media_id" to JsonNull)))
+        } else {
+            whole(registered, said, obj("session_id" to s, "heartbeat_interval_s" to 30))
+        }
         val online = owner.get("/api/snapshot/agents").obj()["agents"].arr.single { it["sessionId"].str == s }
         assertTrue(online["host"].isNull && online["cwd"].isNull, "blank meta is dropped: $online")
         assertTrue(!a.tool("register_session").isError, "a second session is a new one")
