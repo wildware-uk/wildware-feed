@@ -165,6 +165,8 @@ sealed interface FeedEvent {
     data class ChooseStatus(val targetId: String, val current: WorkStatus?) : FeedEvent
     /** Set a card's work state, or null for "Not work". */
     data class SetStatus(val targetId: String, val status: WorkStatus?) : FeedEvent
+    /** Something done in the Docs tab (server migration 076). */
+    data class Docs(val action: DocsAction) : FeedEvent
     /** The board is on screen for [scope], or (null) put away: the dashboard reads it while it shows. */
     data class ShowBoard(val scope: dev.wildware.agents.BoardScope?) : FeedEvent
     /** Move a card on the board to [status]'s column: the same work-state change as [SetStatus]. */
@@ -563,6 +565,7 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
     fun toggleBoard() {
         menu = null
         boardMenu = null
+        docsOpen = false
         boardOpen = !boardOpen
     }
 
@@ -570,8 +573,45 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
     fun showBoard(groupId: String? = null) {
         menu = null
         boardGroup = groupId
+        docsOpen = false
         boardOpen = true
     }
+
+    /** The channel's Docs tab in the main pane instead of the feed (server migration 076). */
+    var docsOpen by mutableStateOf(false)
+
+    /** Shows the Docs tab, or (false) goes back to the feed. */
+    fun showDocs(on: Boolean = true) {
+        menu = null
+        boardMenu = null
+        boardOpen = false
+        docsOpen = on && state.current.slug != null
+    }
+
+    /**
+     * A [[link]] was tapped, in a doc or a message: opens the doc titled [title] in [channel] (the
+     * open channel when null) in the Docs tab, making it when nobody has written it yet.
+     */
+    fun openDocLink(channel: String?, title: String) {
+        val slug = channel ?: state.current.slug
+        if (slug == null) {
+            toast = "Open the channel to follow a link to “$title”."
+            return
+        }
+        threadId = null
+        phoneThreadOpen = false
+        aloneId = null
+        // The Docs tab opens it once it shows that channel.
+        pendingDocLink = slug to title
+        if (state.current.slug != slug) emit(FeedEvent.SelectProject(slug))
+        menu = null
+        boardMenu = null
+        boardOpen = false
+        docsOpen = true
+    }
+
+    /** A [[link]] waiting for the Docs tab to show its channel: (channel, title). */
+    var pendingDocLink by mutableStateOf<Pair<String, String>?>(null)
 
     /**
      * Opens a board card's thread on its own ([openAlone]): read by itself with its thread, without
@@ -1190,6 +1230,8 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
                 cursor = null
                 boardGroup = null
                 boardFocus = null
+                // Docs are a channel's: on All channels the feed comes back.
+                if (event.slug == null) docsOpen = false
                 askedProject = AskedProject(event.slug)
             }
             else -> Unit

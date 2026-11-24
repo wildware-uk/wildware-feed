@@ -92,21 +92,37 @@ import kotlin.math.roundToInt
  * setting takes them off by age too.
  */
 
-/** "Feed | Board", at the top of the main pane. */
+/** "Feed | Board | Docs", at the top of the main pane. Docs are a channel's, so only on a channel. */
 @Composable
 fun ViewToggle(ui: FeedUi, modifier: Modifier = Modifier) {
     val colors = AgentTheme.colors
     val shape = AgentTheme.shapes.small
+    val views = buildList {
+        add("Feed")
+        add("Board")
+        if (ui.state.current.slug != null) add("Docs")
+    }
+    val now = when {
+        ui.docsOpen -> "Docs"
+        ui.boardOpen -> "Board"
+        else -> "Feed"
+    }
     Row(
         modifier.clip(shape).border(1.dp, colors.border, shape).semantics { paneTitle = "View" },
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        for ((label, board) in listOf("Feed" to false, "Board" to true)) {
-            val chosen = ui.boardOpen == board
+        for (label in views) {
+            val chosen = now == label
             Box(
                 Modifier
                     .semantics { selected = chosen }
-                    .pressable(label, shape, role = Role.Tab, labelIsShown = true) { if (!chosen) ui.toggleBoard() }
+                    .pressable(label, shape, role = Role.Tab, labelIsShown = true) {
+                        if (!chosen) when (label) {
+                            "Docs" -> ui.showDocs()
+                            "Board" -> ui.showBoard(ui.boardGroup)
+                            else -> if (ui.boardOpen) ui.toggleBoard() else ui.showDocs(false)
+                        }
+                    }
                     .background(if (chosen) colors.text.copy(alpha = if (colors.isDark) 0.12f else 0.08f) else Color.Transparent)
                     .padding(horizontal = 14.dp, vertical = 6.dp),
                 contentAlignment = Alignment.Center,

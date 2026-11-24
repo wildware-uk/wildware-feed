@@ -117,6 +117,9 @@ class DashboardSession(
     /** The board, read while it is on screen and again whenever something on it may have moved. */
     private val board = BoardWatch(client, actions, scope, dashboard.boardChanges, clock)
 
+    /** The Docs tab, read while it is on screen and again whenever one of its docs changes. */
+    private val docs = DocsWatch(client, scope, dashboard.docChanges, mapper::relativeLabel)
+
     /** The Assign picker while it is open; a save reads the board again. */
     private val assign = AssignWatch(client, scope) { board.reread() }
 
@@ -355,7 +358,7 @@ class DashboardSession(
     }.let { feed ->
         combine(feed, board.state, assign.state, mutablePlan, mutableUpgrade) { shown, onBoard, assigning, plan, upgrade ->
             shown.copy(board = onBoard, assign = assigning, plan = plan, upgrade = upgrade)
-        }
+        }.combine(docs.state) { shown, onDocs -> shown.copy(docs = onDocs) }
     }
         .stateIn(scope, SharingStarted.Eagerly, mapper.map(feed.state.value, emptyList(), emptyList(), emptyList(), null))
 
@@ -1078,6 +1081,7 @@ class DashboardSession(
             is FeedEvent.Tag -> cardRef(event.targetId)?.let { actions.tag(it, event.tag, event.on, event.create) }
             is FeedEvent.SetStatus -> cardRef(event.targetId)?.let { actions.setStatus(it, event.status?.wire) }
             is FeedEvent.ShowBoard -> board.show(event.scope)
+            is FeedEvent.Docs -> docs.handle(event.action)
             is FeedEvent.BoardMove -> board.move(event.kind, event.id, event.status)
             is FeedEvent.BoardRemove -> board.remove(event.kind, event.id, event.removed)
             is FeedEvent.BoardShowRemoved -> board.showRemoved(event.show)

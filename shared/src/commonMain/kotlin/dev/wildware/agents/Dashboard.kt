@@ -590,11 +590,20 @@ class Dashboard internal constructor(
      */
     val boardChanges: SharedFlow<Unit> = mutableBoardChanges.asSharedFlow()
 
+    private val mutableDocChanges = MutableSharedFlow<DocChange>(extraBufferCapacity = 16, onBufferOverflow = kotlinx.coroutines.channels.BufferOverflow.DROP_OLDEST)
+
+    /**
+     * A doc was created, saved, restored or deleted (server migration 076), or the stream started
+     * over (a [DocChange] with change "resync" and no doc), so open docs read themselves again.
+     */
+    val docChanges: SharedFlow<DocChange> = mutableDocChanges.asSharedFlow()
+
     private fun readers(): List<FeedReader> = listOf(requests, presence, bell, joining, follows) + feeds.values.flatMap { it.readers }
 
     private suspend fun receive(event: StreamEvent) {
         if (event.type == ClearedEvent) clearedTags(event)?.let { mutableCleared.tryEmit(it) }
         if (event.type in BoardEvents) mutableBoardChanges.tryEmit(Unit)
+        docChange(event)?.let { mutableDocChanges.tryEmit(it) }
         requests.receive(event)
         presence.receive(event)
         bell.receive(event)
@@ -1204,6 +1213,16 @@ internal fun lastActivityAt(createdAt: Long, replies: List<MessageView>, statusA
     maxOf(createdAt, replies.maxOfOrNull { it.createdAt } ?: createdAt, statusAt ?: createdAt)
 
 /** The live events that can change what the board shows. */
+/** The doc change [event] tells of, or a resync's; null for any other event. */
+internal fun docChange(event: StreamEvent): DocChange? {
+    if (event.type == StreamEvent.Resync) return DocChange("", "", 0, "resync", "")
+    if (event.type != "doc.updated") return null
+    val p = event.payload ?: return null
+    fun text(key: String) = (p[key] as? kotlinx.serialization.json.JsonPrimitive)?.takeIf { it.isString }?.content ?: ""
+    val version = (p["version"] as? kotlinx.serialization.json.JsonPrimitive)?.content?.toLongOrNull() ?: 0
+    return DocChange(text("projectId"), text("docId"), version, text("change"), text("by"))
+}
+
 internal val BoardEvents = setOf(
     "update.created", "update.updated", "update.deleted", "message.created", "message.updated", "message.deleted",
     "request.created", "request.updated", "request.answered", "ack.updated", "board.settings", "project.updated", AccessUpdated, StreamEvent.Resync,

@@ -700,6 +700,8 @@ data class FeedState(
     val board: BoardState = BoardState(),
     /** The Assign picker, while open (server migration 074). */
     val assign: AssignState? = null,
+    /** The Docs tab, while it is on screen: the channel's linked docs (server migration 076). */
+    val docs: DocsState = DocsState(),
     /** The hosted team's plan, read when Settings opens. */
     val plan: PlanState = PlanState(),
     /** A free-plan refusal still to answer: its words and an "Upgrade" link, until put away. */

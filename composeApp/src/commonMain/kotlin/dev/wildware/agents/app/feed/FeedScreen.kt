@@ -236,7 +236,10 @@ private fun FeedScreenBody(
         val phone = maxWidth < PhoneBreakpoint
         ui.isPhone = phone
         val widthPx = constraints.maxWidth.toFloat()
-        CompositionLocalProvider(LocalFeedUi provides ui, LocalIsPhone provides phone, LocalPreview provides preview) {
+        // A [[Doc name]] link, in a doc or a message, opens in the Docs tab; other links as before.
+        val uris = androidx.compose.ui.platform.LocalUriHandler.current
+        val docLinks = remember(ui, uris) { DocLinkUriHandler(uris) { channel, title -> ui.openDocLink(channel, title) } }
+        CompositionLocalProvider(LocalFeedUi provides ui, LocalIsPhone provides phone, LocalPreview provides preview, androidx.compose.ui.platform.LocalUriHandler provides docLinks) {
             if (phone) PhoneFeed(ui, safeArea, startAt, widthPx) else DesktopFeed(ui, showRail = maxWidth >= RailBreakpoint, startAt)
             val motion = AgentTheme.motion
             // Pictures open by fading and growing into place; search drops in from above.
@@ -340,6 +343,7 @@ private fun DesktopColumns(ui: FeedUi, showRail: Boolean, startAt: String?) {
         // Red, above the feed, until it is answered, read or put away: a page made visible.
         CriticalBanner(ui)
         // The board takes the feed's place; the feed keeps where it was scrolled to for coming back.
+        if (ui.docsOpen && !ui.boardOpen) DocsPane(ui, Modifier.weight(1f).fillMaxWidth()) else
         if (ui.boardOpen) BoardPane(ui, Modifier.weight(1f).fillMaxWidth()) else Box(Modifier.weight(1f).fillMaxWidth()) {
             LazyColumn(
                 Modifier.fillMaxSize().closesComposer(ui).listActions(refresh, toTop, null),
@@ -452,7 +456,11 @@ private fun PhoneFeed(ui: FeedUi, safeArea: SafeArea, startAt: String?, widthPx:
         LaunchedEffect(ui) {
             snapshotFlow { ui.phoneThreadOpen }.collect { open -> if (!open && ui.aloneId != null) ui.closeAlone() }
         }
-        if (ui.boardOpen) {
+        if (ui.docsOpen && !ui.boardOpen) {
+            DocsPane(ui, Modifier.fillMaxSize().safePadding(safeArea, top = 0.dp, bottom = 0.dp), phone = true) {
+                PhoneTopBar(state, onProjects = openDrawer, onTapBar = {}, onSearch = { ui.commandOpen = true }, onBell = { ui.bellOpen = !ui.bellOpen }, onAccount = { ui.alertsOpen = true })
+            }
+        } else if (ui.boardOpen) {
             BoardPane(ui, Modifier.fillMaxSize().safePadding(safeArea, top = 0.dp, bottom = 0.dp), phone = true) {
                 PhoneTopBar(state, onProjects = openDrawer, onTapBar = {}, onSearch = { ui.commandOpen = true }, onBell = { ui.bellOpen = !ui.bellOpen }, onAccount = { ui.alertsOpen = true })
             }
@@ -521,7 +529,7 @@ private fun PhoneFeed(ui: FeedUi, safeArea: SafeArea, startAt: String?, widthPx:
                 )
             }
         }
-        ui.phoneThread?.let { PhoneThreadScreen(ui, it, widthPx, safeArea) }
+        ui.phoneThread?.let { CompositionLocalProvider(LocalDocChannel provides it.channelSlug) { PhoneThreadScreen(ui, it, widthPx, safeArea) } }
         ProjectsDrawer(ui, ui.drawer, drawerWidthPx, safeArea)
         // The menu's sheet rises from the bottom over a fading scrim, and sinks back when closed.
         val motion = AgentTheme.motion

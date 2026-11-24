@@ -1223,9 +1223,20 @@ private fun List<Attachment>.saves(): List<FileAttachment> = mapNotNull { it.sav
 
 @Composable
 fun FeedItemView(item: FeedItem, selected: Boolean, density: Density, modifier: Modifier = Modifier, inThread: Boolean = false) {
-    when (item) {
-        is FeedItem.Update -> UpdateCard(item, modifier, selected = selected, density = density, inThread = inThread)
-        is FeedItem.Question -> QuestionCard(item, modifier, density = density, showDiscussion = !inThread)
-        is FeedItem.Post -> PostCard(item, modifier, density = density, inThread = inThread)
+    // A [[Doc name]] in the card or its replies links to its own channel's doc.
+    androidx.compose.runtime.CompositionLocalProvider(LocalDocChannel provides item.channelSlug) {
+        when (item) {
+            is FeedItem.Update -> UpdateCard(item, modifier, selected = selected, density = density, inThread = inThread)
+            is FeedItem.Question -> QuestionCard(item, modifier, density = density, showDiscussion = !inThread)
+            is FeedItem.Post -> PostCard(item, modifier, density = density, inThread = inThread)
+        }
     }
 }
+
+/** The slug of the channel [this] card is in; null when it is in none. */
+internal val FeedItem.channelSlug: String?
+    get() = when (this) {
+        is FeedItem.Update -> project.slug
+        is FeedItem.Question -> project.slug
+        is FeedItem.Post -> project.slug
+    }

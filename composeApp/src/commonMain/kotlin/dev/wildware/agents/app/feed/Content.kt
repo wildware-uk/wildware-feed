@@ -50,6 +50,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withLink
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.layout.layout
@@ -125,7 +126,9 @@ val ProseMaxWidth = 820.dp
 fun MarkdownBody(markdown: String, modifier: Modifier = Modifier, color: Color = AgentTheme.colors.text) {
     val colors = AgentTheme.colors
     val type = AgentTheme.type
-    val state = remember(markdown) { MarkdownCache.get(markdown) }
+    // [[Doc name]] links (server migration 076) become links the app opens in the Docs tab.
+    val channel = LocalDocChannel.current
+    val state = remember(markdown, channel) { MarkdownCache.get(dev.wildware.agents.DocLinks.toMarkdownLinks(markdown, channel)) }
     val code = colors.code
     val inlineCodeBackground = colors.text.copy(alpha = if (colors.isDark) 0.10f else 0.06f)
     val inlineCode = type.code.copy(fontSize = type.body.fontSize * 0.88f, color = colors.text)
@@ -173,10 +176,55 @@ fun MarkdownBody(markdown: String, modifier: Modifier = Modifier, color: Color =
     }
 }
 
-/** Plain text, such as the owner's own post, selectable the same way a markdown body is. */
+/** Plain text, such as the owner's own post, selectable the same way a markdown body is. Its [[links]] to docs are links. */
 @Composable
 fun PlainBody(text: String, modifier: Modifier = Modifier, color: Color = AgentTheme.colors.text) {
-    SelectableText(modifier) { Text(text, color = color, style = AgentTheme.type.body) }
+    val channel = LocalDocChannel.current
+    val accent = AgentTheme.colors.accent
+    val linked = remember(text, channel, accent) { docLinked(text, channel, accent) }
+    SelectableText(modifier) {
+        if (linked == null) Text(text, color = color, style = AgentTheme.type.body)
+        else Text(linked, color = color, style = AgentTheme.type.body)
+    }
+}
+
+/**
+ * The channel a card's words are in (a slug), so a [[Doc name]] in them links to that channel's
+ * doc. Null: the channel open.
+ */
+val LocalDocChannel = androidx.compose.runtime.staticCompositionLocalOf<String?> { null }
+
+/** [text] with its [[links]] as links to docs, or null when it has none. */
+internal fun docLinked(text: String, channel: String?, accent: Color): androidx.compose.ui.text.AnnotatedString? {
+    if (!text.contains("[[")) return null
+    val pattern = Regex("""\[\[([^\[\]|\r\n]+)(?:\|([^\[\]\r\n]*))?]]""")
+    if (pattern.find(text) == null) return null
+    val style = androidx.compose.ui.text.TextLinkStyles(androidx.compose.ui.text.SpanStyle(color = accent))
+    return androidx.compose.ui.text.buildAnnotatedString {
+        var at = 0
+        for (m in pattern.findAll(text)) {
+            val title = m.groupValues[1].trim()
+            if (title.isEmpty()) continue
+            append(text.substring(at, m.range.first))
+            val shown = m.groups[2]?.value?.trim()?.takeIf { it.isNotEmpty() } ?: title
+            withLink(androidx.compose.ui.text.LinkAnnotation.Url(dev.wildware.agents.DocLinks.urlOf(title, channel), style)) { append(shown) }
+            at = m.range.last + 1
+        }
+        append(text.substring(at))
+    }
+}
+
+/**
+ * Opens [[links]] to docs in the app (the Docs tab) and hands every other address to [next].
+ */
+internal class DocLinkUriHandler(
+    private val next: androidx.compose.ui.platform.UriHandler,
+    private val openDoc: (channel: String?, title: String) -> Unit,
+) : androidx.compose.ui.platform.UriHandler {
+    override fun openUri(uri: String) {
+        val target = dev.wildware.agents.DocLinks.targetOf(uri)
+        if (target != null) openDoc(target.channel, target.title) else next.openUri(uri)
+    }
 }
 
 /** A code block with its language and a copy button above it. Long lines scroll sideways. */

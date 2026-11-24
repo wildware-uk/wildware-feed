@@ -68,6 +68,8 @@ class FakeServer {
     )
     var notifications = listOf<NotificationView>()
     /** `GET /api/board`, as the dashboard answers it (migration 070). */
+    /** Docs answers by "METHOD /path" (no query): status and body. */
+    val docAnswers: MutableMap<String, Pair<Int, String>> = Collections.synchronizedMap(mutableMapOf())
     @Volatile var board: String = """{"columns":[],"autoRemoveDays":7}"""
     /** `GET /api/cards/{kind}/{id}/assignees` (migration 074): who it is assigned to, and who could be. */
     @Volatile var assignees: String = """{"card":{"kind":"message","id":"m-post"},"assignees":[],"candidates":[""" +
@@ -161,6 +163,11 @@ class FakeServer {
         if (path == "/api/server") return ok("""{"product":"wildware-feed","version":"dev","signIn":["password"],"team":false}""")
         if (path == "/api/messages" && request.method == HttpMethod.Get && messagesDelayMs > 0) delay(messagesDelayMs)
         authorizations += request.headers[HttpHeaders.Authorization]
+        // Docs (server migration 076): whatever a test set for "METHOD /path", writes recorded too.
+        docAnswers["${request.method.value} $path"]?.let { (status, answer) ->
+            if (request.method != HttpMethod.Get) writes += "${request.method.value} $path" to request.text()
+            return ok(answer, HttpStatusCode.fromValue(status))
+        }
         if (request.method != HttpMethod.Get) {
             val body = request.text()
             writes += "${request.method.value} $path" to body
