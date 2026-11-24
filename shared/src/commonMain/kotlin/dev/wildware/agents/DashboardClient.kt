@@ -397,6 +397,30 @@ class DashboardClient(
     }
 
     /**
+     * Changes an agent's profile: its role line and its description. A null leaves that one as it
+     * is; an empty one takes it off. Owners and admins only; too long a text is refused with why.
+     */
+    @Throws(Exception::class)
+    suspend fun setAgentProfile(agentId: String, profileRole: String?, description: String?) {
+        http.patch("api/agents/${agentId.encodeURLPathPart()}") {
+            authorise()
+            jsonBody(profileBody(profileRole, description))
+        }.requireSuccess()
+    }
+
+    /**
+     * Gives an agent a picture, [mediaId] from [uploadMedia] (an image of at most 2 MB), or takes
+     * it off with null. Owners and admins only.
+     */
+    @Throws(Exception::class)
+    suspend fun setAgentAvatar(agentId: String, mediaId: String?) {
+        http.patch("api/agents/${agentId.encodeURLPathPart()}") {
+            authorise()
+            jsonBody(buildJsonObject { put("avatarMediaId", mediaId) })
+        }.requireSuccess()
+    }
+
+    /**
      * The MCP clients signed in as an agent over OAuth (a dashboard from before OAuth has none),
      * newest first.
      */
@@ -866,6 +890,23 @@ class DashboardClient(
         jsonBody(buildJsonObject { put("name", name) })
     }.decoded<PersonBody>().person
 
+    /**
+     * Changes your own profile: your role line and your description. A null leaves that one as it
+     * is; an empty one takes it off. Too long a text is refused with why.
+     */
+    @Throws(Exception::class)
+    suspend fun setProfile(profileRole: String?, description: String?): Person = http.patch("api/me") {
+        authorise()
+        jsonBody(profileBody(profileRole, description))
+    }.decoded<PersonBody>().person
+
+    /** Sets your own picture, [mediaId] from [uploadMedia] (an image of at most 2 MB), or takes it off with null. */
+    @Throws(Exception::class)
+    suspend fun setAvatar(mediaId: String?): Person = http.patch("api/me") {
+        authorise()
+        jsonBody(buildJsonObject { put("avatarMediaId", mediaId) })
+    }.decoded<PersonBody>().person
+
     /** Swaps the web view's login cookie for a long-lived device key. */
     @Throws(Exception::class)
     suspend fun registerDevice(name: String, sessionCookie: String): DeviceRegistration =
@@ -1168,6 +1209,12 @@ data class AgentRecord(
     val lastSeenAt: String? = null,
     /** Set once the owner removed it. */
     val revokedAt: String? = null,
+    /** A short line on what it does, such as "Development" (migration 077). */
+    val profileRole: String? = null,
+    /** What it looks after and when to @mention it, in plain text. */
+    val description: String? = null,
+    /** Its picture: a media id, shown from `/media/{id}/avatar`. */
+    val avatarMediaId: String? = null,
 )
 
 @kotlinx.serialization.Serializable
@@ -1267,6 +1314,12 @@ data class Person(
     val lastSeenAt: String? = null,
     /** They used it within the last five minutes, as an agent counts as online. */
     val online: Boolean = false,
+    /** A short line on what they do, such as "Design" (migration 077). Not [role], their place in the team. */
+    val profileRole: String? = null,
+    /** Who they are, what they look after and when to contact them, in plain text. */
+    val description: String? = null,
+    /** Their picture: a media id, shown from `/media/{id}/avatar`. */
+    val avatarMediaId: String? = null,
 ) {
     val removed: Boolean get() = removedAt != null
 }
@@ -1298,3 +1351,13 @@ internal data class PersonBody(val person: Person)
 
 @Serializable
 internal data class InvitesBody(val invites: List<Invite> = emptyList())
+
+/** The longest role line and description the dashboard keeps (migration 077). */
+const val ProfileRoleMax = 60
+const val ProfileDescriptionMax = 500
+
+/** A profile change as `PATCH /api/me` and `PATCH /api/agents/{id}` take it: null left out, empty sent as null to clear. */
+internal fun profileBody(profileRole: String?, description: String?): JsonObject = buildJsonObject {
+    profileRole?.let { put("profileRole", it.trim().ifEmpty { null }) }
+    description?.let { put("description", it.trim().ifEmpty { null }) }
+}

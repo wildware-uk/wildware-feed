@@ -20,6 +20,7 @@ import coil3.request.crossfade
 import dev.wildware.agents.app.design.AgentTheme
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.HttpClientEngine
+import io.ktor.http.encodeURLPathPart
 import okio.Path.Companion.toPath
 
 /** Where the dashboard is and the key its media wants. Images elsewhere get no key. */
@@ -92,5 +93,33 @@ fun AttachmentImage(
         placeholder = ColorPainter(AgentTheme.colors.surfaceSunken),
         error = ColorPainter(AgentTheme.colors.surfaceSunken),
         onSuccess = onLoaded?.let { told -> { state -> told(state.painter.intrinsicSize) } },
+    )
+}
+
+/** Where a member's picture is: the dashboard's small square of it. */
+fun avatarUrl(serverUrl: String, mediaId: String): String =
+    serverUrl.trimEnd('/') + "/media/${mediaId.encodeURLPathPart()}/avatar"
+
+/** What tests find a member's picture by. */
+const val AvatarPictureTag = "avatar-picture"
+
+/**
+ * A member's picture, from the dashboard with the device key, filling its badge. Nothing shows
+ * while it loads or if it can't: the letter under it stays.
+ */
+@Composable
+internal fun AvatarPicture(mediaId: String, auth: MediaAuth, modifier: Modifier) {
+    val context = LocalPlatformContext.current
+    val request = remember(mediaId, auth) {
+        ImageRequest.Builder(context)
+            .data(avatarUrl(auth.serverUrl, mediaId))
+            .apply { auth.authorization?.let { httpHeaders(NetworkHeaders.Builder().set("Authorization", it).build()) } }
+            .build()
+    }
+    AsyncImage(
+        model = request,
+        contentDescription = null,
+        modifier = modifier,
+        contentScale = ContentScale.Crop,
     )
 }

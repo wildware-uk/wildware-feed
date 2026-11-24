@@ -43,6 +43,11 @@ data class Agent(
     val doing: String? = null,
     /** What its live session says about it; null when it is offline. */
     val details: AgentDetails? = null,
+    /** Its role line, such as "Development", and what it looks after: its profile, set by an owner or admin. */
+    val profileRole: String? = null,
+    val description: String? = null,
+    /** Its picture's media id; null shows its letter. */
+    val avatarMediaId: String? = null,
 )
 
 /** An online agent's session, as the website's rail lists it. */
@@ -135,14 +140,18 @@ data class LogoChoice(val mediaId: String, val image: Attachment)
 sealed interface Author {
     val name: String
 
+    /** Their picture's media id; null shows their letter. */
+    val avatarMediaId: String?
+
     data class AgentAuthor(val agent: Agent) : Author {
         override val name: String get() = agent.name
+        override val avatarMediaId: String? get() = agent.avatarMediaId
     }
 
-    data class Owner(override val name: String) : Author
+    data class Owner(override val name: String, override val avatarMediaId: String? = null) : Author
 
     /** Another person on the team (migration 055): [handle] is how an @mention names them. */
-    data class Person(override val name: String, val handle: String, val hue: Int) : Author
+    data class Person(override val name: String, val handle: String, val hue: Int, override val avatarMediaId: String? = null) : Author
 }
 
 @Immutable
@@ -953,6 +962,8 @@ data class Mentionable(
     val hue: Int = 0,
     /** A short line beside the name, as for a group. */
     val hint: String? = null,
+    /** An agent's picture, shown in place of its dot. */
+    val avatarMediaId: String? = null,
 )
 
 /**
@@ -1017,6 +1028,11 @@ data class PersonRow(
     val founder: Boolean = false,
     /** Used the app in the last five minutes. */
     val online: Boolean = false,
+    /** Their role line, such as "Design" (not [role], their place in the team), and who they are. */
+    val profileRole: String? = null,
+    val description: String? = null,
+    /** Their picture's media id; null shows their letter. */
+    val avatarMediaId: String? = null,
 )
 
 @Immutable

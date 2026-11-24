@@ -16,6 +16,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.printToString
 import androidx.compose.ui.test.v2.runComposeUiTest
@@ -122,7 +123,8 @@ class DemoTest {
         // The top bar scrolls with the feed: back up to it, then open the drawer.
         onAllNodes(hasScrollToNodeAction()).onFirst().performScrollToNode(hasContentDescription("Projects", substring = true))
         waitFor(hasContentDescription("Projects", substring = true)).performClick()
-        waitFor(hasText("Leave demo")).performClick()
+        // At the drawer's foot, under the members list, which can run past a phone's screen.
+        waitFor(hasText("Leave demo")).performScrollTo().performClick()
         waitFor(hasText("Try a demo"))
         assertNull(sessions.load())
 

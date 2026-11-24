@@ -102,6 +102,12 @@ sealed interface FeedEvent {
     /** Rename agent [agentId] everywhere it shows. [done] hears null once renamed, or why not. */
     data class RenameAgent(val agentId: String, val name: String, val done: (String?) -> Unit = {}) : FeedEvent
 
+    /** Set agent [agentId]'s role line and description; empty takes one off. [done] hears null once saved, or why not. */
+    data class SetAgentProfile(val agentId: String, val profileRole: String, val description: String, val done: (String?) -> Unit = {}) : FeedEvent
+
+    /** Give agent [agentId] the picture [picture] (the picked file, made square and small before it goes), or take it off with null. */
+    class SetAgentAvatar(val agentId: String, val picture: ByteArray?, val done: (String?) -> Unit = {}) : FeedEvent
+
     /** Make picture [mediaId] project [slug]'s logo, or take the logo off with null. */
     data class SetProjectLogo(val slug: String, val mediaId: String?) : FeedEvent
 
@@ -271,6 +277,10 @@ sealed interface FeedEvent {
     data class RemovePerson(val personId: String) : FeedEvent
     /** Change your own name, as the team sees it. */
     data class Rename(val name: String) : FeedEvent
+    /** Set your own role line and description; empty takes one off. [done] hears null once saved, or why not. */
+    data class SetMyProfile(val profileRole: String, val description: String, val done: (String?) -> Unit = {}) : FeedEvent
+    /** Set your own picture to [picture] (the picked file, made square and small before it goes), or take it off with null. */
+    class SetMyAvatar(val picture: ByteArray?, val done: (String?) -> Unit = {}) : FeedEvent
     /** Delete your own account, everywhere on this dashboard; [password] when the account has one. The sheet has already asked. */
     data class DeleteAccount(val password: String?) : FeedEvent
     /** Remove an agent: revoke it, so it and every app signed in as it stop working. The dialog has already asked. */
@@ -456,6 +466,8 @@ data class ScreenPreview(
     val connectOpen: Boolean = false,
     /** An agent's dialog, open, by agent id. */
     val agentOpen: String? = null,
+    /** A person's profile, open, by their id. */
+    val personOpen: String? = null,
     /** The Secrets sheet, open, on this secret (null: the list) or adding one. */
     val secretsOpen: Boolean = false,
     val secretOpen: String? = null,
@@ -509,6 +521,9 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
 
     /** The agent whose card is open, to read about it and rename it: its id. */
     var agentOpen by mutableStateOf(preview.agentOpen)
+
+    /** The person whose profile is open: their id. */
+    var personOpen by mutableStateOf(preview.personOpen)
 
     /** The new-project or project-settings dialog, while it is open. */
     var projectDialog by mutableStateOf<ProjectDialog?>(null)

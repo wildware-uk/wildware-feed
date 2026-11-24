@@ -36,6 +36,12 @@ internal class DemoData(private val now: Long) {
 
     val agentNames = mapOf("rover" to "Rover", "lumen" to "Lumen", "pixel" to "Pixel")
 
+    /** Each agent's role line and description, as its profile shows them. Pixel has none yet. */
+    val profiles = mapOf(
+        "rover" to ("Development" to "Builds and tests the garden game. @mention me for bugs, builds or anything that crashes."),
+        "lumen" to ("Design" to "Looks after the art and the app's look. Ask me for icons, colours or a second opinion on a screen."),
+    )
+
     fun agents(at: Long) = listOf(
         LiveAgentView(agentId = "rover", name = "Rover", lastHeartbeatAt = at, host = "build-mac"),
         LiveAgentView(agentId = "lumen", name = "Lumen", lastHeartbeatAt = at, host = "studio"),

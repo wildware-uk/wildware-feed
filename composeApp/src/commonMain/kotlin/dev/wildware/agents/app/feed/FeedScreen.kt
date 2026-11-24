@@ -266,6 +266,7 @@ private fun FeedScreenBody(
             if (ui.retentionOpen) RetentionSettingsSheet(ui, if (phone) safeArea else SafeArea())
             ui.projectDialog?.let { ProjectDialogView(ui, it) }
             ui.agentOpen?.let { AgentDialog(ui, it) }
+            ui.personOpen?.let { PersonProfileDialog(ui, it) }
             if (ui.devicesOpen) DevicesSheet(ui, if (phone) safeArea else SafeArea())
             if (ui.secretsOpen) SecretsSheet(ui, if (phone) safeArea else SafeArea())
             if (ui.feedbackOpen) FeedbackSheet(ui, if (phone) safeArea else SafeArea())

@@ -94,6 +94,15 @@ class FakeServer {
         "a1" to ("forge" to false), "a9" to ("old-bot" to false), "a8" to ("gone-bot" to true),
     ))
 
+    /** Agents' profiles, by id: role line and description, as `GET /api/agents` lists them. PATCH /api/agents/{id} changes them. */
+    val agentProfiles: MutableMap<String, Pair<String?, String?>> = Collections.synchronizedMap(mutableMapOf())
+
+    /** Agents' pictures, by id: media ids, as `GET /api/agents` lists them. PATCH /api/agents/{id} changes them. */
+    val agentAvatars: MutableMap<String, String?> = Collections.synchronizedMap(mutableMapOf())
+
+    /** When set, `PATCH /api/me` and `PATCH /api/agents/{id}` refuse a profile with this message, as a 400. */
+    @Volatile var refuseProfile: String? = null
+
     /** Agent a1's OAuth connections, as `GET /api/agents/a1/connections` answers. */
     var connections = """{"connections":[{"id":"g1","clientName":"Cursor","redirectOrigin":"cursor:","createdAt":"2026-11-18T10:00:00Z","lastUsedAt":"2026-11-19T09:00:00Z"}]}"""
 
@@ -212,6 +221,32 @@ class FakeServer {
                 path.startsWith("/api/pairings/") && path.endsWith("/approve") -> refuseApprove?.let {
                     ok("""{"error":"$it","message":"an agent is already called \"forge\"; choose another name"}""", HttpStatusCode.Conflict)
                 } ?: ok("{}")
+                request.method == HttpMethod.Patch && path == "/api/me" -> refuseProfile?.let {
+                    ok("""{"error":"invalid_argument","message":"$it"}""", HttpStatusCode.BadRequest)
+                } ?: run {
+                    // You, as GET /api/me has you, with what was sent laid over.
+                    val sent = json.parseToJsonElement(body) as kotlinx.serialization.json.JsonObject
+                    val you = (json.parseToJsonElement(me ?: """{"person":{"id":"me","name":"Me"}}""") as kotlinx.serialization.json.JsonObject)["person"] as kotlinx.serialization.json.JsonObject
+                    val changed = kotlinx.serialization.json.JsonObject(you + sent)
+                    // The people list has the change too, as the dashboard's would.
+                    val list = (json.parseToJsonElement(people) as kotlinx.serialization.json.JsonObject)["people"] as kotlinx.serialization.json.JsonArray
+                    people = """{"people":${kotlinx.serialization.json.JsonArray(list.map { p ->
+                        val o = p as kotlinx.serialization.json.JsonObject
+                        if (o["id"] == you["id"]) kotlinx.serialization.json.JsonObject(o + sent) else o
+                    })}}"""
+                    ok("""{"person":$changed}""")
+                }
+                request.method == HttpMethod.Patch && Regex("^/api/agents/[^/]+$").matches(path) -> refuseProfile?.let {
+                    ok("""{"error":"invalid_argument","message":"$it"}""", HttpStatusCode.BadRequest)
+                } ?: run {
+                    val id = path.substringAfterLast('/')
+                    val sent = json.parseToJsonElement(body) as kotlinx.serialization.json.JsonObject
+                    fun text(key: String) = (sent[key] as? kotlinx.serialization.json.JsonPrimitive)?.takeIf { it.isString }?.content
+                    val was = agentProfiles[id] ?: (null to null)
+                    agentProfiles[id] = (if ("profileRole" in sent) text("profileRole") else was.first) to (if ("description" in sent) text("description") else was.second)
+                    if ("avatarMediaId" in sent) agentAvatars[id] = text("avatarMediaId")
+                    ok("""{"agent":{"id":"$id","name":"${agentRecords[id]?.first ?: id}"}}""")
+                }
                 request.method == HttpMethod.Delete && path == "/api/me" -> refuseDeleteAccount?.let { (code, status, message) ->
                     ok("""{"error":"$code","message":"$message"}""", HttpStatusCode.fromValue(status))
                 } ?: ok("""{"deleted":true}""")
@@ -263,7 +298,9 @@ class FakeServer {
             "/api/devices" -> ok(devices)
             "/api/agents/a1/connections" -> ok(connections)
             "/api/agents" -> ok(agentRecords.entries.joinToString(",", """{"agents":[""", "]}") { (id, v) ->
-                """{"id":"$id","name":"${v.first}","createdAt":"2026-11-01T10:00:00Z","lastSeenAt":null,"revokedAt":${if (v.second) "\"2026-11-18T10:00:00Z\"" else "null"}}"""
+                val (role, about) = agentProfiles[id] ?: (null to null)
+                """{"id":"$id","name":"${v.first}","createdAt":"2026-11-01T10:00:00Z","lastSeenAt":null,"revokedAt":${if (v.second) "\"2026-11-18T10:00:00Z\"" else "null"},""" +
+                    """"profileRole":${kotlinx.serialization.json.JsonPrimitive(role)},"description":${kotlinx.serialization.json.JsonPrimitive(about)},"avatarMediaId":${kotlinx.serialization.json.JsonPrimitive(agentAvatars[id])}}"""
             })
             "/api/secrets" -> secrets?.let { ok(it) } ?: ok("""{"error":"not_found"}""", HttpStatusCode.NotFound)
             "/api/secrets/audit" -> ok("""{"entries":[{"id":"e1","secretId":"s1","secretName":"OPENAI_API_KEY","action":"downloaded","actor":{"kind":"agent","id":"a1","name":"forge"},"detail":"from 10.0.0.2 (curl/8.5.0)","at":"2026-11-19T09:00:00Z"}]}""")

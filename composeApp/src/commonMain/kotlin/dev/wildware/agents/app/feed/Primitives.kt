@@ -27,6 +27,7 @@ import androidx.compose.ui.graphics.shadow.Shadow
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.selected
@@ -88,8 +89,9 @@ fun AgentColors.status(status: WorkStatus): Color = when (status) {
 }
 
 /**
- * A round badge with the agent's initial on its identity colour. [presence], when given, puts that
- * dot on any author: a person's, say.
+ * A round badge with the agent's initial on its identity colour, or their picture over it when
+ * they have one ([Author.avatarMediaId]): the letter shows while it loads and if it fails.
+ * [presence], when given, puts that dot on any author: a person's, say.
  */
 @Composable
 fun Avatar(author: Author, size: Dp, modifier: Modifier = Modifier, showPresence: Boolean = false, presence: Presence? = null) {
@@ -103,7 +105,10 @@ fun Avatar(author: Author, size: Dp, modifier: Modifier = Modifier, showPresence
     val fill = Brush.linearGradient(listOf(hue.copy(alpha = 0.22f), hue.copy(alpha = 0.12f)))
     val letterColor = if (author is Author.Owner) colors.background else hue
     val ownerFill = Brush.linearGradient(listOf(colors.text, colors.text))
-    Box(modifier.size(size).clearAndSetSemantics { }) {
+    // Without a dashboard (previews) there is no picture to ask for: the letter shows.
+    val auth = LocalMediaAuth.current
+    val picture = author.avatarMediaId?.takeIf { auth != null }
+    Box(modifier.size(size).clearAndSetSemantics { if (picture != null) testTag = AvatarPictureTag }) {
         Box(
             Modifier
                 .size(size)
@@ -124,6 +129,7 @@ fun Avatar(author: Author, size: Dp, modifier: Modifier = Modifier, showPresence
                     lineHeight = (size.value * 0.42f).sp,
                 ),
             )
+            if (picture != null && auth != null) AvatarPicture(picture, auth, Modifier.matchParentSize())
         }
         val dot = presence ?: (author as? Author.AgentAuthor)?.agent?.presence?.takeIf { showPresence }
         if (dot != null) {

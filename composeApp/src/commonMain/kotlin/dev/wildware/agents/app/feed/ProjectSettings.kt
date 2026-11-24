@@ -3,6 +3,7 @@ package dev.wildware.agents.app.feed
 import androidx.compose.foundation.selection.selectableGroup
 import dev.wildware.agents.NotifyLevel
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -466,11 +467,25 @@ internal fun BoxedField(
     placeholder: String,
     multiline: Boolean = false,
     onSubmit: (() -> Unit)? = null,
+    /** The most characters it takes; a count beside the label shows how many are used. */
+    maxLength: Int? = null,
+    minLines: Int = 1,
 ) {
     val colors = AgentTheme.colors
     val shape = AgentTheme.shapes.medium
     Column {
-        MetaText(label.uppercase(), style = AgentTheme.type.overline, color = colors.textMuted)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            MetaText(label.uppercase(), Modifier.weight(1f), style = AgentTheme.type.overline, color = colors.textMuted)
+            if (maxLength != null) {
+                val used = state.text.length
+                MetaText(
+                    "$used/$maxLength",
+                    Modifier.semantics { contentDescription = "$used of $maxLength characters" },
+                    style = AgentTheme.type.meta,
+                    color = if (used >= maxLength) colors.warning else colors.textFaint,
+                )
+            }
+        }
         Spacer(Modifier.height(6.dp))
         Box(
             Modifier
@@ -480,7 +495,7 @@ internal fun BoxedField(
                 .border(1.dp, colors.border, shape)
                 .padding(horizontal = 12.dp),
         ) {
-            TextInput(state, spoken, placeholder, Modifier.fillMaxWidth(), multiline = multiline, onSubmit = onSubmit)
+            TextInput(state, spoken, placeholder, Modifier.fillMaxWidth(), multiline = multiline, minLines = minLines, onSubmit = onSubmit, maxLength = maxLength)
         }
     }
 }

@@ -6,7 +6,9 @@ import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.text.BasicSecureTextField
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.input.InputTransformation
 import androidx.compose.foundation.text.input.TextFieldLineLimits
+import androidx.compose.foundation.text.input.TextFieldBuffer
 import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.text.input.TextObfuscationMode
 import androidx.compose.material3.Text
@@ -52,6 +54,17 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlinx.coroutines.delay
 import dev.wildware.agents.app.design.gesture.LocalSwipeGuard
 import dev.wildware.agents.app.design.gesture.guardsSwipes
+
+/**
+ * Holds a box to [max] characters. Typing past it does nothing; a paste that runs over keeps what
+ * fits, so a long text is cut rather than lost.
+ */
+private class CutAt(private val max: Int) : InputTransformation {
+    override fun TextFieldBuffer.transformInput() {
+        if (length <= max) return
+        if (originalText.length >= max) revertAllChanges() else replace(max, length, "")
+    }
+}
 
 /**
  * Whether a text box has the cursor. Single-key shortcuts (J, K, N, /…) stand aside while it has,
@@ -102,6 +115,8 @@ fun TextInput(
     style: TextStyle = AgentTheme.type.body,
     keyboard: KeyboardOptions = KeyboardOptions.Default,
     onSubmit: (() -> Unit)? = null,
+    /** The most characters it takes; typing or pasting past it stops there. */
+    maxLength: Int? = null,
 ) {
     val colors = AgentTheme.colors
     val textStyle = style.copy(color = if (enabled) colors.text else colors.textFaint)
@@ -192,6 +207,7 @@ fun TextInput(
             enabled = enabled,
             textStyle = textStyle,
             keyboardOptions = keyboard,
+            inputTransformation = maxLength?.let { remember(it) { CutAt(it) } },
             onKeyboardAction = { onSubmit?.invoke() },
             lineLimits = if (multiline) TextFieldLineLimits.MultiLine(minHeightInLines = minLines, maxHeightInLines = maxOf(6, minLines)) else TextFieldLineLimits.SingleLine,
             cursorBrush = SolidColor(colors.accent),

@@ -90,6 +90,14 @@ class DemoServer(private val now: () -> Long = { Clock.System.now().toEpochMilli
     /** Agents the owner renamed in the demo, by id. */
     private var renamed = mapOf<String, String>()
 
+    /** Each agent's role line and description, as changed in the demo. */
+    private var profiles: Map<String, Pair<String?, String?>> = data.profiles
+
+    /** Every agent, as `GET /api/agents` answers, with its profile. */
+    private fun agentRecords() = (data.agentNames + renamed).map { (id, name) ->
+        dev.wildware.agents.AgentRecord(id, name, createdAt = "2026-11-01T10:00:00Z", profileRole = profiles[id]?.first, description = profiles[id]?.second)
+    }
+
     /** Agents the owner removed, by ("channel:slug" or "group:slug", agent id). Every other agent hears everything. */
     private var removedAgents = setOf<Pair<String, String>>()
 
@@ -201,6 +209,7 @@ class DemoServer(private val now: () -> Long = { Clock.System.now().toEpochMilli
             "api/snapshot/updates" -> ok(json.encodeToString(UpdatesPage(emptyList(), null, false)))
             "api/messages" -> ok(json.encodeToString(MessagesSnapshot(seq = seq, messages = messages, reactions = reactions)))
             "api/snapshot/requests" -> ok(json.encodeToString(RequestsSnapshot(seq, requests = requests)))
+            "api/agents" -> ok("""{"agents":${json.encodeToString(agentRecords())}}""")
             "api/snapshot/agents" -> ok(json.encodeToString(AgentsSnapshot(seq, agents = data.agents(now()).map { a -> renamed[a.agentId]?.let { a.copy(name = it) } ?: a })))
             "api/notifications" -> ok(json.encodeToString(NotificationsSnapshot(seq)))
             "api/subscriptions" -> ok(
@@ -357,10 +366,20 @@ class DemoServer(private val now: () -> Long = { Clock.System.now().toEpochMilli
             }
             path.startsWith("api/agents/") && method == HttpMethod.Patch -> {
                 val id = parts[2]
-                val name = input.text("name")?.trim().orEmpty()
-                if (name.isEmpty()) return ok("""{"error":"invalid_argument","message":"An agent needs a name."}""", HttpStatusCode.BadRequest)
-                renamed = renamed + (id to name)
-                ok("""{"agent":{"id":"$id","name":${json.encodeToString(name)}}}""")
+                if (id !in data.agentNames) return ok("""{"error":"not_found","message":"No such agent."}""", HttpStatusCode.NotFound)
+                if ("name" in input) {
+                    val name = input.text("name")?.trim().orEmpty()
+                    if (name.isEmpty()) return ok("""{"error":"invalid_argument","message":"An agent needs a name."}""", HttpStatusCode.BadRequest)
+                    renamed = renamed + (id to name)
+                }
+                val was = profiles[id] ?: (null to null)
+                val role = if ("profileRole" in input) input.text("profileRole")?.trim()?.ifEmpty { null } else was.first
+                val about = if ("description" in input) input.text("description")?.trim()?.ifEmpty { null } else was.second
+                if ((role?.length ?: 0) > dev.wildware.agents.ProfileRoleMax) return ok("""{"error":"invalid_argument","message":"role must be at most 60 characters"}""", HttpStatusCode.BadRequest)
+                if ((about?.length ?: 0) > dev.wildware.agents.ProfileDescriptionMax) return ok("""{"error":"invalid_argument","message":"description must be at most 500 characters"}""", HttpStatusCode.BadRequest)
+                profiles = profiles + (id to (role to about))
+                val name = (data.agentNames + renamed).getValue(id)
+                ok("""{"agent":{"id":"$id","name":${json.encodeToString(name)},"profileRole":${json.encodeToString(role)},"description":${json.encodeToString(about)}}}""")
             }
             path.startsWith("api/projects/") && method == HttpMethod.Patch -> {
                 val slug = parts[2]

@@ -139,7 +139,14 @@ fun MentionList(choices: List<Mentionable>, selected: Int, onPick: (Mentionable)
                     .padding(horizontal = 12.dp, vertical = 7.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Box(Modifier.size(8.dp).clip(CircleShape).background(dotColour(choice)))
+                val picture = choice.avatarMediaId
+                if (picture != null && choice.id != null) {
+                    // An agent with a picture shows it, with its dot on it.
+                    val agent = Agent(choice.id, choice.name, "Agent", choice.presence ?: Presence.Offline, choice.hue, avatarMediaId = picture)
+                    Avatar(Author.AgentAuthor(agent), 20.dp, showPresence = choice.presence != null)
+                } else {
+                    Box(Modifier.size(8.dp).clip(CircleShape).background(dotColour(choice)))
+                }
                 Text("@${choice.name}", Modifier.padding(start = 10.dp), color = colors.text, style = AgentTheme.type.label.copy(fontWeight = FontWeight.SemiBold))
                 choice.hint?.let { MetaText(it, Modifier.padding(start = 8.dp), color = colors.textMuted) }
             }

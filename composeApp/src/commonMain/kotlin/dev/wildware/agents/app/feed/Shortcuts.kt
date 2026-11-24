@@ -141,7 +141,7 @@ fun keyboardShortcuts(mac: Boolean, web: Boolean): List<ShortcutGroup> {
 internal val FeedUi.overlayOpen: Boolean
     get() = tour.on || viewer != null || playing != null || commandOpen || bellOpen || alertsOpen || retentionOpen ||
         devicesOpen || secretsOpen || feedbackOpen || peopleOpen || connectOpen || statusPick != null || state.assign != null || menu != null || selecting != null || boardMenu != null ||
-        tagging != null || deleting != null || editing != null || projectDialog != null || agentOpen != null || shortcutsOpen
+        tagging != null || deleting != null || editing != null || projectDialog != null || agentOpen != null || personOpen != null || shortcutsOpen
 
 /** Closes whatever is on top of the feed; false when nothing was. */
 internal fun FeedUi.closeTopOverlay(): Boolean {
@@ -163,6 +163,8 @@ internal fun FeedUi.closeTopOverlay(): Boolean {
         devicesOpen -> devicesOpen = false
         secretsOpen -> secretsOpen = false
         feedbackOpen -> feedbackOpen = false
+        // A profile opens over the People sheet: it closes first.
+        personOpen != null -> personOpen = null
         peopleOpen -> peopleOpen = false
         connectOpen -> connectOpen = false
         projectDialog != null -> projectDialog = null

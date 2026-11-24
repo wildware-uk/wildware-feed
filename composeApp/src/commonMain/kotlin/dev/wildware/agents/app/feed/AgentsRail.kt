@@ -71,7 +71,7 @@ internal fun MembersList(ui: FeedUi, inset: Dp = 0.dp, onOpenAgent: () -> Unit =
         Spacer(Modifier.height(12.dp))
         SectionLabel("People", Modifier.padding(horizontal = inset))
         Spacer(Modifier.height(4.dp))
-        people.forEach { PersonMemberRow(it, inset) }
+        people.forEach { person -> PersonMemberRow(person, inset) { ui.personOpen = person.id; onOpenAgent() } }
     }
     Spacer(Modifier.height(12.dp))
     val open = { agent: Agent -> ui.agentOpen = agent.id; onOpenAgent() }
@@ -129,22 +129,27 @@ private fun AgentMenu(ui: FeedUi, agent: Agent, row: @Composable () -> Unit) {
 /** A button at the end of an agent's row: Add or Remove. */
 private class MemberAction(val label: String, val spoken: String, val enabled: Boolean, val run: () -> Unit)
 
+/** A person's row: tapping it opens their profile. */
 @Composable
-private fun PersonMemberRow(person: PersonRow, inset: Dp) {
+private fun PersonMemberRow(person: PersonRow, inset: Dp, onOpen: () -> Unit) {
     val colors = AgentTheme.colors
     val presence = if (person.online) Presence.Online else Presence.Offline
-    val author = if (person.you) Author.Owner(person.name) else Author.Person(person.name, person.handle, dev.wildware.agents.app.engine.hue(person.id))
+    val author = personAuthor(person)
+    val shape = AgentTheme.shapes.small
+    val line = listOfNotNull(person.profileRole?.takeIf { it.isNotBlank() }, presence.label).joinToString(" · ")
     Row(
         Modifier
             .fillMaxWidth()
-            .padding(horizontal = inset, vertical = 7.dp)
-            .semantics(mergeDescendants = true) { },
+            .padding(horizontal = inset)
+            .clip(shape)
+            .pressable("Open ${person.name}'s profile", shape, labelIsShown = true, onClick = onOpen)
+            .padding(vertical = 7.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Avatar(author, 30.dp, presence = presence)
         Column(Modifier.padding(start = 10.dp).weight(1f)) {
             Text(person.name + if (person.you) " (you)" else "", color = colors.text, style = AgentTheme.type.label, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            MetaText(presence.label, color = colors.textMuted)
+            MetaText(line, color = colors.textMuted)
         }
     }
 }
@@ -169,6 +174,7 @@ private fun AgentRow(agent: Agent, inset: Dp = 0.dp, note: String? = null, actio
                     Text(agent.name, Modifier.weight(1f, fill = false), color = colors.text, style = AgentTheme.type.label, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     if (details != null && details.sessions > 1) MetaText("  ${details.sessions} sessions", color = colors.textMuted)
                 }
+                agent.profileRole?.takeIf { it.isNotBlank() }?.let { MetaText(it, color = colors.textMuted) }
                 when {
                     note != null -> MetaText(note, color = colors.textMuted)
                     details == null -> MetaText(agent.doing ?: agent.role, color = colors.textMuted)
@@ -207,4 +213,4 @@ internal fun AgentFacts(details: AgentDetails) {
 
 /** An agent as a screen reader says it: name, whether it is online, then what its session says. */
 internal fun agentSpoken(agent: Agent): String =
-    listOfNotNull(agent.name, agent.presence.label.lowercase(), agent.details?.spoken ?: agent.doing).joinToString(", ")
+    listOfNotNull(agent.name, agent.presence.label.lowercase(), agent.profileRole?.takeIf { it.isNotBlank() }, agent.details?.spoken ?: agent.doing).joinToString(", ")

@@ -598,12 +598,21 @@ class Dashboard internal constructor(
      */
     val docChanges: SharedFlow<DocChange> = mutableDocChanges.asSharedFlow()
 
+    private val mutableMemberChanges = MutableSharedFlow<String>(extraBufferCapacity = 8, onBufferOverflow = kotlinx.coroutines.channels.BufferOverflow.DROP_OLDEST)
+
+    /**
+     * Someone in the team changed: "people.updated" (a person joined, left, or changed their name or
+     * profile), "agent.profile" or "agent.renamed" (an agent's), or a resync. Each is the event's type.
+     */
+    val memberChanges: SharedFlow<String> = mutableMemberChanges.asSharedFlow()
+
     private fun readers(): List<FeedReader> = listOf(requests, presence, bell, joining, follows) + feeds.values.flatMap { it.readers }
 
     private suspend fun receive(event: StreamEvent) {
         if (event.type == ClearedEvent) clearedTags(event)?.let { mutableCleared.tryEmit(it) }
         if (event.type in BoardEvents) mutableBoardChanges.tryEmit(Unit)
         docChange(event)?.let { mutableDocChanges.tryEmit(it) }
+        if (event.type in MemberEvents) mutableMemberChanges.tryEmit(event.type)
         requests.receive(event)
         presence.receive(event)
         bell.receive(event)
@@ -1222,6 +1231,9 @@ internal fun docChange(event: StreamEvent): DocChange? {
     val version = (p["version"] as? kotlinx.serialization.json.JsonPrimitive)?.content?.toLongOrNull() ?: 0
     return DocChange(text("projectId"), text("docId"), version, text("change"), text("by"))
 }
+
+/** The live events that change who is in the team or what their profiles say. */
+internal val MemberEvents = setOf("people.updated", "agent.profile", "agent.renamed", StreamEvent.Resync)
 
 internal val BoardEvents = setOf(
     "update.created", "update.updated", "update.deleted", "message.created", "message.updated", "message.deleted",

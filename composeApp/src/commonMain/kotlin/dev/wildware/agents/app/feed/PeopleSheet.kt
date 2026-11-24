@@ -29,6 +29,8 @@ import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.style.TextOverflow
+import dev.wildware.agents.app.design.pressable
 import androidx.compose.ui.unit.dp
 import dev.wildware.agents.app.design.AgentTheme
 import dev.wildware.agents.app.design.Icons
@@ -61,7 +63,7 @@ fun PeopleSheet(ui: FeedUi, safeArea: SafeArea) {
         Column(Modifier.heightIn(max = 560.dp).verticalScroll(rememberScrollState()).padding(vertical = 8.dp)) {
             val here = team.people.filter { !it.removed }.sortedWith(compareByDescending<PersonRow> { it.you }.thenBy { rank(it.role) })
             here.forEach { person ->
-                PersonLine(person, team, expanded = open == person.id, onToggle = { open = if (open == person.id) null else person.id })
+                PersonLine(person, team, expanded = open == person.id, onToggle = { open = if (open == person.id) null else person.id }, onProfile = { ui.personOpen = person.id })
                 if (open == person.id) PersonActions(ui, person, team, onDone = { open = null })
             }
             team.created?.let { CreatedInvite(ui, it) }
@@ -99,21 +101,37 @@ private fun rank(role: String) = when (role) {
 
 private fun roleLabel(role: String) = role.replaceFirstChar { it.uppercase() }
 
+/** One person: tapping their name opens their profile; Change opens what can be done to them. */
 @Composable
-private fun PersonLine(person: PersonRow, team: TeamState, expanded: Boolean, onToggle: () -> Unit) {
+private fun PersonLine(person: PersonRow, team: TeamState, expanded: Boolean, onToggle: () -> Unit, onProfile: () -> Unit) {
     val colors = AgentTheme.colors
+    val shape = AgentTheme.shapes.small
+    val profileRole = person.profileRole?.takeIf { it.isNotBlank() }
     Row(
-        Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 6.dp, bottom = 6.dp),
+        Modifier.fillMaxWidth().padding(start = 10.dp, end = 8.dp, top = 2.dp, bottom = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Avatar(if (person.you) Author.Owner(person.name) else Author.Person(person.name, person.handle, dev.wildware.agents.app.engine.hue(person.id)), 30.dp)
-        Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(person.name, Modifier.weight(1f, fill = false), color = colors.text, style = AgentTheme.type.body, maxLines = 1)
-                if (person.you) MetaText("  You", color = colors.accent, style = AgentTheme.type.label)
+        Row(
+            Modifier
+                .weight(1f)
+                .clip(shape)
+                .pressable("Open ${person.name}'s profile", shape, labelIsShown = true, onClick = onProfile)
+                .padding(horizontal = 6.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Avatar(personAuthor(person), 30.dp)
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(person.name, Modifier.weight(1f, fill = false), color = colors.text, style = AgentTheme.type.body, maxLines = 1)
+                    profileRole?.let { MetaText("  ·  $it", Modifier.weight(1f, fill = false), color = colors.textMuted, style = AgentTheme.type.label) }
+                    if (person.you) MetaText("  You", color = colors.accent, style = AgentTheme.type.label)
+                }
+                MetaText(listOfNotNull(roleLabel(person.role), "@${person.handle}", person.email).joinToString(" · "), color = colors.textMuted)
+                person.description?.takeIf { it.isNotBlank() }?.let {
+                    Text(it, Modifier.padding(top = 2.dp), color = colors.textFaint, style = AgentTheme.type.meta, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                }
             }
-            MetaText(listOfNotNull(roleLabel(person.role), "@${person.handle}", person.email).joinToString(" · "), color = colors.textMuted)
         }
         val canAct = person.you || team.isOwner || (team.canManage && person.role == "member")
         if (canAct) AppButton(if (expanded) "Close" else "Change", ButtonTone.Quiet, enabled = team.busy == null, onClick = onToggle)

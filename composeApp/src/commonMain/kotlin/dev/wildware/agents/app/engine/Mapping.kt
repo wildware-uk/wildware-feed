@@ -108,7 +108,7 @@ internal class FeedMapper(
     ): FeedState {
         val onlineIds = online.mapTo(HashSet()) { it.agentId }
         val names = agentNames(feed) + online.associate { it.agentId to it.name }
-        val agents = AgentDirectory(names, online.associateBy { it.agentId }, onlineIds, now())
+        val agents = AgentDirectory(names, online.associateBy { it.agentId }, onlineIds, now(), agentAvatars)
         val media = if (selectedSlug == null) emptyList() else projectPictures(feed)
         val viewProjects = projects.map { it.toView(media) }
         val byId = viewProjects.associateBy { it.id }
@@ -145,7 +145,7 @@ internal class FeedMapper(
         val waiting = Outbox.waiting(outbox)
         val failed = Outbox.failed(outbox)
         return FeedState(
-            owner = OwnerAuthor,
+            owner = owner(),
             projects = viewProjects,
             agents = online.map { agents.agent(it.agentId) },
             current = current,
@@ -497,17 +497,23 @@ internal class FeedMapper(
     /** The people of the team; names show on what others wrote once there is more than one (migration 055). */
     var team: dev.wildware.agents.app.feed.TeamState = dev.wildware.agents.app.feed.TeamState()
 
+    /** Agents' pictures, by agent id: media ids from the dashboard's agent list. */
+    var agentAvatars: Map<String, String> = emptyMap()
+
+    /** You, with your picture when you have one. */
+    private fun owner(): Author.Owner = team.me?.avatarMediaId?.let { Author.Owner(OwnerAuthor.name, it) } ?: OwnerAuthor
+
     private fun author(line: ThreadLine, agents: AgentDirectory): Author =
         line.message.agentId?.let { Author.AgentAuthor(agents.agent(it, line.authorName)) } ?: person(line.message.personId)
 
     /** You, or another person by name ("Sam", "Sam (left)") on a team. */
     private fun person(id: String?): Author {
         val known = team
-        if (!known.team || id == null) return OwnerAuthor
-        if (id == (known.me?.id ?: dev.wildware.agents.FounderId)) return OwnerAuthor
+        if (!known.team || id == null) return owner()
+        if (id == (known.me?.id ?: dev.wildware.agents.FounderId)) return owner()
         val row = known.people.firstOrNull { it.id == id }
         val name = row?.let { if (it.removed) "${it.name} (left)" else it.name } ?: "Someone"
-        return Author.Person(name, row?.handle ?: "", hue(id))
+        return Author.Person(name, row?.handle ?: "", hue(id), row?.avatarMediaId)
     }
 
     /** Whether a person's reaction is yours. */
@@ -829,6 +835,7 @@ internal class FeedMapper(
         private val online: Map<String, LiveAgentView>,
         private val onlineIds: Set<String>,
         private val now: Long,
+        private val avatars: Map<String, String>,
     ) {
         fun agent(id: String, fallbackName: String? = null): Agent {
             val live = online[id]
@@ -848,6 +855,7 @@ internal class FeedMapper(
                         lastSeen = heartbeatLabel(it.lastHeartbeatAt, now),
                     )
                 },
+                avatarMediaId = avatars[id],
             )
         }
     }

@@ -32,7 +32,8 @@ import androidx.compose.ui.unit.dp
 import dev.wildware.agents.app.design.AgentTheme
 
 /**
- * One agent, opened from its row in the agent list: who it is, what its session says, and its name
+ * One agent, opened from its row in the agent list: who it is, its role line and what it looks
+ * after (its profile, which owners and admins can change), what its session says, and its name
  * to change, as the website's rail lets the owner do. A rename waits for the dashboard's say, as a
  * name can be refused, and then shows on every card the agent posted. Below, the MCP clients signed
  * in as it over OAuth, each with a way to sign it out, and a way to remove the agent itself.
@@ -45,6 +46,9 @@ fun AgentDialog(ui: FeedUi, agentId: String) {
     var problem by remember(agentId) { mutableStateOf<String?>(null) }
     var busy by remember(agentId) { mutableStateOf(false) }
     val close = { ui.agentOpen = null }
+    // Owners and admins change an agent's profile; a dashboard without people has only its owner.
+    val team = ui.state.team
+    val manages = !team.supported || team.canManage
     LaunchedEffect(agentId) { ui.emit(FeedEvent.ReadConnections(agentId)) }
     val save = {
         val typed = name.text.toString().trim()
@@ -69,13 +73,24 @@ fun AgentDialog(ui: FeedUi, agentId: String) {
         shape = AgentTheme.shapes.large,
         title = {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Avatar(Author.AgentAuthor(agent), 30.dp, showPresence = true)
-                Text(agent.name, Modifier.padding(start = 12.dp), style = AgentTheme.type.title)
+                Avatar(Author.AgentAuthor(agent), ProfileAvatarSize, showPresence = true)
+                Column(Modifier.padding(start = 14.dp)) { ProfileName(agent.name, agent.profileRole) }
             }
         },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
-                MetaText(agent.doing ?: agent.presence.label, color = colors.textMuted)
+                MetaText("@${agent.name} · ${agent.presence.label}", color = colors.textMuted)
+                agent.doing?.let { MetaText(it, color = colors.textMuted) }
+                if (manages) PictureControls(agentId, agent.avatarMediaId != null) { picture, done -> ui.emit(FeedEvent.SetAgentAvatar(agentId, picture, done)) }
+                ProfileAbout(
+                    key = agentId,
+                    profileRole = agent.profileRole,
+                    description = agent.description,
+                    empty = if (manages) "Say what this agent does, so others know when to @mention it." else "No description yet.",
+                    hint = AgentProfileHint,
+                    save = if (!manages) null else { role, about, done -> ui.emit(FeedEvent.SetAgentProfile(agentId, role, about, done)) },
+                )
+                Spacer(Modifier.height(12.dp))
                 agent.details?.let { AgentFacts(it) }
                 Spacer(Modifier.height(12.dp))
                 ReachSummary(ui, agentId, agent = true)

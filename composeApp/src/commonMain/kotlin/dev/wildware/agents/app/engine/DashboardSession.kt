@@ -260,6 +260,11 @@ class DashboardSession(
     private val removedAgents = knownAgents.map { all -> all.filter { it.revokedAt != null }.mapTo(HashSet()) { it.id } as Set<String> }
         .stateIn(scope, SharingStarted.Eagerly, emptySet())
 
+    /** Agents' pictures, by id: cards, the @ list and the agent list show them. */
+    private val agentAvatars = knownAgents.map { all -> all.mapNotNull { a -> a.avatarMediaId?.let { a.id to it } }.toMap() }
+        .distinctUntilChanged()
+        .stateIn(scope, SharingStarted.Eagerly, emptyMap())
+
     /** What the state adds on top of the feed: settings, the post target, devices and the known agents. */
     private data class Side(val extras: Extras, val postTarget: String?, val devices: Triple<DeviceList, dev.wildware.agents.app.feed.SecretList, dev.wildware.agents.app.feed.FeedbackState>, val known: List<dev.wildware.agents.AgentRecord>,
         val followsAndGroups: Pair<dev.wildware.agents.Follows, List<dev.wildware.agents.GroupView>>,
@@ -306,7 +311,7 @@ class DashboardSession(
     private val latest: EngineFeed get() = feed.state.value
 
     /** Who the @ list offers, worked out only when the agents or their activity change. */
-    private val mentionables = combine(dashboard.agentNames, dashboard.online, dashboard.everything.state, removedAgents) { allNames, online, everything, removed ->
+    private val mentionables = combine(dashboard.agentNames, dashboard.online, dashboard.everything.state, removedAgents, agentAvatars) { allNames, online, everything, removed, avatars ->
         val names = allNames.filterKeys { it !in removed }
         val lastActive = HashMap<String, Long>()
         fun saw(agentId: String?, at: Long) {
@@ -316,7 +321,7 @@ class DashboardSession(
             if (card is UpdateCard) saw(card.update.agentId, card.update.createdAt)
             card.replies.forEach { saw(it.message.agentId, it.message.createdAt) }
         }
-        Mentionables.of(names, online, lastActive)
+        Mentionables.of(names, online, lastActive).map { m -> m.id?.let(avatars::get)?.let { m.copy(avatarMediaId = it) } ?: m }
     }.distinctUntilChanged()
 
     /** The project last posted to from "All projects", or last opened: where the next one from there goes. */
@@ -324,14 +329,16 @@ class DashboardSession(
 
     val state: StateFlow<FeedState> = combine(
         combine(
-            combine(feeds.flatMapLatest { it.state }, dashboard.waiting, mutableTeam, ::Triple),
+            combine(feeds.flatMapLatest { it.state }, dashboard.waiting, combine(mutableTeam, agentAvatars, ::Pair), ::Triple),
             dashboard.projects,
             dashboard.online,
             outbox.items,
             selected,
-        ) { (feed, questions, team), projects, online, items, slug ->
-            // Who wrote what, once there is more than one person (migration 055).
+        ) { (feed, questions, teamAndAvatars), projects, online, items, slug ->
+            val (team, avatars) = teamAndAvatars
+            // Who wrote what, once there is more than one person (migration 055), and their pictures.
             mapper.team = team
+            mapper.agentAvatars = avatars
             // Every waiting question, thread ones included: the engine's feed leaves those out of its top.
             mapper.map(feed, projects, online, items, slug, everyQuestion = questions).copy(team = team)
         },
@@ -399,6 +406,7 @@ class DashboardSession(
                 dev.wildware.agents.app.feed.PersonRow(
                     id = p.id, name = p.name, handle = p.handle, role = p.role, email = p.email,
                     you = p.id == me.person.id, removed = p.removed, founder = p.founder, online = p.online,
+                    profileRole = p.profileRole, description = p.description, avatarMediaId = p.avatarMediaId,
                 )
             }
             val manages = me.person.role == "owner" || me.person.role == "admin"
@@ -460,6 +468,14 @@ class DashboardSession(
                 if (event.personId == mutableTeam.value.me?.id) revokedHere.value = true
             }
             is FeedEvent.Rename -> changeTeam("me", "rename you") { client.rename(event.name.trim()) }
+            is FeedEvent.SetMyProfile -> changeNow(event.done) {
+                client.setProfile(event.profileRole, event.description)
+                loadTeam()
+            }
+            is FeedEvent.SetMyAvatar -> changeNow(event.done) {
+                client.setAvatar(event.picture?.let { uploadAvatar(it) })
+                loadTeam()
+            }
             is FeedEvent.DeleteAccount -> changeTeam(dev.wildware.agents.app.feed.DeleteAccountBusy, "delete your account") {
                 client.deleteAccount(event.password)
                 signOutNotice = "Your account was deleted, and this device is signed out."
@@ -467,6 +483,16 @@ class DashboardSession(
             }
             else -> Unit
         }
+    }
+
+    /**
+     * A picked picture made into a member's picture: cropped to its middle square, made small, and
+     * sent up. Its id goes on the profile next. One that can't be read is refused with why.
+     */
+    private suspend fun uploadAvatar(picked: ByteArray): String {
+        val square = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { dev.wildware.agents.app.feed.squareAvatarPng(picked) }
+            ?: throw DashboardException(400, "unreadable_image", "That picture couldn't be read. Try a PNG or JPEG.")
+        return client.uploadMedia(dev.wildware.agents.Attachment("avatar.png", "image/png", square)).id
     }
 
     /** Reads every agent the dashboard knows. A dashboard without the list leaves the agent list as it was: online agents only. */
@@ -961,6 +987,16 @@ class DashboardSession(
         }
         // Read now, and again when an agent comes online or goes: it may be one the list has not heard of.
         scope.launch { dashboard.online.map { list -> list.map { it.agentId }.toSet() }.distinctUntilChanged().collect { loadAgents() } }
+        // A profile or name changed, here or elsewhere: read the agents or the people again.
+        scope.launch {
+            dashboard.memberChanges.collect { type ->
+                if (type != "people.updated") loadAgents()
+                if (type == "people.updated" || type == dev.wildware.agents.StreamEvent.Resync) {
+                    val known = mutableTeam.value
+                    if (known.supported && known.loaded) loadTeam()
+                }
+            }
+        }
         // Early, so the account sheet knows whether this dashboard has secrets at all.
         scope.launch { loadSecrets(null) }
         // Another process queued, sent or dropped something: show it, and send what is new.
@@ -1129,7 +1165,8 @@ class DashboardSession(
             is FeedEvent.ProvideSecret -> changeNow(event.done) { client.provideSecret(event.questionId, event.value) }
             is FeedEvent.ProvideSecrets -> changeNow(event.done) { client.provideSecrets(event.questionId, event.values) }
             is FeedEvent.ReadPeople, is FeedEvent.InvitePerson, is FeedEvent.DismissInvite, is FeedEvent.RevokeInvite,
-            is FeedEvent.SetRole, is FeedEvent.RemovePerson, is FeedEvent.Rename, is FeedEvent.DeleteAccount -> handleTeam(event)
+            is FeedEvent.SetRole, is FeedEvent.RemovePerson, is FeedEvent.Rename, is FeedEvent.SetMyProfile, is FeedEvent.SetMyAvatar,
+            is FeedEvent.DeleteAccount -> handleTeam(event)
             is FeedEvent.RevokeDevice -> revokeDevice(event.deviceId)
             is FeedEvent.ReadConnections -> scope.launch { loadConnections(event.agentId) }
             is FeedEvent.ReadMembers -> scope.launch { loadMembers(event.slug, event.group) }
@@ -1167,6 +1204,14 @@ class DashboardSession(
                 client.renameAgent(event.agentId, event.name.trim())
                 loadAgents()
                 dashboard.refresh()
+            }
+            is FeedEvent.SetAgentProfile -> changeNow(event.done) {
+                client.setAgentProfile(event.agentId, event.profileRole, event.description)
+                loadAgents()
+            }
+            is FeedEvent.SetAgentAvatar -> changeNow(event.done) {
+                client.setAgentAvatar(event.agentId, event.picture?.let { uploadAvatar(it) })
+                loadAgents()
             }
             is FeedEvent.SetProjectLogo -> changeNow {
                 client.setProjectLogo(event.slug, event.mediaId)
@@ -1356,12 +1401,23 @@ internal fun connectionPlace(origin: String): String {
  */
 internal fun withOffline(live: List<dev.wildware.agents.app.feed.Agent>, known: List<dev.wildware.agents.AgentRecord>): List<dev.wildware.agents.app.feed.Agent> {
     val removed = known.filter { it.revokedAt != null }.mapTo(HashSet()) { it.id }
-    val shown = live.filter { it.id !in removed }
+    val byId = known.associateBy { it.id }
+    // Profiles come only from the full list: the live one has none.
+    val shown = live.filter { it.id !in removed }.map { a ->
+        val record = byId[a.id] ?: return@map a
+        if (record.profileRole == a.profileRole && record.description == a.description && record.avatarMediaId == a.avatarMediaId) a
+        else a.copy(profileRole = record.profileRole, description = record.description, avatarMediaId = record.avatarMediaId)
+    }
     val liveIds = shown.mapTo(HashSet()) { it.id }
     val offline = known
         .filter { it.revokedAt == null && it.id !in liveIds }
         .sortedByDescending { it.lastSeenAt ?: "" }
-        .map { dev.wildware.agents.app.feed.Agent(it.id, it.name, "Agent", dev.wildware.agents.app.feed.Presence.Offline, hue(it.id)) }
+        .map {
+            dev.wildware.agents.app.feed.Agent(
+                it.id, it.name, "Agent", dev.wildware.agents.app.feed.Presence.Offline, hue(it.id),
+                profileRole = it.profileRole, description = it.description, avatarMediaId = it.avatarMediaId,
+            )
+        }
     return shown + offline
 }
 
