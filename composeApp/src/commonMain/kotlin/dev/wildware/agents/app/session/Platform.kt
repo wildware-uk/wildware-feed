@@ -93,6 +93,8 @@ class AppPlatform(
      * it knew about teams, whose files are the ones above. Null keeps every team's in memory.
      */
     private val teamFilesFor: ((String) -> TeamFiles)? = null,
+    /** Whether the guided tour starts by itself on a first sign-in. The apps turn it on; tests and previews leave it off. */
+    val guidedTour: Boolean = false,
 ) {
     private val memoryTeams = mutableMapOf<String, TeamFiles>()
 
@@ -113,9 +115,11 @@ class AppPlatform(
             media: MediaHandler? = null,
             postTarget: TextStore = MemoryTextStore(),
             linksToSignUp: Boolean = true,
+            guidedTour: Boolean = false,
         ) = AppPlatform(
             sessions, MemoryTextStore(), MemoryOutboxStorage(), engine, deviceName, imageCacheDir = null,
             filePicker = filePicker, media = media, postTarget = postTarget, linksToSignUp = linksToSignUp,
+            guidedTour = guidedTour,
         )
     }
 }

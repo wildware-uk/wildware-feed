@@ -580,6 +580,7 @@ internal fun ArrangeableChannels(
     hint: String?,
     /** After a channel is opened from the list: the drawer closes. */
     onOpened: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val folds = LocalCardFolds.current
     val density = LocalDensity.current
@@ -631,7 +632,7 @@ internal fun ArrangeableChannels(
     val heldGroup = (held as? DragThing.Group)?.id
 
     Column(
-        Modifier
+        modifier
             .onGloballyPositioned {
                 drag.content = it
                 // Scrolled under a still pointer, by the wheel: where it would land has moved.

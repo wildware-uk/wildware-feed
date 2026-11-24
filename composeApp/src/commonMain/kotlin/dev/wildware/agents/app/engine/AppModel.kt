@@ -330,6 +330,20 @@ class AppModel(
         publishTeams()
     }
 
+    /** The demo's tour was finished or skipped: it doesn't start by itself again while the app runs. */
+    private var demoTourDone = false
+
+    /**
+     * Whether the guided tour should start by itself on the open team: once, after signing in to a
+     * team new to this device. The demo shows it once each time the app runs.
+     */
+    fun tourDue(demo: Boolean): Boolean = platform.guidedTour && if (demo) !demoTourDone else teamList.load().activeTeam?.tour == true
+
+    /** The tour was finished or skipped: kept on this device, per team. */
+    fun tourDone(demo: Boolean) {
+        if (demo) demoTourDone = true else activeKey?.let { teamList.tourDone(it) }
+    }
+
     /** The demo's dashboard while one is open; thrown away when it is left. */
     private var demoServer: DemoServer? = null
 

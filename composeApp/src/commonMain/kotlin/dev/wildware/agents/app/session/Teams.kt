@@ -21,6 +21,8 @@ data class SavedTeam(
     val name: String,
     /** When it was last the open team, in milliseconds since 1970. */
     val lastUsed: Long = 0,
+    /** The guided tour is still to show here: set by signing in to a team new to this device, cleared once it is finished or skipped. */
+    val tour: Boolean = false,
 )
 
 /** A team the web app opened in another tab: only where it is and what to call it, never a key. */
@@ -105,7 +107,7 @@ class TeamList(
         val teams = load()
         val same = teams.teams.firstOrNull { sameServer(it.session.server, session.server) }
         val team = same?.copy(session = session, name = name ?: same.name, lastUsed = clock())
-            ?: SavedTeam(if (teams.teams.none { it.key == "" }) "" else newKey(), session, name ?: nameFor(session), clock())
+            ?: SavedTeam(if (teams.teams.none { it.key == "" }) "" else newKey(), session, name ?: nameFor(session), clock(), tour = true)
         val others = teams.teams.filter { it.key != team.key }
         write(teams.copy(active = team.key, teams = others + team))
         return team to same?.session?.takeIf { it != session }
@@ -118,6 +120,13 @@ class TeamList(
         write(teams.copy(active = key, teams = teams.teams.map { if (it.key == key) team else it }))
         sessions.save(team.session)
         return team
+    }
+
+    /** The guided tour was finished or skipped on team [key]: it doesn't start by itself there again. */
+    fun tourDone(key: String) {
+        val teams = load()
+        if (teams.teams.none { it.key == key && it.tour }) return
+        write(teams.copy(teams = teams.teams.map { if (it.key == key) it.copy(tour = false) else it }))
     }
 
     /** The open team's sign-in changed (the server on this computer moved to another port). */

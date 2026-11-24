@@ -43,6 +43,19 @@ class TeamListTest {
     }
 
     @Test
+    fun `a team new to the device is due the tour until it is done, and signing in again keeps that`() {
+        val store = MemoryTextStore()
+        val teams = list(MemorySessionStore(a), store)
+        assertEquals(false, teams.load().teams.single().tour, "the team from before teams has seen the app already")
+        val (added, _) = teams.add(b, "Beta")
+        assertTrue(added.tour, "a first sign-in to a team shows the tour")
+        teams.tourDone(added.key)
+        assertEquals(false, list(MemorySessionStore(a), store).load().teams.first { it.key == added.key }.tour, "kept on the device")
+        val (again, _) = teams.add(b.copy(token = "key-b2"), "Beta")
+        assertEquals(false, again.tour, "signing in again to a team here doesn't bring it back")
+    }
+
+    @Test
     fun `adding a team keeps the first and marks the new one open`() {
         val sessions = MemorySessionStore(a)
         val teams = list(sessions)

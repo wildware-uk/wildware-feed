@@ -105,7 +105,7 @@ fun ViewToggle(ui: FeedUi, onChannel: Boolean, modifier: Modifier = Modifier) {
         else -> "Feed"
     }
     Row(
-        modifier.clip(shape).border(1.dp, colors.border, shape).semantics { paneTitle = "View" },
+        modifier.tourTarget(ui.tour, TourTarget.Views).clip(shape).border(1.dp, colors.border, shape).semantics { paneTitle = "View" },
         verticalAlignment = Alignment.CenterVertically,
     ) {
         for (label in views) {

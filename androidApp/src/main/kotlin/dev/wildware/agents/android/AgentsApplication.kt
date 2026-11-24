@@ -169,6 +169,7 @@ fun androidPlatform(context: Context, hooks: ActivityHooks, scope: CoroutineScop
         // Keys, sealed by the Keystore like session.bin.
         teamList = SealedTextStore(File(dir, "teams.bin"), KeystoreSecretBox()),
         teamFilesFor = { key -> teamFiles(context, key) },
+        guidedTour = true,
     )
 }
 

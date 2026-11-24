@@ -142,6 +142,7 @@ fun desktopPlatform(dir: File = desktopConfigDir(), quiet: () -> Boolean = { fal
         // Keys, like session.json: written 0600.
         teamList = FileTextStore(File(dir, "teams.json")),
         teamFilesFor = { key -> desktopTeamFiles(dir, key) },
+        guidedTour = true,
     )
 }
 

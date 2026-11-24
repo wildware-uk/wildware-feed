@@ -90,6 +90,7 @@ fun iosPlatform(
         // Keys: in the Keychain, as the open team's is ([KeychainText]).
         teamList = KeychainText(),
         teamFilesFor = { key -> iosTeamFiles(dataDir, caches ?: dataDir, key) },
+        guidedTour = true,
     )
 }
 

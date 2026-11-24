@@ -1023,6 +1023,14 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
     var toTopAsked by mutableStateOf(0)
         private set
 
+    /** Takes the feed back to its top. */
+    fun askForTop() {
+        toTopAsked++
+    }
+
+    /** The guided tour: off until it starts by itself on a first sign-in, or from Settings. */
+    val tour = Tour()
+
     /** Tags the owner put on or took off here, by card then tag key, drawn before the server answers. */
     private val tagsHere = mutableStateMapOf<String, Map<String, Pair<CardTag, Boolean>>>()
 

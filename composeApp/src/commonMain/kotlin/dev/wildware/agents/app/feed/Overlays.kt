@@ -755,7 +755,7 @@ fun PhoneThreadScreen(ui: FeedUi, item: Threaded, widthPx: Float, safeArea: Safe
 @Composable
 fun ThreadComposer(ui: FeedUi?, threadId: String, modifier: Modifier = Modifier, focus: FocusRequester? = null) {
     val colors = AgentTheme.colors
-    Column(modifier) {
+    Column(modifier.tourTarget(ui?.tour, TourTarget.Reply)) {
         val replying = ui?.replyingTo
         val motion = AgentTheme.motion
         // "Replying to …" opens above the box, pushing it up smoothly, and folds away when done.

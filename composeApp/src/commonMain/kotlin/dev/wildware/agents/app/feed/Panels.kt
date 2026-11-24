@@ -130,12 +130,13 @@ internal fun NavRow(
     trailing: @Composable () -> Unit = {},
     spoken: String = label,
     onClick: () -> Unit = {},
+    modifier: Modifier = Modifier,
 ) {
     val colors = AgentTheme.colors
     val shape = AgentTheme.shapes.small
     val bg = if (selected) colors.text.copy(alpha = if (colors.isDark) 0.07f else 0.06f) else Color.Transparent
     Row(
-        Modifier
+        modifier
             .fillMaxWidth()
             .clip(shape)
             .background(bg)
@@ -214,9 +215,13 @@ fun Sidebar(
                 // Nothing waiting is the normal state: no badge, rather than a loud "0".
                 trailing = { WaitingBadge(state.waitingTotal) },
                 spoken = "Waiting on you, " + if (state.waitingTotal == 0) "nothing" else questions(state.waitingTotal),
+                modifier = Modifier.tourTarget(ui.tour, TourTarget.Waiting),
             )
             Spacer(Modifier.height(22.dp))
-            ArrangeableChannels(ui, ui.channelSections, state.mayArrange, drag, scroll, drawer = false, hint = null, onOpened = NothingMore)
+            ArrangeableChannels(
+                ui, ui.channelSections, state.mayArrange, drag, scroll, drawer = false, hint = null, onOpened = NothingMore,
+                modifier = Modifier.tourTarget(ui.tour, TourTarget.Channels),
+            )
             NewProjectRow(ui)
             NewGroupRow(ui)
             ArchivedProjects(ui)
@@ -226,7 +231,7 @@ fun Sidebar(
             }
             Spacer(Modifier.height(18.dp))
         }
-        OwnerRow(state.owner, onAlerts = { ui.alertsOpen = true }, onToggleTheme = { ui.emit(FeedEvent.ToggleTheme) }) { ui.emit(FeedEvent.SignOut) }
+        OwnerRow(state.owner, Modifier.tourTarget(ui.tour, TourTarget.Settings), onAlerts = { ui.alertsOpen = true }, onToggleTheme = { ui.emit(FeedEvent.ToggleTheme) }) { ui.emit(FeedEvent.SignOut) }
     }
 }
 
@@ -320,7 +325,7 @@ private fun ProjectGlyph(p: Project) {
 }
 
 @Composable
-private fun OwnerRow(owner: Author.Owner, onAlerts: () -> Unit, onToggleTheme: () -> Unit, onSignOut: () -> Unit) {
+private fun OwnerRow(owner: Author.Owner, spot: Modifier, onAlerts: () -> Unit, onToggleTheme: () -> Unit, onSignOut: () -> Unit) {
     val colors = AgentTheme.colors
     Row(
         Modifier
@@ -332,7 +337,7 @@ private fun OwnerRow(owner: Author.Owner, onAlerts: () -> Unit, onToggleTheme: (
         val demo = LocalDemo.current
         // You and your settings: the alerts this device gets, as the avatar opens on a phone.
         Row(
-            Modifier.weight(1f).clip(AgentTheme.shapes.small).pressable("Alerts on this device", AgentTheme.shapes.small, onClick = onAlerts),
+            Modifier.weight(1f).then(spot).clip(AgentTheme.shapes.small).pressable("Alerts on this device", AgentTheme.shapes.small, onClick = onAlerts),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Avatar(owner, 28.dp)

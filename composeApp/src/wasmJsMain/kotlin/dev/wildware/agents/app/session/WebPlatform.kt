@@ -48,6 +48,7 @@ fun webPlatform(): AppPlatform {
         sounds = dev.wildware.agents.app.sound.SoundBoard(dev.wildware.agents.app.sound.WebSoundPlayer(), LocalStorageText("feed.sounds")),
         // No key in it (the cookie is the key): this tab's team, and other teams' addresses opened from here.
         teamList = LocalStorageText("feed.teams"),
+        guidedTour = true,
     )
 }
 

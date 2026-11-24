@@ -14,6 +14,8 @@ import dev.wildware.agents.app.feed.LocalDemo
 import dev.wildware.agents.app.feed.LocalCrashReports
 import dev.wildware.agents.app.feed.LocalSounds
 import dev.wildware.agents.app.feed.LocalTeams
+import dev.wildware.agents.app.feed.LocalTourSeen
+import dev.wildware.agents.app.feed.TourSeen
 import dev.wildware.agents.app.feed.OpenTeamTabDialog
 import dev.wildware.agents.app.feed.TeamsUi
 import dev.wildware.agents.app.feed.safePadding
@@ -204,6 +206,8 @@ fun AgentsApp(
                     val session = screen.session
                     val state = session.state.collectAsState()
                     val folds = remember(session) { CardFolds(session.cardFolds) }
+                    // Read once per team opened: the tour starts by itself only on a first sign-in.
+                    val tour = remember(session) { TourSeen(model.tourDue(screen.demo)) { model.tourDone(screen.demo) } }
                     CompositionLocalProvider(
                         LocalCardFolds provides folds,
                         LocalMediaAuth provides MediaAuth(session.client.serverUrl, session.client.authorizationHeader),
@@ -220,6 +224,7 @@ fun AgentsApp(
                         LocalLiveActivities provides platform.liveActivities,
                         LocalSounds provides platform.sounds.takeIf { it.available },
                         LocalTeams provides teamsUi.takeIf { !screen.demo },
+                        LocalTourSeen provides tour,
                     ) {
                         FeedScreen(state, safeArea, navigator = navigator, onAwayFromTop = session::holdArrivals) { event ->
                             when (event) {

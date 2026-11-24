@@ -275,6 +275,8 @@ private fun FeedScreenBody(
             JoinPrompt(ui, if (phone) safeArea else SafeArea())
             // A free-plan refusal, with "Upgrade" to the billing site.
             UpgradePrompt(ui, if (phone) safeArea else SafeArea())
+            // The guided tour, over everything: nothing at all while it is off.
+            TourHost(ui, if (phone) safeArea else SafeArea())
         }
         FollowNavigation(ui, navigator)
         FollowHistory(ui)
@@ -552,13 +554,14 @@ private fun PhoneFeed(ui: FeedUi, safeArea: SafeArea, startAt: String?, widthPx:
 @Composable
 private fun PhoneTopBar(state: FeedState, onProjects: () -> Unit, onTapBar: () -> Unit, onSearch: () -> Unit, onBell: () -> Unit, onAccount: () -> Unit) {
     val colors = AgentTheme.colors
+    val tour = LocalFeedUi.current?.tour
     val shape = AgentTheme.shapes.pill
     Row(
         Modifier.fillMaxWidth().pointerInput(Unit) { detectTapGestures { onTapBar() } },
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Row(
-            Modifier.clip(shape).pressable("Projects, ${state.totalUnread} unread elsewhere", shape, onClick = onProjects).padding(end = 8.dp),
+            Modifier.tourTarget(tour, TourTarget.Channels).clip(shape).pressable("Projects, ${state.totalUnread} unread elsewhere", shape, onClick = onProjects).padding(end = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(Icons.Back, null, tint = colors.accent, modifier = Modifier.size(20.dp))
@@ -570,7 +573,7 @@ private fun PhoneTopBar(state: FeedState, onProjects: () -> Unit, onTapBar: () -
         PhoneWaitingButton()
         IconAction(Icons.Search, "Search", onClick = onSearch)
         BellButton(state.bell.unseen) { onBell() }
-        Box(Modifier.pressable("Alerts on this device", CircleShape, onClick = onAccount), contentAlignment = Alignment.Center) {
+        Box(Modifier.tourTarget(tour, TourTarget.Settings).pressable("Alerts on this device", CircleShape, onClick = onAccount), contentAlignment = Alignment.Center) {
             Avatar(state.owner, 30.dp)
         }
     }
@@ -585,7 +588,7 @@ private fun PhoneWaitingButton() {
     val colors = AgentTheme.colors
     val shape = AgentTheme.shapes.pill
     Box(
-        Modifier.clip(shape).pressable("${questions(count)} waiting on you", shape) { ui.showWaiting() },
+        Modifier.tourTarget(ui.tour, TourTarget.Waiting).clip(shape).pressable("${questions(count)} waiting on you", shape) { ui.showWaiting() },
         contentAlignment = Alignment.Center,
     ) {
         Row(
@@ -768,6 +771,9 @@ private fun LazyListScope.feedItems(ui: FeedUi, density: Density, list: LazyList
     if (sections.isEmpty()) {
         item(key = "empty") { EmptyFeed(state, ui.filter, Modifier.widthIn(max = FeedMaxWidth).fillMaxWidth()) { ui.connectOpen = true } }
     }
+    // Only while the tour is on: the card and the question it points at.
+    val tourCard = if (ui.tour.on) tourCardIn(sections)?.id else null
+    val tourQuestion = if (ui.tour.on) tourQuestionIn(sections)?.id else null
     sections.forEachIndexed { s, section ->
         val key = "section-$s"
         // Every heading holds the top while its cards scroll under it, as the website's do, so the
@@ -781,7 +787,12 @@ private fun LazyListScope.feedItems(ui: FeedUi, density: Density, list: LazyList
                 // Only the card a link opened changes when the ring comes and goes.
                 // The keyboard's card (J and K) wears the same ring while it is on it.
                 val lit by remember(item.id) { derivedStateOf { ui.highlighted == item.id || ui.cursor == item.id } }
-                Box(Modifier.feedItemMotion(this).widthIn(max = FeedMaxWidth).fillMaxWidth()) {
+                val spot = when (item.id) {
+                    tourCard -> Modifier.tourTarget(ui.tour, TourTarget.Card)
+                    tourQuestion -> Modifier.tourTarget(ui.tour, TourTarget.Question)
+                    else -> Modifier
+                }
+                Box(Modifier.feedItemMotion(this).widthIn(max = FeedMaxWidth).fillMaxWidth().then(spot)) {
                     // A [[Doc name]] in the card links to its own channel's doc; one provider for both, as each costs a redraw.
                     CompositionLocalProvider(LocalLit provides lit, LocalDocChannel provides item.channelSlug) { FeedRow(
                         item,
