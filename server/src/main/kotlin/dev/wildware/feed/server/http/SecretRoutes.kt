@@ -212,7 +212,7 @@ private suspend fun ApplicationCall.boundedBody(max: Int): ByteArray {
 }
 
 /** Who on the owner's side did it: the device whose key signed this request. */
-private fun ApplicationCall.owner(app: App): Secrets.Actor =
+internal fun ApplicationCall.owner(app: App): Secrets.Actor =
     // The device the guard let in, whether its key came as a Bearer header or as the web app's cookie.
     Secrets.Actor.owner(attributes.getOrNull(CallerKey)?.device ?: Guard.bearer(request.headers["Authorization"])?.let(app.devices::authenticate))
 

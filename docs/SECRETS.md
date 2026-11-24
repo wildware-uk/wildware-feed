@@ -14,6 +14,7 @@ The agent hands the ticket to `curl`, and `curl` puts the coat straight into a f
 |---|---|---|
 | Owner, in the app | Agent | `secret_url(name)` returns a single-use URL. The agent runs `curl -fsS <url> -o .env.local` (or `export X="$(curl -fsS <url>)"`). |
 | Agent asks the owner | Agent | `request_secret(name, question)` shows a masked box in the app. The agent learns only that `name` is ready, then uses `secret_url`. With `fields: [{name, label?, hint?, multiline?, optional?}]` (1 to 10) it asks for several on one card with one Save all: each is stored as its own secret, all or none, and the agent learns the names saved. |
+| Agent asks to use one someone else saved | Agent | `request_secret_access(name, reason)` shows a card in the thread: "lead asks to use secret TURNSTILE_SECRET: reason", with the note, who saved it, and Allow and Deny. Allow shares it with the agent, then it uses `secret_url`. See "Asking for access" below. |
 | Agent | Owner | `create_secret_upload(name)` returns a single-use URL. The agent runs `curl -fsS -T file <url>`, then attaches it to its reply (below). |
 | Agent, in a thread | Owner | `post_message` or `post_update` with `secrets: ["NAME"]`. The owner sees a locked chip and opens it in place (below). |
 
@@ -43,6 +44,27 @@ too (`shared`, by the agent).
 A share is checked again on every read. Once the secret is deleted or paused, or the agent that
 shared it loses it (or its token), the chip says "No longer available" and reveal answers 410
 `secret_unavailable`. Deleting the post does the same.
+
+## Asking for access
+
+One agent saved a secret, and another needs it. Only a person can share it, so the agent asks
+where the conversation is, and the person answers there instead of going to Settings.
+
+- `request_secret_access({name, reason, message_id? | update_id? | request_id? | channel?})`. The
+  name must exist. A name nobody saved is `not_found` (ask with `request_secret` instead). One the
+  agent can already read answers `{state: "already_shared"}`. Neither makes a card.
+- The card is an ordinary request, kind `confirm`, so it shows in the thread, in the pending
+  strip and as a notification like any other, and older apps show it as Yes and No. Its words
+  are the server's (an agent can't edit it), and `config.secretAccess` holds `{name, note,
+  createdBy, createdByName}`. Never the value.
+- Allow (`POST /api/requests/<id>/answer {value: true}`) shares the secret with the asking agent
+  exactly as Settings would (the same change, audited as `scope_changed`), plus an
+  `access_allowed` audit line naming the agent, the request and the person. Only an owner or an
+  admin may allow, as only they may share a secret in Settings; a member gets 403. If sharing
+  fails, the request waits again.
+- Deny (`{value: false}`) closes it and shares nothing. Anyone who may answer it may deny it.
+- The agent hears it as it hears any answer: an answer event and `await_request`, with
+  `response.value` true or false.
 
 ## Storage
 

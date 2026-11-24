@@ -405,6 +405,73 @@ class Secrets(
         return clean
     }
 
+    // ---- access requests ------------------------------------------------------------------------
+
+    /** What `request_secret_access` finds for a name: a secret to ask for, or one the agent may already read. */
+    sealed class AccessCheck {
+        class Ask(val secret: Secret) : AccessCheck()
+        class AlreadyShared(val name: String) : AccessCheck()
+    }
+
+    /**
+     * `request_secret_access`: [agentId] asks to read [name], a secret that already exists. A name
+     * nobody saved is `not_found`, and one it may already read needs no card.
+     */
+    fun checkAccess(agentId: String, name: String): AccessCheck {
+        sealer()
+        val clean = checkName(name)
+        val secret = byName(clean)
+            ?: throw notFound("no secret named $clean. Nobody has saved one by that name: ask your owner for it with request_secret.")
+        return if (mayRead(secret, agentId)) AccessCheck.AlreadyShared(clean) else AccessCheck.Ask(secret)
+    }
+
+    /**
+     * What the card shows about [secret], and what a yes acts on: its name, note and who saved it.
+     * Never its value. [agentName] names an agent that saved it.
+     */
+    fun accessCard(secret: Secret, agentName: (String) -> String?): JsonObject = buildJsonObject {
+        put("name", secret.name)
+        put("note", secret.note)
+        put("createdBy", secret.createdBy)
+        put("createdByName", secret.createdBy.takeIf { it.startsWith("agent:") }?.let { agentName(it.removePrefix("agent:")) })
+    }
+
+    /**
+     * A person answers a `request_secret_access` card. No ([allow] false) closes it and shares
+     * nothing, as a no to any question does. Yes shares the secret with the asking agent, exactly as
+     * sharing it in Settings would ([change]), and only an owner or an admin may say it, as only they
+     * may share a secret there. The yes is audited with who gave it.
+     */
+    fun answerAccess(
+        requests: Requests,
+        requestId: String,
+        allow: Boolean,
+        person: People.Person,
+        actor: Actor,
+        shown: Requests.Shown? = null,
+    ): OwnerRequest {
+        val request = requests.find(requestId) ?: throw notFound("no such request: $requestId")
+        val name = request.secretAccessName ?: throw invalid("request $requestId is not asking for access to a secret")
+        if (!allow) return requests.answer(requestId, JsonPrimitive(false), person.id, shown)
+        if (person.role.rank < People.Role.ADMIN.rank) throw forbidden("Only an owner or an admin can share a secret with an agent.")
+        // The same person allowing it again is an app trying again after the reply was lost.
+        if (request.state == "answered" && request.answeredBy == person.id && request.answer?.get("value")?.jsBoolean == true) return request
+        val secret = byName(name) ?: throw DomainError("secret_unavailable", "$name was deleted since the agent asked: deny or dismiss the request", 410)
+        val claimed = requests.claimAccess(requestId, person.id, shown)
+        val agentNames = db.query("SELECT id, name FROM agents WHERE team_id = :team AND id = ?", request.agentId) { it.getString(1) to it.getString(2) }.toMap()
+        try {
+            if (!mayRead(secret, request.agentId)) change(secret.id, actor, agentIds = secret.agentIds + request.agentId)
+            val who = listOfNotNull(agentNames[request.agentId] ?: request.agentId, "for request $requestId", person.name.takeIf { it.isNotBlank() }?.let { "by $it" })
+            audit(secret.id, secret.name, "access_allowed", actor, who.joinToString(", "))
+        } catch (e: Throwable) {
+            // Nothing shared, so the agent must not hear "allowed": the request waits again.
+            requests.releaseSecret(claimed)
+            throw e
+        }
+        changed(secret.id, "audited")
+        return requests.announceSecret(claimed)
+    }
+
     // ---- agents -------------------------------------------------------------------------------
 
     /** The secrets [agentId] may read, without values. */
@@ -415,7 +482,10 @@ class Secrets(
         sealer()
         val clean = checkName(name)
         val secret = byName(clean)?.takeIf { mayRead(it, agent.id) }
-            ?: throw notFound("no secret named $clean that you may read. Call list_secrets to see yours, or request_secret to ask your owner for it.")
+            ?: throw notFound(
+                "no secret named $clean that you may read. Call list_secrets to see yours. If someone else saved it, " +
+                    "ask to use it with request_secret_access; if nobody has, ask your owner for it with request_secret.",
+            )
         if (secret.pausedAt != null) throw conflict("your owner has paused $clean: it cannot be handed out until they resume it")
         val grant = grant(agent, "read", secret.id, clean, null)
         audit(secret.id, clean, "url_issued", Actor.agent(agent), null).also { changed(secret.id, "audited") }

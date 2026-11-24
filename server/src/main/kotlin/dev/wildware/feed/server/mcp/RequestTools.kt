@@ -150,6 +150,13 @@ private fun answeredSummary(result: RequestResult, byName: String? = null): Stri
         }
         return "$who saved the secret ${jsonStringifyJs(value)}. Fetch it with secret_url into a file; never print its value."
     }
+    result.request.secretAccessName?.let { name ->
+        return if (value.jsBoolean == true) {
+            "$who allowed you to use the secret ${jsonStringifyJs(kotlinx.serialization.json.JsonPrimitive(name))}. Fetch it with secret_url into a file; never print its value."
+        } else {
+            "$who denied you the secret ${jsonStringifyJs(kotlinx.serialization.json.JsonPrimitive(name))}. That is not permission: do not try to get it another way."
+        }
+    }
     return "$who answered: ${describe(value)}"
 }
 

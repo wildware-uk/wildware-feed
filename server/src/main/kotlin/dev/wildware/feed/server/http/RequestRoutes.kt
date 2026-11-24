@@ -4,6 +4,7 @@ import dev.wildware.feed.server.App
 import dev.wildware.feed.server.domain.Apps
 import dev.wildware.feed.server.domain.Js
 import dev.wildware.feed.server.domain.Requests
+import dev.wildware.feed.server.domain.jsBoolean
 import dev.wildware.feed.server.domain.jsNumber
 import dev.wildware.feed.server.domain.feed
 import dev.wildware.feed.server.domain.conflict
@@ -39,7 +40,14 @@ fun Route.requestRoutes(app: App) {
             }
             // An agent's feedback (migration 067) is sent by an owner or an admin, and never with a secret in it.
             app.feedback.checkAnswer(call.parameters["id"] ?: "", call.person, value)
-            val request = app.requests.answer(call.parameters["id"] ?: "", value, call.person.id, shown)
+            val id = call.parameters["id"] ?: ""
+            // A yes to request_secret_access shares the secret, so it is the secrets' to give.
+            val request = if (app.requests.find(id)?.secretAccessName != null) {
+                val allow = value.jsBoolean ?: throw invalid("allow or deny access with true or false")
+                app.secrets.answerAccess(app.requests, id, allow, call.person, call.owner(app), shown)
+            } else {
+                app.requests.answer(id, value, call.person.id, shown)
+            }
             call.respondOwner(200, buildJsonObject { put("request", request.json) })
         },
     )

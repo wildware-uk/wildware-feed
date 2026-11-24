@@ -336,7 +336,12 @@ internal class FeedMapper(
             })
         val (kind, choices) = when (request.requestKind) {
             RequestKind.Buttons -> QuestionKind.Buttons to options.mapIndexed { i, o -> choice(o, primary = i == 0) }
-            RequestKind.Confirm -> QuestionKind.Buttons to listOf(Choice(Yes, primary = true), Choice(No))
+            // A yes to request_secret_access shares a secret, so it says so.
+            RequestKind.Confirm -> QuestionKind.Buttons to if (request.config?.secretAccess != null) {
+                listOf(Choice(Allow, primary = true), Choice(Deny))
+            } else {
+                listOf(Choice(Yes, primary = true), Choice(No))
+            }
             RequestKind.Choice -> QuestionKind.Choice to options.map { choice(it) }
             RequestKind.MultiChoice -> QuestionKind.MultiChoice to options.map { choice(it) }
             RequestKind.Text -> QuestionKind.Text to emptyList()
@@ -421,7 +426,7 @@ internal class FeedMapper(
         }
         val at = request.answeredAt ?: 0L
         return toQuestion(agents, project, index).copy(
-            answered = FeedItem.Answered(by, answerSaid(request.answer), if (at > 0) relativeLabel(at) else ""),
+            answered = FeedItem.Answered(by, answerSaid(request.answer, access = request.config?.secretAccess != null), if (at > 0) relativeLabel(at) else ""),
             sending = false,
             unsent = null,
         )
@@ -838,6 +843,8 @@ internal class FeedMapper(
 
     companion object {
         const val Yes = "Yes"
+        const val Allow = "Allow"
+        const val Deny = "Deny"
         const val No = "No"
     }
 }
@@ -866,11 +873,17 @@ internal fun pickBounds(config: RequestConfig?, options: Int): PickBounds {
  * What an answered question's answer said, in words: yes or no, the option or options picked, the
  * words typed, a form's action. Null for a secret (only its name is kept) or an answer it can't read.
  */
-internal fun answerSaid(answer: kotlinx.serialization.json.JsonElement?): String? {
+internal fun answerSaid(answer: kotlinx.serialization.json.JsonElement?, access: Boolean = false): String? {
     val body = answer as? JsonObject ?: return null
     if ((body["kind"] as? JsonPrimitive)?.contentOrNull == "secret") return null
     val said = when (val value = body["value"]) {
-        is JsonPrimitive -> if (value.isString) value.contentOrNull else value.booleanOrNull?.let { if (it) FeedMapper.Yes else FeedMapper.No }
+        is JsonPrimitive -> if (value.isString) value.contentOrNull else value.booleanOrNull?.let {
+            when {
+                access -> if (it) "Allowed" else "Denied"
+                it -> FeedMapper.Yes
+                else -> FeedMapper.No
+            }
+        }
         is JsonArray -> value.mapNotNull { (it as? JsonPrimitive)?.contentOrNull }.joinToString(", ")
         is JsonObject -> listOfNotNull((value["action"] as? JsonPrimitive)?.contentOrNull, (value["text"] as? JsonPrimitive)?.contentOrNull?.ifBlank { null }).joinToString(": ")
         else -> null

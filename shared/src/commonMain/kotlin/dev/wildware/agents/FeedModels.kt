@@ -347,6 +347,20 @@ data class RequestConfig(
      * together. Null for a question that asks for the one [secretName].
      */
     val secretFields: List<SecretFieldView>? = null,
+    /**
+     * A yes-or-no question from request_secret_access: an agent asks to use this secret, and a yes
+     * shares it with that agent. Never its value.
+     */
+    val secretAccess: SecretAccessView? = null,
+)
+
+/** The secret a request_secret_access question is about: its name, note and who saved it ("owner" or "agent:<id>"). */
+@Serializable
+data class SecretAccessView(
+    val name: String,
+    val note: String? = null,
+    val createdBy: String? = null,
+    val createdByName: String? = null,
 )
 
 /** A question an agent is stopped on. [seq] is queue order: the longest blocked first. */

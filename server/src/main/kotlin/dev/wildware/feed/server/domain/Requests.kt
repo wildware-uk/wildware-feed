@@ -42,6 +42,9 @@ class OwnerRequest(val json: JsonObject) {
     /** Reads leave out "medium", so a request with none is medium. */
     val priority get() = s("priority") ?: "medium"
 
+    /** The secret a `request_secret_access` card asks to use, or null for any other question. */
+    val secretAccessName: String? get() = ((config?.get("secretAccess") as? JsonObject)?.get("name") as? JsonPrimitive)?.content
+
     /** Who answered (migration 055): reads leave out the founder, so an answered one without it is theirs. */
     val answeredBy: String? get() = s("answeredBy") ?: People.FOUNDER.takeIf { state == "answered" }
 }
@@ -84,6 +87,11 @@ data class NewRequest(
     val blocks: List<JsonElement>? = null,
     /** The feedback this question asks the owner to send (migration 067); set by the server, never by an agent. */
     val feedbackId: String? = null,
+    /**
+     * For a `request_secret_access` confirm: the secret asked for, as [Secrets.accessCard] shapes it.
+     * Set by the server, never by an agent. A yes then shares that secret ([Secrets.answerAccess]).
+     */
+    val secretAccess: JsonObject? = null,
 )
 
 data class NewEmbed(val type: String, val data: JsonElement?, val sourceUrl: String?)
@@ -239,6 +247,10 @@ class Requests(
         }
         if (shown != null && shown.editedAt != request.editedAt) throw changedSinceShown()
         val answer = validateAnswer(request, value)
+        // A yes to a secret access request shares the secret, so only [Secrets.answerAccess] gives it.
+        if (request.secretAccessName != null && answer["value"]?.jsBoolean == true) {
+            throw invalid("request ${request.id} asks for a secret: allowing it shares that secret, so it goes through Secrets.answerAccess")
+        }
         val answerValue = answer["value"]!!
         val state = if (request.kind == "confirm" && answerValue.jsBoolean == false) "rejected" else "approved"
         val row = decide(request.id, state, scalarOf(answerValue), jsonText(answer), clock(), by, shown)
@@ -281,6 +293,21 @@ class Requests(
 
     fun announceSecret(claimed: JsonObject): OwnerRequest = settle(claimed, "answered")
 
+    /**
+     * The first half of allowing a `request_secret_access` card: it is answered yes by [by] (so
+     * nobody else can answer, withdraw or time it out), but nobody is told yet. Then
+     * [announceSecret] once the secret is shared, or [releaseSecret] if sharing it failed.
+     */
+    fun claimAccess(requestId: String, by: String, shown: Shown? = null): JsonObject {
+        val request = expireIfDue(toAnswer(requestId))
+        if (request.secretAccessName == null) throw invalid("request $requestId is not asking for access to a secret")
+        if (request.state != "pending") throw settledAlready(request)
+        if (shown != null && shown.editedAt != request.editedAt) throw changedSinceShown()
+        val answer = validateAnswer(request, JsonPrimitive(true))
+        return decide(request.id, "approved", "true", jsonText(answer), clock(), by, shown)
+            ?: mustFind(request.id).let { now -> if (now.state == "pending") throw changedSinceShown() else throw settledAlready(now) }
+    }
+
     /** Undo [claimSecret]: the request waits again, as if it had never been answered. */
     fun releaseSecret(claimed: JsonObject) {
         val id = OwnerRequest(claimed).id
@@ -308,6 +335,8 @@ class Requests(
         val request = expireIfDue(own(requestId, agentId))
         ChannelAccess(db, clock).requirePost(request.projectId) { notFound("no such request: $requestId") }
         if (request.state != "pending") throw settledAlready(request)
+        // Its words are the server's, so the card always says which secret a yes shares.
+        if (request.secretAccessName != null) throw invalid("a secret access request can't be edited: withdraw it and ask again")
 
         val question = input.question?.let { requiredText(it, "question", QUESTION_MAX_LENGTH) }
         val detail = if (input.detailGiven) optionalText(input.detail, "detail", DETAIL_MAX_LENGTH) else null
@@ -546,6 +575,10 @@ class Requests(
             config["default"] = JsonPrimitive(fallback)
         }
         input.feedbackId?.let { config["feedbackId"] = JsonPrimitive(it) }
+        input.secretAccess?.let {
+            if (kind != "confirm") throw invalid("secretAccess is for a confirm request")
+            config["secretAccess"] = it
+        }
         if (kind == "secret") {
             config["secretName"] = JsonPrimitive(input.secretName ?: throw invalid("a secret request names the secret it asks for"))
             input.secretFields?.let { fields -> config["secretFields"] = JsonArray(fields.map { it.json() }) }

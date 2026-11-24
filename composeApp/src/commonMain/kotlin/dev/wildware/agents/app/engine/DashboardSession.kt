@@ -1324,7 +1324,7 @@ class DashboardSession(
 
     /** The answer as the server takes it for this kind of question. */
     private fun answerValue(card: RequestCard, choices: List<String>): JsonElement = when (card.request.requestKind) {
-        RequestKind.Confirm -> JsonPrimitive(choices.firstOrNull() == FeedMapper.Yes)
+        RequestKind.Confirm -> JsonPrimitive(choices.firstOrNull().let { it == FeedMapper.Yes || it == FeedMapper.Allow })
         RequestKind.MultiChoice -> JsonArray(choices.map(::JsonPrimitive))
         else -> JsonPrimitive(choices.firstOrNull().orEmpty())
     }
