@@ -782,7 +782,8 @@ private fun LazyListScope.feedItems(ui: FeedUi, density: Density, list: LazyList
                 // The keyboard's card (J and K) wears the same ring while it is on it.
                 val lit by remember(item.id) { derivedStateOf { ui.highlighted == item.id || ui.cursor == item.id } }
                 Box(Modifier.feedItemMotion(this).widthIn(max = FeedMaxWidth).fillMaxWidth()) {
-                    CompositionLocalProvider(LocalLit provides lit) { FeedRow(
+                    // A [[Doc name]] in the card links to its own channel's doc; one provider for both, as each costs a redraw.
+                    CompositionLocalProvider(LocalLit provides lit, LocalDocChannel provides item.channelSlug) { FeedRow(
                         item,
                         selected = density == Density.Comfortable && item.id == ui.threadId,
                         density = density,

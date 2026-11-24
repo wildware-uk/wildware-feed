@@ -54,7 +54,9 @@ internal fun AloneView(ui: FeedUi, maxWidth: Dp, modifier: Modifier = Modifier) 
                 if (ui.state.item(item.id) != null) AppButton("Show in feed", ButtonTone.Quiet) { ui.showAloneInFeed() }
             }
             key(item.id) {
-                FeedItemView(item, selected = false, density = Density.Comfortable, modifier = Modifier.widthIn(max = maxWidth).fillMaxWidth())
+                androidx.compose.runtime.CompositionLocalProvider(LocalDocChannel provides item.channelSlug) {
+                    FeedItemView(item, selected = false, density = Density.Comfortable, modifier = Modifier.widthIn(max = maxWidth).fillMaxWidth())
+                }
             }
         }
     }

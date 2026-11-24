@@ -1223,13 +1223,11 @@ private fun List<Attachment>.saves(): List<FileAttachment> = mapNotNull { it.sav
 
 @Composable
 fun FeedItemView(item: FeedItem, selected: Boolean, density: Density, modifier: Modifier = Modifier, inThread: Boolean = false) {
-    // A [[Doc name]] in the card or its replies links to its own channel's doc.
-    androidx.compose.runtime.CompositionLocalProvider(LocalDocChannel provides item.channelSlug) {
-        when (item) {
-            is FeedItem.Update -> UpdateCard(item, modifier, selected = selected, density = density, inThread = inThread)
-            is FeedItem.Question -> QuestionCard(item, modifier, density = density, showDiscussion = !inThread)
-            is FeedItem.Post -> PostCard(item, modifier, density = density, inThread = inThread)
-        }
+    // Its [[Doc name]] links name its channel through LocalDocChannel, provided where the card is placed.
+    when (item) {
+        is FeedItem.Update -> UpdateCard(item, modifier, selected = selected, density = density, inThread = inThread)
+        is FeedItem.Question -> QuestionCard(item, modifier, density = density, showDiscussion = !inThread)
+        is FeedItem.Post -> PostCard(item, modifier, density = density, inThread = inThread)
     }
 }
 

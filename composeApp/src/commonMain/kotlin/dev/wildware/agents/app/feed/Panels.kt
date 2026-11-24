@@ -416,7 +416,7 @@ fun FeedHeader(ui: FeedUi, compact: Boolean, modifier: Modifier = Modifier) {
                 }
                 OutboxLine(ui)
             }
-            ViewToggle(ui, Modifier.padding(end = if (compact) 4.dp else 10.dp))
+            ViewToggle(ui, state.current.slug != null, Modifier.padding(end = if (compact) 4.dp else 10.dp))
             if (state.current.slug != null) {
                 val id = state.current.id
                 IconAction(Icons.Settings, "Channel settings") { ui.projectDialog = ProjectDialog.Settings(id) }

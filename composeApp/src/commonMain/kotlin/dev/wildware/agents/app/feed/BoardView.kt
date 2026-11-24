@@ -94,14 +94,11 @@ import kotlin.math.roundToInt
 
 /** "Feed | Board | Docs", at the top of the main pane. Docs are a channel's, so only on a channel. */
 @Composable
-fun ViewToggle(ui: FeedUi, modifier: Modifier = Modifier) {
+fun ViewToggle(ui: FeedUi, onChannel: Boolean, modifier: Modifier = Modifier) {
     val colors = AgentTheme.colors
     val shape = AgentTheme.shapes.small
-    val views = buildList {
-        add("Feed")
-        add("Board")
-        if (ui.state.current.slug != null) add("Docs")
-    }
+    // Whether a channel is open comes in as a value, so a new state from the engine skips this.
+    val views = if (onChannel) listOf("Feed", "Board", "Docs") else listOf("Feed", "Board")
     val now = when {
         ui.docsOpen -> "Docs"
         ui.boardOpen -> "Board"
@@ -200,7 +197,7 @@ private fun BoardHeader(ui: FeedUi, board: BoardState, scope: BoardScope, compac
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            ViewToggle(ui, Modifier.padding(start = 12.dp))
+            ViewToggle(ui, state.current.slug != null, Modifier.padding(start = 12.dp))
             Box {
                 IconAction(Icons.More, "Board options", Modifier.padding(start = 6.dp)) { menuOpen = !menuOpen }
                 if (menuOpen) BoardOptions(ui, board) { menuOpen = false }

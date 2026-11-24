@@ -123,7 +123,7 @@ private fun DocsHeader(ui: FeedUi, compact: Boolean) {
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        ViewToggle(ui, Modifier.padding(start = 12.dp))
+        ViewToggle(ui, ui.state.current.slug != null, Modifier.padding(start = 12.dp))
     }
 }
 
