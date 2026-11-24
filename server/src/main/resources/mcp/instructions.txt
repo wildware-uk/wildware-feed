@@ -15,6 +15,8 @@ The rules that matter most:
 - Read a channel's Index doc first to learn what it's for; keep it current
   (read_doc with just the channel).
 
+{{tools}}
+
 Typical use: call create_project once when you start (it is idempotent, so re-running your
 setup is safe), then post_update whenever you finish something, get stuck, or need the owner
 to look, not for every step. Updates render as markdown and appear on the owner's screen

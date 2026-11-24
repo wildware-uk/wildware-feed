@@ -77,6 +77,8 @@ Without these variables every test is skipped, so a plain `./gradlew build` stay
   or, at a path inside an existing tool, swaps one exact piece of text or replaces one value. With `PARITY_SERVER=kotlin` (set by `run-against-kotlin.sh`) the suite expects
   the TS payload with those changes applied, nothing more, so any other difference still fails. The
   Kotlin server serves `server/src/main/resources/mcp/tools-list.json`; change the two together.
+- The Kotlin server's plain `/mcp` lists only the three discovery tools (spec/05 §1.4). The tests
+  that check the whole list ask `/mcp?tools=all`, which the TS server ignores.
 - `ReadParityTest` compares reads byte for byte. Keys the Kotlin server adds on purpose (a channel's
   `groupId`, the snapshot's `groups`) are listed, each with why, in its `kotlinAdditions`; each pattern
   matches only the empty value a TS-built database has.

@@ -38,7 +38,16 @@ class ToolCall(val app: App, val agent: Agents.Agent, val args: JsonObject) {
 }
 
 /** A tool's answer, in the TS `ok`/`failed` envelope (spec/05-mcp.md §3). */
-class ToolResult private constructor(val json: JsonObject) {
+class ToolResult private constructor(val json: JsonObject, val invalidArguments: Boolean = false) {
+    /** The same answer with [hint] added to its first text: how a discovery tool points at the next step. */
+    fun withHint(hint: String): ToolResult {
+        val content = json["content"] as? JsonArray ?: return this
+        val first = content.firstOrNull() as? JsonObject ?: return this
+        val text = (first["text"] as? JsonPrimitive)?.content ?: return this
+        val hinted = JsonObject(first + ("text" to JsonPrimitive("$text\n$hint")))
+        return ToolResult(JsonObject(json + ("content" to JsonArray(listOf(hinted) + content.drop(1)))), invalidArguments)
+    }
+
     companion object {
         @OptIn(ExperimentalSerializationApi::class)
         private val pretty = Json { prettyPrint = true; prettyPrintIndent = "  " }
@@ -56,10 +65,10 @@ class ToolResult private constructor(val json: JsonObject) {
         })
 
         /** What the MCP SDK sends for an unknown tool or bad arguments: text only, no structuredContent. */
-        fun sdkError(message: String) = ToolResult(buildJsonObject {
+        fun sdkError(message: String, invalidArguments: Boolean = false) = ToolResult(buildJsonObject {
             put("content", JsonArray(listOf(text("MCP error -32602: $message"))))
             put("isError", JsonPrimitive(true))
-        })
+        }, invalidArguments)
 
         private fun text(t: String) = buildJsonObject { put("type", JsonPrimitive("text")); put("text", JsonPrimitive(t)) }
     }
@@ -77,10 +86,16 @@ class ToolRegistry {
 
     private val handlers = LinkedHashMap<String, ToolHandler>()
 
-    val schemas: Map<String, JsonObject> by lazy {
-        val list = Json.parseToJsonElement(ToolRegistry::class.java.getResource("/mcp/tools-list.json")!!.readText()) as JsonArray
-        list.associate { it.jsonObject["name"]!!.jsonPrimitive.content to it.jsonObject["inputSchema"]!!.jsonObject }
+    /** Every tool as `tools/list` advertises it, in order: name, title, description, inputSchema, annotations. */
+    val advertised: JsonArray by lazy {
+        Json.parseToJsonElement(ToolRegistry::class.java.getResource("/mcp/tools-list.json")!!.readText()) as JsonArray
     }
+
+    val schemas: Map<String, JsonObject> by lazy {
+        advertised.associate { it.jsonObject["name"]!!.jsonPrimitive.content to it.jsonObject["inputSchema"]!!.jsonObject }
+    }
+
+    fun has(name: String) = name in handlers
 
     fun register(name: String, handler: ToolHandler) {
         require(name in schemas) { "no advertised schema for tool $name" }
@@ -139,7 +154,7 @@ class ToolRegistry {
             val (args, issues) = Schema.check(schemas.getValue(name), raw)
             if (issues.isNotEmpty()) {
                 outcome = "invalid"
-                return ToolResult.sdkError("Input validation error: Invalid arguments for tool $name: ${issues.joinToString("\n")}")
+                return ToolResult.sdkError("Input validation error: Invalid arguments for tool $name: ${issues.joinToString("\n")}", invalidArguments = true)
             }
             // A suspended team is read-only: its agents can read, not write (docs/HOSTING.md §7).
             val team = app.teams.current()

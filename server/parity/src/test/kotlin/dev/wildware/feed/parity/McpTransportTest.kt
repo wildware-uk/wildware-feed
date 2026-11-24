@@ -67,7 +67,8 @@ class McpTransportTest : ParityTest() {
 
     @Test
     fun `tools list has every tool in order, each with a schema`() = parity {
-        val tools = alpha.rpcResult("tools/list")["result"]["tools"].arr
+        // `?tools=all` is the Kotlin server's full list (plain /mcp lists the discovery tools); the TS server ignores it.
+        val tools = alpha.rpcResult("tools/list", path = ALL_TOOLS)["result"]["tools"].arr
         // The Kotlin server adds the tools in tools-list-kotlin-changes.json, after the TS server's.
         assertEquals(if (Parity.kotlin) toolNames + ToolsListChanges.added() else toolNames, tools.map { it["name"].s })
         for (tool in tools) {
@@ -75,6 +76,13 @@ class McpTransportTest : ParityTest() {
             assertTrue(tool["description"].s.isNotBlank())
             assertTrue(tool["title"].s.isNotBlank())
         }
+    }
+
+    @Test
+    fun `plain mcp lists the discovery tools on the Kotlin server`() = parity {
+        if (!Parity.kotlin) return@parity
+        val tools = alpha.rpcResult("tools/list")["result"]["tools"].arr
+        assertEquals(listOf("list_tools", "describe_tools", "call_tool"), tools.map { it["name"].s })
     }
 
     @Test
@@ -165,10 +173,13 @@ class McpToolsListTest : ParityTest() {
         ).jsonArray
         val expected = if (Parity.kotlin) ToolsListChanges.apply(recorded) else recorded
         val source = if (Parity.kotlin) "tools-list.json with tools-list-kotlin-changes.json" else "tools-list.json"
-        val live = alpha.rpcResult("tools/list")["result"]["tools"].arr
+        val live = alpha.rpcResult("tools/list", path = ALL_TOOLS)["result"]["tools"].arr
         assertEquals(expected.map { it["name"].s }, live.map { it["name"].s })
         for ((want, got) in expected.zip(live)) {
             assertEquals(want, got, "tool ${want["name"].s} differs from server/parity/src/test/resources/$source")
         }
     }
 }
+
+/** Where tools/list gives every tool: tool discovery's switch on the Kotlin server, ignored by the TS one. */
+const val ALL_TOOLS = "/mcp?tools=all"

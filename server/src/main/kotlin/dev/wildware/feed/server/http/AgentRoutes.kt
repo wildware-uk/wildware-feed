@@ -34,11 +34,21 @@ fun Route.agentRoutes(app: App) {
     )
 }
 
-private val instructions by lazy { Mcp::class.java.getResource("/mcp/instructions.txt")!!.readText() }
-private val tools by lazy { Wire.json.parseToJsonElement(Mcp::class.java.getResource("/mcp/tools-list.json")!!.readText()) }
+private fun resource(path: String) = Mcp::class.java.getResource(path)!!.readText()
+
+/** The rules, with how to find tools put in where `{{tools}}` stands: discovery's text by default, nothing with every tool listed. */
+private val instructions by lazy { resource("/mcp/instructions.txt").replace("{{tools}}\n\n", resource("/mcp/instructions-discovery.txt").trimEnd() + "\n\n") }
+private val instructionsAll by lazy { resource("/mcp/instructions.txt").replace("{{tools}}\n\n", "") }
 
 object Mcp {
     val SUPPORTED = listOf("2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05", "2024-10-07")
+
+    /**
+     * `/mcp?tools=all` lists every tool, as before tool discovery; plain `/mcp` lists only
+     * list_tools, describe_tools and call_tool (see [dev.wildware.feed.server.mcp.Discovery]).
+     */
+    const val ALL_TOOLS_PARAM = "tools"
+    const val ALL_TOOLS_VALUE = "all"
 }
 
 /**
@@ -147,14 +157,15 @@ private suspend fun ApplicationCall.mcp(app: App) {
             taken += limiter to key
         }
     }
+    val all = request.queryParameters[Mcp.ALL_TOOLS_PARAM] == Mcp.ALL_TOOLS_VALUE
     // Every tool sees as this agent does (spec/15): channels it has no access to don't exist for it.
     val answers = kotlinx.coroutines.withContext(dev.wildware.feed.server.db.Viewer.element(dev.wildware.feed.server.db.Viewer.agent(agent.id))) {
-        requests.map { answer(app, agent, it) }
+        requests.map { answer(app, agent, it, all) }
     }
     respondRaw(200, if (parsed is JsonArray) Wire.encode(JsonArray(answers)) else Wire.encode(answers.single()), Wire.JSON)
 }
 
-private suspend fun answer(app: App, agent: Agents.Agent, request: JsonObject): JsonElement {
+private suspend fun answer(app: App, agent: Agents.Agent, request: JsonObject, all: Boolean): JsonElement {
     val id = request["id"] ?: JsonNull
     fun result(value: JsonElement) = buildJsonObject {
         put("result", value)
@@ -174,13 +185,14 @@ private suspend fun answer(app: App, agent: Agents.Agent, request: JsonObject): 
                 put("protocolVersion", JsonPrimitive(if (asked in Mcp.SUPPORTED) asked else Mcp.SUPPORTED.first()))
                 put("capabilities", buildJsonObject { put("tools", buildJsonObject { put("listChanged", JsonPrimitive(true)) }) })
                 put("serverInfo", buildJsonObject { put("name", JsonPrimitive("agent-dashboard")); put("version", JsonPrimitive("0.1.0")) })
-                put("instructions", JsonPrimitive(instructions))
+                put("instructions", JsonPrimitive(if (all) instructionsAll else instructions))
             })
         }
         "ping" -> result(JsonObject(emptyMap()))
-        "tools/list" -> result(buildJsonObject { put("tools", tools) })
+        "tools/list" -> result(buildJsonObject { put("tools", if (all) app.tools.advertised else dev.wildware.feed.server.mcp.Discovery.tools) })
+        // A tool's own name works in both modes, so sessions connected before discovery carry on.
         "tools/call" -> app.tools.paramsError(request["params"])?.let { error(-32603, it) }
-            ?: result(app.tools.call(app, agent, params).json)
+            ?: result(dev.wildware.feed.server.mcp.Discovery.call(app, agent, params).json)
         else -> error(-32601, "Method not found")
     }
 }

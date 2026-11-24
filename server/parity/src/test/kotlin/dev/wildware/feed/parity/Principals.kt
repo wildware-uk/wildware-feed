@@ -104,9 +104,9 @@ class Agent(val name: String, val token: String) {
      * agent must, unless [honourRateLimit] is false: the suite as a whole posts faster than one
      * token's 120 requests a minute.
      */
-    suspend fun rpc(method: String, params: JsonObject? = null, honourRateLimit: Boolean = true): HttpResponse {
+    suspend fun rpc(method: String, params: JsonObject? = null, honourRateLimit: Boolean = true, path: String = "/mcp"): HttpResponse {
         while (true) {
-            val response = call(HttpMethod.Post, "/mcp", buildJsonObject {
+            val response = call(HttpMethod.Post, path, buildJsonObject {
                 put("jsonrpc", "2.0")
                 put("id", ids.getAndIncrement())
                 put("method", method)
@@ -127,8 +127,8 @@ class Agent(val name: String, val token: String) {
     }
 
     /** The JSON-RPC envelope of one call; fails the test on a transport-level problem. */
-    suspend fun rpcResult(method: String, params: JsonObject? = null): JsonObject {
-        val response = rpc(method, params)
+    suspend fun rpcResult(method: String, params: JsonObject? = null, path: String = "/mcp"): JsonObject {
+        val response = rpc(method, params, path = path)
         assertEquals(200, response.status.value, "MCP $method HTTP status")
         return response.obj()
     }

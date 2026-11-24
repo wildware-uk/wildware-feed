@@ -61,7 +61,7 @@ class Server:
         self.mcp_id += 1
         body = {"jsonrpc": "2.0", "id": self.mcp_id, "method": "tools/call" if tool else "tools/list",
                 "params": {"name": tool, "arguments": arguments} if tool else {}}
-        return self.request("POST", "/mcp", body, bearer=self.agent_token,
+        return self.request("POST", "/mcp?tools=all", body, bearer=self.agent_token,
                             headers={"Accept": "application/json, text/event-stream"})
 
 

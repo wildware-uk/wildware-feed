@@ -150,6 +150,31 @@ the Retry-After header.
 - Validation therefore happens in two layers: zod (shape, `max` lengths, enums, ints) → SDK message
   above; then domain rules (`trim`, required, limits) → `failed(code, message)` (section 3).
 
+### 1.4 Tool discovery (Kotlin only)
+
+About 50 tools' full schemas are some 40,000 tokens, which every session paid for up front. So the
+Kotlin server lists less by default (`mcp/Discovery.kt`):
+
+- Plain `/mcp`: `tools/list` returns only `list_tools`, `describe_tools` and `call_tool`
+  (`resources/mcp/discovery-tools.json`).
+  - `list_tools({query?})`: every tool's name and its `title` as a one-line summary, grouped by
+    area (messages, updates, work, requests, docs, channels, sessions, secrets, media, apps,
+    feedback). A query keeps tools where every word is in the name, area, title or description.
+  - `describe_tools({names})`: up to 20 tools' entries exactly as the full list has them; names
+    that match nothing come back under `unknown`.
+  - `call_tool({name, arguments?})`: runs that tool through the same `ToolRegistry.call` a direct
+    call uses, so auth, permissions, validation, errors and the result are the same. Left-out
+    `arguments` are `{}`. A `mcp__<server>__` prefix on the name is dropped. An unknown name says
+    `Tool <name> not found` and points at `list_tools`; a validation error is the tool's own, with
+    a line pointing at `describe_tools`.
+- `/mcp?tools=all`: `tools/list` is the full list, exactly as before. Use it for old clients and
+  for the parity suite.
+- In both modes a direct `tools/call` by a tool's own name works as before, and the discovery
+  tools can be called too.
+- The `initialize` instructions are the same rules either way. Plain `/mcp` adds a short
+  "Finding tools" part (`resources/mcp/instructions-discovery.txt`, where `{{tools}}` stands in
+  `instructions.txt`) naming the everyday calls and their key arguments.
+
 ## 2. Authentication and identity
 
 Order of refusal, first failure wins (`src/mcp/server.ts:128-141`, `src/mcp/auth.ts:119-163`):

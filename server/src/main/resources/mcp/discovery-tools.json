@@ -1,0 +1,88 @@
+[
+  {
+    "name": "list_tools",
+    "title": "List the dashboard's tools",
+    "description": "List every dashboard tool by name, with a one-line summary, grouped by area (messages,\nupdates, work, requests, docs, channels, sessions, secrets, media, apps, feedback).\n\nThis server shows only three tools so your context stays small: list_tools to find a tool,\ndescribe_tools to read its arguments, and call_tool to run it.\n\nArgument: query (optional), words to filter by. A tool is listed when every word appears in\nits name, its area, its summary or its description, in any case: \"secret\", \"doc\", \"upload\".",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "maxLength": 200,
+          "description": "Words to filter by, e.g. \"secret\" or \"edit doc\". Omit to list every tool."
+        }
+      }
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "openWorldHint": false
+    },
+    "execution": {
+      "taskSupport": "forbidden"
+    }
+  },
+  {
+    "name": "describe_tools",
+    "title": "Read tools' arguments",
+    "description": "Get the full description and JSON input schema of up to 20 dashboard tools, exactly as a\nclient that lists every tool would see them. Call it before you use a tool for the first\ntime, then run the tool with call_tool.\n\nArgument: names, the tool names from list_tools, e.g. [\"post_update\", \"set_status\"].\nA name that matches no tool comes back under unknown.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "names": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "minItems": 1,
+          "maxItems": 20,
+          "description": "Tool names, from list_tools. At most 20."
+        }
+      },
+      "required": [
+        "names"
+      ]
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "openWorldHint": false
+    },
+    "execution": {
+      "taskSupport": "forbidden"
+    }
+  },
+  {
+    "name": "call_tool",
+    "title": "Run a dashboard tool",
+    "description": "Run one dashboard tool by name. It behaves exactly as calling that tool directly: the same\npermissions, the same checks on its arguments, the same errors and the same answer.\n\nArguments:\n- name: the tool, from list_tools, e.g. \"post_message\".\n- arguments: that tool's own arguments, as describe_tools shows them, e.g.\n  { \"update_id\": \"…\", \"body\": \"Done: the build is green.\" }. Omit for a tool that takes none.\n\nExample: call_tool({ name: \"acknowledge\", arguments: { message_id: \"…\", state: \"thinking\" } }).\n\nAn unknown name says so: call list_tools to find the right one. Wrong arguments come back\nwith the tool's own validation error: call describe_tools for its schema and try again.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "maxLength": 200,
+          "description": "The tool to run, from list_tools."
+        },
+        "arguments": {
+          "type": "object",
+          "additionalProperties": {},
+          "description": "The tool's own arguments, as describe_tools shows them. Omit for none."
+        }
+      },
+      "required": [
+        "name"
+      ]
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "openWorldHint": true
+    },
+    "execution": {
+      "taskSupport": "forbidden"
+    }
+  }
+]
