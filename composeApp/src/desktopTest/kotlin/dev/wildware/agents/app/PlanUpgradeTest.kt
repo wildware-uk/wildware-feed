@@ -76,9 +76,10 @@ class PlanUpgradeTest {
     fun aRefusalWithNowhereToUpgradeHasNoUpgradeButton() = runComposeUiTest {
         feed(FakeFeed.state.copy(upgrade = PlanLimitHit("The free plan has room for 3 agents.", "agents", null)))
         onNode(hasText("The free plan has room for 3 agents.")).assertExists()
+        onNode(hasText("No room for that")).assertExists()
         onNode(hasText("Upgrade")).assertDoesNotExist()
-        onNode(hasText("Not now") and hasAnyAncestor(SemanticsMatcher.expectValue(SemanticsProperties.PaneTitle, "The free plan is full"))).assertDoesNotExist()
-        onNode(hasText("OK") and hasAnyAncestor(SemanticsMatcher.expectValue(SemanticsProperties.PaneTitle, "The free plan is full"))).performClick()
+        onNode(hasText("Not now") and hasAnyAncestor(SemanticsMatcher.expectValue(SemanticsProperties.PaneTitle, "No room for that"))).assertDoesNotExist()
+        onNode(hasText("OK") and hasAnyAncestor(SemanticsMatcher.expectValue(SemanticsProperties.PaneTitle, "No room for that"))).performClick()
         waitForIdle()
         assertEquals(listOf<FeedEvent>(FeedEvent.DismissUpgrade), events.filter { it == FeedEvent.DismissUpgrade })
         assertEquals(emptyList(), opened)
@@ -151,7 +152,7 @@ class PlanUpgradeTest {
     fun aRefusalHidesThePopupUnderIt() = runComposeUiTest {
         feed(FakeFeed.state.copy(upsell = UpsellState(offer = free, popup = true), upgrade = PlanLimitHit("Full.", "agents", null)))
         onNode(hasText("Get more with Team")).assertDoesNotExist()
-        onNode(hasText("The free plan is full")).assertExists()
+        onNode(hasText("No room for that")).assertExists()
     }
 
     private val owner = TeamState(me = PersonRow("p1", "Ann", "ann", "owner", you = true), people = listOf(PersonRow("p1", "Ann", "ann", "owner", you = true)), loaded = true)
@@ -169,7 +170,7 @@ class PlanUpgradeTest {
     @Test
     fun inviteSaysWhatToDoWhereTeamIsNotOffered() = runComposeUiTest {
         feed(FakeFeed.state.copy(team = owner, plan = PlanState(full, loaded = true)), ScreenPreview(peopleOpen = true))
-        onNode(hasText("2 of 2 people on the free plan, counting invites still waiting. Remove someone or a waiting invite to invite another.")).assertExists()
+        onNode(hasText("2 of 2 people, counting invites still waiting. Remove someone or a waiting invite to invite another.")).assertExists()
         onNode(hasText("Upgrade")).assertDoesNotExist()
     }
 

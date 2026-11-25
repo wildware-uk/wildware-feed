@@ -177,6 +177,8 @@ fun UpgradePrompt(ui: FeedUi, safeArea: SafeArea) {
     val shape = AgentTheme.shapes.large
     val uris = LocalUriHandler.current
     val url = upgradeLink(hit)
+    // With nowhere to upgrade (a member, an iPhone outside the US App Store) it names no plan.
+    val title = if (url != null) "The free plan is full" else "No room for that"
     Box(Modifier.fillMaxSize().padding(bottom = safeArea.bottom + 24.dp), contentAlignment = Alignment.BottomCenter) {
         Column(
             Modifier
@@ -187,10 +189,10 @@ fun UpgradePrompt(ui: FeedUi, safeArea: SafeArea) {
                 .background(colors.surfaceRaised)
                 .border(1.dp, colors.borderStrong, shape)
                 .padding(16.dp)
-                .semantics { paneTitle = "The free plan is full" },
+                .semantics { paneTitle = title },
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Text("The free plan is full", color = colors.text, style = AgentTheme.type.bodyStrong)
+            Text(title, color = colors.text, style = AgentTheme.type.bodyStrong)
             Text(hit.message, Modifier.semantics { liveRegion = LiveRegionMode.Polite }, color = colors.textMuted, style = AgentTheme.type.body)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 if (url != null) {

@@ -504,8 +504,9 @@ or people are full, and now and then a popup ("Get more with Team": at most once
 team on each device, never in a team's first 2 days, never while a question or an agent asking to
 join waits). In the iPhone and iPad app all of it shows only on the United States App Store
 storefront (StoreKit's `Storefront.current`, App Store guidelines 3.1.1 and 3.1.3); anywhere else
-there is no offer and no link, and a `plan_limit` refusal is told in plain words ("Remove one
-before you add another.") with no "Upgrade".
+there is no offer and no link, and a `plan_limit` refusal is told in the app's own words, picked by
+its `limit` ("This team has no room for more agents. Remove one to add another."), with no
+"Upgrade", no plan and no website. The server's message stays as it is for every other client.
 
 In SQL, reads say `created_at >= :since`; the database layer puts in the team's history floor (30
 days ago on the free plan, else 0), as it does `:team`. The plan is cached for 5 seconds.

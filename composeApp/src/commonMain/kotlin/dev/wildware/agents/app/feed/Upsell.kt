@@ -54,8 +54,8 @@ object Upsell {
         if (!plan.free) return null
         val limit = plan.limits.agents ?: return null
         if (plan.used.agents < limit) return null
-        val then = if (offer) "Team lets you connect as many as you like." else "Remove one before you connect another."
-        return "${plan.used.agents} of $limit agents on the free plan. $then"
+        if (!offer) return "${plan.used.agents} of $limit agents in use. Remove one before you connect another."
+        return "${plan.used.agents} of $limit agents on the free plan. Team lets you connect as many as you like."
     }
 
     /** "2 of 2 people on the free plan, …", once no more fit. [offer]: say what Team gives, else what to do. */
@@ -63,8 +63,8 @@ object Upsell {
         if (!plan.free) return null
         val limit = plan.limits.people ?: return null
         if (plan.used.people < limit) return null
-        val then = if (offer) "Team gives you room for more." else "Remove someone or a waiting invite to invite another."
-        return "${plan.used.people} of $limit people on the free plan, counting invites still waiting. $then"
+        if (!offer) return "${plan.used.people} of $limit people, counting invites still waiting. Remove someone or a waiting invite to invite another."
+        return "${plan.used.people} of $limit people on the free plan, counting invites still waiting. Team gives you room for more."
     }
 
     /** The popup's title and what it lists. */
@@ -95,10 +95,10 @@ object Upsell {
      * For where the app may not link to buying, and for members, who can't upgrade.
      */
     fun plainRefusal(limit: String?): String = when (limit) {
-        "people" -> "The free plan has room for no more people, counting invites still waiting. Remove someone or a waiting invite first."
-        "agents" -> "The free plan has room for no more agents. Remove one before you add another."
-        "storage" -> "The free plan has no room for more files. Delete some first."
-        else -> "The free plan has no room for that."
+        "people" -> "This team has no room for more people, counting invites still waiting. Remove someone or a waiting invite to invite another."
+        "agents" -> "This team has no room for more agents. Remove one to add another."
+        "storage" -> "This team has used all its room for files. Delete some to add more."
+        else -> "This team has no room for that."
     }
 
     /** [hit] as this person may be told it: the dashboard's own words with "Upgrade" when [offer], else [plainRefusal]. */
