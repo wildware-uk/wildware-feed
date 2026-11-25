@@ -43,7 +43,7 @@ final class AppStoreBridge: NSObject, AppStoreDriver {
             do {
                 let found = try await Product.products(for: productIds)
                 lock.withLock { for product in found { products[product.id] = product } }
-                IosAppStore.shared.productsLoaded(products: found.map { product in
+                IosAppStore.shared.productsFound(products: found.map { product in
                     StoreProduct(
                         productId: product.id,
                         displayName: product.displayName,
@@ -53,7 +53,7 @@ final class AppStoreBridge: NSObject, AppStoreDriver {
                     )
                 })
             } catch {
-                IosAppStore.shared.productsLoaded(products: [])
+                IosAppStore.shared.productsFound(products: [])
             }
         }
     }

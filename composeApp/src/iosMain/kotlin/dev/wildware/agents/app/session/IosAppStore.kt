@@ -29,10 +29,12 @@ object IosAppStore : AppStorePurchases {
     private var driver: AppStoreDriver? = null
 
     private val mutableProducts = MutableStateFlow<List<StoreProduct>>(emptyList())
+    private val mutableLoaded = MutableStateFlow(false)
     private val mutablePurchase = MutableStateFlow<PurchaseState>(PurchaseState.Idle)
     private val transactions = Channel<SignedTransaction>(Channel.UNLIMITED)
 
     override val products: StateFlow<List<StoreProduct>> = mutableProducts.asStateFlow()
+    override val productsLoaded: StateFlow<Boolean> = mutableLoaded.asStateFlow()
     override val purchase: StateFlow<PurchaseState> = mutablePurchase.asStateFlow()
     override val signed: Flow<SignedTransaction> = transactions.receiveAsFlow()
 
@@ -43,8 +45,9 @@ object IosAppStore : AppStorePurchases {
     }
 
     /** The products StoreKit found, each as id, name, display price, decimal price, currency code. */
-    fun productsLoaded(products: List<StoreProduct>) {
+    fun productsFound(products: List<StoreProduct>) {
         mutableProducts.value = products
+        mutableLoaded.value = true
     }
 
     /** A transaction StoreKit verified: a purchase, a renewal, or one restored. [accountToken] may be null. */

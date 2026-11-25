@@ -11,6 +11,7 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.performClick
@@ -71,6 +72,7 @@ class PaywallTest {
         val bought = mutableListOf<Pair<String, String>>()
         var managed = 0
         override val products = MutableStateFlow(products)
+        override val productsLoaded = MutableStateFlow(true)
         override val purchase = MutableStateFlow<PurchaseState>(PurchaseState.Idle)
         override val signed = emptyFlow<SignedTransaction>()
         override fun load(productIds: List<String>) {}
@@ -190,6 +192,37 @@ class PaywallTest {
         onNode(hasText("website", substring = true) and inPaywall).assertDoesNotExist()
         onNode(hasText("billing.test", substring = true) and inPaywall).assertDoesNotExist()
         onAllNodes(hasText(Paywall.SUBSCRIBE)).fetchSemanticsNodes().let { assertEquals(2, it.size) }
+    }
+
+    @Test
+    fun beforeTheAppStoreSellsTeamTheUsPaywallSaysSoAndOffersOnlyTheWebsite() = runComposeUiTest {
+        // No Paid Apps agreement, or no products set up: StoreKit answers with none.
+        feed(FakeFeed.state.copy(plan = PlanState(free, loaded = true), team = team("owner")), FakeStore(emptyList()), us = true)
+        onNode(hasText(Paywall.UNAVAILABLE)).assertExists()
+        onNode(hasText(Paywall.LOADING)).assertDoesNotExist()
+        onNode(hasText(Paywall.SUBSCRIBE)).assertDoesNotExist()
+        onNode(hasText(Paywall.RESTORE)).assertDoesNotExist()
+        onNode(hasText(Paywall.FINE_PRINT)).assertDoesNotExist()
+        onNode(hasText(Paywall.TRANSFER)).assertExists()
+        onNode(hasText(Paywall.TRANSFER_BUTTON)).assertExists()
+    }
+
+    @Test
+    fun beforeTheAppStoreSellsTeamElsewhereThePaywallSaysSoWithNothingToTap() = runComposeUiTest {
+        feed(FakeFeed.state.copy(plan = PlanState(free, loaded = true), team = team("owner")), FakeStore(emptyList()), us = false)
+        onNode(hasText(Paywall.UNAVAILABLE)).assertExists()
+        val inPaywall = hasAnyAncestor(SemanticsMatcher.expectValue(SemanticsProperties.PaneTitle, Paywall.TITLE))
+        onNode(hasClickAction() and inPaywall and !hasText("Done")).assertDoesNotExist()
+        onNode(hasText(Paywall.LOADING)).assertDoesNotExist()
+        onNode(hasText(Paywall.TRANSFER)).assertDoesNotExist()
+    }
+
+    @Test
+    fun whileTheAppStoreHasNotAnsweredThePaywallSaysItIsGettingPrices() = runComposeUiTest {
+        val store = FakeStore(emptyList()).apply { productsLoaded.value = false }
+        feed(FakeFeed.state.copy(plan = PlanState(free, loaded = true), team = team("owner")), store, us = false)
+        onNode(hasText(Paywall.LOADING)).assertExists()
+        onNode(hasText(Paywall.UNAVAILABLE)).assertDoesNotExist()
     }
 
     @Test

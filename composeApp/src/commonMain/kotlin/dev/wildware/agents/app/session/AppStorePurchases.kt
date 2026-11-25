@@ -15,6 +15,12 @@ interface AppStorePurchases {
     /** The Team products as this storefront prices them, once loaded; empty until then or when there are none. */
     val products: StateFlow<List<StoreProduct>>
 
+    /**
+     * The App Store has answered about the products at least once. Loaded with none means Team
+     * isn't for sale in the app (yet): no agreement, or the products aren't set up.
+     */
+    val productsLoaded: StateFlow<Boolean>
+
     /** What the purchase under way is doing. */
     val purchase: StateFlow<PurchaseState>
 

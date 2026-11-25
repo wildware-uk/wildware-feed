@@ -55,6 +55,7 @@ class AppStoreAppTest {
         val finished: MutableList<String> = Collections.synchronizedList(mutableListOf())
         val queue = Channel<SignedTransaction>(Channel.UNLIMITED)
         override val products = MutableStateFlow(listOf(StoreProduct(Paywall.TEAM5, "Team 5", "£34.99", "34.99", "GBP")))
+        override val productsLoaded = MutableStateFlow(true)
         override val purchase = MutableStateFlow<PurchaseState>(PurchaseState.Idle)
         override val signed = queue.receiveAsFlow()
         override fun load(productIds: List<String>) {}

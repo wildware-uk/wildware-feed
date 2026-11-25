@@ -55,6 +55,8 @@ object Paywall {
     const val RESTORE = "Restore purchases"
     const val MANAGE = "Manage subscription"
     const val LOADING = "Getting prices from the App Store…"
+    /** The App Store answered with no products: no Paid Apps agreement yet, or none set up. */
+    const val UNAVAILABLE = "Buying Team in the app isn't available yet. Please check back soon."
     const val FINE_PRINT =
         "Monthly. Renews automatically each month until you cancel. Cancel any time in Settings on your iPhone, at least a day before it renews. " +
             "Payment is taken by your Apple ID."
@@ -152,6 +154,7 @@ fun PaywallSheet(ui: FeedUi, safeArea: SafeArea) {
     val plan = ui.state.plan.plan
     val role = ui.state.team.me?.role
     val products by store.products.collectAsState()
+    val loaded by store.productsLoaded.collectAsState()
     val purchase by store.purchase.collectAsState()
     val links by appStore.buyingLinks.collectAsState()
     var told by remember { mutableStateOf<String?>(null) }
@@ -173,6 +176,11 @@ fun PaywallSheet(ui: FeedUi, safeArea: SafeArea) {
                     AppButton(Paywall.MANAGE, ButtonTone.Secondary) { store.manage() }
                 }
                 !plan.free -> Text("Your team is on Team.", color = colors.text, style = AgentTheme.type.body)
+                // Nothing for sale in the app (yet): say so plainly, with nothing to tap.
+                Paywall.choices(products).isEmpty() && loaded -> {
+                    Text(Paywall.LEAD, color = colors.text, style = AgentTheme.type.body)
+                    Text(Paywall.UNAVAILABLE, color = colors.textMuted, style = AgentTheme.type.body)
+                }
                 else -> {
                     Text(Paywall.LEAD, color = colors.text, style = AgentTheme.type.body)
                     val choices = Paywall.choices(products)
@@ -198,10 +206,13 @@ fun PaywallSheet(ui: FeedUi, safeArea: SafeArea) {
                     Text(Paywall.TRANSFER, color = colors.text, style = AgentTheme.type.bodyStrong)
                     AppButton(Paywall.TRANSFER_BUTTON, ButtonTone.Secondary, icon = Icons.External) { runCatching { uris.openUri(url) } }
                 }
-                Text(Paywall.FINE_PRINT, color = colors.textMuted, style = AgentTheme.type.body)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    AppButton("Terms of Use", ButtonTone.Quiet) { runCatching { uris.openUri(Paywall.TERMS_URL) } }
-                    AppButton("Privacy", ButtonTone.Quiet) { runCatching { uris.openUri(Paywall.PRIVACY_URL) } }
+                // The subscription's terms, only where there is one to buy or manage.
+                if (plan.paidByApple || Paywall.choices(products).isNotEmpty()) {
+                    Text(Paywall.FINE_PRINT, color = colors.textMuted, style = AgentTheme.type.body)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        AppButton("Terms of Use", ButtonTone.Quiet) { runCatching { uris.openUri(Paywall.TERMS_URL) } }
+                        AppButton("Privacy", ButtonTone.Quiet) { runCatching { uris.openUri(Paywall.PRIVACY_URL) } }
+                    }
                 }
             }
         }
