@@ -15,6 +15,8 @@ data class TeamPlan(
     val limits: PlanLimits = PlanLimits(),
     val used: PlanUse = PlanUse(),
     val upgradeUrl: String? = null,
+    /** When the team was made (ms since 1970), or null from a dashboard before it said. */
+    val createdAt: Long? = null,
 ) {
     val free: Boolean get() = plan == Free
 

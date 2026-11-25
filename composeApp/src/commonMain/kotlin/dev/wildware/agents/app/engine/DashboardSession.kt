@@ -102,6 +102,9 @@ class DashboardSession(
             mutableUpgrade.value = hit
             scope.launch { loadPlan() }
         }
+        // A member, or an app that may not link to buying (an iPhone outside the US App Store), is
+        // told what is full in plain words, with no offer and nowhere to go.
+        c.rewordPlanLimit = { hit -> dev.wildware.agents.app.feed.Upsell.refusal(hit, offer = mayOffer(mutableTeam.value.me?.role)) }
     }
     private val outbox = OutboxQueue(client, platform.outbox, scope)
     private val outboxChanged = platform.outboxChanged
@@ -156,6 +159,23 @@ class DashboardSession(
     val retention: StateFlow<RetentionSettings> = mutableRetention
 
     private val mutablePlan = MutableStateFlow(dev.wildware.agents.app.feed.PlanState())
+
+    /** Whether the app may link to buying a plan, now ([AppPlatform.buyingLinks]). */
+    private val buyingLinks = platform.buyingLinks
+
+    /** Whether [role] may be offered Team here at all: an owner or admin, where the app may link to buying. */
+    private fun mayOffer(role: String?) = buyingLinks.value && (role == "owner" || role == "admin")
+
+    /** When this team last saw the popup and hid the files note, on this device. */
+    private val upsellMarks = dev.wildware.agents.app.feed.UpsellMarks(platform.upsellMarks)
+
+    /** The popup is up. */
+    private val mutableUpsellPopup = MutableStateFlow(false)
+
+    /** The files note was hidden less than a week ago. */
+    private val mutableFilesHidden = MutableStateFlow(
+        upsellMarks.filesHidden(saved.server)?.let { clock() - it in 0 until dev.wildware.agents.app.feed.Upsell.POPUP_EVERY_MS } == true,
+    )
 
     /** The last free-plan refusal not yet put away: Settings and the feed offer "Upgrade" for it. */
     private val mutableUpgrade = MutableStateFlow<dev.wildware.agents.PlanLimitHit?>(null)
@@ -345,6 +365,12 @@ class DashboardSession(
     /** The project last posted to from "All projects", or last opened: where the next one from there goes. */
     private val lastProject = MutableStateFlow(runCatching { postTarget.read()?.trim() }.getOrNull()?.ifEmpty { null })
 
+    /** The offer to show, if any, with the popup and the files note. */
+    private val upsell = combine(mutablePlan, mutableTeam, buyingLinks, mutableUpsellPopup, mutableFilesHidden) { plan, team, links, popup, hidden ->
+        val offer = dev.wildware.agents.app.feed.Upsell.offerFor(plan.plan, team.me?.role, links)
+        dev.wildware.agents.app.feed.UpsellState(offer, popup = popup && offer != null, storageHidden = hidden)
+    }.distinctUntilChanged()
+
     val state: StateFlow<FeedState> = combine(
         combine(
             combine(feeds.flatMapLatest { it.state }, dashboard.waiting, combine(mutableTeam, agentAvatars, knownAgentNames, ::Triple), ::Triple),
@@ -382,8 +408,8 @@ class DashboardSession(
             agents = withOffline(shown.agents, known), follows = follows,
             groups = groups.map { ProjectGroup(it.id, it.slug, it.name, accent = it.theme?.accent, archived = it.isArchived, position = it.position) }).also { MarkdownCache.warm(markdownIn(it).asIterable()) }
     }.let { feed ->
-        combine(feed, board.state, assign.state, mutablePlan, mutableUpgrade) { shown, onBoard, assigning, plan, upgrade ->
-            shown.copy(board = onBoard, assign = assigning, plan = plan, upgrade = upgrade)
+        combine(feed, board.state, assign.state, combine(mutablePlan, upsell, ::Pair), mutableUpgrade) { shown, onBoard, assigning, (plan, offer), upgrade ->
+            shown.copy(board = onBoard, assign = assigning, plan = plan, upgrade = upgrade, upsell = offer)
         }.combine(docs.state) { shown, onDocs -> shown.copy(docs = onDocs) }
             .combine(mediaTab.state) { shown, onMedia -> shown.copy(media = onMedia) }
     }
@@ -879,6 +905,23 @@ class DashboardSession(
     }
 
     /**
+     * Puts the "Get more with Team" popup up when it is due ([Upsell.popupDue]): for an owner or
+     * admin of a free team, at most once a week, never in a new team's first days, and never while a
+     * question or an agent asking to join waits on them. Showing it starts the week's wait.
+     */
+    private suspend fun offerNowAndThen() {
+        combine(upsell, dashboard.waiting, dashboard.pairings) { offer, questions, joining -> offer.offer to (questions.isNotEmpty() || joining.isNotEmpty()) }
+            .distinctUntilChanged()
+            .collect { (offer, busy) ->
+                if (offer == null || mutableUpsellPopup.value) return@collect
+                val now = clock()
+                if (!dev.wildware.agents.app.feed.Upsell.popupDue(offer, now, upsellMarks.popupShown(saved.server), busy)) return@collect
+                upsellMarks.markPopup(saved.server, now)
+                mutableUpsellPopup.value = true
+            }
+    }
+
+    /**
      * Reads the team's plan. A dashboard with none, or from before plans, or one that can't be
      * reached leaves it unknown: Settings then shows nothing about plans.
      */
@@ -1022,6 +1065,12 @@ class DashboardSession(
         // Another process queued, sent or dropped something: show it, and send what is new.
         scope.launch { outboxChanged.collect { outbox.reload() } }
         scope.launch { foreground.collect { resume() } }
+        // The plan, for the notes that say a limit is near; read again on each return to the app.
+        scope.launch { loadPlan() }
+        scope.launch { foreground.collect { loadPlan() } }
+        // An agent asking to join: read the plan's use, so the prompt can say when there's no room for it.
+        scope.launch { dashboard.pairings.map { it.isNotEmpty() }.distinctUntilChanged().collect { if (it) loadPlan() } }
+        scope.launch { offerNowAndThen() }
         // Pushed notifications the owner dealt with, here or elsewhere, come off the lock screen.
         platform.notices?.let { notices -> scope.launch { NoticeCleanup(dashboard, notices, foreground).run() } }
         if (platform.sounds.available) scope.launch(soundThread) { playSounds() }
@@ -1164,6 +1213,14 @@ class DashboardSession(
             is FeedEvent.ReadMediaRetention -> scope.launch { loadRetention() }
             is FeedEvent.ReadPlan -> scope.launch { loadPlan() }
             is FeedEvent.DismissUpgrade -> mutableUpgrade.value = null
+            is FeedEvent.DismissUpsell -> {
+                upsellMarks.markPopup(saved.server, clock())
+                mutableUpsellPopup.value = false
+            }
+            is FeedEvent.HideFilesNote -> {
+                upsellMarks.markFilesHidden(saved.server, clock())
+                mutableFilesHidden.value = true
+            }
             is FeedEvent.ReadFeedback -> scope.launch { loadFeedback() }
             is FeedEvent.SendFeedback -> sendFeedback(event.draft, event.done)
             is FeedEvent.ReadDevices -> scope.launch { loadDevices() }

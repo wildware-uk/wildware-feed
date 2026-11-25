@@ -119,8 +119,11 @@ fun ConnectAgentSheet(ui: FeedUi, safeArea: SafeArea) {
             copied = 0
         }
     }
+    // The plan's use afresh, to say before the agent asks when the free plan has no room for it.
+    LaunchedEffect(Unit) { ui.emit(FeedEvent.ReadPlan) }
     SettingsSheet("Connect an agent", safeArea, onClose = { ui.connectOpen = false }) {
         Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+            AgentsFullNote(ui, Modifier.padding(bottom = 10.dp))
             Text(
                 "Paste this into Claude Code or any other agent. It installs Wildware Feed and asks to join this dashboard. " +
                     "When it does, check the code it tells you and tap Allow.",

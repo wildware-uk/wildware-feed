@@ -207,6 +207,10 @@ sealed interface FeedEvent {
     data object ReadPlan : FeedEvent
     /** Put away the "Upgrade" prompt a free-plan refusal raised. */
     data object DismissUpgrade : FeedEvent
+    /** Put away the now-and-then "Get more with Team" popup, for another week ("Not now", or after "Upgrade"). */
+    data object DismissUpsell : FeedEvent
+    /** Hide the "files nearly full" note above the feed, for a week. */
+    data object HideFilesNote : FeedEvent
     /** Read the team's feedback and feature requests, for the Feedback sheet. */
     data object ReadFeedback : FeedEvent
     /** Send feedback or a feature request. [done] hears null once sent, or why not. */

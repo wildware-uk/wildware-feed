@@ -493,8 +493,19 @@ before plans) has none of the free plan's limits. The free plan's limits are fix
 A team over a limit keeps working; nobody and nothing is removed. Every `plan_limit` error also
 carries `upgradeUrl`, the control plane's page for the team (`CONTROL_PLANE_ORIGIN/teams/<slug>`, or
 `null` when unset), so an app can offer "Upgrade". Buying happens there, never in an app.
-`GET /api/plan` (any member) says the team's plan, its limits, what is used and `upgradeUrl`, for
-the apps' Settings; a team with no plan answers `{"plan": null}`.
+`GET /api/plan` (any member) says the team's plan, its limits, what is used, `upgradeUrl` and
+`createdAt` (when the team was made, in ms), for the apps' Settings and their gentle "Team gives you
+more" nudges; a team with no plan answers `{"plan": null}`.
+
+The apps offer Team only to a free team's owners and admins, never to members, a Team-plan team or
+a self-hosted dashboard (`composeApp/.../feed/Upsell.kt`): a note above the feed and in Settings
+once files pass 80%, a note on "Connect an agent", the join prompt and the invite form once agents
+or people are full, and now and then a popup ("Get more with Team": at most once every 7 days per
+team on each device, never in a team's first 2 days, never while a question or an agent asking to
+join waits). In the iPhone and iPad app all of it shows only on the United States App Store
+storefront (StoreKit's `Storefront.current`, App Store guidelines 3.1.1 and 3.1.3); anywhere else
+there is no offer and no link, and a `plan_limit` refusal is told in plain words ("Remove one
+before you add another.") with no "Upgrade".
 
 In SQL, reads say `created_at >= :since`; the database layer puts in the team's history floor (30
 days ago on the free plan, else 0), as it does `:team`. The plan is cached for 5 seconds.

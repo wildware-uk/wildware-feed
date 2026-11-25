@@ -81,12 +81,16 @@ class FakeServer {
     /** `GET /api/me` and `GET /api/people`; null answers 404, a server from before teams. */
     var me: String? = null
     var people: String = """{"people":[]}"""
+    /** `GET /api/plan`; null answers 404, a dashboard from before plans. */
+    @Volatile var plan: String? = null
     /** When set, `DELETE /api/me` is refused with this code, status and message. */
     @Volatile var refuseDeleteAccount: Triple<String, Int, String>? = null
     /** Agents asking to join, as `GET /api/pairings` lists them. */
     var pairings = listOf<dev.wildware.agents.PairingView>()
     /** When set, Allow is refused with this error code, as a taken name is (409). */
     @Volatile var refuseApprove: String? = null
+    /** When set, Allow is refused with this whole error body (409), as the free plan's `plan_limit` is. */
+    @Volatile var refuseApproveBody: String? = null
     /** This device's alert choice, as `{"prefs":…}` JSON. */
     var alertPrefs = """{"prefs":null}"""
     /** Every agent, as `GET /api/agents` answers: id to (name, removed). DELETE /api/agents/{id} removes one. */
@@ -220,6 +224,7 @@ class FakeServer {
                     agentRecords[id]?.let { agentRecords[id] = it.first to true }
                     ok("""{"revoked":true}""")
                 }
+                path.startsWith("/api/pairings/") && path.endsWith("/approve") && refuseApproveBody != null -> ok(refuseApproveBody!!, HttpStatusCode.Conflict)
                 path.startsWith("/api/pairings/") && path.endsWith("/approve") -> refuseApprove?.let {
                     ok("""{"error":"$it","message":"an agent is already called \"forge\"; choose another name"}""", HttpStatusCode.Conflict)
                 } ?: ok("{}")
@@ -295,6 +300,7 @@ class FakeServer {
             "/api/me" -> me?.let { ok(it) } ?: ok("""{"error":"not_found"}""", HttpStatusCode.NotFound)
             "/api/board" -> ok(board)
             "/api/people" -> ok(people)
+            "/api/plan" -> plan?.let { ok(it) } ?: ok("""{"error":"not_found"}""", HttpStatusCode.NotFound)
             "/api/invites" -> ok("""{"invites":[]}""")
             "/api/devices/current/alert-prefs" -> ok(alertPrefs)
             "/api/devices" -> ok(devices)

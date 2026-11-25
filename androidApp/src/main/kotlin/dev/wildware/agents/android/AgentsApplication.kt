@@ -155,6 +155,7 @@ fun androidPlatform(context: Context, hooks: ActivityHooks, scope: CoroutineScop
             postTarget.delete()
         },
         settings = FileTextStore(File(dir, "settings.txt")),
+        upsellMarks = FileTextStore(File(dir, "upsell.json")),
         feedCache = FileTextStore(feedCache),
         cardFolds = FileTextStore(cardFolds),
         postTarget = FileTextStore(postTarget),
