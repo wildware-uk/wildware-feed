@@ -23,11 +23,13 @@ import dev.wildware.agents.app.design.Icons
 
 /**
  * The way into GitHub from Settings: a row saying which accounts are connected. Shown only where
- * the dashboard has GitHub set up (server migration 080).
+ * the dashboard has GitHub set up (server migration 080). Read when Settings opens, not when the
+ * app starts, so nothing about GitHub changes the feed while someone is using it.
  */
 @Composable
 internal fun GitHubEntry(ui: FeedUi) {
     val github = ui.state.github
+    LaunchedEffect(Unit) { ui.emit(FeedEvent.ReadGitHub) }
     if (!github.status.available) return
     val connected = github.status.installations
     val now = when (connected.size) {

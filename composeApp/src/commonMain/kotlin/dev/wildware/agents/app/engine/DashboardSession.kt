@@ -1118,7 +1118,6 @@ class DashboardSession(
         dashboard.start()
         scope.launch { loadAlerts() }
         scope.launch { loadRetention() }
-        scope.launch { loadGitHub() }
         scope.launch { loadTeam() }
         // The open channel's agents, for the members list: read whenever another channel opens.
         scope.launch { selected.collect { slug -> if (slug != null) loadMembers(slug, group = false) } }
