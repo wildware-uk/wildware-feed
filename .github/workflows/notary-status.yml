@@ -55,7 +55,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         timeout-minutes: 3
         with:
           sparse-checkout: .github/scripts
@@ -90,7 +90,7 @@ jobs:
           if { [ -n "$RUN_ID" ] || [ -n "$TAG" ]; } && { [ -z "$RUN_ID" ] || [ -z "$ARTIFACT" ]; }; then
             bad "run_id and artifact go together, and tag needs both: they say which .dmg to check and publish."
           fi
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         timeout-minutes: 3
         with:
           sparse-checkout: .github/scripts

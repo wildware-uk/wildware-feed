@@ -64,7 +64,7 @@ jobs:
             echo "Waiting for Apple: $tags"
           fi
           echo "tags=$tags" >> "$GITHUB_OUTPUT"
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         if: steps.waiting.outputs.tags != ''
         timeout-minutes: 3
         with:

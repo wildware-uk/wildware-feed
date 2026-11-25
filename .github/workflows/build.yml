@@ -15,8 +15,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: 21
@@ -28,19 +28,19 @@ jobs:
       - name: Release scripts' own tests
         timeout-minutes: 2
         run: python3 -m unittest discover -s .github/scripts -p 'test_*.py' -v
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
       - run: ./gradlew :shared:jvmTest
 
   compose-desktop:
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: 21
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
       # Ubuntu has no colour emoji font, and the screenshots show emoji reactions.
       - name: Set up an emoji font
         timeout-minutes: 5
@@ -52,7 +52,7 @@ jobs:
         timeout-minutes: 20
         run: ./gradlew :composeApp:desktopTest
       - if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         timeout-minutes: 5
         with:
           name: compose-screenshots
@@ -65,15 +65,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: 21
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
       # The server derives video posters and audio waveforms with ffmpeg.
       - name: Set up ffmpeg
         timeout-minutes: 8
@@ -85,7 +85,7 @@ jobs:
         timeout-minutes: 30
         run: server/parity/run-against-ts.sh
       - if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         timeout-minutes: 5
         with:
           name: server-parity-report
@@ -96,12 +96,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: 21
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
       # The runner's Android SDK has its licences accepted, so Gradle fetches the platform it needs.
       - name: Build the Android app
         timeout-minutes: 15
@@ -109,7 +109,7 @@ jobs:
       - name: Android unit tests
         timeout-minutes: 10
         run: ./gradlew --no-daemon :androidApp:testDebugUnitTest
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         timeout-minutes: 5
         with:
           name: android-debug-apk
@@ -122,15 +122,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: 21
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
       - name: Set up ffmpeg
         timeout-minutes: 8
         uses: ./.github/actions/setup-ffmpeg
@@ -141,7 +141,7 @@ jobs:
         timeout-minutes: 35
         run: server/parity/run-against-kotlin.sh
       - if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         timeout-minutes: 5
         with:
           name: server-kotlin-reports
@@ -174,15 +174,15 @@ jobs:
       KOTLIN_S3_ACCESS_KEY_ID: feedtestkey
       KOTLIN_S3_SECRET_ACCESS_KEY: feedtestsecret123
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: 21
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
       - name: Set up ffmpeg
         timeout-minutes: 8
         uses: ./.github/actions/setup-ffmpeg
@@ -203,7 +203,7 @@ jobs:
         timeout-minutes: 35
         run: server/parity/run-against-kotlin.sh
       - if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         timeout-minutes: 5
         with:
           name: server-kotlin-postgres-reports
@@ -218,12 +218,12 @@ jobs:
     # The image carries the web app, whose build takes a few minutes of its own.
     timeout-minutes: 35
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: 21
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
       - name: Build and smoke-test the image
         timeout-minutes: 30
         run: server/deploy/smoke-image.sh
@@ -234,15 +234,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: 21
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
       - name: Shared tests on Wasm
         timeout-minutes: 15
         run: ./gradlew --no-daemon :shared:wasmJsNodeTest
@@ -259,7 +259,7 @@ jobs:
         # system libraries through apt, the same slow mirrors.
         run: CHROME="$(command -v google-chrome || true)" SKIP_DIST=1 SHOTS=web-screenshots server/deploy/smoke-web.sh
       - if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         timeout-minutes: 5
         with:
           name: web-screenshots
@@ -282,15 +282,15 @@ jobs:
         options: >-
           --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: 21
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
       - name: Build the web app and the server
         timeout-minutes: 20
         run: ./gradlew --no-daemon :server:installDist
@@ -309,7 +309,7 @@ jobs:
           PG_ADMIN_URL=postgres://postgres:e2etest@127.0.0.1:5432/postgres
           server/deploy/test-stack.sh bash -c 'cd e2e && npx playwright test'
       - if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         timeout-minutes: 5
         with:
           name: e2e-report
@@ -324,12 +324,12 @@ jobs:
     # Mac minutes are billed at ten times the Linux rate, so a hang must not run for hours.
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: 21
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
       - run: iosApp/build-shared.sh
         timeout-minutes: 20
       # The app's own build phase runs this again through embedAndSignAppleFrameworkForXcode, and finds it done.
@@ -402,7 +402,7 @@ jobs:
           otool -L "$code"
           otool -L "$code" | grep -q UserNotificationsUI.framework
       - if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         timeout-minutes: 5
         with:
           name: xcodebuild-log
