@@ -216,7 +216,9 @@ class SecretsTest {
 
         // Another agent can't get it by asking for the same name: not at the tool, not at the answer.
         val (beta, _) = agents.mint("beta")
-        assertEquals("conflict", assertFailsWith<DomainError> { secrets.checkRequestable(beta.id, "STRIPE_TEST_KEY") }.code)
+        val taken = assertFailsWith<DomainError> { secrets.checkRequestable(beta.id, "STRIPE_TEST_KEY") }
+        assertEquals("conflict", taken.code)
+        assertTrue("request_secret_access" in taken.message.orEmpty(), "the refusal names the tool that asks for access: ${taken.message}")
         val sneaky = requests.create(beta.id, NewRequest(kind = "secret", question = "Me too?", secretName = "STRIPE_TEST_KEY")).first
         assertEquals("conflict", assertFailsWith<DomainError> { secrets.provide(requests, sneaky.id, "second".toByteArray(), null, owner) }.code)
         assertEquals(listOf(alpha.id), secrets.find(stored.id)!!.agentIds)

@@ -395,7 +395,7 @@ class Secrets(
         val clean = checkName(name)
         val existing = byName(clean)
         if (existing != null && !mayRead(existing, agentId)) {
-            throw conflict("$clean is taken by a secret that is not shared with you: ask for it under another name, or ask your owner to share it")
+            throw conflict("$clean is taken by a secret that is not shared with you. To use it, call request_secret_access with this name and your owner approves it in the thread; or ask for a new one under another name")
         }
         // Answering would replace the value every other agent sharing it uses, and the owner would
         // think it was for you alone.
