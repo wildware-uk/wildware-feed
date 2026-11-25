@@ -62,7 +62,7 @@ class PlanTest {
     }
 
     @Test
-    fun `the app can tell a refusal in its own words, with nowhere to upgrade`() = runTest {
+    fun `the app can tell a refusal in its own words with nowhere to upgrade`() = runTest {
         val c = client(HttpStatusCode.Conflict, """{"error":"plan_limit","message":"Upgrade to Team to add more.","limit":"agents","upgradeUrl":"https://billing.test/teams/acme"}""")
         val heard = mutableListOf<PlanLimitHit>()
         c.onPlanLimit = { heard += it }
