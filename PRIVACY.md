@@ -13,8 +13,8 @@ we run the server, so we store what your team posts; see "Hosted teams" below.
 
 ## Crash reports
 
-When the app crashes or freezes, the copies we publish (the App Store, TestFlight and the downloads
-on GitHub) send a crash report to [Sentry](https://sentry.io), the service we use to read them.
+When the app crashes or freezes, the copies we publish (the App Store, TestFlight, Google Play and the
+downloads on GitHub) send a crash report to [Sentry](https://sentry.io), the service we use to read them.
 A copy you build yourself sends nothing, unless you give it a Sentry address of your own.
 
 A crash report holds only:

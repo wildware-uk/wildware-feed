@@ -21,6 +21,8 @@ name: desktop-release
 #            Tags are always signed; a run by hand only when its sign_windows box is ticked.
 #   Android: ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD.
 #            Without them there is no APK or AAB at all: a debug-signed build is never published.
+#   Google Play: PLAY_SERVICE_ACCOUNT_JSON. With it the signed AAB goes to a Play track (internal
+#            unless a run by hand picks another; docs/GOOGLE_PLAY.md). Without it, no upload.
 #
 # Crash reports turn on the same way: SENTRY_DSN_APP (where the apps send them) and, for the
 # Android R8 mapping that makes their stacks readable, SENTRY_AUTH_TOKEN.
@@ -36,6 +38,20 @@ on:
         type: boolean
         required: false
         default: false
+      play_track:
+        description: 'Google Play track for the Android AAB (needs PLAY_SERVICE_ACCOUNT_JSON). none uploads nothing.'
+        type: choice
+        options: [internal, alpha, beta, production, none]
+        default: internal
+      play_status:
+        description: 'Play release status. draft until the app has been published once; completed rolls it out.'
+        type: choice
+        options: [completed, draft]
+        default: completed
+      play_notes:
+        description: 'Release notes on Google Play (500 characters at most). Optional.'
+        required: false
+        default: ''
   push:
     tags: ['v*']
 
@@ -497,6 +513,12 @@ jobs:
           cp "$apk" "dist/Wildware-Feed-$VERSION-android.apk"
           cp androidApp/build/outputs/bundle/release/androidApp-release.aab "dist/Wildware-Feed-$VERSION-android.aab"
 
+      # Play's own rules, checked here so a bad build fails now and not in the Play Console.
+      - name: Check the build meets Google Play's rules
+        if: steps.key.outputs.signed == 'true'
+        timeout-minutes: 2
+        run: .github/scripts/check-android-build.sh androidApp/build/outputs/apk/release/androidApp-release.apk
+
       - name: Delete the release key
         if: always()
         timeout-minutes: 1
@@ -525,6 +547,83 @@ jobs:
           name: Wildware-Feed-${{ needs.version.outputs.version }}-android
           path: dist/*
           if-no-files-found: error
+
+      # For Play's crash reports. Named apart, so it never lands on the GitHub release.
+      - if: steps.key.outputs.signed == 'true'
+        uses: actions/upload-artifact@v4
+        timeout-minutes: 5
+        with:
+          name: android-mapping-${{ needs.version.outputs.version }}
+          path: androidApp/build/outputs/mapping/release/mapping.txt
+          retention-days: 7
+          if-no-files-found: error
+
+  # Sends the signed AAB to Google Play (docs/GOOGLE_PLAY.md). Skipped without a signed build or
+  # without PLAY_SERVICE_ACCOUNT_JSON. The GitHub release doesn't wait for it, so a Play problem
+  # never holds back the other downloads.
+  play:
+    needs: [version, android]
+    if: ${{ !cancelled() && needs.android.outputs.signed == 'true' && (github.event.inputs.play_track || 'internal') != 'none' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      TRACK: ${{ github.event.inputs.play_track || 'internal' }}
+      STATUS: ${{ github.event.inputs.play_status || 'completed' }}
+      HAS_PLAY: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON != '' }}
+    steps:
+      - name: Check for the Play secret
+        id: secret
+        timeout-minutes: 1
+        run: |
+          if [ "$HAS_PLAY" != "true" ]; then
+            echo "::notice::No PLAY_SERVICE_ACCOUNT_JSON, so nothing goes to Google Play. docs/GOOGLE_PLAY.md says how to add it."
+            echo "upload=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "upload=true" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.secret.outputs.upload == 'true'
+        uses: actions/download-artifact@v4
+        timeout-minutes: 5
+        with:
+          name: Wildware-Feed-${{ needs.version.outputs.version }}-android
+          path: dist
+      - if: steps.secret.outputs.upload == 'true'
+        uses: actions/download-artifact@v4
+        timeout-minutes: 5
+        with:
+          name: android-mapping-${{ needs.version.outputs.version }}
+          path: mapping
+      - name: Write the release notes
+        id: notes
+        if: steps.secret.outputs.upload == 'true'
+        timeout-minutes: 1
+        env:
+          NOTES: ${{ github.event.inputs.play_notes }}
+        run: |
+          set -euo pipefail
+          if [ -z "$NOTES" ]; then echo "dir=" >> "$GITHUB_OUTPUT"; exit 0; fi
+          if [ "${#NOTES}" -gt 500 ]; then
+            echo "::error::Play release notes are ${#NOTES} characters; Play takes 500 at most."
+            exit 1
+          fi
+          # One file per listing language; the listing's default language is English (UK).
+          mkdir -p "$RUNNER_TEMP/whatsnew"
+          printf '%s' "$NOTES" > "$RUNNER_TEMP/whatsnew/whatsnew-en-GB"
+          echo "dir=$RUNNER_TEMP/whatsnew" >> "$GITHUB_OUTPUT"
+      - name: Upload to Google Play (${{ env.TRACK }})
+        if: steps.secret.outputs.upload == 'true'
+        # r0adkll/upload-google-play v1.1.5, pinned to its commit.
+        uses: r0adkll/upload-google-play@e738b9dd8f2476ea806d921b64aacd24f34515a5
+        timeout-minutes: 10
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: dev.wildware.agents
+          releaseFiles: dist/Wildware-Feed-${{ needs.version.outputs.version }}-android.aab
+          track: ${{ env.TRACK }}
+          status: ${{ env.STATUS }}
+          whatsNewDirectory: ${{ steps.notes.outputs.dir }}
+          mappingFile: mapping/mapping.txt
 
   release:
     # Tags only: a run by hand keeps its files as artifacts and publishes nothing. It still runs

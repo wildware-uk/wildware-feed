@@ -2,6 +2,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Crash reports (Sentry) wait for a connection instead of failing while the phone is offline. -->
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- The fingerprint or face prompt before a secret is shown or copied. -->
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />

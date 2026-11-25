@@ -196,8 +196,8 @@ base64 -w0 wildware-feed-release.jks > keystore.txt   # on a Mac: base64 -i wild
 | `ANDROID_KEY_PASSWORD` | The same password again (a PKCS12 file has one password for both). |
 
 Without all four, the release has no Android files at all: the workflow never publishes a
-debug-signed build. With them it attaches a signed `.apk` (to sideload) and `.aab` (for the Play
-Store later).
+debug-signed build. With them it attaches a signed `.apk` (to sideload) and `.aab`, and sends the
+AAB to Google Play when `PLAY_SERVICE_ACCOUNT_JSON` is set too ([GOOGLE_PLAY.md](GOOGLE_PLAY.md)).
 
 ### Android push (later)
 

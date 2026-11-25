@@ -57,11 +57,13 @@ class AppPlatform(
     /**
      * Whether sign-in may link to the website where hosted teams are made and paid for. False in the
      * iPhone and iPad app: App Store guideline 3.1.1 allows no link to buying outside the App Store.
+     * False too in an Android copy from Google Play, whose payments policy is the same (StoreRules).
      */
     val linksToSignUp: Boolean = true,
     /**
      * Whether the app may offer the Team plan and link to buying it on the website ([Upsell]). True
-     * on desktop, Android and the web. In the iPhone and iPad app, only while the App Store
+     * on desktop, the web and an Android copy from anywhere but Google Play (StoreRules: Play allows
+     * selling only through its own billing). In the iPhone and iPad app, only while the App Store
      * storefront is the United States: guidelines 3.1.1 and 3.1.3 allow such a link nowhere else, so
      * elsewhere the app offers nothing and links nowhere. It can change while the app runs.
      */

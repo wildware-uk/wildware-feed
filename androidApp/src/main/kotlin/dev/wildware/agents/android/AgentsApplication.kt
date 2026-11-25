@@ -140,6 +140,7 @@ fun androidPlatform(context: Context, hooks: ActivityHooks, scope: CoroutineScop
     val feedCache = File(context.cacheDir, "feed-cache.json")
     val cardFolds = File(dir, "folded-cards.json")
     val postTarget = File(dir, "post-target.txt")
+    val linksToWebsite = StoreRules.linksToWebsite(StoreRules.installer(context))
     return AppPlatform(
         sessions = SealedSessionStore(File(dir, "session.bin"), KeystoreSecretBox()),
         readMarks = FileTextStore(readMarks),
@@ -171,6 +172,9 @@ fun androidPlatform(context: Context, hooks: ActivityHooks, scope: CoroutineScop
         teamList = SealedTextStore(File(dir, "teams.bin"), KeystoreSecretBox()),
         teamFilesFor = { key -> teamFiles(context, key) },
         guidedTour = true,
+        // No sign-up or Team plan links in a copy from Google Play (StoreRules).
+        linksToSignUp = linksToWebsite,
+        buyingLinks = MutableStateFlow(linksToWebsite),
     )
 }
 
