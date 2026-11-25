@@ -23,7 +23,7 @@ import dev.wildware.agents.app.design.Icons
 
 /**
  * The way into GitHub from Settings: a row saying which accounts are connected. Shown only where
- * the dashboard has GitHub set up (server migration 079).
+ * the dashboard has GitHub set up (server migration 080).
  */
 @Composable
 internal fun GitHubEntry(ui: FeedUi) {

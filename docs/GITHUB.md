@@ -33,7 +33,7 @@ Without the app's settings the feature is off: `link_pr` says so, and Settings h
 
 ## Data
 
-Migration 079 adds two team tables (in `TeamTables.ALL`, with forced row security).
+Migration 080 adds two team tables (in `TeamTables.ALL`, with forced row security).
 
 `github_installations`: which installations a team has linked.
 

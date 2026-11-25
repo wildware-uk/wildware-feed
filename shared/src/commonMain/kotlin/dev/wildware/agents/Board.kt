@@ -50,7 +50,7 @@ data class BoardCardView(
     val canMove: Boolean = true,
     /** Who it is assigned to (server migration 074), oldest first. */
     val assignees: List<AssigneeView> = emptyList(),
-    /** Pull requests linked to it (server migration 079). */
+    /** Pull requests linked to it (server migration 080). */
     val prs: List<PrView> = emptyList(),
 )
 
@@ -75,7 +75,7 @@ sealed interface BoardScope {
  * The board for [scope]. With [column], only that column's next page after [after]. [removed] also
  * lists the finished cards taken off the board, marked as removed. [assigned] keeps the cards
  * assigned to "me", to nobody ("none"), or to one person or agent (a principal or a name).
- * [attention] keeps the cards whose pull request has CI failing or changes requested (server 079).
+ * [attention] keeps the cards whose pull request has CI failing or changes requested (server 080).
  */
 @Throws(Exception::class)
 suspend fun DashboardClient.board(

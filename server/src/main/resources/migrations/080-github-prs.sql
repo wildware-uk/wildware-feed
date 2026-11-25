@@ -1,4 +1,4 @@
--- Migration 079: pull requests on cards (docs/GITHUB.md). github_installations holds which GitHub
+-- Migration 080: pull requests on cards (docs/GITHUB.md). github_installations holds which GitHub
 -- App installations a team has linked; one installation may serve several teams. card_prs holds a
 -- PR an agent linked to an update: owner is that agent ("agent:<id>"), told when CI fails. checks
 -- and reviews are JSON kept from the webhook; ci and review are worked out from them. alerted_sha

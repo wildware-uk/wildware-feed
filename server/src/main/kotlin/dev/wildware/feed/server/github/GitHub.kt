@@ -47,7 +47,7 @@ class GitHub(
     }
 }
 
-/** The GitHub App installations each team has linked (migration 079). */
+/** The GitHub App installations each team has linked (migration 080). */
 class GitHubInstalls(private val db: Database, private val clock: () -> Long) {
     data class Linked(val installationId: Long, val account: String, val addedAt: Long) {
         val json: JsonObject get() = buildJsonObject { put("installationId", installationId); put("account", account); put("addedAt", addedAt) }

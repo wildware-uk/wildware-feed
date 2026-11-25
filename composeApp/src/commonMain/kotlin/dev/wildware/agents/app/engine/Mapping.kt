@@ -78,7 +78,7 @@ import dev.wildware.agents.FeedState as EngineFeed
 /** The owner, as the screen shows them. The dashboard has no name for its owner. */
 internal val OwnerAuthor = Author.Owner("You")
 
-/** Who writes a line from GitHub about a linked PR (server migration 079): the message's author. */
+/** Who writes a line from GitHub about a linked PR (server migration 080): the message's author. */
 internal const val GitHubAuthor = "github"
 
 /** GitHub, drawn as an author of thread lines: never online, never a teammate to open. */
@@ -516,7 +516,7 @@ internal class FeedMapper(
     private fun owner(): Author.Owner = team.me?.avatarMediaId?.let { Author.Owner(OwnerAuthor.name, it) } ?: OwnerAuthor
 
     private fun author(line: ThreadLine, agents: AgentDirectory): Author = when {
-        // A line from GitHub about a linked PR (server migration 079): GitHub's, not a person's.
+        // A line from GitHub about a linked PR (server migration 080): GitHub's, not a person's.
         line.message.author == GitHubAuthor -> Author.AgentAuthor(GitHubAgent)
         else -> line.message.agentId?.let { Author.AgentAuthor(agents.agent(it, line.authorName)) } ?: person(line.message.personId)
     }

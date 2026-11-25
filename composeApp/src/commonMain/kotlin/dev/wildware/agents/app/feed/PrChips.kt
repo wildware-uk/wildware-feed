@@ -26,7 +26,7 @@ import dev.wildware.agents.app.design.Icons
 import dev.wildware.agents.app.design.pressable
 
 /**
- * The pull requests linked to a card (server migration 079): one small chip each, such as
+ * The pull requests linked to a card (server migration 080): one small chip each, such as
  * "#423 · CI failing · 1 change requested", coloured by the worst of it. A tap opens it on GitHub.
  */
 @OptIn(ExperimentalLayoutApi::class)

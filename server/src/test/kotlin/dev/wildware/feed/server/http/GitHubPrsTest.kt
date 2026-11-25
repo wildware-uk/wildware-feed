@@ -37,7 +37,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * GitHub on cards (migration 079, docs/GITHUB.md): the webhook's signature, each event read into
+ * GitHub on cards (migration 080, docs/GITHUB.md): the webhook's signature, each event read into
  * card state, the owner told once per failing head commit (and when it's green again), a change
  * request told once, and two teams on one server: an event never touches a team that didn't link
  * the installation, even when both linked the same PR.

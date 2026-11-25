@@ -10,7 +10,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.buildJsonObject
 
 /**
- * A pull request linked to a card (server migration 079, docs/GITHUB.md). [state] is "open",
+ * A pull request linked to a card (server migration 080, docs/GITHUB.md). [state] is "open",
  * "draft", "merged" or "closed", null before GitHub has said; [ci] "none", "pending", "passing" or
  * "failing"; [review] "none", "approved", "changes_requested" or "commented". [owner] is the agent
  * (`agent:<id>`) told when CI fails.

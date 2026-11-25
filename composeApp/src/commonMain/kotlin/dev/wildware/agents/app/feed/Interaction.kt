@@ -192,7 +192,7 @@ sealed interface FeedEvent {
     /** Keep only the board's cards assigned to me, to nobody, or to one person or agent. */
     data class BoardAssigned(val filter: AssignedFilter) : FeedEvent
 
-    /** Only the cards whose pull request needs someone: CI failing or changes requested (server 079). */
+    /** Only the cards whose pull request needs someone: CI failing or changes requested (server 080). */
     data class BoardAttention(val on: Boolean) : FeedEvent
     /** "Assign…" on a card in the feed or its thread: the picker opens for it. */
     data class Assign(val targetId: String) : FeedEvent
@@ -206,7 +206,7 @@ sealed interface FeedEvent {
     data class SetAlertPrefs(val prefs: AlertPrefs?) : FeedEvent
     /** Read how long the dashboard keeps media again, after a read that failed. */
     data object ReadMediaRetention : FeedEvent
-    /** Read the team's GitHub again (server migration 079). */
+    /** Read the team's GitHub again (server migration 080). */
     data object ReadGitHub : FeedEvent
     /** Ask the dashboard for GitHub's install page, to open in the browser. */
     data object ConnectGitHub : FeedEvent

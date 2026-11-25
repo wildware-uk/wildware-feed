@@ -52,7 +52,7 @@ data class BoardCard(
     val canMove: Boolean = true,
     /** Who it is assigned to, oldest first (server migration 074). */
     val assignees: List<Assignee> = emptyList(),
-    /** Pull requests linked to it, with their CI and reviews (server migration 079). */
+    /** Pull requests linked to it, with their CI and reviews (server migration 080). */
     val prs: List<dev.wildware.agents.PrView> = emptyList(),
 ) {
     /** What a screen reader says for it. */

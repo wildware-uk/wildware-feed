@@ -24,7 +24,7 @@ import dev.wildware.agents.app.feed.FeedState
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
-/** A card's pull requests (server migration 079): a chip each, saying CI and reviews, that opens the PR. */
+/** A card's pull requests (server migration 080): a chip each, saying CI and reviews, that opens the PR. */
 @OptIn(ExperimentalTestApi::class)
 class PrChipsTest {
     private val opened = mutableListOf<String>()

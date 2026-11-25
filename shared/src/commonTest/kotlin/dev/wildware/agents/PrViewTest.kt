@@ -6,7 +6,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-/** A pull request's chip on a card (server migration 079): its words, its colour, and whether it needs someone. */
+/** A pull request's chip on a card (server migration 080): its words, its colour, and whether it needs someone. */
 class PrViewTest {
     private fun pr(state: String? = "open", ci: String = "none", review: String = "none", changes: Int = 0) =
         PrView(repo = "acme/app", number = 423, url = "https://github.com/acme/app/pull/423", state = state, ci = ci, review = review, changesRequested = changes)

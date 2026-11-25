@@ -100,7 +100,7 @@ class ReadQueriesTest {
     private companion object {
         // Blocks (migration 057) add a query for the updates' and one for the messages'; so do
         // secrets shared in a thread (migration 066), more only when a card carries one.
-        // 34: one batched read of the page's pull requests (migration 079), the same for any number of cards.
+        // 34: one batched read of the page's pull requests (migration 080), the same for any number of cards.
         const val SNAPSHOT_MAX = 34L
         const val MESSAGES_MAX = 12L
     }

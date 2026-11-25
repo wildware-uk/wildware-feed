@@ -117,7 +117,7 @@ class Reads(private val db: Database, private val clock: () -> Long = System::cu
                 "blocks" to JsonArray(blocks[id].orEmpty()),
                 // Migration 066: secrets the agent attached, by name, and whether each can still be opened.
                 "secrets" to JsonArray(secrets[id].orEmpty()),
-                // Migration 079: the pull requests linked to it, with their CI and reviews.
+                // Migration 080: the pull requests linked to it, with their CI and reviews.
                 "prs" to JsonArray(prs[id].orEmpty()),
             )
             update.plus(*extra.toTypedArray())

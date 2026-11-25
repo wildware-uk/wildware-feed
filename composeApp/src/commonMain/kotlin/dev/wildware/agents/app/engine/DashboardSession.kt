@@ -996,7 +996,7 @@ class DashboardSession(
     }
 
     /**
-     * Reads the team's GitHub (server migration 079). A dashboard without it (too old, or not set
+     * Reads the team's GitHub (server migration 080). A dashboard without it (too old, or not set
      * up) leaves it unavailable, and Settings doesn't offer it.
      */
     private suspend fun loadGitHub() {

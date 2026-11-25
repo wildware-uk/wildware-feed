@@ -21,7 +21,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
 /**
- * GitHub on cards (migration 079, docs/GITHUB.md): GitHub's webhook and the install's way back,
+ * GitHub on cards (migration 080, docs/GITHUB.md): GitHub's webhook and the install's way back,
  * both public and for every team, and the team's GitHub settings.
  */
 fun Route.githubRoutes(app: App) {

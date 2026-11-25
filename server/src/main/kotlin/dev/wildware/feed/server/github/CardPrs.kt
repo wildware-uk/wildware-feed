@@ -16,7 +16,7 @@ import kotlinx.serialization.json.put
 import java.sql.ResultSet
 
 /**
- * The pull requests linked to one team's updates (migration 079, docs/GITHUB.md): linking, what
+ * The pull requests linked to one team's updates (migration 080, docs/GITHUB.md): linking, what
  * reads show, and each webhook change applied to this team's cards only. Everything here runs in
  * one team ([dev.wildware.feed.server.db.Tenant]); every statement names it.
  */

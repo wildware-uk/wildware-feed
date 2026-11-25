@@ -55,7 +55,7 @@ class Messages(private val feed: Feed) {
         val assignment: Boolean = false,
         /** The server's line saying assigned work moved (migration 074): source [STATUS_LINE]. */
         val statusLine: Boolean = false,
-        /** A line from GitHub about a linked PR (migration 079): author and source [GITHUB]. */
+        /** A line from GitHub about a linked PR (migration 080): author and source [GITHUB]. */
         val github: Boolean = false,
     )
 
@@ -475,7 +475,7 @@ class Messages(private val feed: Feed) {
         const val STATUS_LINE = "status"
 
         /**
-         * A line from GitHub about a PR linked to the card (migration 079, docs/GITHUB.md): CI went red
+         * A line from GitHub about a PR linked to the card (migration 080, docs/GITHUB.md): CI went red
          * or green, or a review asked for changes. Its author is [GITHUB] too, which no client can post as.
          */
         const val GITHUB = "github"

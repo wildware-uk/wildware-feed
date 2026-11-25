@@ -2003,7 +2003,7 @@
  },
  {
   "tool": "link_pr",
-  "why": "Pull requests on cards (migration 079, docs/GITHUB.md): an agent links its PR to its card, which then shows its CI and reviews, and the agent is told when CI fails.",
+  "why": "Pull requests on cards (migration 080, docs/GITHUB.md): an agent links its PR to its card, which then shows its CI and reviews, and the agent is told when CI fails.",
   "add": {
    "name": "link_pr",
    "title": "Link your pull request to a card",

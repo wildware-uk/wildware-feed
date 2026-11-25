@@ -14,7 +14,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
-/** `link_pr` (migration 079, docs/GITHUB.md): an agent links its pull request to its update. */
+/** `link_pr` (migration 080, docs/GITHUB.md): an agent links its pull request to its update. */
 fun ToolRegistry.registerGitHubTools(app: App) {
     register("link_pr") { call ->
         val github = app.github ?: throw DomainError(

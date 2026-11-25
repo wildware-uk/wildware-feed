@@ -50,7 +50,7 @@ class Board(private val feed: Feed) {
      * The board for [scope]: each column's first [limit] cards, newest move first. With [column] only
      * that column, after [after]. [removed] also lists the finished cards taken off the board, marked.
      * [assigned] (migration 074) keeps only the cards assigned to that principal, or with [UNASSIGNED]
-     * the cards assigned to nobody. [attention] (migration 079) keeps only the cards with a pull
+     * the cards assigned to nobody. [attention] (migration 080) keeps only the cards with a pull
      * request whose CI is failing or that has changes asked for.
      */
     fun read(

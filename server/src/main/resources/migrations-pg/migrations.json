@@ -198,9 +198,9 @@
   "checksum": "1b0bf9006ef4071ebc1f122f65f8a06115aa833c243bf2ff0613c33210ded500"
  },
  {
-  "version": 79,
+  "version": 80,
   "name": "github-prs",
-  "file": "079-github-prs.sql",
-  "checksum": "44ff0878856847bf36032964938b792ba3a6a0c007658fa703fb415284c33ee6"
+  "file": "080-github-prs.sql",
+  "checksum": "99a17e2f042fa088578994a920e5b555994649099498e98414c19bbafd7a59f5"
  }
 ]

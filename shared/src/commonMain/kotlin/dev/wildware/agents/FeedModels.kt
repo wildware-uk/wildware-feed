@@ -283,7 +283,7 @@ data class UpdateView(
     val blocks: List<BlockView> = emptyList(),
     /** Secrets the agent attached, by name: opened one at a time with [DashboardClient.revealSharedSecret]. */
     val secrets: List<SharedSecretView> = emptyList(),
-    /** Pull requests an agent linked to it (server migration 079), with their CI and reviews. */
+    /** Pull requests an agent linked to it (server migration 080), with their CI and reviews. */
     val prs: List<PrView> = emptyList(),
 ) {
     @Serializable

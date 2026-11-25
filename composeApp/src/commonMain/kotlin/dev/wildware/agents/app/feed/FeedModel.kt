@@ -512,7 +512,7 @@ sealed interface FeedItem {
         val blocks: List<CardBlock> = emptyList(),
         /** Secrets the agent attached, drawn as locked chips the owner opens in place. */
         val secrets: List<SharedSecret> = emptyList(),
-        /** Pull requests an agent linked, drawn as chips with their CI and reviews (server migration 079). */
+        /** Pull requests an agent linked, drawn as chips with their CI and reviews (server migration 080). */
         val prs: List<dev.wildware.agents.PrView> = emptyList(),
     ) : Threaded {
         override val starter: Author get() = Author.AgentAuthor(agent)
@@ -788,7 +788,7 @@ data class AlertSettings(val prefs: AlertPrefs? = null, val loaded: Boolean = fa
 data class PlanState(val plan: dev.wildware.agents.TeamPlan? = null, val loaded: Boolean = false)
 
 /**
- * The team's GitHub (server migration 079), as Settings shows it. [connectUrl] is GitHub's install
+ * The team's GitHub (server migration 080), as Settings shows it. [connectUrl] is GitHub's install
  * page, waiting to be opened in the browser.
  */
 @Immutable
