@@ -147,6 +147,12 @@ class Derive(
     /** How many jobs are queued or running, every team's: playback copies wait for none. */
     private val running = java.util.concurrent.atomic.AtomicInteger()
 
+    /**
+     * When this server started. A playback copy tried before then and still missing was cut off by a
+     * restart (or failed), so it gets one more try per start rather than none.
+     */
+    private val startedAt = clock()
+
     /** Teams found with no playback copy to make, until when they aren't asked again. */
     private val playbackIdleUntil = ConcurrentHashMap<String, Long>()
 
@@ -205,18 +211,23 @@ class Derive(
      */
     internal fun nextPlayback(): String? = db.one(
         "SELECT m.id FROM media AS m WHERE m.team_id = :team AND m.kind = 'video' AND m.status = 'ready' AND m.sha256 <> '' " +
-            "AND m.removed_at IS NULL AND m.playback_tried_at IS NULL AND NOT EXISTS (" +
+            "AND m.removed_at IS NULL AND (m.playback_tried_at IS NULL OR m.playback_tried_at < ?) AND NOT EXISTS (" +
             "SELECT 1 FROM derivatives AS d WHERE d.team_id = :team AND d.media_id = m.id AND d.kind = 'mp4' AND " +
             "((d.width <= $PLAYBACK_LONG AND d.height <= $PLAYBACK_SHORT) OR (d.width <= $PLAYBACK_SHORT AND d.height <= $PLAYBACK_LONG))" +
             ") ORDER BY m.seq DESC LIMIT 1",
+        startedAt,
     ) { it.getString(1) }
 
     /**
      * Makes a ready video's playback copy and puts it in place of any older mp4 (which is then
-     * removed). Tried once, whatever happens, so a video that can't be converted isn't tried again.
+     * removed). Tried once per server start, whatever happens, so a video that can't be converted isn't
+     * tried again until the next start, and one a restart cut off is tried again.
      */
     fun playback(id: String) {
-        val claimed = db.update("UPDATE media SET playback_tried_at = ? WHERE team_id = :team AND id = ? AND playback_tried_at IS NULL", clock(), id)
+        val claimed = db.update(
+            "UPDATE media SET playback_tried_at = ? WHERE team_id = :team AND id = ? AND (playback_tried_at IS NULL OR playback_tried_at < ?)",
+            clock(), id, startedAt,
+        )
         if (claimed == 0) return
         val media = db.one("SELECT id, kind, mime, sha256, status FROM media WHERE team_id = :team AND id = ? AND removed_at IS NULL", id) {
             Row(it.getString(1), it.getString(2), it.getString(3), it.getString(4), it.getString(5))

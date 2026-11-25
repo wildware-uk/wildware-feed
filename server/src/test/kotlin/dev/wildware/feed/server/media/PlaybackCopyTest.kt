@@ -85,6 +85,25 @@ class PlaybackCopyTest {
     }
 
     @Test
+    fun `a copy a restart cut off is tried again after the next start, once`() {
+        val db = Database.memory()
+        val paths = MediaPaths(dir.toString())
+        val cut = "01J0000000000000000000001X"
+        db.update(
+            "INSERT INTO media (id, author, kind, mime, bytes, sha256, status, created_at, playback_tried_at) VALUES (?, 'human', 'video', 'video/mp4', 1, 'abc', 'ready', 1, 50)",
+            cut,
+        )
+        val before = Derive(db, Bus(boot = "t"), paths, tools, clock = { 40L }, workers = 1)
+        assertNull(before.nextPlayback(), "tried in this run: not again")
+        before.close()
+        val after = Derive(db, Bus(boot = "t"), paths, tools, clock = { 100L }, workers = 1)
+        assertEquals(cut, after.nextPlayback(), "tried before this start and still missing")
+        db.update("UPDATE media SET playback_tried_at = 100 WHERE id = ?", cut)
+        assertNull(after.nextPlayback(), "once per start")
+        after.close()
+    }
+
+    @Test
     fun `a 1080p mp4 is ready with its poster, then gets a 720p copy`() {
         assumeTrue(tools.available)
         val w = world()
