@@ -162,8 +162,9 @@ object Attachments {
         for (variant in listOf("thumb-1600", "thumb-640", "original")) {
             if (variant !in item.variants) continue
             val file = runCatching { app.serve.open(item.id, variant) }.getOrNull() ?: continue
-            if (file.size > maxBytes) continue
-            val bytes = runCatching { app.mediaPaths.store.read(file.key, 0, file.size)?.use { it.readAllBytes() } }.getOrNull() ?: continue
+            val size = file.size ?: continue
+            if (size > maxBytes) continue
+            val bytes = runCatching { app.mediaPaths.store.read(file.key, 0, size)?.use { it.readAllBytes() } }.getOrNull() ?: continue
             return file.mime to bytes
         }
         return null

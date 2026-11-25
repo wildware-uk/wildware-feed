@@ -1,0 +1,37 @@
+name: media-edge
+
+on:
+  push:
+    branches: [master]
+    paths: ['media-edge/**', '.github/workflows/media-edge.yml']
+  pull_request:
+    paths: ['media-edge/**', '.github/workflows/media-edge.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: media-edge-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: media-edge
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: media-edge/package-lock.json
+      - run: npm ci
+        timeout-minutes: 5
+      - run: npm run typecheck
+        timeout-minutes: 3
+      - run: npm test
+        timeout-minutes: 8

@@ -375,6 +375,30 @@ Cloudflare in front changes three things, all to verify:
 - **The client address** comes from `CF-Connecting-IP`, so `ADDRESS_HEADER` changes with it, or
   every sign-in lockout counts Cloudflare's addresses instead of the real ones.
 
+### Media from the edge
+
+Sending every media byte through one dyno makes video stutter: each range a player asks for is a
+round of database checks and a bucket read from the server's region. With `MEDIA_EDGE_URL` and
+`MEDIA_EDGE_SECRET` set (and `MEDIA_STORE=s3`), the server only decides who may see a file:
+
+1. `/media/<id>/<variant>` makes every check it always made (signed in, the team, the channel, a
+   deleted card, retention, the variant, `?download=1`).
+2. It answers `302` to `https://<edge>/<object key>?exp=…&ct=…&cd=…&sig=…`: the key, when the link
+   stops working, and the Content-Type and Content-Disposition to send, signed with HMAC-SHA256
+   under the secret. No bucket request is made for it.
+3. The edge Worker ([media-edge/](../media-edge/README.md)) checks the signature in constant time
+   (`403` and nothing else when it is wrong or expired) and sends the file from the bucket, with
+   byte ranges, `304`s and the server's safety headers. It keeps files up to 100 MB whole in
+   Cloudflare's cache, keyed by object key and never by signature, so the next viewer anywhere gets
+   it from the nearest edge, and only after their own link checked out.
+
+A link lasts until the next 6-hour boundary at least an hour away (UTC 00:00, 06:00, 12:00, 18:00),
+so one file has one link for hours and browsers and the apps reuse what they fetched; the `302`
+says `Cache-Control: private, max-age=<until 10 minutes before then>`. Pages on the team domain
+may fetch files from the edge (CORS). Agents' `/api/agent/media/<id>` still sends the bytes itself,
+since an agent's client may not follow a redirect. Unset, everything is as before, which is what a
+self-hosted server, the desktop app and the tests run.
+
 ## 5. Identity: accounts and memberships
 
 [TEAMS.md](TEAMS.md) has one `users` table per server. With many teams, one person can be in

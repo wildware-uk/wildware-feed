@@ -206,6 +206,9 @@ class App(val config: Config, val db: Database, val clock: () -> Long = System::
     /** Which file answers a media URL. */
     val serve = dev.wildware.feed.server.media.Serve(db, mediaPaths)
 
+    /** Signed links to the media edge, when media is sent from there (MEDIA_EDGE_URL). */
+    val mediaEdge = config.mediaEdge?.let { dev.wildware.feed.server.media.MediaEdge(it.url, it.secret) }
+
     /** Owner requests, the bell, push subscriptions and app state (the request area). */
     val requests = Requests(db, bus, reads, clock) { config.holdSeconds * 1000L }.also { it.people = people }
 

@@ -30,6 +30,7 @@ fun main(args: Array<String>) {
         )
         println(if (config.databaseUrl != null) "Database: Postgres" else "Database: SQLite in ${config.dataDir}")
         println(config.s3?.let { "Media: bucket ${it.bucket}" } ?: "Media: on disk in ${config.dataDir}")
+        config.mediaEdge?.let { println("Media: sent from the edge at ${it.url}") }
         println("Listening on http://${config.host}:${config.port}")
         dev.wildware.feed.server.http.FeedServer(app).start(wait = true)
         return

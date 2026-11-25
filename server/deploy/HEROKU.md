@@ -103,6 +103,13 @@ nobody can pick their own address for the sign-in lockout. An IPv6 client counts
 `CLOUDFLARE_IPS` replaces the built-in list of Cloudflare's ranges if they change; the server warns
 in its log when a request with `CF-Ray` arrives from outside the list.
 
+Media can be sent from Cloudflare's edge instead of the dyno, so video doesn't stutter
+(docs/HOSTING.md §4, "Media from the edge"). Deploy the Worker in `media-edge/` first (its
+README), then set `MEDIA_EDGE_URL` to its address (`https://media.example.com`) and
+`MEDIA_EDGE_SECRET` to the same value as its Worker secret (`openssl rand -base64 32`; at least 32
+characters). Both or neither, and only with `MEDIA_STORE=s3`. The server then prints
+`Media: sent from the edge at <url>`. Unset them to send media from the server again.
+
 `TOKEN_SECRET` must be the old server's, or every agent token stops working. `PORT` is set by
 Heroku. The server prints `Database: Postgres` and `Media: bucket <name>` when it starts; check
 the log for both.

@@ -1,0 +1,30 @@
+{
+  "secret": "shared-test-vector-secret-not-for-production-use",
+  "edge": "https://media.example.test",
+  "cases": [
+    {
+      "key": "01/01JD3QK5Z8X9W7V6T5S4R3Q2P1/playback.mp4",
+      "exp": 1764072000,
+      "ct": "video/mp4",
+      "cd": "inline",
+      "sig": "Opgr1zSYQUhd_JI2Uvs9ix5RjoPrsTc2iziK6inRFbg",
+      "url": "https://media.example.test/01/01JD3QK5Z8X9W7V6T5S4R3Q2P1/playback.mp4?exp=1764072000&ct=video%2Fmp4&cd=inline&sig=Opgr1zSYQUhd_JI2Uvs9ix5RjoPrsTc2iziK6inRFbg"
+    },
+    {
+      "key": "t/01JD3QJ0000000000000000000/01/01JD3QK5Z8X9W7V6T5S4R3Q2P1/original.jpg",
+      "exp": 1764093600,
+      "ct": "image/jpeg",
+      "cd": "attachment; filename=\"caf_ photo.jpg\"; filename*=UTF-8''caf%C3%A9%20photo.jpg",
+      "sig": "JZfnko0q4Xvqpq6ciCXTW9k-vMstAqKMcd0dmTNxZjs",
+      "url": "https://media.example.test/t/01JD3QJ0000000000000000000/01/01JD3QK5Z8X9W7V6T5S4R3Q2P1/original.jpg?exp=1764093600&ct=image%2Fjpeg&cd=attachment%3B%20filename%3D%22caf_%20photo.jpg%22%3B%20filename*%3DUTF-8''caf%25C3%25A9%2520photo.jpg&sig=JZfnko0q4Xvqpq6ciCXTW9k-vMstAqKMcd0dmTNxZjs"
+    },
+    {
+      "key": "01/01JD3QK5Z8X9W7V6T5S4R3Q2P1/original.zip",
+      "exp": 1764115200,
+      "ct": "application/octet-stream",
+      "cd": "attachment; filename=\"report (final).zip\"; filename*=UTF-8''report%20(final).zip",
+      "sig": "rclcREB4OdQA6H_GkrSt-GtCCVgWGGxT7iYUIeD1R5o",
+      "url": "https://media.example.test/01/01JD3QK5Z8X9W7V6T5S4R3Q2P1/original.zip?exp=1764115200&ct=application%2Foctet-stream&cd=attachment%3B%20filename%3D%22report%20(final).zip%22%3B%20filename*%3DUTF-8''report%2520(final).zip&sig=rclcREB4OdQA6H_GkrSt-GtCCVgWGGxT7iYUIeD1R5o"
+    }
+  ]
+}

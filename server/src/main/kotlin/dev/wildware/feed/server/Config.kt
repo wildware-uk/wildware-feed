@@ -96,13 +96,19 @@ data class Config(
      * such as "Wildware"; server/spec/14-feedback.md). It goes to Sentry on SENTRY_DSN, or nowhere.
      */
     val feedbackRecipient: String? = null,
+    /**
+     * MEDIA_EDGE_URL and MEDIA_EDGE_SECRET (with MEDIA_STORE=s3): media is sent from the edge Worker
+     * (`media-edge/`, docs/HOSTING.md §4). `/media/<id>/<variant>` checks access as always, then
+     * redirects to a link signed under the secret. Null: the server sends the bytes itself.
+     */
+    val mediaEdge: MediaEdgeConfig? = null,
 ) {
     /** Many teams ([teamDomain] set). */
     val multiTeam: Boolean get() = teamDomain != null
 
     override fun toString(): String =
         "Config(dataDir=$dataDir, publicBaseUrl=$publicBaseUrl, port=$port, host=$host, databaseUrl=${databaseUrl?.let { "set" }}, " +
-            "s3=$s3, teamDomain=$teamDomain, adminApiKeys=${adminApiKeys.size})"
+            "s3=$s3, mediaEdge=${mediaEdge?.url}, teamDomain=$teamDomain, adminApiKeys=${adminApiKeys.size})"
 
     /** The key secrets are sealed under now, and older ones still accepted while they are re-sealed. [toString] leaves them out. */
     class SecretsKeys(val current: String, val old: List<String> = emptyList()) {
@@ -112,6 +118,11 @@ data class Config(
     /** A private S3-compatible bucket, addressed path-style. [toString] leaves the secret out. */
     data class S3(val endpoint: String, val bucket: String, val accessKeyId: String, val secretAccessKey: String, val region: String) {
         override fun toString() = "S3(endpoint=$endpoint, bucket=$bucket)"
+    }
+
+    /** Where the media edge is and the secret its links are signed under. [toString] leaves the secret out. */
+    data class MediaEdgeConfig(val url: String, val secret: String) {
+        override fun toString() = "MediaEdgeConfig(url=$url)"
     }
 
     /** [keyPath] is APNS_KEY_PATH; on a host with no lasting files, [keyText] (APNS_KEY, the .p8 contents) instead. */
@@ -199,6 +210,13 @@ data class Config(
                 }
                 else -> { issues += "MEDIA_STORE: MEDIA_STORE must be local or s3, not $store"; null }
             }
+
+            val edgeUrl = get("MEDIA_EDGE_URL")?.trim()?.trimEnd('/')
+            val edgeSecret = get("MEDIA_EDGE_SECRET")
+            if ((edgeUrl == null) != (edgeSecret == null)) issues += "MEDIA_EDGE_URL: MEDIA_EDGE_URL and MEDIA_EDGE_SECRET must be set together, or neither"
+            if (edgeUrl != null && !Regex("^https://[^/?#\\s]+$").matches(edgeUrl)) issues += "MEDIA_EDGE_URL: MEDIA_EDGE_URL must be an https origin, such as https://media.example.com"
+            if (edgeSecret != null && edgeSecret.length < MIN_SECRET_LENGTH) issues += "MEDIA_EDGE_SECRET: MEDIA_EDGE_SECRET must be at least $MIN_SECRET_LENGTH characters"
+            if (edgeUrl != null && get("MEDIA_STORE") != "s3") issues += "MEDIA_EDGE_URL: the media edge serves from a bucket, so it needs MEDIA_STORE=s3"
 
             val secretsKey = get("SECRETS_KEY")
             if (secretsKey != null && secretsKey.length < MIN_SECRET_LENGTH) issues += "SECRETS_KEY: SECRETS_KEY must be at least $MIN_SECRET_LENGTH characters"
@@ -304,6 +322,7 @@ data class Config(
                 cloudflareRanges = cloudflareRanges,
                 cloudflareOriginSecret = originSecret,
                 feedbackRecipient = get("FEEDBACK_RECIPIENT")?.trim()?.takeIf { it.isNotEmpty() }?.take(60),
+                mediaEdge = if (edgeUrl != null && edgeSecret != null) MediaEdgeConfig(edgeUrl, edgeSecret) else null,
             )
         }
 

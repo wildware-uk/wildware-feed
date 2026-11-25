@@ -152,7 +152,12 @@ private suspend fun ApplicationCall.serveMedia(app: App, id: String, variant: St
     if (attachedOnly && !app.db.mediaAttached(id)) return mediaMiss()
     // Deleting a card takes back what was on it: its files answer as any other miss.
     if (app.db.mediaOnDeletedCard(id)) return mediaMiss()
-    val file = runCatching { app.serve.open(id, variant, save) }.getOrNull() ?: return mediaMiss()
+    // From the edge: every check above has passed, so hand out a signed link instead of the bytes.
+    // An agent's fetch stays here, as an agent's client may not follow a redirect.
+    val edge = app.mediaEdge?.takeUnless { attachedOnly }
+    val file = runCatching { app.serve.open(id, variant, save, sized = edge == null) }.getOrNull() ?: return mediaMiss()
+    if (edge != null) return redirectToEdge(edge, file, app.clock())
+    val size = file.size ?: return mediaMiss()
     val base = listOf(
         "Content-Type" to file.mime,
         // private: browsers and the apps keep it, but no shared cache (Cloudflare in front) may hand
@@ -168,21 +173,41 @@ private suspend fun ApplicationCall.serveMedia(app: App, id: String, variant: St
         return respond(FileContent(HttpStatusCode.NotModified, base, null, file.key, null, 0))
     }
     val head = request.httpMethod == HttpMethod.Head
-    when (val range = Serve.range(request.headers["Range"], file.size)) {
+    when (val range = Serve.range(request.headers["Range"], size)) {
         Serve.Companion.Range.Unsatisfiable ->
-            respond(FileContent(HttpStatusCode.RequestedRangeNotSatisfiable, base + ("Content-Range" to "bytes */${file.size}"), null, file.key, null, 0))
+            respond(FileContent(HttpStatusCode.RequestedRangeNotSatisfiable, base + ("Content-Range" to "bytes */$size"), null, file.key, null, 0))
         Serve.Companion.Range.Whole ->
-            respond(FileContent(HttpStatusCode.OK, base, app.mediaPaths.store.takeUnless { head }, file.key, file.size, 0))
+            respond(FileContent(HttpStatusCode.OK, base, app.mediaPaths.store.takeUnless { head }, file.key, size, 0))
         is Serve.Companion.Range.Span -> {
             val length = range.end - range.start + 1
             respond(
                 FileContent(
-                    HttpStatusCode.PartialContent, base + ("Content-Range" to "bytes ${range.start}-${range.end}/${file.size}"),
+                    HttpStatusCode.PartialContent, base + ("Content-Range" to "bytes ${range.start}-${range.end}/$size"),
                     app.mediaPaths.store.takeUnless { head }, file.key, length, range.start,
                 ),
             )
         }
     }
+}
+
+/**
+ * `302` to the file's signed link at the edge. The same file gets the same link until its expiry
+ * bucket rolls over, and the redirect may be kept until shortly before then, so browsers and the
+ * apps reuse what they already fetched.
+ */
+private suspend fun ApplicationCall.redirectToEdge(edge: dev.wildware.feed.server.media.MediaEdge, file: Serve.MediaFile, nowMs: Long) {
+    val exp = dev.wildware.feed.server.media.MediaEdge.expiry(nowMs)
+    val location = edge.link(file.key, file.mime, file.disposition, exp)
+    respond(
+        object : OutgoingContent.NoContent() {
+            override val status = HttpStatusCode.Found
+            override val headers: Headers = Headers.build {
+                append("Location", location)
+                append("Cache-Control", "private, max-age=${dev.wildware.feed.server.media.MediaEdge.redirectMaxAge(nowMs, exp)}")
+                append("Referrer-Policy", "no-referrer")
+            }
+        },
+    )
 }
 
 /** On an update or a message that was deleted (a request has no deleted mark). */

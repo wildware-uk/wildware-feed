@@ -4,14 +4,16 @@ import dev.wildware.feed.server.db.Database
 
 /** Which file answers `/media/<id>/<variant>` (spec/07 §7, TS `src/media/serve.ts`). */
 class Serve(private val db: Database, private val paths: MediaPaths) {
-    class MediaFile(val key: String, val size: Long, val mime: String, val etag: String, val disposition: String)
+    /** [size] is null when it was not asked for (the edge finds it itself). */
+    class MediaFile(val key: String, val size: Long?, val mime: String, val etag: String, val disposition: String)
 
     /**
      * The file, or null for every kind of miss (all of them answer the same 404). [save] asks for the
      * original as a download (`?download=1`): a picture or video comes as an attachment under its own
-     * name, so a browser keeps it rather than showing it.
+     * name, so a browser keeps it rather than showing it. Without [sized] the store is not asked for
+     * the file's size (a round trip to a bucket), and a missing object is not noticed here.
      */
-    fun open(id: String, variant: String, save: Boolean = false): MediaFile? {
+    fun open(id: String, variant: String, save: Boolean = false, sized: Boolean = true): MediaFile? {
         if (variant !in VARIANTS || !ULID.matches(id)) return null
         class Row(val kind: String, val mime: String, val sha256: String, val filename: String?, val status: String, val removed: Boolean)
         val row = db.one("SELECT kind, mime, sha256, filename, status, removed_at FROM media WHERE team_id = :team AND id = ?", id) {
@@ -53,7 +55,7 @@ class Serve(private val db: Database, private val paths: MediaPaths) {
                 else -> "image/webp"
             }
         }
-        val size = paths.store.size(key) ?: return null
+        val size = if (sized) paths.store.size(key) ?: return null else null
         val attach = download || (save && variant == "original")
         val name = if (download) row.filename else savedName(row.filename, row.kind, row.mime)
         // An avatar served from its original shares the original's tag, so a later square replaces it.

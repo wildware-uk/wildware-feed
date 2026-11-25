@@ -1,0 +1,21 @@
+// The media edge: serves media from the bucket at the edge, to links the server signed.
+// The secret is never here: set it with `wrangler secret put MEDIA_EDGE_SECRET` (README.md).
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "wildware-feed-media-edge",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-11-01",
+  "workers_dev": false,
+  "preview_urls": false,
+  "observability": { "enabled": true, "logs": { "invocation_logs": false } },
+  "routes": [{ "pattern": "media.feed.wildware.dev", "custom_domain": true }],
+  "r2_buckets": [{ "binding": "MEDIA", "bucket_name": "wildware-feed-media" }],
+  "vars": {
+    // Pages on this domain or any of its subdomains (every team, and the web app) may fetch media.
+    "ALLOWED_ORIGIN_DOMAIN": "feed.wildware.dev",
+    // More origins allowed to fetch media, comma-separated, such as "http://localhost:8080".
+    "EXTRA_ORIGINS": "",
+    // Files up to this size are kept whole in the edge cache; bigger ones are read from the bucket.
+    "CACHE_MAX_BYTES": "104857600"
+  }
+}
