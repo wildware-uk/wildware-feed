@@ -1,0 +1,90 @@
+{
+  "identifier" : "7E5A1C2B",
+  "nonRenewingSubscriptions" : [
+
+  ],
+  "products" : [
+
+  ],
+  "settings" : {
+    "_applicationInternalID" : "6836368769",
+    "_developerTeamID" : "",
+    "_failTransactionsEnabled" : false,
+    "_locale" : "en_US",
+    "_storefront" : "USA",
+    "_storeKitErrors" : [
+
+    ]
+  },
+  "subscriptionGroups" : [
+    {
+      "id" : "21581001",
+      "localizations" : [
+
+      ],
+      "name" : "Team",
+      "subscriptions" : [
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "69.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "6836369010",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "The Team plan for 10 logins",
+              "displayName" : "Team 10",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "dev.wildware.feed.team10.monthly",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "Team 10",
+          "subscriptionGroupID" : "21581001",
+          "type" : "RecurringSubscription",
+          "winbackOffers" : [
+
+          ]
+        },
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "34.99",
+          "familyShareable" : false,
+          "groupNumber" : 2,
+          "internalID" : "6836369005",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "The Team plan for 5 logins",
+              "displayName" : "Team 5",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "dev.wildware.feed.team5.monthly",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "Team 5",
+          "subscriptionGroupID" : "21581001",
+          "type" : "RecurringSubscription",
+          "winbackOffers" : [
+
+          ]
+        }
+      ]
+    }
+  ],
+  "version" : {
+    "major" : 4,
+    "minor" : 0
+  }
+}

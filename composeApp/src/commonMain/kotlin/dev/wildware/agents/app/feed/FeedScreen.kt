@@ -239,7 +239,12 @@ private fun FeedScreenBody(
         // A [[Doc name]] link, in a doc or a message, opens in the Docs tab; other links as before.
         val uris = androidx.compose.ui.platform.LocalUriHandler.current
         val docLinks = remember(ui, uris) { DocLinkUriHandler(uris) { channel, title -> ui.openDocLink(channel, title) } }
-        CompositionLocalProvider(LocalFeedUi provides ui, LocalIsPhone provides phone, LocalPreview provides preview, androidx.compose.ui.platform.LocalUriHandler provides docLinks) {
+        // On iPhone "Upgrade" opens the App Store paywall; elsewhere the billing site.
+        val openPaywall: (() -> Unit)? = if (LocalAppStore.current != null) remember(ui) { { ui.paywallOpen = true } } else null
+        CompositionLocalProvider(
+            LocalFeedUi provides ui, LocalIsPhone provides phone, LocalPreview provides preview, androidx.compose.ui.platform.LocalUriHandler provides docLinks,
+            LocalOpenPaywall provides openPaywall,
+        ) {
             if (phone) PhoneFeed(ui, safeArea, startAt, widthPx) else DesktopFeed(ui, showRail = maxWidth >= RailBreakpoint, startAt)
             val motion = AgentTheme.motion
             // Pictures open by fading and growing into place; search drops in from above.
@@ -278,6 +283,8 @@ private fun FeedScreenBody(
             UpsellPopup(ui, if (phone) safeArea else SafeArea())
             // A free-plan refusal, with "Upgrade" to the billing site.
             UpgradePrompt(ui, if (phone) safeArea else SafeArea())
+            // Buying Team in the app (iPhone): over a refusal or the popup that opened it.
+            if (ui.paywallOpen) PaywallSheet(ui, if (phone) safeArea else SafeArea())
             // The guided tour, over everything: nothing at all while it is off.
             TourHost(ui, if (phone) safeArea else SafeArea())
         }

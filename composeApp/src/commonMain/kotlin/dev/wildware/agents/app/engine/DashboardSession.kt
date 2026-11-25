@@ -163,8 +163,61 @@ class DashboardSession(
     /** Whether the app may link to buying a plan, now ([AppPlatform.buyingLinks]). */
     private val buyingLinks = platform.buyingLinks
 
-    /** Whether [role] may be offered Team here at all: an owner or admin, where the app may link to buying. */
-    private fun mayOffer(role: String?) = buyingLinks.value && (role == "owner" || role == "admin")
+    /** Apple's in-app purchase, on iPhone ([AppPlatform.appStore]); null elsewhere. */
+    private val appStore = platform.appStore
+
+    /**
+     * Whether [role] may be offered Team here at all: an owner or admin, where the app may link to
+     * buying, or where it sells Team itself (the App Store, on iPhone, on every storefront).
+     */
+    private fun mayOffer(role: String?) = (buyingLinks.value || appStore != null) && (role == "owner" || role == "admin")
+
+    /** Who asked to buy or restore, waiting to hear how it went ([relayPurchases]). */
+    @kotlin.concurrent.Volatile
+    private var purchaseDone: ((String?) -> Unit)? = null
+
+    /** The App Store token for this team, reading the plan first if it hasn't been. */
+    private suspend fun appAccountToken(): String? = (mutablePlan.value.plan ?: run { loadPlan(); mutablePlan.value.plan })?.appAccountToken
+
+    private fun buyTeam(productId: String, done: (String?) -> Unit) {
+        val store = appStore ?: return done("Buying isn't possible in this app.")
+        scope.launch {
+            val token = appAccountToken() ?: return@launch done("This dashboard has no plan to buy.")
+            purchaseDone = done
+            store.buy(productId, token)
+        }
+    }
+
+    private fun restorePurchases(done: (String?) -> Unit) {
+        val store = appStore ?: return done("Buying isn't possible in this app.")
+        purchaseDone = done
+        store.restore()
+    }
+
+    /**
+     * Sends each purchase, renewal or restore the App Store signs to the dashboard, which has the
+     * billing service check it with Apple, and tells the App Store it is dealt with once the dashboard
+     * has decided. One for another team (another token) is left for that team; one the dashboard
+     * couldn't pass on yet comes back from the App Store next time the app starts.
+     */
+    private suspend fun relayPurchases(store: dev.wildware.agents.app.session.AppStorePurchases) {
+        store.signed.collect { tx ->
+            val token = appAccountToken() ?: return@collect
+            if (tx.accountToken != null && !tx.accountToken.equals(token, ignoreCase = true)) return@collect
+            val answer = try {
+                client.relayAppStore(tx.jws)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failed: Throwable) {
+                null
+            }
+            if (answer?.settled == true) store.finish(tx.id)
+            loadPlan()
+            val done = purchaseDone ?: return@collect
+            purchaseDone = null
+            done(dev.wildware.agents.app.feed.Paywall.relayWords(answer?.status ?: 502, answer?.error, answer?.message))
+        }
+    }
 
     /** When this team last saw the popup and hid the files note, on this device. */
     private val upsellMarks = dev.wildware.agents.app.feed.UpsellMarks(platform.upsellMarks)
@@ -367,7 +420,7 @@ class DashboardSession(
 
     /** The offer to show, if any, with the popup and the files note. */
     private val upsell = combine(mutablePlan, mutableTeam, buyingLinks, mutableUpsellPopup, mutableFilesHidden) { plan, team, links, popup, hidden ->
-        val offer = dev.wildware.agents.app.feed.Upsell.offerFor(plan.plan, team.me?.role, links)
+        val offer = dev.wildware.agents.app.feed.Upsell.offerFor(plan.plan, team.me?.role, links || appStore != null)
         dev.wildware.agents.app.feed.UpsellState(offer, popup = popup && offer != null, storageHidden = hidden)
     }.distinctUntilChanged()
 
@@ -1071,6 +1124,8 @@ class DashboardSession(
         // An agent asking to join: read the plan's use, so the prompt can say when there's no room for it.
         scope.launch { dashboard.pairings.map { it.isNotEmpty() }.distinctUntilChanged().collect { if (it) loadPlan() } }
         scope.launch { offerNowAndThen() }
+        // App Store purchases, renewals and restores (iPhone), on to the dashboard.
+        appStore?.let { store -> scope.launch { relayPurchases(store) } }
         // Pushed notifications the owner dealt with, here or elsewhere, come off the lock screen.
         platform.notices?.let { notices -> scope.launch { NoticeCleanup(dashboard, notices, foreground).run() } }
         if (platform.sounds.available) scope.launch(soundThread) { playSounds() }
@@ -1221,6 +1276,8 @@ class DashboardSession(
                 upsellMarks.markFilesHidden(saved.server, clock())
                 mutableFilesHidden.value = true
             }
+            is FeedEvent.BuyTeam -> buyTeam(event.productId, event.done)
+            is FeedEvent.RestorePurchases -> restorePurchases(event.done)
             is FeedEvent.ReadFeedback -> scope.launch { loadFeedback() }
             is FeedEvent.SendFeedback -> sendFeedback(event.draft, event.done)
             is FeedEvent.ReadDevices -> scope.launch { loadDevices() }

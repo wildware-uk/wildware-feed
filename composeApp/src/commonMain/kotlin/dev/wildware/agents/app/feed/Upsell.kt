@@ -12,9 +12,10 @@ import kotlinx.serialization.json.longOrNull
 /**
  * Gentle offers of the Team plan, for a free team's owners and admins: a note when a limit is near
  * (files at 80%, agents or people full), and now and then a popup saying what Team gives. Never for
- * a member, a team already on Team, or a self-hosted dashboard (no plan). Never where the app may not
- * link to buying outside it ([AppPlatform.buyingLinks]): on an iPhone outside the US App Store, none
- * of this shows at all, and a free-plan refusal is told in plain words with nowhere to go.
+ * a member, a team already on Team, or a self-hosted dashboard (no plan). Never where the app can
+ * neither link to buying ([AppPlatform.buyingLinks]) nor sell Team itself ([AppPlatform.appStore]).
+ * On iPhone it is offered on every storefront and "Upgrade" opens the App Store paywall ([Paywall]),
+ * which points to the website only on the US one.
  */
 object Upsell {
     private const val DAY_MS = 24L * 60 * 60 * 1000

@@ -211,6 +211,17 @@ sealed interface FeedEvent {
     data object DismissUpsell : FeedEvent
     /** Hide the "files nearly full" note above the feed, for a week. */
     data object HideFilesNote : FeedEvent
+    /**
+     * Buy Team as [productId] through the App Store (iPhone). [done] hears null once the team is on
+     * Team, or words saying what happened instead.
+     */
+    class BuyTeam(val productId: String, val done: (String?) -> Unit = {}) : FeedEvent {
+        override fun toString() = "BuyTeam($productId)"
+    }
+    /** Ask the App Store for this Apple ID's purchases again. [done] as for [BuyTeam]. */
+    class RestorePurchases(val done: (String?) -> Unit = {}) : FeedEvent {
+        override fun toString() = "RestorePurchases"
+    }
     /** Read the team's feedback and feature requests, for the Feedback sheet. */
     data object ReadFeedback : FeedEvent
     /** Send feedback or a feature request. [done] hears null once sent, or why not. */
@@ -470,6 +481,8 @@ data class ScreenPreview(
     val peopleOpen: Boolean = false,
     /** The "Connect an agent" sheet, open. */
     val connectOpen: Boolean = false,
+    /** The App Store paywall is open (iPhone). */
+    val paywallOpen: Boolean = false,
     /** An agent's dialog, open, by agent id. */
     val agentOpen: String? = null,
     /** A person's profile, open, by their id. */
@@ -747,6 +760,9 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
 
     /** The "Connect an agent" sheet: a prompt to paste into an agent so it joins this dashboard. */
     var connectOpen by mutableStateOf(preview.connectOpen)
+
+    /** The App Store paywall ([PaywallSheet]), on iPhone. */
+    var paywallOpen by mutableStateOf(preview.paywallOpen)
     val composerFocus = FocusRequester()
 
     /** A message box has the cursor (on a phone, the keyboard is up). Back closes it first. */

@@ -504,11 +504,16 @@ a self-hosted dashboard (`composeApp/.../feed/Upsell.kt`): a note above the feed
 once files pass 80%, a note on "Connect an agent", the join prompt and the invite form once agents
 or people are full, and now and then a popup ("Get more with Team": at most once every 7 days per
 team on each device, never in a team's first 2 days, never while a question or an agent asking to
-join waits). In the iPhone and iPad app all of it shows only on the United States App Store
-storefront (StoreKit's `Storefront.current`, App Store guidelines 3.1.1 and 3.1.3); anywhere else
-there is no offer and no link, and a `plan_limit` refusal is told in the app's own words, picked by
-its `limit` ("This team has no room for more agents. Remove one to add another."), with no
-"Upgrade", no plan and no website. The server's message stays as it is for every other client.
+join waits). In the iPhone and iPad app, "Upgrade" opens the App Store paywall instead (Team 5 and
+Team 10, bought with Apple's in-app purchase; `feed/Paywall.kt`), on every storefront. Only on the
+United States storefront (StoreKit's `Storefront.current`, App Store guidelines 3.1.1 and 3.1.3)
+does anything point to the website: the paywall's "Transfer your payment over to our website to
+save 15%". Elsewhere it shows the price (in dollars, split into the website's price and Apple's
+service charge; in other currencies, the total, "includes Apple's service charge") and nothing that
+leads out of the app. A member is offered nothing, and a `plan_limit` refusal is told in the app's
+own words, picked by its `limit` ("This team has no room for more agents. Remove one to add
+another."), with no "Upgrade", no plan and no website. The server's message stays as it is for
+every other client.
 
 **App Store purchases.** The iPhone app can buy the Team plan with Apple's in-app purchase. Only the
 control plane holds plans, so the server relays the purchase: the one call it makes to the control

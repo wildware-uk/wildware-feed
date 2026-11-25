@@ -60,6 +60,8 @@ struct RootView: View {
             .background(Color(uiColor: .obsidian).ignoresSafeArea())
             // Which App Store storefront this is: the Team plan is offered only on the US one.
             .task { await StorefrontWatch.run() }
+            // Buying Team in the app: StoreKit's purchases, renewals and refunds, on to the dashboard.
+            .task { await AppStoreBridge.shared.run() }
             // The mic writes notes down on the phone; on iOS 26 that model downloads once, ahead of time.
             .task { if VoiceNotes.microphoneAllowed { await Transcriber.prepare() } }
             // The share sheet and Siri offer the projects last read here, so keep them fresh.

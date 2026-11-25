@@ -74,6 +74,9 @@ targets:
         buildPhase: resources
       - path: Privacy/PrivacyInfo.xcprivacy
         buildPhase: resources
+      # Team 5 and Team 10 for trying purchases in Xcode, never shipped (the scheme's StoreKit configuration).
+      - path: StoreKit/Team.storekit
+        buildPhase: none
     preBuildScripts:
       # Builds ComposeApp for just this device or simulator, and copies the screens' fonts into the app.
       - name: Build the Compose framework
@@ -383,6 +386,8 @@ schemes:
             "$SRCROOT/build-shared.sh"
     run:
       config: Debug
+      # Purchases in Xcode use these test products, not the App Store. TestFlight and release use the real ones.
+      storeKitConfiguration: StoreKit/Team.storekit
     archive:
       config: Release
 

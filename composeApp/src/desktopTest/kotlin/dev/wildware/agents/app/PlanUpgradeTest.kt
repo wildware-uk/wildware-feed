@@ -34,7 +34,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-/** The free plan in the app: its limits in Settings, and "Upgrade" when an action passes one. Nothing is bought in the app. */
+/** The free plan in the app: its limits in Settings, and "Upgrade" when an action passes one. Here "Upgrade" opens the billing site; on iPhone, the App Store paywall (PaywallTest). */
 @OptIn(ExperimentalTestApi::class)
 class PlanUpgradeTest {
     private val events = mutableListOf<FeedEvent>()

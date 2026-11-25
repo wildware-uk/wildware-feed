@@ -675,6 +675,22 @@ class DashboardClient(
         return response.decoded<TeamPlan>().takeIf { it.plan != null }
     }
 
+    /**
+     * Sends an App Store purchase made in the app (StoreKit's signed transaction) to the dashboard,
+     * which has the billing service check it with Apple and put the team on Team (server
+     * docs/HOSTING.md §7, "App Store purchases"). Owners and admins only. Never throws for a refusal:
+     * the answer says what happened.
+     */
+    @Throws(Exception::class)
+    suspend fun relayAppStore(signedTransaction: String): AppStoreRelay {
+        val response = http.post("api/plan/app-store") {
+            authorise()
+            jsonBody(buildJsonObject { put("signedTransaction", signedTransaction) })
+        }
+        val error = if (response.status.isSuccess()) null else runCatching { json.decodeFromString<ErrorBody>(response.bodyAsText()) }.getOrNull()
+        return AppStoreRelay(response.status.value, error?.error, error?.message)
+    }
+
     /** How long the dashboard keeps media. Only the owner may read it. */
     @Throws(Exception::class)
     suspend fun mediaRetention(): MediaRetention = http.get("api/settings/media-retention") { authorise() }.decoded()
