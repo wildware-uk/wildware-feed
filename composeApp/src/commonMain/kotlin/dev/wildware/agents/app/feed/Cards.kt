@@ -380,7 +380,7 @@ fun UpdateCard(
                     if (inThread) MarkdownBody(item.body) else Clamp(item.id, "the whole update", fade = if (selected) colors.surfaceRaised else colors.surface) { MarkdownBody(item.body) }
                     if (item.attachments.isNotEmpty()) {
                         Spacer(Modifier.height(10.dp))
-                        MediaGrid(item.attachments, onOpen = rememberTileOpener(item.attachments))
+                        MediaGrid(item.attachments)
                     }
                     if (item.sounds.isNotEmpty()) Sounds(item.sounds, Modifier.padding(top = 10.dp))
                     if (item.files.isNotEmpty()) Files(item.files, Modifier.padding(top = 10.dp))
@@ -629,7 +629,7 @@ fun QuestionCard(
         Clamp(item.id, "the whole explanation", fade = colors.waitingSoft.compositeOver(colors.background)) { MarkdownBody(item.body) }
         if (item.attachments.isNotEmpty()) {
             Spacer(Modifier.height(10.dp))
-            MediaGrid(item.attachments, onOpen = rememberTileOpener(item.attachments))
+            MediaGrid(item.attachments)
         }
         if (item.sounds.isNotEmpty()) Sounds(item.sounds, Modifier.padding(top = 10.dp))
         if (item.files.isNotEmpty()) Files(item.files, Modifier.padding(top = 10.dp))
@@ -1199,7 +1199,7 @@ fun PostCard(item: FeedItem.Post, modifier: Modifier = Modifier, density: Densit
 internal fun PostMedia(attachments: List<Attachment>, sounds: List<Sound>, files: List<FileAttachment>, embeds: List<Embed> = emptyList()) {
     if (attachments.isNotEmpty()) {
         Spacer(Modifier.height(10.dp))
-        MediaGrid(attachments, onOpen = rememberTileOpener(attachments))
+        MediaGrid(attachments)
     }
     if (sounds.isNotEmpty()) Sounds(sounds, Modifier.padding(top = 10.dp))
     if (files.isNotEmpty()) Files(files, Modifier.padding(top = 10.dp))

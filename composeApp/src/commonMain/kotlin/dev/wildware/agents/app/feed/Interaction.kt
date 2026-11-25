@@ -513,11 +513,18 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
     var menu by mutableStateOf(preview.menu)
     var viewer by mutableStateOf(preview.viewer)
 
-    /** A video playing full screen in the app (phones). */
-    var playing by mutableStateOf(preview.playing)
+    private var fullScreen by mutableStateOf(preview.playing)
 
-    /** The video playing in its card, by address: one at a time. */
-    var inlineVideo by mutableStateOf(preview.inlineVideo)
+    /** A video playing full screen in the app. Starting one stops the one playing in its card. */
+    var playing: VideoSource?
+        get() = fullScreen
+        set(value) {
+            if (value != null) inlineVideo = null
+            fullScreen = value
+        }
+
+    /** The video playing in its card, and in which copy of it: one at a time. */
+    var inlineVideo by mutableStateOf(preview.inlineVideo?.let { InlinePlay(it, slot = null) })
 
     /** A short line at the bottom of the screen, gone by itself. */
     var toast by mutableStateOf<String?>(null)

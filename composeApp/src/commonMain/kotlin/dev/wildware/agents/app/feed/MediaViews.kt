@@ -59,6 +59,8 @@ import dev.wildware.agents.app.design.AgentTheme
 import dev.wildware.agents.app.design.Icons
 import dev.wildware.agents.app.design.pressable
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.Stable
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -66,16 +68,28 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
 /**
+ * One place a video can play: a card's pictures, or the preview of a card on another card. The same
+ * video is often on screen twice (on its card and in the thread open over it, or in a preview on a
+ * question that links to it), so which copy plays is said by place, not by address.
+ */
+@Stable
+class VideoSlot
+
+/** The video playing in its card: its address, and the [slot] it was tapped in (null in a screenshot: any). */
+@Immutable
+class InlinePlay(val url: String, val slot: VideoSlot?)
+
+/**
  * What a tap on a grid tile does: a picture opens the viewer (looking through the pictures only),
- * a video plays right there in its card.
+ * a video plays right there, in [slot] only.
  */
 @Composable
-fun rememberTileOpener(attachments: List<Attachment>): (Int) -> Unit {
+internal fun rememberTileOpener(attachments: List<Attachment>, slot: VideoSlot): (Int) -> Unit {
     val ui = LocalFeedUi.current
     val handler = LocalMediaHandler.current
     val auth = LocalMediaAuth.current
     val scope = rememberCoroutineScope()
-    return remember(attachments, ui, handler, auth) {
+    return remember(attachments, slot, ui, handler, auth) {
         { i ->
             val tile = attachments[i]
             val video = tile.video
@@ -84,7 +98,7 @@ fun rememberTileOpener(attachments: List<Attachment>): (Int) -> Unit {
             when {
                 tile.isPlaceholder -> if (pictures.isNotEmpty()) ui?.viewer = Gallery(pictures, 0)
                 video == null -> ui?.viewer = Gallery(pictures, pictures.indexOf(tile))
-                playsVideoInApp -> ui?.inlineVideo = video.url
+                playsVideoInApp -> ui?.inlineVideo = InlinePlay(video.url, slot)
                 handler != null -> scope.launch {
                     ui?.toast = "Opening the video…"
                     ui?.toast = handOver { handler.open(video, auth) }
@@ -462,12 +476,14 @@ fun FileChip(file: FileAttachment) {
     }
 }
 
-/** Whether [video] is the one playing in its card: read per tile, so only that tile redraws. */
+/** Whether [video] is the one playing, here in [slot]: read per tile, so only that tile redraws. */
 @Composable
-internal fun playingInline(video: VideoSource?): Boolean {
+internal fun playingInline(video: VideoSource?, slot: VideoSlot?): Boolean {
     val ui = LocalFeedUi.current ?: return false
     if (video == null) return false
-    val playing by remember(video.url) { derivedStateOf { ui.inlineVideo == video.url } }
+    val playing by remember(video.url, slot) {
+        derivedStateOf { ui.inlineVideo?.let { it.url == video.url && (it.slot == null || it.slot === slot) } == true }
+    }
     return playing
 }
 
@@ -479,7 +495,15 @@ internal fun playingInline(video: VideoSource?): Boolean {
 internal fun InlineVideo(video: VideoSource, modifier: Modifier) {
     val ui = LocalFeedUi.current
     val auth = LocalMediaAuth.current
-    DisposableEffect(video.url) { onDispose { if (ui?.inlineVideo == video.url) ui.inlineVideo = null } }
+    // The tap that put it here. Gone from the screen, it stops that tap's play, never a later one's.
+    val mine = remember { ui?.inlineVideo }
+    DisposableEffect(video.url) { onDispose { if (ui != null && ui.inlineVideo === mine) ui.inlineVideo = null } }
+    LaunchedEffect(Unit) {
+        // A video starting pauses any sound, and a sound starting stops it: one thing plays aloud.
+        NowPlaying.id.value = null
+        NowPlaying.id.first { it != null }
+        if (ui != null && ui.inlineVideo === mine) ui.inlineVideo = null
+    }
     Box(modifier.background(Color.Black)) {
         InAppVideo(video, auth, Modifier.fillMaxSize())
         // Where the platform's player draws its own controls over the app (the iPhone's), it keeps the corner.
@@ -509,6 +533,8 @@ fun VideoOverlay(ui: FeedUi, video: VideoSource, safeArea: SafeArea) {
     // Escape closes it on a computer, as Back does on a phone.
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+    // A video starting pauses any sound.
+    LaunchedEffect(video) { NowPlaying.id.value = null }
     Box(
         Modifier
             .fillMaxSize()

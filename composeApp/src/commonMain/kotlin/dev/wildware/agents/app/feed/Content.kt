@@ -414,10 +414,10 @@ private fun names(agents: List<Agent>): String = when (agents.size) {
 
 /** One attached picture at its own shape, with its file name under it. */
 @Composable
-fun AttachmentView(attachment: Attachment, modifier: Modifier = Modifier, onOpen: () -> Unit = {}) {
+fun AttachmentView(attachment: Attachment, modifier: Modifier = Modifier, slot: VideoSlot? = null, onOpen: () -> Unit = {}) {
     val colors = AgentTheme.colors
     val shape = AgentTheme.shapes.medium
-    val inline = playingInline(attachment.video)
+    val inline = playingInline(attachment.video, slot)
     Column(modifier) {
         Box(
             Modifier
@@ -501,9 +501,12 @@ private fun Scene.palette() = when (this) {
  * Each opens the viewer at that picture.
  */
 @Composable
-fun MediaGrid(images: List<Attachment>, modifier: Modifier = Modifier, onOpen: (Int) -> Unit) {
+fun MediaGrid(images: List<Attachment>, modifier: Modifier = Modifier, onOpen: ((Int) -> Unit)? = null) {
+    // This grid's own place to play a video, so the same video elsewhere on screen stays still.
+    val slot = remember { VideoSlot() }
+    val open = onOpen ?: rememberTileOpener(images, slot)
     if (images.size == 1) {
-        AttachmentView(images[0], modifier) { onOpen(0) }
+        AttachmentView(images[0], modifier, slot) { open(0) }
         return
     }
     val gap = 4.dp
@@ -512,14 +515,14 @@ fun MediaGrid(images: List<Attachment>, modifier: Modifier = Modifier, onOpen: (
         Box(Modifier.fillMaxWidth().aspectRatio(if (images.size == 2) 2f else 4f / 3f).clip(shape)) {
             when (images.size) {
                 2 -> Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(gap)) {
-                    GridTile(images, 0, Modifier.weight(1f).fillMaxHeight(), onOpen)
-                    GridTile(images, 1, Modifier.weight(1f).fillMaxHeight(), onOpen)
+                    GridTile(images, 0, Modifier.weight(1f).fillMaxHeight(), slot, open)
+                    GridTile(images, 1, Modifier.weight(1f).fillMaxHeight(), slot, open)
                 }
                 3 -> Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(gap)) {
-                    GridTile(images, 0, Modifier.weight(2f).fillMaxHeight(), onOpen)
+                    GridTile(images, 0, Modifier.weight(2f).fillMaxHeight(), slot, open)
                     Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(gap)) {
-                        GridTile(images, 1, Modifier.weight(1f).fillMaxWidth(), onOpen)
-                        GridTile(images, 2, Modifier.weight(1f).fillMaxWidth(), onOpen)
+                        GridTile(images, 1, Modifier.weight(1f).fillMaxWidth(), slot, open)
+                        GridTile(images, 2, Modifier.weight(1f).fillMaxWidth(), slot, open)
                     }
                 }
                 else -> Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(gap)) {
@@ -527,7 +530,7 @@ fun MediaGrid(images: List<Attachment>, modifier: Modifier = Modifier, onOpen: (
                         Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
                             for (col in 0..1) {
                                 val i = row * 2 + col
-                                GridTile(images, i, Modifier.weight(1f).fillMaxHeight(), onOpen, more = if (i == 3) images.size - 4 else 0)
+                                GridTile(images, i, Modifier.weight(1f).fillMaxHeight(), slot, open, more = if (i == 3) images.size - 4 else 0)
                             }
                         }
                     }
@@ -552,10 +555,10 @@ fun MediaGrid(images: List<Attachment>, modifier: Modifier = Modifier, onOpen: (
 }
 
 @Composable
-private fun GridTile(images: List<Attachment>, index: Int, modifier: Modifier, onOpen: (Int) -> Unit, more: Int = 0) {
+private fun GridTile(images: List<Attachment>, index: Int, modifier: Modifier, slot: VideoSlot, onOpen: (Int) -> Unit, more: Int = 0) {
     val image = images[index]
     val spoken = tileLabel(image, index, images.size) + if (more > 0) ", and $more more" else ""
-    val inline = playingInline(image.video)
+    val inline = playingInline(image.video, slot)
     // A placeholder opens nothing, unless it is the "+N more" one, which still opens the rest.
     val opens = (!image.isPlaceholder || more > 0) && !inline
     val press = if (opens) Modifier.pressable(spoken, RectangleShape, role = if (image.video != null) Role.Button else Role.Image) { onOpen(index) } else Modifier

@@ -95,7 +95,7 @@ private fun LinkedCardView(link: LinkedCard) {
         link.media?.let { tile ->
             Spacer(Modifier.height(6.dp))
             val tiles = listOf(tile)
-            MediaGrid(tiles, Modifier.widthIn(max = LinkedTileWidth), onOpen = rememberTileOpener(tiles))
+            MediaGrid(tiles, Modifier.widthIn(max = LinkedTileWidth))
         }
         link.mediaNote?.let { MetaText(it, Modifier.padding(top = 4.dp)) }
     }
