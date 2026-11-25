@@ -75,6 +75,8 @@ class App(val config: Config, val db: Database, val clock: () -> Long = System::
     }
 
     /** Shared by the login form and device sign-in: 5 wrong guesses in 15 minutes per address. */
+    /** The control plane, for relaying App Store purchases (docs/HOSTING.md §7). */
+    val controlPlane = ControlPlane(config, clock)
     val loginLimiter = SlidingLimiter(limit = 5, windowMs = 900_000, clock = clock)
 
     /**

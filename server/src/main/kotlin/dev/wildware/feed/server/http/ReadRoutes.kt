@@ -199,7 +199,11 @@ internal fun planJson(app: App): kotlinx.serialization.json.JsonObject {
             put("agents", app.teams.agentsLive())
             put("storageBytes", app.teams.storageUsed())
         })
-        put("upgradeUrl", if (free) app.teams.upgradeUrl(team)?.let(::JsonPrimitive) ?: JsonNull else JsonNull)
+        // Where to buy Team, or (paid through the App Store) to move to paying on the website.
+        put("upgradeUrl", if (free || team.billing == Teams.Billing.APPLE) app.teams.upgradeUrl(team)?.let(::JsonPrimitive) ?: JsonNull else JsonNull)
+        // Who takes the money ("web", "apple" or null), and the token an App Store purchase for this team carries.
+        put("billing", team.billing?.wire?.let(::JsonPrimitive) ?: JsonNull)
+        put("appAccountToken", if (app.controlPlane.enabled) JsonPrimitive(Teams.appAccountToken(team.id)) else JsonNull)
         // When the team was made (ms), so the apps leave a new team alone for its first days.
         put("createdAt", team.createdAt)
     }

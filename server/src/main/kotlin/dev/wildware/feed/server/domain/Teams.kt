@@ -37,6 +37,15 @@ class Teams(
         }
     }
 
+    /** Who takes a hosted team's money: the control plane's website, or Apple (bought in the iPhone app). */
+    enum class Billing(val wire: String) {
+        WEB("web"), APPLE("apple");
+
+        companion object {
+            fun of(wire: String?): Billing? = entries.firstOrNull { it.wire == wire }
+        }
+    }
+
     /** The free plan's limits, the same for every free team. */
     object Free {
         const val PEOPLE = 2L
@@ -63,6 +72,8 @@ class Teams(
         val tookOverHome: Boolean = false,
         /** Null: no plan was ever set (the home team, a team made before plans), so no plan limits. */
         val plan: Plan? = null,
+        /** Who takes the money, as the control plane says ([Billing]); null for nobody. */
+        val billing: Billing? = null,
     ) {
         val suspended: Boolean get() = suspendedAt != null
         val open: Boolean get() = state == State.ACTIVE
@@ -187,9 +198,16 @@ class Teams(
         return find(id)?.takeIf { it.state != State.DELETED }
     }
 
-    /** Put the team on [plan]. Nothing is removed: going free only refuses what is past its limits, and hides old history. */
-    fun setPlan(id: String, plan: Plan): Team? {
-        db.update("UPDATE teams SET plan = ?, updated_at = ? WHERE id = ? AND state <> 'deleted'", plan.wire, clock(), id)
+    /**
+     * Put the team on [plan]. Nothing is removed: going free only refuses what is past its limits, and
+     * hides old history. With [setBilling], who takes the money is set to [billing] too.
+     */
+    fun setPlan(id: String, plan: Plan, billing: Billing? = null, setBilling: Boolean = false): Team? {
+        if (setBilling) {
+            db.update("UPDATE teams SET plan = ?, billing = ?, updated_at = ? WHERE id = ? AND state <> 'deleted'", plan.wire, billing?.wire, clock(), id)
+        } else {
+            db.update("UPDATE teams SET plan = ?, updated_at = ? WHERE id = ? AND state <> 'deleted'", plan.wire, clock(), id)
+        }
         plans.remove(id)
         return find(id)?.takeIf { it.state != State.DELETED }
     }
@@ -431,11 +449,12 @@ class Teams(
         state = State.entries.first { it.wire == rs.getString("state") }, createdAt = rs.getLong("created_at"),
         deletedAt = rs.longOrNull("deleted_at"), updatedAt = rs.getLong("updated_at"), tookOverHome = rs.getLong("took_over_home") == 1L,
         plan = Plan.of(rs.getString("plan")),
+        billing = Billing.of(rs.getString("billing")),
     )
 
     companion object {
         private const val COLUMNS =
-            "id, slug, name, external_ref, seat_limit, storage_limit, suspended_at, suspended_reason, suspended_message, state, created_at, deleted_at, updated_at, took_over_home, plan"
+            "id, slug, name, external_ref, seat_limit, storage_limit, suspended_at, suspended_reason, suspended_message, state, created_at, deleted_at, updated_at, took_over_home, plan, billing"
         private val SLUG = Regex("^[a-z][a-z0-9-]{1,28}[a-z0-9]$")
         const val SLUG_HOLD_DAYS = 30L
         const val HEIR_CACHE_MS = 5_000L
@@ -443,6 +462,20 @@ class Teams(
         /** How long after its first pass a deleted team is swept again: longer than any request or job runs. */
         const val RESWEEP_MS = 60 * 60_000L
         const val DAY_MS = 24L * 60 * 60 * 1000
+
+        /**
+         * The appAccountToken the iPhone app sets on an App Store purchase for team [teamId], so the
+         * control plane can tie the purchase to this team (docs/HOSTING.md §7, "App Store purchases"):
+         * the first 16 bytes of SHA-256("wildware-feed-team:" + id) as a UUID, version 5, lower case.
+         * Not a secret: it ties one purchase to one team.
+         */
+        fun appAccountToken(teamId: String): String {
+            val d = java.security.MessageDigest.getInstance("SHA-256").digest("wildware-feed-team:$teamId".toByteArray(Charsets.UTF_8)).copyOf(16)
+            d[6] = ((d[6].toInt() and 0x0f) or 0x50).toByte()
+            d[8] = ((d[8].toInt() and 0x3f) or 0x80).toByte()
+            val h = d.joinToString("") { "%02x".format(it) }
+            return "${h.substring(0, 8)}-${h.substring(8, 12)}-${h.substring(12, 16)}-${h.substring(16, 20)}-${h.substring(20)}"
+        }
         const val SETUP_TTL_MS = 24L * 60 * 60 * 1000
         const val TICKET_TTL_MS = 60_000L
         const val EXTERNAL_REF_MAX = 64

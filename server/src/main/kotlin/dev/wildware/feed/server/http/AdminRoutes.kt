@@ -319,6 +319,7 @@ private fun teamJson(app: App, t: Teams.Team): JsonObject = buildJsonObject {
     })
     // A team with no plan set has none of the free plan's limits: it reads as the Team plan.
     put("plan", (t.plan ?: Teams.Plan.TEAM).wire)
+    put("billing", t.billing?.wire?.let(::JsonPrimitive) ?: JsonNull)
     put("suspended", t.suspended)
     put("suspendedReason", t.suspendedReason?.let(::JsonPrimitive) ?: JsonNull)
     put("state", t.state.wire)
@@ -406,7 +407,10 @@ private suspend fun ApplicationCall.setPlan(app: App, c: AdminCall, id: String):
     val current = liveTeam(app, id)
     if (current.id == Tenant.HOME) throw bad("The home team has no plan.")
     val plan = Teams.Plan.of(c.string(c.json, "plan", 16)) ?: throw bad("plan is free or team.")
-    val team = app.teams.setPlan(id, plan) ?: throw noTeam()
+    // Who takes the money: left out keeps what the team has; null is nobody.
+    val setBilling = c.json.containsKey("billing")
+    val billing = if (setBilling) c.string(c.json, "billing", 16, required = false)?.let { Teams.Billing.of(it) ?: throw bad("billing is web, apple or null.") } else null
+    val team = app.teams.setPlan(id, plan, billing, setBilling) ?: throw noTeam()
     return ok(200, buildJsonObject { put("team", teamJson(app, team)) })
 }
 

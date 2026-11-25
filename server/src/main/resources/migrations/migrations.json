@@ -544,5 +544,12 @@
   "file": "078-video-playback-copy.sql",
   "rebuildsTables": false,
   "checksum": "37107d96125ee4527d5f00edba7cee61501df68e2d56b93c81db3cded66fd542"
+ },
+ {
+  "version": 79,
+  "name": "teams-say-who-bills",
+  "file": "079-teams-say-who-bills.sql",
+  "rebuildsTables": false,
+  "checksum": "14b8381c2f392940ab0cee956be45734d3c5b9f35375def9efb21eadc363233d"
  }
 ]

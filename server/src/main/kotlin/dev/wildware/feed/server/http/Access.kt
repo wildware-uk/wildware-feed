@@ -20,6 +20,8 @@ object Access {
         // Reading the feed, and the live stream.
         "GET /api/summary" to M,
         "GET /api/plan" to M,
+        // An App Store purchase made in the iPhone app, relayed to the control plane: only who may buy.
+        "POST /api/plan/app-store" to A,
         "GET /api/snapshot" to M,
         "GET /api/snapshot/updates" to M,
         "GET /api/snapshot/requests" to M,

@@ -492,10 +492,12 @@ before plans) has none of the free plan's limits. The free plan's limits are fix
 
 A team over a limit keeps working; nobody and nothing is removed. Every `plan_limit` error also
 carries `upgradeUrl`, the control plane's page for the team (`CONTROL_PLANE_ORIGIN/teams/<slug>`, or
-`null` when unset), so an app can offer "Upgrade". Buying happens there, never in an app.
-`GET /api/plan` (any member) says the team's plan, its limits, what is used, `upgradeUrl` and
-`createdAt` (when the team was made, in ms), for the apps' Settings and their gentle "Team gives you
-more" nudges; a team with no plan answers `{"plan": null}`.
+`null` when unset), so an app can offer "Upgrade". Buying happens there, or in the iPhone app
+through Apple (below). `GET /api/plan` (any member) says the team's plan, its limits, what is used,
+`upgradeUrl` (on a free team, and on one paid through the App Store, where it is how to move to
+paying on the website), `createdAt` (when the team was made, in ms), `billing` (who takes the money:
+`web`, `apple` or `null`) and `appAccountToken` (below; `null` with no control plane), for the apps'
+Settings and their gentle "Team gives you more" nudges; a team with no plan answers `{"plan": null}`.
 
 The apps offer Team only to a free team's owners and admins, never to members, a Team-plan team or
 a self-hosted dashboard (`composeApp/.../feed/Upsell.kt`): a note above the feed and in Settings
@@ -507,6 +509,27 @@ storefront (StoreKit's `Storefront.current`, App Store guidelines 3.1.1 and 3.1.
 there is no offer and no link, and a `plan_limit` refusal is told in the app's own words, picked by
 its `limit` ("This team has no room for more agents. Remove one to add another."), with no
 "Upgrade", no plan and no website. The server's message stays as it is for every other client.
+
+**App Store purchases.** The iPhone app can buy the Team plan with Apple's in-app purchase. Only the
+control plane holds plans, so the server relays the purchase: the one call it makes to the control
+plane.
+
+- Each purchase carries `appAccountToken`, which ties it to one team: the first 16 bytes of
+  `SHA-256("wildware-feed-team:" + <team id>)` as a UUID, with the version nibble set to 5 (byte 6 =
+  `(b & 0x0f) | 0x50`) and the variant bits to `10` (byte 8 = `(b & 0x3f) | 0x80`), in lower case
+  (`Teams.appAccountToken`). Test vector: `01JD7Y6Q4M8T2V0K3N5P7R9S1W` gives
+  `aa19f4a5-0eb8-501f-898f-bb79bbdcb7f5`. Not a secret.
+- The app posts `POST /api/plan/app-store {"signedTransaction": "<StoreKit's JWS>"}` (owner or
+  admin; members `403`; a team with no plan, or no control plane, `404`).
+- The server posts `{"teamId", "signedTransaction"}` to
+  `CONTROL_PLANE_ORIGIN/api/server/app-store/transactions`, signed like an admin call but the other
+  way round: headers `Feed-Relay-Timestamp` and `Feed-Relay-Signature`, a message whose first line is
+  `relay1` instead of `v1` (so a signature is never good in the other direction), signed with **each**
+  of `ADMIN_API_KEYS`, comma-separated, so a key change never breaks it.
+- The control plane checks the purchase with Apple and, if good, puts the team on `team` with
+  `billing: "apple"` through the admin API before it answers. The server passes its `200`, `400` and
+  `409` answers back to the app as they are; anything else (a `401` would mean the keys don't match)
+  is `502 control_plane_unreachable`, so the app never takes it for its own sign-in failing.
 
 In SQL, reads say `created_at >= :since`; the database layer puts in the team's history floor (30
 days ago on the free plan, else 0), as it does `:team`. The plan is cached for 5 seconds.
@@ -604,7 +627,7 @@ makes no new link. `plan` is `free` or `team` (a team never given one reads as `
 | `GET /admin/teams/{id}/usage` | – | `200 {teamId, seats: {used, pendingInvites, limit}, storage: {bytes, limit}, agents, plan, devices, projects: {active, archived}, databaseBytes, lastActivityAt, suspended}` | `404 no_such_team` |
 | `GET /admin/usage?since=&cursor=&limit=` | – | `200 {usage: […], nextCursor}`, teams changed since `since`, oldest first, `limit` 1–500 (100) | – |
 | `PUT /admin/teams/{id}/limits` | `{seats?, storageBytes?}` | `200 {team}`. A limit below use is accepted; new seats or uploads are refused until under it. | `404` |
-| `PUT /admin/teams/{id}/plan` | `{plan}` (`free` or `team`) | `200 {team}`. Going free removes nothing; over a free limit, only the next one is refused, and history older than 30 days is hidden until the team is on `team` again. | `400 invalid_request` (another plan, or the home team), `404` |
+| `PUT /admin/teams/{id}/plan` | `{plan, billing?}` (`free` or `team`; `billing`: `web`, `apple` or `null`, left out keeps it) | `200 {team}` (the team object says `billing` too). Going free removes nothing; over a free limit, only the next one is refused, and history older than 30 days is hidden until the team is on `team` again. | `400 invalid_request` (another plan, or the home team), `404` |
 | `PUT /admin/teams/{id}/suspended` | `{suspended, reason?, message?}` (`reason` a code ≤ 64; `message` ≤ 280, shown to the team) | `200 {team}`; setting the current state is fine | `404` |
 | `DELETE /admin/teams/{id}` | – | `202 {team}` with `state: "deleting"`; the address answers `404 no_such_team` at once; a job removes rows and the bucket prefix; repeats answer `202` until done, then `404`. Slug blocked 30 days. | – |
 | `POST /admin/teams/{id}/invites` | `{email, role}` (`owner`, `admin`, `member`) | `201 {inviteId, url, expiresAt}`: the TEAMS.md §5 invite | `409 seat_limit`, `409 plan_limit`, `409 already_member`, `404` |

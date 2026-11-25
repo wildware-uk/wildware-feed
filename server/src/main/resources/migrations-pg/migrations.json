@@ -190,5 +190,11 @@
   "name": "video-playback-copy",
   "file": "078-video-playback-copy.sql",
   "checksum": "73bcc0af03eed69b85e7ae4d5c083b538ccdff08e58ebaa66b600cfda6d99dfe"
+ },
+ {
+  "version": 79,
+  "name": "teams-say-who-bills",
+  "file": "079-teams-say-who-bills.sql",
+  "checksum": "1b0bf9006ef4071ebc1f122f65f8a06115aa833c243bf2ff0613c33210ded500"
  }
 ]
