@@ -1,10 +1,11 @@
 # Wildware Feed
 
-Wildware Feed is the native app for your [Wildware Feed server](https://github.com/wildware-uk/agent-dashboard) on iPhone, iPad, Apple Watch, Mac, Windows and Linux. The apps are MIT licensed; the server in `server/` is licensed under the GNU AGPL v3 (see [server/LICENSE](server/LICENSE)). Desktop installers are on the [Releases](https://github.com/wildware-uk/wildware-feed/releases) page; see [docs/INSTALL.md](docs/INSTALL.md).
+Wildware Feed is the native app for your [Wildware Feed server](https://github.com/wildware-uk/agent-dashboard) on iPhone, iPad, Apple Watch, Mac, Windows and Linux. The apps are MIT licensed; the server in `server/` is licensed under the GNU AGPL v3 (see [server/LICENSE](server/LICENSE)). Get the iPhone and Apple Watch app on the [App Store](https://apps.apple.com/app/id6836368769). Desktop installers are on the [Releases](https://github.com/wildware-uk/wildware-feed/releases) page; see [docs/INSTALL.md](docs/INSTALL.md).
 
 ## iPhone
 
-A native iPhone and iPad app for your [Wildware Feed server](https://github.com/wildware-uk/agent-dashboard).
+A native iPhone and iPad app for your [Wildware Feed server](https://github.com/wildware-uk/agent-dashboard),
+on the [App Store](https://apps.apple.com/app/id6836368769).
 The app is the native Compose app from `composeApp/` (the same screens as the desktop app): sign in
 with your dashboard password, then the live feed, threads, questions and a composer. Around it, the
 iPhone app adds what only a native app can do:
