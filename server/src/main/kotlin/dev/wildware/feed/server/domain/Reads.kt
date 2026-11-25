@@ -693,7 +693,8 @@ class Reads(private val db: Database, private val clock: () -> Long = System::cu
                     "SELECT author FROM messages WHERE team_id = :team AND reply_to = ? AND deleted_at IS NULL ORDER BY seq ASC", row.id,
                 ) { it.getString(1) }.asReversed().firstNotNullOfOrNull(::agentOf)
             }
-            val name = agentId?.let { id -> db.one("SELECT name FROM agents WHERE team_id = :team AND id = ?", id) { it.getString(1) } } ?: "Removed agent"
+            // No agent has taken it yet: "An agent". One that has but is gone from the team: "Removed agent".
+            val name = if (agentId == null) "An agent" else db.one("SELECT name FROM agents WHERE team_id = :team AND id = ?", agentId) { it.getString(1) } ?: "Removed agent"
             val title = if (row.kind == "update" && row.title != null && row.title.jsTrim().isNotEmpty()) firstLine(row.title) else ""
             buildJsonObject {
                 put("agentId", agentId)
