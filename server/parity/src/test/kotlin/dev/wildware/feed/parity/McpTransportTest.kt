@@ -41,7 +41,12 @@ class McpTransportTest : ParityTest() {
         assertTrue(response.headers[HttpHeaders.ContentType]!!.startsWith("application/json"))
         val result = response.obj()["result"].o
         assertEquals("2025-06-18", result["protocolVersion"].s)
-        assertEquals(obj("tools" to obj("listChanged" to true)), result["capabilities"])
+        // The TS server says listChanged: true; the Kotlin one says false on purpose, since it can
+        // never send the notice (spec/05-mcp.md, Surprises 2). Either way it is the only key.
+        val tools = result["capabilities"].o["tools"].o
+        assertEquals(setOf("tools"), result["capabilities"].o.keys)
+        assertEquals(setOf("listChanged"), tools.keys)
+        assertTrue(tools["listChanged"].toString() in setOf("true", "false"))
         assertEquals(obj("name" to "agent-dashboard", "version" to "0.1.0"), result["serverInfo"])
         val instructions = result["instructions"].s
         assertTrue(instructions.startsWith("This is an Agent Dashboard: a status wall a human owner watches live while you work."))

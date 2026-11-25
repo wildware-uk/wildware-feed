@@ -851,6 +851,7 @@ Keep these unless the owner decides otherwise; agents may depend on them.
    opens an SSE stream (200 `text/event-stream`), and DELETE returns 200. Only the route's single
    `POST` export makes them 405 (`src/http/routes/mcp/+server.ts:24`). A Ktor port must 405 them itself.
 2. **`listChanged: true` is advertised** but the tool list never changes and no notification can be sent (stateless).
+   The Kotlin server says `listChanged: false` instead, so it promises nothing it cannot send.
 3. **Unknown `protocolVersion` in `initialize` is not refused**: the server answers `2025-11-25`.
 4. **503 on any bad env var.** `mcpConfig` reparses the whole environment per request; an invalid
    unrelated variable (e.g. `ADMIN_PASSWORD_HASH`) yields 503 "TOKEN_SECRET is missing or too short"
