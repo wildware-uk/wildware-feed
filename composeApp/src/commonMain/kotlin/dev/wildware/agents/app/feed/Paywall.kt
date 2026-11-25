@@ -45,7 +45,7 @@ object Paywall {
 
     const val TITLE = "Upgrade to Team"
     const val LEAD = "Team gives you room for more people, as many agents as you like, more room for files, and all your history."
-    const val TRANSFER = "Transfer your payment over to our website to save 15%"
+    const val TRANSFER = "For more flexibility and to avoid Apple service charges, transfer to our website for payment."
     /** The short button under [TRANSFER]: the sentence itself wraps, a button's text would not. */
     const val TRANSFER_BUTTON = "Go to our website"
     const val SERVICE_CHARGE = "Apple service charge"
@@ -98,7 +98,7 @@ object Paywall {
         return Choice(p.productId, name, logins, emptyList(), total, INCLUDES, "$name, $logins: $total, $INCLUDES")
     }
 
-    /** Where "save 15%" goes: the billing site, only where the app may link to it (the US App Store, [buyingLinks]). */
+    /** Where [TRANSFER] goes: the billing site, only where the app may link to it (the US App Store, [buyingLinks]). */
     fun transferLink(buyingLinks: Boolean, plan: TeamPlan?): String? = plan?.upgradeUrl?.takeIf { buyingLinks && it.isNotBlank() }
 
     /** Only an owner or admin is offered anything to buy. */
@@ -140,7 +140,7 @@ val LocalAppStore = staticCompositionLocalOf<AppStoreUi?> { null }
 
 /**
  * The paywall: Team 5 and Team 10 with their prices, "Subscribe", "Restore purchases", and on the US
- * App Store "Transfer your payment over to our website to save 15%". A member sees only who can buy.
+ * App Store the line about paying on the website ([TRANSFER]). A member sees only who can buy.
  * For a team already paid through the App Store: "Manage subscription".
  */
 @Composable

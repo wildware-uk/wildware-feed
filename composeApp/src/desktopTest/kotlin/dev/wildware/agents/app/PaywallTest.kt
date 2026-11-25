@@ -46,7 +46,7 @@ import kotlin.test.assertTrue
 
 /**
  * Buying Team in the iPhone app (App Store in-app purchase). The rule the App Store holds us to: the
- * line about saving 15% on the website, and any link to it, show only on the US storefront.
+ * line pointing to paying on the website, and any link to it, show only on the US storefront.
  */
 @OptIn(ExperimentalTestApi::class)
 class PaywallTest {
@@ -149,7 +149,7 @@ class PaywallTest {
         feed(FakeFeed.state.copy(plan = PlanState(free, loaded = true), team = team("owner")), store, us = true)
         onNode(hasContentDescription("Team 5, 5 logins: Team $29.00 + Apple service charge $5.99 = $34.99 a month")).assertExists()
         onNode(hasContentDescription("Team 10, 10 logins: Team $59.00 + Apple service charge $10.99 = $69.99 a month")).assertExists()
-        onNode(hasText(Paywall.TRANSFER)).assertExists()
+        onNode(hasText("For more flexibility and to avoid Apple service charges, transfer to our website for payment.")).assertExists()
         onNode(hasText(Paywall.TRANSFER_BUTTON)).performClick()
         waitForIdle()
         assertEquals(listOf("https://billing.test/teams/acme"), opened)
@@ -186,7 +186,7 @@ class PaywallTest {
         onNode(hasText(Paywall.TRANSFER)).assertDoesNotExist()
         onNode(hasText(Paywall.TRANSFER_BUTTON)).assertDoesNotExist()
         val inPaywall = hasAnyAncestor(SemanticsMatcher.expectValue(SemanticsProperties.PaneTitle, Paywall.TITLE))
-        onNode(hasText("15%", substring = true) and inPaywall).assertDoesNotExist()
+        onNode(hasText("Apple service charges", substring = true) and inPaywall).assertDoesNotExist()
         onNode(hasText("website", substring = true) and inPaywall).assertDoesNotExist()
         onNode(hasText("billing.test", substring = true) and inPaywall).assertDoesNotExist()
         onAllNodes(hasText(Paywall.SUBSCRIBE)).fetchSemanticsNodes().let { assertEquals(2, it.size) }

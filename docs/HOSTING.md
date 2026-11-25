@@ -507,8 +507,8 @@ team on each device, never in a team's first 2 days, never while a question or a
 join waits). In the iPhone and iPad app, "Upgrade" opens the App Store paywall instead (Team 5 and
 Team 10, bought with Apple's in-app purchase; `feed/Paywall.kt`), on every storefront. Only on the
 United States storefront (StoreKit's `Storefront.current`, App Store guidelines 3.1.1 and 3.1.3)
-does anything point to the website: the paywall's "Transfer your payment over to our website to
-save 15%". Elsewhere it shows the price (in dollars, split into the website's price and Apple's
+does anything point to the website: the paywall's "For more flexibility and to avoid Apple service
+charges, transfer to our website for payment.", with a "Go to our website" button. Elsewhere it shows the price (in dollars, split into the website's price and Apple's
 service charge; in other currencies, the total, "includes Apple's service charge") and nothing that
 leads out of the app. A member is offered nothing, and a `plan_limit` refusal is told in the app's
 own words, picked by its `limit` ("This team has no room for more agents. Remove one to add
