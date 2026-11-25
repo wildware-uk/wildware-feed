@@ -28,7 +28,7 @@ class PushMessages(private val app: App) {
     fun request(requestId: String): PushMessage? {
         val request = app.requests.find(requestId) ?: return null
         if (request.state != "pending") return null
-        val who = agentName(request.agentId) ?: "An agent"
+        val who = agentName(request.agentId) ?: "Removed agent"
         val slug = slug(request.projectId)
         return PushMessage(
             title = "$who is waiting on you",
@@ -60,7 +60,7 @@ class PushMessages(private val app: App) {
         if (row.deletedAt != null) return null
         return Update(
             PushMessage(
-                title = row.title ?: "${agentName(row.agentId) ?: "An agent"} posted an update",
+                title = row.title ?: "${agentName(row.agentId) ?: "Removed agent"} posted an update",
                 body = PlainText.notification(row.body),
                 url = projectUrl(row.projectId, updateId),
                 tag = "update-$updateId",
@@ -84,7 +84,7 @@ class PushMessages(private val app: App) {
         val person = if (row.author == "human") row.userId ?: People.FOUNDER else null
         val name = when {
             person != null -> People.teamName(db, person) ?: return null
-            row.author.startsWith("agent:") -> agentName(row.author.removePrefix("agent:")) ?: "An agent"
+            row.author.startsWith("agent:") -> agentName(row.author.removePrefix("agent:")) ?: "Removed agent"
             else -> return null
         }
         // A line saying who was assigned (migration 074): only the people it assigned are told.

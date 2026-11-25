@@ -82,7 +82,7 @@ internal data class SnapshotBody(
 
     fun toActivity(): RecentActivity {
         val byId = projects.associate { it.id to ProjectRef(it.slug, it.name) }
-        fun agent(id: String) = agentNames[id] ?: "An agent"
+        fun agent(id: String) = agentNames[id] ?: "Removed agent"
         return RecentActivity(
             projects = projects.filter { it.status == "active" }.map { ProjectRef(it.slug, it.name) },
             updates = updates.items

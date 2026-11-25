@@ -275,6 +275,14 @@ class DashboardSession(
         .distinctUntilChanged()
         .stateIn(scope, SharingStarted.Eagerly, emptyMap())
 
+    /**
+     * Every agent's name, by id, online or not, removed ones too: what the dashboard's feeds name
+     * and its agent list. Cards, acks and deliveries show these, never "An agent" (issue #268).
+     */
+    private val knownAgentNames = combine(dashboard.agentNames, knownAgents) { named, known -> known.associate { it.id to it.name } + named }
+        .distinctUntilChanged()
+        .stateIn(scope, SharingStarted.Eagerly, emptyMap())
+
     /** What the state adds on top of the feed: settings, the post target, devices and the known agents. */
     private data class Side(val extras: Extras, val postTarget: String?, val devices: Triple<DeviceList, dev.wildware.agents.app.feed.SecretList, dev.wildware.agents.app.feed.FeedbackState>, val known: List<dev.wildware.agents.AgentRecord>,
         val followsAndGroups: Pair<dev.wildware.agents.Follows, List<dev.wildware.agents.GroupView>>,
@@ -339,16 +347,17 @@ class DashboardSession(
 
     val state: StateFlow<FeedState> = combine(
         combine(
-            combine(feeds.flatMapLatest { it.state }, dashboard.waiting, combine(mutableTeam, agentAvatars, ::Pair), ::Triple),
+            combine(feeds.flatMapLatest { it.state }, dashboard.waiting, combine(mutableTeam, agentAvatars, knownAgentNames, ::Triple), ::Triple),
             dashboard.projects,
             dashboard.online,
             outbox.items,
             selected,
         ) { (feed, questions, teamAndAvatars), projects, online, items, slug ->
-            val (team, avatars) = teamAndAvatars
+            val (team, avatars, agentNames) = teamAndAvatars
             // Who wrote what, once there is more than one person (migration 055), and their pictures.
             mapper.team = team
             mapper.agentAvatars = avatars
+            mapper.knownAgentNames = agentNames
             // Every waiting question, thread ones included: the engine's feed leaves those out of its top.
             mapper.map(feed, projects, online, items, slug, everyQuestion = questions).copy(team = team)
         },
@@ -683,10 +692,10 @@ class DashboardSession(
         }
     }
 
-    private fun agentName(id: String): String? = state.value.agents.firstOrNull { it.id == id }?.name
+    private fun agentName(id: String): String? = knownAgentNames.value[id] ?: state.value.agents.firstOrNull { it.id == id }?.name
 
     private fun secretRow(s: dev.wildware.agents.SecretView): SecretRow {
-        val names = s.agents.map { it.name ?: agentName(it.id) ?: "an agent" }
+        val names = s.agents.map { it.name ?: agentName(it.id) ?: "a removed agent" }
         return SecretRow(
             id = s.id,
             name = s.name,
@@ -700,7 +709,7 @@ class DashboardSession(
             agentIds = s.agents.map { it.id },
             used = s.lastUsedAt?.let(::isoMillis)?.let { "Used ${mapper.relativeLabel(it)}" } ?: "Never used",
             origin = s.createdBy.removePrefix("agent:").let { by ->
-                if (by == s.createdBy) "Added by you" else "From ${agentName(by) ?: "an agent"}"
+                if (by == s.createdBy) "Added by you" else "From ${agentName(by) ?: "a removed agent"}"
             },
             paused = s.pausedAt != null,
         )

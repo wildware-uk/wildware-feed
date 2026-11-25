@@ -435,6 +435,22 @@ class MappingTest {
     }
 
     @Test
+    fun anOfflineAgentThatWroteNothingHereIsStillNamedInItsAcksAndDeliveries() {
+        // Issue #268: scout is offline and wrote no card in this feed; only the dashboard's agent list names it.
+        mapper.knownAgentNames = mapOf("a7" to "scout", "a8" to "lark")
+        val post = postOf(
+            line(
+                "m1", "human", noon - 20_000,
+                acks = listOf(AckView("k1", agentId = "a8", card = CardRef(CardKinds.Message, "m1"), messageId = "m1", state = "done")),
+                deliveries = listOf(DeliveryView("d1", messageId = "m1", agentId = "a7"), DeliveryView("d2", messageId = "m1", agentId = "gone")),
+            ),
+        )
+        assertEquals(listOf("scout", "Removed agent"), post.acks.delivered.map { it.name }, "only an agent the dashboard no longer has loses its name")
+        assertEquals(listOf("lark"), post.acks.done.map { it.name })
+        assertEquals(dev.wildware.agents.app.feed.Presence.Offline, post.acks.delivered.first().presence)
+    }
+
+    @Test
     fun anOwnersReplyNobodyHasIsNotDelivered() {
         val post = postOf(
             line("m1", "agent:a1", noon - 60_000),

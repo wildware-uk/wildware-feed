@@ -274,7 +274,7 @@ class DashboardClientTest {
 
         val message = activity.messages.single()
         assertEquals("m2", message.id)
-        assertEquals("An agent", message.agentName)
+        assertEquals("Removed agent", message.agentName)
         assertEquals("Done, see the PR.", message.text)
     }
 

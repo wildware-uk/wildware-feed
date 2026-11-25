@@ -105,7 +105,7 @@ class Notifications(private val db: Database, private val bus: Bus, private val 
     }
 
     private fun agentName(agentId: String?): String =
-        agentId?.let { db.one("SELECT name FROM agents WHERE team_id = :team AND id = ?", it) { rs -> rs.getString(1) } } ?: "An agent"
+        agentId?.let { db.one("SELECT name FROM agents WHERE team_id = :team AND id = ?", it) { rs -> rs.getString(1) } } ?: "Removed agent"
 
     fun forUpdate(updateId: String): New? {
         val row = db.one("SELECT id, project_id, agent_id, title, body, deleted_at FROM updates WHERE team_id = :team AND id = ?", updateId) {

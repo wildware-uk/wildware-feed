@@ -248,7 +248,7 @@ class Board(private val feed: Feed) {
         }
     }
 
-    private fun agentJson(id: String, name: String?) = buildJsonObject { put("kind", "agent"); put("id", id); put("name", name ?: "An agent") }
+    private fun agentJson(id: String, name: String?) = buildJsonObject { put("kind", "agent"); put("id", id); put("name", name ?: "Removed agent") }
 
     /** Takes a finished card off the board, or ([removed] false) puts it back. Needs Post on its channel. */
     fun setRemoved(card: CardRef, removed: Boolean): Boolean = feed.op {

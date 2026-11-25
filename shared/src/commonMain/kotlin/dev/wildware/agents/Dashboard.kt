@@ -726,7 +726,7 @@ internal class FeedContext(
     /** A card's blocks as read, with anything newer over them ([BlocksOverlay]). */
     val blocks: (CardRef, List<BlockView>) -> List<BlockView> = { _, read -> read },
 ) {
-    fun agentName(agentId: String): String = names[agentId] ?: "An agent"
+    fun agentName(agentId: String): String = names[agentId] ?: "Removed agent"
 
     fun authorName(author: String): String =
         if (author == HumanAuthor) "You" else agentName(author.removePrefix(AgentPrefix))

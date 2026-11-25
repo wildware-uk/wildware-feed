@@ -625,7 +625,7 @@ class Reads(private val db: Database, private val clock: () -> Long = System::cu
             val project = request.str("projectId")?.takeIf { it.isNotEmpty() }?.let { id ->
                 db.one("SELECT slug, name FROM projects WHERE team_id = :team AND id = ?", id) { it.getString(1) to it.getString(2) }
             }
-            val agentName = db.one("SELECT name FROM agents WHERE team_id = :team AND id = ?", request.str("agentId")) { it.getString(1) } ?: "An agent"
+            val agentName = db.one("SELECT name FROM agents WHERE team_id = :team AND id = ?", request.str("agentId")) { it.getString(1) } ?: "Removed agent"
             val options = request["options"] as? JsonArray
             buildJsonObject {
                 put("id", request["id"]!!)
@@ -693,7 +693,7 @@ class Reads(private val db: Database, private val clock: () -> Long = System::cu
                     "SELECT author FROM messages WHERE team_id = :team AND reply_to = ? AND deleted_at IS NULL ORDER BY seq ASC", row.id,
                 ) { it.getString(1) }.asReversed().firstNotNullOfOrNull(::agentOf)
             }
-            val name = agentId?.let { id -> db.one("SELECT name FROM agents WHERE team_id = :team AND id = ?", id) { it.getString(1) } } ?: "An agent"
+            val name = agentId?.let { id -> db.one("SELECT name FROM agents WHERE team_id = :team AND id = ?", id) { it.getString(1) } } ?: "Removed agent"
             val title = if (row.kind == "update" && row.title != null && row.title.jsTrim().isNotEmpty()) firstLine(row.title) else ""
             buildJsonObject {
                 put("agentId", agentId)

@@ -107,7 +107,9 @@ internal class FeedMapper(
         everyQuestion: List<RequestCard>? = null,
     ): FeedState {
         val onlineIds = online.mapTo(HashSet()) { it.agentId }
-        val names = agentNames(feed) + online.associate { it.agentId to it.name }
+        // Every agent the dashboard knows, offline and removed ones too, so a delivery, an ack or a
+        // reaction by an agent that wrote no card here still shows its name (issue #268).
+        val names = knownAgentNames + agentNames(feed) + online.associate { it.agentId to it.name }
         val agents = AgentDirectory(names, online.associateBy { it.agentId }, onlineIds, now(), agentAvatars)
         val media = if (selectedSlug == null) emptyList() else projectPictures(feed)
         val viewProjects = projects.map { it.toView(media) }
@@ -500,6 +502,9 @@ internal class FeedMapper(
     /** Agents' pictures, by agent id: media ids from the dashboard's agent list. */
     var agentAvatars: Map<String, String> = emptyMap()
 
+    /** Every agent's name, by agent id, online or not, removed ones too: the dashboard's whole agent list. */
+    var knownAgentNames: Map<String, String> = emptyMap()
+
     /** You, with your picture when you have one. */
     private fun owner(): Author.Owner = team.me?.avatarMediaId?.let { Author.Owner(OwnerAuthor.name, it) } ?: OwnerAuthor
 
@@ -866,7 +871,7 @@ internal class FeedMapper(
             val live = online[id]
             return Agent(
                 id = id,
-                name = names[id] ?: fallbackName ?: "An agent",
+                name = names[id] ?: fallbackName ?: RemovedAgentName,
                 role = "Agent",
                 presence = if (id in onlineIds) Presence.Online else Presence.Offline,
                 hue = hue(id),
@@ -886,6 +891,8 @@ internal class FeedMapper(
     }
 
     companion object {
+        /** An agent the dashboard no longer has at all: deleted, so its name is gone too. */
+        const val RemovedAgentName = "Removed agent"
         const val Yes = "Yes"
         const val Allow = "Allow"
         const val Deny = "Deny"
