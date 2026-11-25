@@ -110,6 +110,7 @@ fun JoinPrompt(ui: FeedUi, safeArea: SafeArea) {
                 ask.address?.let { Fact("Address", it) }
                 ask.askedBy?.let { Fact("Asked by", "$it, with its own token") }
             }
+            AgentsFullNote(ui, Modifier.padding(top = 12.dp))
 
             Spacer(Modifier.height(16.dp))
             BoxedField("Name", name, "Agent name", ask.name, onSubmit = allow)

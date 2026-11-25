@@ -58,6 +58,8 @@ struct RootView: View {
         ComposeScreen(navigator: model.navigator)
             .ignoresSafeArea()
             .background(Color(uiColor: .obsidian).ignoresSafeArea())
+            // Which App Store storefront this is: the Team plan is offered only on the US one.
+            .task { await StorefrontWatch.run() }
             // The mic writes notes down on the phone; on iOS 26 that model downloads once, ahead of time.
             .task { if VoiceNotes.microphoneAllowed { await Transcriber.prepare() } }
             // The share sheet and Siri offer the projects last read here, so keep them fresh.

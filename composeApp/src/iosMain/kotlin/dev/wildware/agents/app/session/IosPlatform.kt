@@ -76,6 +76,10 @@ fun iosPlatform(
         pushAlerts = true,
         // No link to the website that sells hosted teams (App Store guideline 3.1.1).
         linksToSignUp = false,
+        // Team is offered, and linked to, only on the US App Store (guidelines 3.1.1, 3.1.3): Swift
+        // tells [AppStoreFront] the storefront; until it does, nothing is offered.
+        buyingLinks = AppStoreFront.buyingLinks,
+        upsellMarks = IosTextStore("$dataDir/upsell.json"),
         crashReports = dev.wildware.agents.app.crash.CrashReporting.setting,
         liveActivities = LiveActivities.status,
         notices = IosSystemNotices,

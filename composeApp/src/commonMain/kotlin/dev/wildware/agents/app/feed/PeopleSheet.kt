@@ -56,7 +56,11 @@ internal fun PeopleEntry(ui: FeedUi) {
 fun PeopleSheet(ui: FeedUi, safeArea: SafeArea) {
     val colors = AgentTheme.colors
     val team = ui.state.team
-    LaunchedEffect(Unit) { ui.emit(FeedEvent.ReadPeople) }
+    LaunchedEffect(Unit) {
+        ui.emit(FeedEvent.ReadPeople)
+        // How many logins are taken, to say so before an invite is typed when the free plan is full.
+        ui.emit(FeedEvent.ReadPlan)
+    }
     var open by remember { mutableStateOf<String?>(null) }
     var inviting by remember { mutableStateOf(false) }
     SettingsSheet("People", safeArea, onClose = { ui.peopleOpen = false }) {
@@ -70,6 +74,7 @@ fun PeopleSheet(ui: FeedUi, safeArea: SafeArea) {
             if (team.canManage) {
                 SettingsHeading("Invites")
                 team.invites.forEach { InviteLine(ui, it, team) }
+                PeopleFullNote(ui, Modifier.padding(horizontal = 16.dp, vertical = 6.dp))
                 if (inviting) {
                     InviteForm(ui, team, onDone = { inviting = false })
                 } else {

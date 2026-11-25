@@ -200,5 +200,7 @@ internal fun planJson(app: App): kotlinx.serialization.json.JsonObject {
             put("storageBytes", app.teams.storageUsed())
         })
         put("upgradeUrl", if (free) app.teams.upgradeUrl(team)?.let(::JsonPrimitive) ?: JsonNull else JsonNull)
+        // When the team was made (ms), so the apps leave a new team alone for its first days.
+        put("createdAt", team.createdAt)
     }
 }

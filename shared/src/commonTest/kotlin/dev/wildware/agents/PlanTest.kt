@@ -62,6 +62,26 @@ class PlanTest {
     }
 
     @Test
+    fun `the app can tell a refusal in its own words, with nowhere to upgrade`() = runTest {
+        val c = client(HttpStatusCode.Conflict, """{"error":"plan_limit","message":"Upgrade to Team to add more.","limit":"agents","upgradeUrl":"https://billing.test/teams/acme"}""")
+        val heard = mutableListOf<PlanLimitHit>()
+        c.onPlanLimit = { heard += it }
+        c.rewordPlanLimit = { hit -> PlanLimitHit("No room for more agents.", hit.limit, null) }
+        val refused = assertFailsWith<DashboardException> { c.createInvite("member", null) }
+        assertEquals("No room for more agents.", refused.message)
+        assertEquals("plan_limit", refused.code)
+        assertNull(refused.upgradeUrl)
+        assertEquals(listOf(PlanLimitHit("No room for more agents.", "agents", null)), heard)
+    }
+
+    @Test
+    fun `a plan says when its team was made`() = runTest {
+        val plan = client(body = freeBody.replace("\"upgradeUrl\"", "\"createdAt\":1700000000000,\"upgradeUrl\"")).plan()!!
+        assertEquals(1_700_000_000_000, plan.createdAt)
+        assertNull(client(body = freeBody).plan()!!.createdAt)
+    }
+
+    @Test
     fun `other refusals are not plan limits`() = runTest {
         val c = client(HttpStatusCode.Conflict, """{"error":"seat_limit","message":"No free logins left."}""")
         val heard = mutableListOf<PlanLimitHit>()

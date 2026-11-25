@@ -93,8 +93,10 @@ class RecompositionTest {
         // sidebar counting cards again. Measured at 412, then 420 once the header gained the
         // work-state filter row and status chip (#18): new things on screen, not extra redraws.
         // 443 once the sidebar gained its "New project" row (channels grouped into projects).
+        // 460 once the header gained the free plan's "files nearly full" note: it checks the offer
+        // and draws nothing, a call or so each time the header redraws.
         println("one reply redrew ${calls.values.sum()} composables")
-        assertTrue(calls.values.sum() < 460, "one reply redrew ${calls.values.sum()} composables: ${calls.entries.sortedByDescending { it.value }}")
+        assertTrue(calls.values.sum() < 466, "one reply redrew ${calls.values.sum()} composables: ${calls.entries.sortedByDescending { it.value }}")
     }
 
     @Test

@@ -39,6 +39,7 @@ fun webPlatform(): AppPlatform {
             keys.forEach { runCatching { localStorage.removeItem(it) } }
         },
         settings = LocalStorageText("feed.settings"),
+        upsellMarks = LocalStorageText("feed.upsell"),
         filePicker = BrowserFilePicker(),
         foreground = foreground,
         feedCache = LocalStorageText("feed.feedCache"),

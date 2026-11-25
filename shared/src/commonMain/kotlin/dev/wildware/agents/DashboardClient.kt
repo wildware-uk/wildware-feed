@@ -1127,9 +1127,20 @@ class DashboardClient(
         if (status.isSuccess()) return
         val error = runCatching { json.decodeFromString<ErrorBody>(bodyAsText()) }.getOrNull()
         val refused = DashboardException(status.value, error?.error, error?.message ?: "The dashboard answered ${status.value}.", error?.limit, error?.upgradeUrl)
-        PlanLimitHit.of(refused)?.let { hit -> onPlanLimit?.invoke(hit) }
-        throw refused
+        val hit = PlanLimitHit.of(refused) ?: throw refused
+        // The app may tell it otherwise: in plain words, with nowhere to upgrade.
+        val told = rewordPlanLimit?.invoke(hit) ?: hit
+        onPlanLimit?.invoke(told)
+        throw if (told == hit) refused else DashboardException(status.value, PlanLimitHit.Code, told.message, told.limit, told.upgradeUrl)
     }
+
+    /**
+     * How a free-plan refusal is told, given the dashboard's own words: the same, or other words and
+     * no [PlanLimitHit.upgradeUrl] where the app may not offer Team. Both [onPlanLimit] and the
+     * error thrown carry what it gives back.
+     */
+    @kotlin.concurrent.Volatile
+    var rewordPlanLimit: ((PlanLimitHit) -> PlanLimitHit)? = null
 
     /**
      * Told of every free-plan refusal ([PlanLimitHit]), whichever call it came from (an invite, an

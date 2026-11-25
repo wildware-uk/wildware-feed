@@ -383,6 +383,7 @@ fun FeedHeader(ui: FeedUi, compact: Boolean, modifier: Modifier = Modifier) {
     val online = state.agents.filter { it.presence == Presence.Online }
     Column(modifier) {
         if (ui.missingLink) MissingLink(Modifier.padding(bottom = 12.dp)) { ui.missingLink = false }
+        FilesNote(ui, Modifier.padding(bottom = 12.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 // A channel in a project says which: "MOBILE · CHANNEL".

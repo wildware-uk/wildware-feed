@@ -738,6 +738,8 @@ data class FeedState(
     val plan: PlanState = PlanState(),
     /** A free-plan refusal still to answer: its words and an "Upgrade" link, until put away. */
     val upgrade: dev.wildware.agents.PlanLimitHit? = null,
+    /** Offers of the Team plan this person may see ([Upsell]): none for a member, a paid or self-hosted team, or where the app may not link to buying. */
+    val upsell: UpsellState = UpsellState(),
 ) {
     fun item(id: String): FeedItem? = sections.firstNotNullOfOrNull { s -> s.items.firstOrNull { it.id == id } }
 }

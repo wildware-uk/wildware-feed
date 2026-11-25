@@ -59,6 +59,15 @@ class AppPlatform(
      * iPhone and iPad app: App Store guideline 3.1.1 allows no link to buying outside the App Store.
      */
     val linksToSignUp: Boolean = true,
+    /**
+     * Whether the app may offer the Team plan and link to buying it on the website ([Upsell]). True
+     * on desktop, Android and the web. In the iPhone and iPad app, only while the App Store
+     * storefront is the United States: guidelines 3.1.1 and 3.1.3 allow such a link nowhere else, so
+     * elsewhere the app offers nothing and links nowhere. It can change while the app runs.
+     */
+    val buyingLinks: kotlinx.coroutines.flow.StateFlow<Boolean> = kotlinx.coroutines.flow.MutableStateFlow(true),
+    /** When each team last saw the "Get more with Team" popup, on this device ([UpsellMarks]). Kept across sign-outs. */
+    val upsellMarks: TextStore = MemoryTextStore(),
     /** A server this app can run itself ("This computer"), or null where it can't (phones). */
     val localServer: dev.wildware.agents.app.local.LocalServerHost? = null,
     /** "Send crash reports", in a build that sends them (`CrashReporting.start`); null in any other. */
@@ -116,10 +125,12 @@ class AppPlatform(
             postTarget: TextStore = MemoryTextStore(),
             linksToSignUp: Boolean = true,
             guidedTour: Boolean = false,
+            buyingLinks: kotlinx.coroutines.flow.StateFlow<Boolean> = kotlinx.coroutines.flow.MutableStateFlow(true),
+            upsellMarks: TextStore = MemoryTextStore(),
         ) = AppPlatform(
             sessions, MemoryTextStore(), MemoryOutboxStorage(), engine, deviceName, imageCacheDir = null,
             filePicker = filePicker, media = media, postTarget = postTarget, linksToSignUp = linksToSignUp,
-            guidedTour = guidedTour,
+            guidedTour = guidedTour, buyingLinks = buyingLinks, upsellMarks = upsellMarks,
         )
     }
 }

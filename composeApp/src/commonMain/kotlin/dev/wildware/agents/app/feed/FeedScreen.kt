@@ -274,6 +274,8 @@ private fun FeedScreenBody(
             if (ui.connectOpen) ConnectAgentSheet(ui, if (phone) safeArea else SafeArea())
             // Over everything else: an agent asking to join waits on the owner, and only for ten minutes.
             JoinPrompt(ui, if (phone) safeArea else SafeArea())
+            // Now and then, for a free team's owner or admin: what Team gives. Under a refusal, which wins.
+            UpsellPopup(ui, if (phone) safeArea else SafeArea())
             // A free-plan refusal, with "Upgrade" to the billing site.
             UpgradePrompt(ui, if (phone) safeArea else SafeArea())
             // The guided tour, over everything: nothing at all while it is off.

@@ -26,6 +26,10 @@ import dev.wildware.agents.app.feed.FeedScreen
 import dev.wildware.agents.app.feed.FeedState
 import dev.wildware.agents.app.feed.PlanState
 import dev.wildware.agents.app.feed.ScreenPreview
+import dev.wildware.agents.app.feed.UpsellState
+import dev.wildware.agents.app.feed.TeamState
+import dev.wildware.agents.app.feed.PersonRow
+import androidx.compose.ui.test.hasContentDescription
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -73,7 +77,8 @@ class PlanUpgradeTest {
         feed(FakeFeed.state.copy(upgrade = PlanLimitHit("The free plan has room for 3 agents.", "agents", null)))
         onNode(hasText("The free plan has room for 3 agents.")).assertExists()
         onNode(hasText("Upgrade")).assertDoesNotExist()
-        onNode(hasText("Not now") and hasAnyAncestor(SemanticsMatcher.expectValue(SemanticsProperties.PaneTitle, "The free plan is full"))).performClick()
+        onNode(hasText("Not now") and hasAnyAncestor(SemanticsMatcher.expectValue(SemanticsProperties.PaneTitle, "The free plan is full"))).assertDoesNotExist()
+        onNode(hasText("OK") and hasAnyAncestor(SemanticsMatcher.expectValue(SemanticsProperties.PaneTitle, "The free plan is full"))).performClick()
         waitForIdle()
         assertEquals(listOf<FeedEvent>(FeedEvent.DismissUpgrade), events.filter { it == FeedEvent.DismissUpgrade })
         assertEquals(emptyList(), opened)
@@ -81,7 +86,7 @@ class PlanUpgradeTest {
 
     @Test
     fun settingsShowTheFreePlanLimitsAndUpgrade() = runComposeUiTest {
-        feed(FakeFeed.state.copy(plan = PlanState(free, loaded = true)), ScreenPreview(alertsOpen = true))
+        feed(FakeFeed.state.copy(plan = PlanState(free, loaded = true), upsell = UpsellState(offer = free)), ScreenPreview(alertsOpen = true))
         onNode(hasText("Free plan")).assertExists()
         onNode(hasText("People 1 of 2")).assertExists()
         onNode(hasText("Agents 2 of 3")).assertExists()
@@ -91,6 +96,95 @@ class PlanUpgradeTest {
         onNode(hasText("Upgrade")).performClick()
         waitForIdle()
         assertEquals(listOf("https://billing.test/teams/acme"), opened)
+    }
+
+    @Test
+    fun settingsShowTheLimitsButNoUpgradeWhereTeamIsNotOffered() = runComposeUiTest {
+        // A member, or an iPhone outside the US App Store: the facts, and nothing to buy.
+        feed(FakeFeed.state.copy(plan = PlanState(free.copy(used = PlanUse(storageBytes = 450L * 1024 * 1024)), loaded = true)), ScreenPreview(alertsOpen = true))
+        onNode(hasText("Free plan")).assertExists()
+        onNode(hasText("Upgrade")).assertDoesNotExist()
+        onNode(hasText("Team gives you more room", substring = true)).assertDoesNotExist()
+    }
+
+    @Test
+    fun aFullFilesNoteSitsAboveTheFeedWithUpgradeAndHides() = runComposeUiTest {
+        val nearlyFull = free.copy(used = PlanUse(people = 1, agents = 1, storageBytes = 412L * 1024 * 1024))
+        feed(FakeFeed.state.copy(plan = PlanState(nearlyFull, loaded = true), upsell = UpsellState(offer = nearlyFull)))
+        onNode(hasText("412 MB of 500 MB used. Team gives you more room.")).assertExists()
+        onNode(hasText("Upgrade")).performClick()
+        waitForIdle()
+        assertEquals(listOf("https://billing.test/teams/acme"), opened)
+        onNode(hasContentDescription("Hide")).performClick()
+        waitForIdle()
+        assertTrue(FeedEvent.HideFilesNote in events)
+    }
+
+    @Test
+    fun noFilesNoteBelowEightyPercentOrOnceHidden() = runComposeUiTest {
+        val nearlyFull = free.copy(used = PlanUse(storageBytes = 412L * 1024 * 1024))
+        feed(FakeFeed.state.copy(upsell = UpsellState(offer = nearlyFull, storageHidden = true)))
+        onNode(hasText("Team gives you more room", substring = true)).assertDoesNotExist()
+    }
+
+    @Test
+    fun thePopupSaysWhatTeamGivesAndNotNowPutsItAway() = runComposeUiTest {
+        feed(FakeFeed.state.copy(upsell = UpsellState(offer = free, popup = true)))
+        onNode(hasText("Get more with Team")).assertExists()
+        onNode(hasText("All your history, not just the last 30 days", substring = true)).assertExists()
+        onNode(hasText("Not now") and hasAnyAncestor(SemanticsMatcher.expectValue(SemanticsProperties.PaneTitle, "Get more with Team"))).performClick()
+        waitForIdle()
+        assertTrue(FeedEvent.DismissUpsell in events)
+        assertEquals(emptyList(), opened)
+    }
+
+    @Test
+    fun thePopupsUpgradeOpensTheBillingSite() = runComposeUiTest {
+        feed(FakeFeed.state.copy(upsell = UpsellState(offer = free, popup = true)))
+        onNode(hasText("Upgrade") and hasAnyAncestor(SemanticsMatcher.expectValue(SemanticsProperties.PaneTitle, "Get more with Team"))).performClick()
+        waitForIdle()
+        assertEquals(listOf("https://billing.test/teams/acme"), opened)
+        assertTrue(FeedEvent.DismissUpsell in events)
+    }
+
+    @Test
+    fun aRefusalHidesThePopupUnderIt() = runComposeUiTest {
+        feed(FakeFeed.state.copy(upsell = UpsellState(offer = free, popup = true), upgrade = PlanLimitHit("Full.", "agents", null)))
+        onNode(hasText("Get more with Team")).assertDoesNotExist()
+        onNode(hasText("The free plan is full")).assertExists()
+    }
+
+    private val owner = TeamState(me = PersonRow("p1", "Ann", "ann", "owner", you = true), people = listOf(PersonRow("p1", "Ann", "ann", "owner", you = true)), loaded = true)
+    private val full = free.copy(used = PlanUse(people = 2, agents = 3, storageBytes = 0))
+
+    @Test
+    fun inviteSaysThePlanIsFullBeforeAnEmailIsTyped() = runComposeUiTest {
+        feed(FakeFeed.state.copy(team = owner, plan = PlanState(full, loaded = true), upsell = UpsellState(offer = full)), ScreenPreview(peopleOpen = true))
+        onNode(hasText("2 of 2 people on the free plan, counting invites still waiting. Team gives you room for more.")).assertExists()
+        onNode(hasText("Upgrade")).performClick()
+        waitForIdle()
+        assertEquals(listOf("https://billing.test/teams/acme"), opened)
+    }
+
+    @Test
+    fun inviteSaysWhatToDoWhereTeamIsNotOffered() = runComposeUiTest {
+        feed(FakeFeed.state.copy(team = owner, plan = PlanState(full, loaded = true)), ScreenPreview(peopleOpen = true))
+        onNode(hasText("2 of 2 people on the free plan, counting invites still waiting. Remove someone or a waiting invite to invite another.")).assertExists()
+        onNode(hasText("Upgrade")).assertDoesNotExist()
+    }
+
+    @Test
+    fun connectingAnAgentSaysThePlanIsFull() = runComposeUiTest {
+        feed(FakeFeed.state.copy(team = owner, plan = PlanState(full, loaded = true), upsell = UpsellState(offer = full)), ScreenPreview(connectOpen = true))
+        onNode(hasText("3 of 3 agents on the free plan. Team lets you connect as many as you like.")).assertExists()
+        onNode(hasText("Upgrade")).assertExists()
+    }
+
+    @Test
+    fun connectingAnAgentWithRoomSaysNothing() = runComposeUiTest {
+        feed(FakeFeed.state.copy(team = owner, plan = PlanState(free, loaded = true), upsell = UpsellState(offer = free)), ScreenPreview(connectOpen = true))
+        onNode(hasText("agents on the free plan", substring = true)).assertDoesNotExist()
+        onNode(hasText("Upgrade")).assertDoesNotExist()
     }
 
     @Test

@@ -211,6 +211,7 @@ class FreePlanTest {
         assertEquals(2, plan.o("used").s("people").toInt())
         assertEquals(1, plan.o("used").s("agents").toInt())
         assertEquals("https://account.feed.test/teams/acme", plan.s("upgradeUrl"))
+        assertEquals(Tenant.with(id) { app.teams.current()!!.createdAt }, plan.s("createdAt").toLong())
 
         admin("PUT", "/admin/teams/$id/plan", """{"plan":"team"}""")
         val paid = send("acme.feed.test", "GET", "/api/plan", null, auth).obj()
