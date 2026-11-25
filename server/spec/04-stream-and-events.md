@@ -56,7 +56,7 @@ All paths are relative to the agent-dashboard repo root.
   - After `L > 500`: oldest = `L-499`; cursors `L-500..L` hit; below → `expired`.
   - After restart: a client's old cursor bigger than the new `lastSeq` → `ahead`.
 
-### 1.4 waitFor (used by `await_request`)
+### 1.4 waitFor (used by `await_request` on the TS server; the Kotlin server never waits, spec/05 §3.2a)
 
 `src/events/bus.ts:142-178`. Parks until a matching event, a timeout, or an
 abort; always resolves (`undefined` on no match) and always unsubscribes. If

@@ -74,8 +74,9 @@ class McpTransportTest : ParityTest() {
     fun `tools list has every tool in order, each with a schema`() = parity {
         // `?tools=all` is the Kotlin server's full list (plain /mcp lists the discovery tools); the TS server ignores it.
         val tools = alpha.rpcResult("tools/list", path = ALL_TOOLS)["result"]["tools"].arr
-        // The Kotlin server adds the tools in tools-list-kotlin-changes.json, after the TS server's.
-        assertEquals(if (Parity.kotlin) toolNames + ToolsListChanges.added() else toolNames, tools.map { it["name"].s })
+        // The Kotlin server adds the tools in tools-list-kotlin-changes.json, after the TS server's, and
+        // leaves out the ones it removes (await_request).
+        assertEquals(if (Parity.kotlin) toolNames - ToolsListChanges.removed().toSet() + ToolsListChanges.added() else toolNames, tools.map { it["name"].s })
         for (tool in tools) {
             assertEquals("object", tool["inputSchema"]["type"].s, tool["name"].s)
             assertTrue(tool["description"].s.isNotBlank())

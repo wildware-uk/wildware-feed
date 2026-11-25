@@ -21,7 +21,7 @@ without one sends nothing anywhere: feedback is only saved there, for the team.
   may answer or dismiss it (a member gets `403 forbidden`). Answered with the first action, the
   item goes with the text as answered (`approvedBy` is who). Discard, dismissing it, the agent
   withdrawing it or the 24 hours running out make it `discarded`, and it never goes. The agent
-  hears the outcome as any answer: an `answer` event, or `await_request`.
+  hears the outcome as any answer: an `answer` event, or `get_messages({request_id})`.
 - **No secrets.** A title, body or approved text that looks like a key (private key blocks, `sk-…`,
   `sk_live_…`, `ghp_…`, `github_pat_…`, `AKIA…`, `xox?-…`, `AIza…`, or a 32+ character run of token
   characters mixing upper case, lower case and digits) is refused with `400 invalid_argument`.

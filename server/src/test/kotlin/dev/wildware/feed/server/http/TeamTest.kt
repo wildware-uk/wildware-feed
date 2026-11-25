@@ -163,6 +163,10 @@ class TeamTest {
         assertTrue(second.bodyAsText().contains("Sam already answered this"), second.bodyAsText())
         val result = tool(app, agent, "await_request", buildJsonObject { put("request_id", id) })
         val text = (result["content"] as JsonArray)[0].jsonObject.s("text")
+        // get_messages({request_id}) carries the same answer.
+        val card = tool(app, agent, "get_messages", buildJsonObject { put("request_id", id) })["structuredContent"]!!.jsonObject["thread"]!!.jsonObject["card"]!!.jsonObject
+        assertEquals("true", card["response"]!!.jsonObject.s("value"))
+        assertEquals("Sam", card["answered_by"]!!.jsonObject.s("name"))
         assertTrue(text.startsWith("Sam answered: "), text)
         val by = result["structuredContent"]!!.jsonObject["answered_by"]!!.jsonObject
         assertEquals(samId, by.s("user_id"))

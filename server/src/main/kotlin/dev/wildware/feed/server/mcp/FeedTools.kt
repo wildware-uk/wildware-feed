@@ -493,9 +493,20 @@ private fun readThread(app: App, call: ToolCall): ToolResult {
                 }
                 if (c.kind == "request") {
                     put("question", c.title)
+                    // Where it stands as an agent hears it ("answered", not the row's "approved"), and
+                    // for the asker its answer, so it can be read without waiting or the channel.
+                    val asked = app.requests.find(c.id)
                     c.request?.let { r ->
-                        put("request_kind", r.kind); put("detail", r.detail); put("state", r.state)
+                        put("request_kind", r.kind); put("detail", r.detail); put("state", asked?.state ?: r.state)
                         r.options?.let { o -> put("options", JsonArray(o.map(::JsonPrimitive))) }
+                    }
+                    asked?.takeIf { it.agentId == call.agent.id && it.state == "answered" }?.let { r ->
+                        r.answer?.let { put("response", it) }
+                        r.answeredAt?.let { put("answered_at", Wire.isoOf(it)) }
+                        // On a team, who answered, as request_input's own result says it.
+                        dev.wildware.feed.server.domain.People.teamName(app.db, r.answeredBy)?.let { name ->
+                            put("answered_by", buildJsonObject { put("user_id", r.answeredBy); put("name", name) })
+                        }
                     }
                 }
                 put("status", c.status)

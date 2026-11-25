@@ -63,7 +63,7 @@ where the conversation is, and the person answers there instead of going to Sett
   admin may allow, as only they may share a secret in Settings; a member gets 403. If sharing
   fails, the request waits again.
 - Deny (`{value: false}`) closes it and shares nothing. Anyone who may answer it may deny it.
-- The agent hears it as it hears any answer: an answer event and `await_request`, with
+- The agent hears it as it hears any answer: an answer event, or `get_messages({request_id})`, with
   `response.value` true or false.
 
 ## Storage

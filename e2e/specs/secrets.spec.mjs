@@ -58,21 +58,17 @@ test('an agent asks for two secrets on one card and the owner saves both with Sh
     const keySecret = 'not-real-e2e-secret-0002';
     await agent.call('create_project', { name: 'Keys' });
 
-    // request_secret holds the call open until someone answers, so it isn't awaited here.
+    // request_secret returns at once, pending: the answer reaches the agent later.
     const question = 'The AWS keys for the deploy, please';
-    const asking = mcp(agent, 'request_secret', {
+    const asked = await mcp(agent, 'request_secret', {
         project: 'keys', question,
         fields: [
             { name: 'AWS_ACCESS_KEY_ID', label: 'Access key id' },
             { name: 'AWS_SECRET_ACCESS_KEY', label: 'Secret access key', hint: 'Shown once when you make the key' },
         ],
     });
-    let id;
-    await expect.poll(async () => {
-        const res = await team.owner.api('GET', '/api/snapshot/requests');
-        id = (res.json?.requests ?? []).find((r) => r.question === question)?.id;
-        return id;
-    }, { message: 'the secret request' }).toBeTruthy();
+    expect(asked).toMatchObject({ state: 'pending' });
+    const id = asked.request_id;
 
     const page = await signedIn(browser, team.owner);
     await openChannelSurely(page, 'Keys');
@@ -96,8 +92,9 @@ test('an agent asks for two secrets on one card and the owner saves both with Sh
     // Answered, the card leaves the feed.
     await expectGone(page, question);
 
-    const settled = await asking;
-    expect(settled).toMatchObject({ state: 'answered', request_id: id, response: { kind: 'secret', value: ['AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY'] } });
+    // The agent reads the answer: the names saved, never the values.
+    const settled = await mcp(agent, 'get_messages', { request_id: id });
+    expect(settled.thread.card).toMatchObject({ state: 'answered', response: { kind: 'secret', value: ['AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY'] } });
     expect(JSON.stringify(settled)).not.toContain(keyId);
     expect(JSON.stringify(settled)).not.toContain(keySecret);
     const listed = await mcp(agent, 'list_secrets');

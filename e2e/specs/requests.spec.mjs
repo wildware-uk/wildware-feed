@@ -1,6 +1,5 @@
-// Requests: an agent asks with request_input, the owner answers in the browser, and the agent's
-// wait (request_input itself, then await_request) sees the answer. "Waiting on you" counts what is
-// still pending.
+// Requests: an agent asks with request_input, the owner answers in the browser, and the agent
+// reads the answer with get_messages({request_id}). "Waiting on you" counts what is still pending.
 import { expect, test } from '@playwright/test';
 import { Team } from '../lib/team.mjs';
 import { expectGone, expectShown, nextResponse, signedIn, tap, typeInto } from '../lib/ui.mjs';
@@ -15,21 +14,16 @@ test.beforeAll(async () => {
 });
 test.afterAll(async () => { await team?.delete(); });
 
-/**
- * request_input as the agent. It holds the call open (up to about a minute) until someone answers,
- * so it is not awaited here: the answer settles it. Returns the pending call and the request's id.
- */
+/** request_input as the agent. It returns at once, pending: the answer reaches the agent later. */
 async function ask(args) {
-    const asking = mcp(agent, 'request_input', args);
-    // The request is made before the call starts to wait: read its id from the owner's side.
-    let id;
-    await expect.poll(async () => {
-        const res = await team.owner.api('GET', '/api/snapshot/requests');
-        const found = (res.json?.requests ?? []).find((r) => r.question === args.question);
-        id = found?.id;
-        return id;
-    }, { message: `the request "${args.question}"` }).toBeTruthy();
-    return { asking, id };
+    const asked = await mcp(agent, 'request_input', args);
+    expect(asked).toMatchObject({ state: 'pending' });
+    return { id: asked.request_id };
+}
+
+/** The question's card as the agent reads it with get_messages({request_id}): its state and answer. */
+async function heard(id) {
+    return (await mcp(agent, 'get_messages', { request_id: id })).thread.card;
 }
 
 test('a choice: the owner clicks an option, and the agent gets it', async ({ browser }) => {
@@ -37,7 +31,7 @@ test('a choice: the owner clicks an option, and the agent gets it', async ({ bro
     const page = await signedIn(browser, team.owner);
     await expectShown(page, 'Waiting on you, nothing');
 
-    const { asking, id } = await ask({ project: 'deploys', kind: 'choice', question: 'Which region goes first?', options: ['eu-west', 'us-east'] });
+    const { id } = await ask({ project: 'deploys', kind: 'choice', question: 'Which region goes first?', options: ['eu-west', 'us-east'] });
     // Live, without a reload: the count, the channel's note, and the question itself.
     await expectShown(page, 'Waiting on you, 1 question');
     await expectShown(page, 'Deploys, 0 unread, 1 question waiting on you');
@@ -50,11 +44,7 @@ test('a choice: the owner clicks an option, and the agent gets it', async ({ bro
     await tap(page, 'button', /^Send 1 pick/);
     expect((await answered).status(), 'the answer').toBe(200);
 
-    const settled = await asking;
-    expect(settled).toMatchObject({ state: 'answered', request_id: id, response: { value: 'us-east' } });
-    const awaited = await mcp(agent, 'await_request', { request_id: id });
-    expect(awaited).toMatchObject({ state: 'answered', response: { kind: 'choice', value: 'us-east' } });
-    expect(awaited.summary).toContain('"us-east"');
+    expect(await heard(id)).toMatchObject({ state: 'answered', response: { kind: 'choice', value: 'us-east' } });
 
     await expectShown(page, 'Waiting on you, nothing');
 });
@@ -75,7 +65,7 @@ test('a form and a text question: the owner types the answers, and the agent get
     const formAnswered = nextResponse(page, `/api/requests/${form.id}/answer`);
     await tap(page, 'button', 'Publish');
     expect((await formAnswered).status(), 'the form answer').toBe(200);
-    expect(await form.asking).toMatchObject({ state: 'answered', response: { value: { action: 'Publish', text: 'Faster sync, fewer crashes.' } } });
+    expect(await heard(form.id)).toMatchObject({ state: 'answered', response: { value: { action: 'Publish', text: 'Faster sync, fewer crashes.' } } });
     await expectShown(page, 'Waiting on you, 1 question');
 
     // The text question is the only one left: its box and the arrow at its end.
@@ -84,9 +74,7 @@ test('a form and a text question: the owner types the answers, and the agent get
     const textAnswered = nextResponse(page, `/api/requests/${text.id}/answer`);
     await tap(page, 'button', 'Send answer');
     expect((await textAnswered).status(), 'the text answer').toBe(200);
-    expect(await text.asking).toMatchObject({ state: 'answered', response: { kind: 'text', value: 'v2.0.0' } });
-    const awaited = await mcp(agent, 'await_request', { request_id: text.id });
-    expect(awaited).toMatchObject({ state: 'answered', response: { value: 'v2.0.0' } });
+    expect(await heard(text.id)).toMatchObject({ state: 'answered', response: { kind: 'text', value: 'v2.0.0' } });
 
     await expectShown(page, 'Waiting on you, nothing');
 });

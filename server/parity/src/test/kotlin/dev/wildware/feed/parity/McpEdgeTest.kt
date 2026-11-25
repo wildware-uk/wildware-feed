@@ -992,7 +992,9 @@ class McpEdgeTest : ParityTest() {
     private val timedOutSummary = "Nobody answered before this request timed out. That is not permission: do not proceed as though you had an answer."
     private fun pendingSummary(id: String) = "Nobody has answered yet. This is not a refusal — call await_request({request_id: \"$id\"}) and keep calling it while state is \"pending\"."
 
+    /** The Kotlin server's request_input never holds: [asksAtOnce] covers it there. */
     @Test
+    @org.junit.jupiter.api.Tag("tsOnly")
     fun `long-poll - held for HOLD_S then pending, woken at once by an answer, a withdraw or a dismiss, timed out`() = parity(timeout = 3.minutes) {
         val a = Parity.mintAgent(uniq("edge-asker"))
         val p = Fixtures.project(a, "Hold Edge ${Parity.suffix()}")
@@ -1100,6 +1102,51 @@ class McpEdgeTest : ParityTest() {
     }
 
     @Test
+    fun `asksAtOnce - request_input returns pending at once, await_request is retired but answers at once`() = parity {
+        if (!Parity.kotlin) return@parity
+        val a = Parity.mintAgent(uniq("edge-quick"))
+        val p = Fixtures.project(a, "Quick Edge ${Parity.suffix()}")
+        val sfx = Parity.suffix()
+        val pickQ = "Pick one $sfx"
+        val started = System.nanoTime()
+        val asked = a.tool("request_input", obj("kind" to "choice", "question" to pickQ, "options" to arr("red", "green"), "default" to "red", "detail" to "d", "project" to p.slug, "timeout_s" to 3600))
+        assertTrue(System.nanoTime() - started < 5_000_000_000L, "request_input does not hold")
+        val pick = asked.structured["request_id"].s
+        val view = requestView(pick, "choice", pickQ, p.id, "d", listOf("red", "green"))
+        val pending = obj("state" to "pending", "request_id" to pick, "request" to view)
+        whole(asked, "Asked. Nobody has answered yet, and that is not a refusal. Don't wait for it: carry on with other work and " +
+            "answer your messages. The answer arrives as a channel answer event with request_id \"$pick\"; if you need it " +
+            "later and missed it, read it with get_messages({request_id: \"$pick\"}).", pending)
+        val hb = a.ok("register_session")["session_id"].s
+        assertEquals(1, a.ok("heartbeat", obj("session_id" to hb))["pending_approvals"].int)
+
+        // The retired await_request: still answered, at once, with a note saying so.
+        val waited = System.nanoTime()
+        a.whole("await_request", obj("request_id" to pick), awaited("Nobody has answered yet, and that is not a refusal. Carry on with other work and answer your messages."), pending)
+        assertTrue(System.nanoTime() - waited < 5_000_000_000L, "await_request does not hold")
+        beta.refused("await_request", obj("request_id" to pick), "invalid_argument", "request belongs to another agent")
+        a.refused("await_request", obj("request_id" to nobody), "not_found", "no such request: $nobody")
+
+        // get_messages({request_id}) reads where it stands, and the answer once there is one.
+        val card = { r: JsonObject -> r["thread"]["card"].o }
+        assertEquals("pending", card(a.ok("get_messages", obj("request_id" to pick)))["state"].s)
+        assertEquals(200, owner.post("/api/requests/$pick/answer", obj("value" to "green")).status.value)
+        val answeredCard = card(a.ok("get_messages", obj("request_id" to pick)))
+        assertEquals("answered", answeredCard["state"].s)
+        assertEquals(obj("kind" to "choice", "value" to "green"), answeredCard["response"])
+        assertTrue(answeredCard["answered_at"].str != null)
+        val answer = obj("state" to "answered", "request_id" to pick, "request" to view,
+            "response" to obj("kind" to "choice", "value" to "green"), "answered_at" to TS)
+        a.whole("await_request", obj("request_id" to pick), awaited("Your owner answered: \"green\""), answer)
+
+        // A request that expires is timed out by the next look at it.
+        val expireQ = "Expire? $sfx"
+        val expire = a.tool("request_input", obj("kind" to "confirm", "question" to expireQ, "project" to p.slug, "timeout_s" to 5)).structured["request_id"].s
+        delay(6_000)
+        a.whole("await_request", obj("request_id" to expire), awaited(timedOutSummary), dismissed(expire, "timeout", requestView(expire, "confirm", expireQ, p.id)))
+    }
+
+    @Test
     fun `request answers of every kind, and a blank project is no project`() = parity {
         val a = feedAgent
         val p = Fixtures.project(a, "Answers Edge ${Parity.suffix()}")
@@ -1125,7 +1172,7 @@ class McpEdgeTest : ParityTest() {
                 val id = pendingRequest(question, a, call)
                 owner.post("/api/requests/$id/answer", obj("value" to value))
                 val options = (extra["options"] as? JsonArray)?.map { it.s }
-                whole(call.await(), "Your owner answered: $described", obj(
+                whole(a.outcome(id, call), awaited("Your owner answered: $described"), obj(
                     "state" to "answered", "request_id" to id, "request" to requestView(id, kind, question, p.id, options = options),
                     "response" to obj("kind" to kind, "value" to value), "answered_at" to TS,
                 ))
@@ -1136,7 +1183,7 @@ class McpEdgeTest : ParityTest() {
             val call = async { a.tool("request_input", obj("kind" to "confirm", "question" to loose, "project" to "  ")) }
             val id = pendingRequest(loose, a, call)
             owner.post("/api/requests/$id/answer", obj("value" to true))
-            assertTrue(call.await().structured["request"]["project_id"].isNull)
+            assertTrue(a.outcome(id, call).structured["request"]["project_id"].isNull)
         }
     }
 

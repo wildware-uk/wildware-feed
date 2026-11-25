@@ -61,7 +61,7 @@ class SubscriptionsTest {
         say("human", "and a follow-up", replyTo = post.id)
         assertEquals(listOf("@beta, a question for you", "and a follow-up"), unread("B"))
 
-        val (request, _) = Requests(db, bus, Reads(db), { now }) { 1000L }.create(
+        val (request, _) = Requests(db, bus, Reads(db), { now }).create(
             "A", NewRequest(kind = "confirm", question = "Ship it?", project = "p"),
         )
         say("human", "@beta what do you think?", request = request.id)

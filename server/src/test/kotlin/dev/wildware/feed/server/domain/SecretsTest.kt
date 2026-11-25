@@ -25,7 +25,7 @@ class SecretsTest {
     private fun secrets(box: SecretBox? = SecretBox(keyA)) = Secrets(db, bus, box, tokenSecret, { "https://feed.example.com" }) { now }
     private val secrets = secrets()
     private val agents = Agents(db, tokenSecret) { now }
-    private val requests = Requests(db, bus, Reads(db) { now }, { now }) { 0L }
+    private val requests = Requests(db, bus, Reads(db) { now }, { now })
     private val owner = Secrets.Actor("owner", "D1", "Phone")
 
     private val value = "sk-test-NOT-REAL-6b1f0c".toByteArray()
@@ -205,7 +205,7 @@ class SecretsTest {
 
         val stored = secrets.provide(requests, id, value, null, owner)
         assertEquals(listOf(alpha.id), stored.agentIds)
-        val settled = requests.awaitRequest(id, alpha.id)
+        val settled = requests.status(id, alpha.id)
         assertEquals("answered", settled.state)
         assertEquals("STRIPE_TEST_KEY", (settled.response!!["value"] as JsonPrimitive).content)
         assertEquals("conflict", assertFailsWith<DomainError> { secrets.provide(requests, id, value, null, owner) }.code)
@@ -278,7 +278,7 @@ class SecretsTest {
         assertContentEquals(keyId, secrets.redeemRead(tokenOf(secrets.issueRead(alpha, "AWS_ACCESS_KEY_ID").url)))
         assertContentEquals(keySecret, secrets.redeemRead(tokenOf(secrets.issueRead(alpha, "AWS_SECRET_ACCESS_KEY").url)))
 
-        val settled = requests.awaitRequest(asked.id, alpha.id)
+        val settled = requests.status(asked.id, alpha.id)
         assertEquals("answered", settled.state)
         assertEquals("""["AWS_ACCESS_KEY_ID","AWS_SECRET_ACCESS_KEY"]""", settled.response!!["value"].toString())
         assertEquals("""["AWS_SESSION_TOKEN"]""", settled.response!!["skipped"].toString())

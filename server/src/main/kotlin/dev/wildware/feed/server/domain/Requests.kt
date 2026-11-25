@@ -2,12 +2,8 @@ package dev.wildware.feed.server.domain
 
 import dev.wildware.feed.server.db.Database
 import dev.wildware.feed.server.db.Ulid
-import dev.wildware.feed.server.events.AppEvent
 import dev.wildware.feed.server.events.Bus
-import dev.wildware.feed.server.events.Ring
 import dev.wildware.feed.server.http.Wire
-import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
@@ -115,7 +111,7 @@ data class RequestEdit(
 
 /**
  * Owner requests (spec/03-owner-api-requests-devices.md §1-2, spec/05-mcp.md §4, §7.28-7.31): an
- * agent asks, waits a bounded while, and resumes by id. The row is the state; the bus only wakes.
+ * agent asks and carries on; the answer reaches it as an answer event. The row is the state.
  *
  * Never call into this while holding the database lock: it publishes, and bus listeners (the
  * notification recorder) take the database lock under the bus lock.
@@ -125,21 +121,17 @@ class Requests(
     private val bus: Bus,
     private val reads: Reads,
     private val clock: () -> Long = System::currentTimeMillis,
-    private val holdMs: () -> Long = { DEFAULT_HOLD_MS },
 ) {
-    // ---- asking and waiting ---------------------------------------------------------------------
+    // ---- asking and reading back -----------------------------------------------------------------
 
-    suspend fun requestInput(agentId: String, input: NewRequest): RequestResult {
-        val (request, seq) = create(agentId, input)
-        return hold(request, seq)
-    }
+    /**
+     * Ask, and return at once: the request is pending, and the answer reaches the agent later as an
+     * answer event. Nothing waits here, so an agent that asked keeps answering its threads.
+     */
+    fun requestInput(agentId: String, input: NewRequest): RequestResult = resultFor(create(agentId, input).first)
 
-    /** Resume a wait by id. The bus seq is read before the row, so an answer in between still counts. */
-    suspend fun awaitRequest(requestId: String, agentId: String): RequestResult {
-        val seq = bus.lastSeq
-        val request = own(requestId, agentId)
-        return hold(request, seq)
-    }
+    /** Where one of the agent's own requests stands right now, timing it out if it is due. Never waits. */
+    fun status(requestId: String, agentId: String): RequestResult = resultFor(expireIfDue(own(requestId, agentId)))
 
     /** Write the row and announce it; returns the request and the seq of `request.created`. */
     fun create(agentId: String, input: NewRequest): Pair<OwnerRequest, Long> {
@@ -431,39 +423,6 @@ class Requests(
     fun find(requestId: String): OwnerRequest? =
         db.one("SELECT ${Rows.APPROVAL} FROM approvals WHERE team_id = :team AND id = ?", requestId) { OwnerRequest(Rows.request(it)) }
             ?.takeIf { ChannelAccess(db, clock).visible(it.projectId) }
-
-    // ---- the wait ---------------------------------------------------------------------------------
-
-    private suspend fun hold(request: OwnerRequest, since: Long): RequestResult {
-        val current = expireIfDue(request)
-        if (current.state != "pending") return resultFor(current)
-
-        val timeoutMs = maxOf(0L, minOf(holdMs(), current.expiresAt - clock()))
-        waitForSettle(current.id, since, timeoutMs)
-
-        val settled = expireIfDue(mustFind(current.id))
-        if (settled.state != "pending") return resultFor(settled)
-        return RequestResult("pending", settled)
-    }
-
-    /**
-     * Park until `request.answered` for [requestId], or [timeoutMs]. Events after [since] still in
-     * the replay ring count, so an answer that landed before the park is not missed.
-     */
-    private suspend fun waitForSettle(requestId: String, since: Long, timeoutMs: Long) {
-        fun matches(event: AppEvent) = event.type == "request.answered" &&
-            (event.payload["requestId"] as? JsonPrimitive)?.content == requestId
-        val found = CompletableDeferred<Unit>()
-        val (already, stop) = bus.subscribeFrom(since, { if (matches(it)) found.complete(Unit) }) { replay ->
-            (replay as? Ring.Replay.Hit)?.events?.any(::matches) == true
-        }
-        try {
-            if (already) return
-            withTimeoutOrNull(timeoutMs) { found.await() }
-        } finally {
-            stop()
-        }
-    }
 
     private fun resultFor(request: OwnerRequest): RequestResult {
         val answer = request.answer
@@ -825,8 +784,6 @@ class Requests(
         const val DEFAULT_TIMEOUT_S = 3_600
         const val MIN_TIMEOUT_S = 5
         const val MAX_TIMEOUT_S = 86_400
-        const val DEFAULT_HOLD_MS = 55_000L
-        const val POLL_AFTER_MS = 1_000
         const val SWEEP_INTERVAL_MS = 30_000L
         const val MEDIA_PER_UPDATE_MAX = 24
         const val EMBEDS_PER_POST_MAX = 8

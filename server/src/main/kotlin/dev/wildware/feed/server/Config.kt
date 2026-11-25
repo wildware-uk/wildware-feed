@@ -13,6 +13,7 @@ data class Config(
     val maxImageBytes: Long,
     val maxVideoBytes: Long,
     val maxFileBytes: Long,
+    /** HOLD_S. Nothing waits on it any more (request_input returns at once); kept so the setting still parses. */
     val holdSeconds: Int,
     val apns: Apns?,
     /** Where to listen (adapter-node's PORT/HOST; same defaults). */

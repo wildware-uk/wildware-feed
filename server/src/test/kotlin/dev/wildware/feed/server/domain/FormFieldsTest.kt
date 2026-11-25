@@ -19,7 +19,7 @@ class FormFieldsTest {
     private var now = 1_763_474_000_000L
     private val db = Database.memory()
     private val bus = Bus(clock = { now })
-    private val requests = Requests(db, bus, Reads(db) { now }, { now }, { 200L })
+    private val requests = Requests(db, bus, Reads(db) { now }, { now })
 
     init {
         db.update("INSERT INTO projects (id, slug, name, created_at, updated_at) VALUES ('P1', 'web', 'Web', 1, 1)")

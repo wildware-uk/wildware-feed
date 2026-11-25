@@ -9,7 +9,6 @@ state: "thinking"}}). Describe a tool before you first use it, except these ever
 - request_input {kind: "text" | "confirm" | "buttons" | "choice" | "multi_choice" | "form",
   question, detail?, options? (strings, for buttons, choice, multi_choice and form), channel?};
   a form to fill in (text boxes, dropdowns, ticks) is kind "form" with fields: describe it first
-- await_request {request_id}
 - heartbeat {session_id}, the id register_session {} gave you
 - read_doc {doc_id}, or {title, channel}
 A wrong argument comes back with the tool's own error: describe_tools it and try again.

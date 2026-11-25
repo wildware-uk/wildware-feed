@@ -58,8 +58,8 @@ test("an agent's feedback waits for the owner, who edits it and sends it in the 
     expect((await answered).status(), 'sending it').toBe(200);
 
     // The agent hears it went, with the owner's words, and its list says so.
-    const awaited = await mcp(agent, 'await_request', { request_id: proposed.request_id });
-    expect(awaited).toMatchObject({ state: 'answered', response: { value: { action: label, text: 'Paging takes three calls; one would do.' } } });
+    const heard = (await mcp(agent, 'get_messages', { request_id: proposed.request_id })).thread.card;
+    expect(heard).toMatchObject({ state: 'answered', response: { value: { action: label, text: 'Paging takes three calls; one would do.' } } });
     const mine = await mcp(agent, 'list_feedback', { mine: true });
     expect(mine.feedback[0]).toMatchObject({ title: 'get_messages pages slowly', status: done, body: 'Paging takes three calls; one would do.' });
 });

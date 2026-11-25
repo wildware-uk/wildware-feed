@@ -114,7 +114,7 @@ nothing at all, so output stays byte-identical to today.
 |---|---|---|
 | `get_messages`, `post_message` results, message frames | `author: "human"`, no `author_name` | same `author`, plus `author_name` (the person's name) and `author_user_id` |
 | `in_reply_to` | `author: "human"` | adds `author_name` |
-| `await_request` / `request_input` answered | summary `Your owner answered: …` | summary `Sam answered: …`; structured content adds `answered_by: {user_id, name}` |
+| `request_input` answered (the retired `await_request`, the answer event, `get_messages({request_id})`) | summary `Your owner answered: …` | summary `Sam answered: …`; structured content adds `answered_by: {user_id, name}` |
 | Agent stream `answer` frame | no actor | adds `answered_by` |
 | Agent stream `reaction` frame | no actor | adds `by: {user_id, name}` |
 | `list_work`, card reads | `author` | adds `author_name` for people |

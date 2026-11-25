@@ -16,6 +16,7 @@ import kotlinx.serialization.json.jsonPrimitive
  *
  * Each entry names a tool and why, and one of:
  * - `add`: a tool the TS server never had, the whole of it, added at the end of the list;
+ * - `remove`: true: a TS tool the Kotlin server no longer lists (it may still answer a call);
  * - `replace` / `with` at a path of keys inside it: swap that exact text, found once, in the string there;
  * - `was` / `now` at a path: the value there was `was` and is now `now` (no `was`: a new key).
  *
@@ -31,6 +32,10 @@ object ToolsListChanges {
     fun added(changes: JsonArray = load()): List<String> =
         changes.map { it.jsonObject }.filter { "add" in it }.map { it.getValue("tool").jsonPrimitive.content }
 
+    /** The names of the TS tools the Kotlin server no longer lists. */
+    fun removed(changes: JsonArray = load()): List<String> =
+        changes.map { it.jsonObject }.filter { it["remove"]?.jsonPrimitive?.content == "true" }.map { it.getValue("tool").jsonPrimitive.content }
+
     /** [tools] (the TS payload) with every change in [changes] applied, in order. */
     fun apply(tools: JsonArray, changes: JsonArray = load()): JsonArray {
         var out = tools
@@ -42,6 +47,11 @@ object ToolsListChanges {
                 check(tool["name"]?.jsonPrimitive?.content == name) { "tools-list-kotlin-changes.json: add $name names another tool" }
                 check(out.none { it.jsonObject["name"]?.jsonPrimitive?.content == name }) { "tools-list-kotlin-changes.json: $name is there already" }
                 out = JsonArray(out + tool)
+                continue
+            }
+            if (c["remove"]?.jsonPrimitive?.content == "true") {
+                check(out.any { it.jsonObject["name"]?.jsonPrimitive?.content == name }) { "tools-list-kotlin-changes.json: remove $name, which is not there" }
+                out = JsonArray(out.filter { it.jsonObject["name"]?.jsonPrimitive?.content != name })
                 continue
             }
             val path = c.getValue("path").jsonArray.map { it.jsonPrimitive.content }

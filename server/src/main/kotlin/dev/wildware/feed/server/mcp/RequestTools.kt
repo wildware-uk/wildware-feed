@@ -7,7 +7,6 @@ import dev.wildware.feed.server.domain.NewRequest
 import dev.wildware.feed.server.domain.OwnerRequest
 import dev.wildware.feed.server.domain.RequestEdit
 import dev.wildware.feed.server.domain.RequestResult
-import dev.wildware.feed.server.domain.Requests
 import dev.wildware.feed.server.domain.jsBoolean
 import dev.wildware.feed.server.domain.jsNumber
 import dev.wildware.feed.server.domain.jsString
@@ -20,7 +19,11 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
-/** `request_input`, `await_request`, `edit_request`, `withdraw_request` (spec/05-mcp.md §3.2, §4, §7.28-7.31). */
+/**
+ * `request_input`, `edit_request`, `withdraw_request` (spec/05-mcp.md §3.2, §4, §7.28-7.31), and the
+ * retired `await_request`: no list shows it, but an older session that still calls it gets where the
+ * request stands at once, never a wait.
+ */
 fun ToolRegistry.registerRequestTools(app: App) {
     register("request_input") { call ->
         val a = call.args
@@ -56,7 +59,7 @@ fun ToolRegistry.registerRequestTools(app: App) {
     }
 
     register("await_request") { call ->
-        requestResult(app.requests.awaitRequest(call.args["request_id"].jsString!!, call.agent.id), app.db)
+        requestResult(app.requests.status(call.args["request_id"].jsString!!, call.agent.id), app.db, legacy = true)
     }
 
     register("edit_request") { call ->
@@ -103,15 +106,21 @@ internal fun requestView(request: OwnerRequest): JsonObject = buildJsonObject {
     request.editedAt?.let { put("edited_at", Wire.isoOf(it)) }
 }
 
-/** `requestResult` (TS `src/mcp/results.ts:149`). */
-internal fun requestResult(result: RequestResult, db: dev.wildware.feed.server.db.Database? = null): ToolResult {
+/** What a retired await_request call adds to its summary, so an older session stops looping. */
+internal const val AWAIT_RETIRED =
+    "await_request is retired and never waits now. Don't call it again: the answer arrives as a channel answer event " +
+        "carrying this request_id, and get_messages({request_id}) reads the question, its state, the answer and its thread."
+
+/** `requestResult` (TS `src/mcp/results.ts:149`). [legacy]: a call to the retired await_request. */
+internal fun requestResult(result: RequestResult, db: dev.wildware.feed.server.db.Database? = null, legacy: Boolean = false): ToolResult {
+    fun say(summary: String) = if (legacy) "$summary $AWAIT_RETIRED" else summary
     val request = requestView(result.request)
     val id = result.request.id
     // On a team (migration 055), which person answered; a team of one reads as it always has.
     val by = result.request.answeredBy
     val byName = db?.let { dev.wildware.feed.server.domain.People.teamName(it, by) }
     return when (result.state) {
-        "answered" -> ToolResult.ok(answeredSummary(result, byName), buildJsonObject {
+        "answered" -> ToolResult.ok(say(answeredSummary(result, byName)), buildJsonObject {
             put("state", "answered")
             put("request_id", id)
             put("request", request)
@@ -120,17 +129,19 @@ internal fun requestResult(result: RequestResult, db: dev.wildware.feed.server.d
             if (byName != null) put("answered_by", buildJsonObject { put("user_id", by); put("name", byName) })
         })
         "pending" -> ToolResult.ok(
-            "Nobody has answered yet. This is not a refusal — call await_request({request_id: \"$id\"}) and keep calling it while state is \"pending\".",
+            if (legacy) say("Nobody has answered yet, and that is not a refusal. Carry on with other work and answer your messages.")
+            else "Asked. Nobody has answered yet, and that is not a refusal. Don't wait for it: carry on with other work and " +
+                "answer your messages. The answer arrives as a channel answer event with request_id \"$id\"; if you need it " +
+                "later and missed it, read it with get_messages({request_id: \"$id\"}).",
             buildJsonObject {
                 put("state", "pending")
                 put("request_id", id)
                 put("request", request)
-                put("poll_after_ms", Requests.POLL_AFTER_MS)
             },
         )
         else -> {
             val why = if (result.state == "timeout") "Nobody answered before this request timed out." else "Your owner dismissed this request without answering."
-            ToolResult.ok("$why That is not permission: do not proceed as though you had an answer.", buildJsonObject {
+            ToolResult.ok(say("$why That is not permission: do not proceed as though you had an answer."), buildJsonObject {
                 put("state", result.state)
                 put("request_id", id)
                 put("request", request)

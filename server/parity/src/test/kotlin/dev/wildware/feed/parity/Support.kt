@@ -88,7 +88,9 @@ suspend fun <T : Any> awaitCreated(agent: Agent, call: Deferred<*>, what: String
         check()?.let { return it }
         if (call.isCompleted) {
             val result = call.await()
-            error("the call returned before $what: ${(result as? ToolResult)?.raw ?: result}")
+            // The Kotlin server's request_input returns pending at once rather than holding: fine.
+            val pendingAtOnce = Parity.kotlin && (result as? ToolResult)?.let { !it.isError && it.structured["state"].str == "pending" } == true
+            if (!pendingAtOnce) error("the call returned before $what: ${(result as? ToolResult)?.raw ?: result}")
         }
         val now = TimeSource.Monotonic.markNow()
         if (!agent.waitingOutRateLimit) spent += now - last
@@ -97,6 +99,25 @@ suspend fun <T : Any> awaitCreated(agent: Agent, call: Deferred<*>, what: String
         delay(250.milliseconds)
     }
 }
+
+/**
+ * Where request [id], asked by [held] in the background, ended. The TS server holds request_input
+ * until the request settles (or HOLD_S runs out); the Kotlin server returns pending at once and the
+ * answer reaches the agent as a channel event, so there the outcome is read with the retired
+ * await_request, which answers at once. Its summary then carries [AWAIT_RETIRED]: see [awaited].
+ */
+suspend fun Agent.outcome(id: String, held: Deferred<ToolResult>): ToolResult {
+    val first = held.await()
+    return if (Parity.kotlin) tool("await_request", obj("request_id" to id)) else first
+}
+
+/** What the Kotlin server's retired await_request adds after its summary (server `RequestTools.kt`). */
+const val AWAIT_RETIRED =
+    "await_request is retired and never waits now. Don't call it again: the answer arrives as a channel answer event " +
+        "carrying this request_id, and get_messages({request_id}) reads the question, its state, the answer and its thread."
+
+/** A request's [summary] as [outcome] gives it: on the Kotlin server, with the retirement note after it. */
+fun awaited(summary: String) = if (Parity.kotlin) "$summary $AWAIT_RETIRED" else summary
 
 /**
  * A decided fix (server/spec/README.md, "Decided fixes") that the server under test may not have

@@ -784,7 +784,7 @@ Create requests with MCP `tools/call request_input` (hold returns `pending` afte
   `{"value":{"action":"Send"}}` → 400 `a form’s text is a string`;
   `{"value":{"action":"Send","text":"  hi  "}}` → 200 `answer:{"kind":"form","value":{"action":"Send","text":"hi"}}`, DB `decided_value='Send'`.
 - Second answer → 409 `request <id> has already been answered`. Unknown id → 404 `no such request: <id>`.
-- Agent's `await_request` then returns `answered`; stream frame `request.answered{state:"answered"}`.
+- Agent's `await_request` (Kotlin: `get_messages({request_id})` or the answer event) then returns `answered`; stream frame `request.answered{state:"answered"}`.
 
 **Dismiss**
 - `DELETE /api/requests/<id>` → 200 `request.state:"cancelled"`, `answeredAt` set, `answer:null`;

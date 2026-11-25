@@ -32,8 +32,8 @@ fun ToolRegistry.registerFeedbackTools(app: App) {
         val (item, request) = app.feedback.submitByAgent(call.agent, input, call.channel())
         ToolResult.ok(
             "Your owner decides first: \"${request.question}\" is waiting on their dashboard. Nothing is sent until an owner or " +
-                "an admin sends it; they may edit it, or discard it. You hear the outcome as an answer event, or call " +
-                "await_request({request_id: \"${request.id}\"}). Don't send it again.",
+                "an admin sends it; they may edit it, or discard it. Don't wait for it: you hear the outcome as an answer event, " +
+                "and get_messages({request_id: \"${request.id}\"}) reads it later. Don't send it again.",
             buildJsonObject {
                 put("feedback", app.feedback.agentView(item, full = true))
                 put("request_id", request.id)

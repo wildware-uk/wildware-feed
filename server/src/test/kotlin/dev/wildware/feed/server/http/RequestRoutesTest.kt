@@ -63,17 +63,23 @@ class RequestRoutesTest {
     @Test
     fun `the agent asks over MCP, the owner answers over HTTP, the agent hears it`() = withApp { app, key ->
         val (agent, _) = app.agents.mint("scout")
+        val started = System.nanoTime()
         val pending = tool(app, agent, "request_input", buildJsonObject { put("kind", "confirm"); put("question", "Ship it?"); put("project", "web") })
+        assertTrue(System.nanoTime() - started < 5_000_000_000L, "request_input returns at once")
         val structured = pending["structuredContent"]!!.jsonObject
         assertEquals("pending", structured["state"]!!.jsonPrimitive.content)
-        assertEquals(listOf("state", "request_id", "request", "poll_after_ms"), structured.keys.toList())
+        assertEquals(listOf("state", "request_id", "request"), structured.keys.toList())
         assertEquals(
             listOf("id", "kind", "question", "detail", "options", "project_id", "update_id", "message_id", "expires_at"),
             structured["request"]!!.jsonObject.keys.toList(),
         )
         val id = structured["request_id"]!!.jsonPrimitive.content
         val text = (pending["content"] as kotlinx.serialization.json.JsonArray)[0].jsonObject["text"]!!.jsonPrimitive.content
-        assertTrue(text.startsWith("Nobody has answered yet. This is not a refusal — call await_request({request_id: \"$id\"})"))
+        assertTrue(text.startsWith("Asked. Nobody has answered yet, and that is not a refusal. Don't wait for it"), text)
+        assertTrue("get_messages({request_id: \"$id\"})" in text && "await_request" !in text, text)
+        suspend fun thread() = tool(app, agent, "get_messages", buildJsonObject { put("request_id", id) })["structuredContent"]!!.jsonObject["thread"]!!.jsonObject["card"]!!.jsonObject
+        assertEquals("pending", thread()["state"]!!.jsonPrimitive.content)
+        assertTrue("response" !in thread())
 
         val missing = send(key, "POST", "/api/requests/$id/answer", "{}")
         assertEquals(400, missing.status.value)
@@ -84,10 +90,21 @@ class RequestRoutesTest {
         assertEquals(200, ok.status.value)
         assertTrue(ok.bodyAsText().startsWith("""{"request":{"id":"$id","seq":"""))
 
+        // get_messages({request_id}) reads the answer, without waiting and without the channel.
+        val card = thread()
+        assertEquals("answered", card["state"]!!.jsonPrimitive.content)
+        assertEquals("""{"kind":"confirm","value":true}""", Wire.encode(card["response"]!!))
+        assertTrue("answered_at" in card)
+        // Another agent doesn't get the answer, whether it may read the thread or not.
+        val (other, _) = app.agents.mint("other")
+        val theirs = tool(app, other, "get_messages", buildJsonObject { put("request_id", id) })["structuredContent"]!!.jsonObject
+        assertTrue("response" !in (theirs["thread"]?.jsonObject?.get("card")?.jsonObject ?: JsonObject(emptyMap())), theirs.toString())
+
+        // The retired await_request still answers an older session, at once, and says it is retired.
         val awaited = tool(app, agent, "await_request", buildJsonObject { put("request_id", id) })
         val answered = awaited["structuredContent"]!!.jsonObject
         assertEquals("""{"kind":"confirm","value":true}""", Wire.encode(answered["response"]!!))
-        assertTrue((awaited["content"] as kotlinx.serialization.json.JsonArray)[0].jsonObject["text"]!!.jsonPrimitive.content.startsWith("Your owner answered: yes.\n{\n  \"state\": \"answered\""))
+        assertTrue((awaited["content"] as kotlinx.serialization.json.JsonArray)[0].jsonObject["text"]!!.jsonPrimitive.content.startsWith("Your owner answered: yes. await_request is retired and never waits now."))
 
         val again = send(key, "DELETE", "/api/requests/$id")
         assertEquals(409, again.status.value)
@@ -101,7 +118,7 @@ class RequestRoutesTest {
     }
 
     @Test
-    fun `a form with fields goes from MCP to the app and back through await_request`() = withApp { app, key ->
+    fun `a form with fields goes from MCP to the app and back to the agent`() = withApp { app, key ->
         val (agent, _) = app.agents.mint("scout")
         fun text(result: JsonObject) = (result["content"] as kotlinx.serialization.json.JsonArray)[0].jsonObject["text"]!!.jsonPrimitive.content
         val fields = kotlinx.serialization.json.Json.parseToJsonElement(

@@ -4,9 +4,6 @@ import dev.wildware.feed.server.db.Database
 import dev.wildware.feed.server.events.AppEvent
 import dev.wildware.feed.server.events.Bus
 import dev.wildware.feed.server.http.Wire
-import kotlinx.coroutines.async
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
@@ -22,11 +19,10 @@ import kotlin.test.assertTrue
 
 class RequestsTest {
     private var now = 1_763_474_000_000L
-    private var holdMs = 200L
     private val db = Database.memory()
     private val bus = Bus(clock = { now })
     private val reads = Reads(db) { now }
-    private val requests = Requests(db, bus, reads, { now }, { holdMs })
+    private val requests = Requests(db, bus, reads, { now })
     private val events = mutableListOf<AppEvent>()
 
     init {
@@ -186,41 +182,25 @@ class RequestsTest {
     }
 
     @Test
-    fun `a hold returns pending after the hold, or the answer at once`() = runBlocking {
-        val request = ask()
-        val pending = requests.awaitRequest(request.id, "A1")
-        assertEquals("pending", pending.state)
+    fun `asking returns at once, pending, and status reads where it stands without waiting`() {
+        val started = System.nanoTime()
+        val asked = requests.requestInput("A1", NewRequest(kind = "confirm", question = "Now?"))
+        assertEquals("pending", asked.state)
+        assertTrue(System.nanoTime() - started < 1_000_000_000L, "request_input does not wait for the owner")
 
-        holdMs = 10_000
-        val waiting = async { requests.awaitRequest(request.id, "A1") }
-        delay(100)
-        requests.answer(request.id, JsonPrimitive(true))
-        val result = waiting.await()
+        assertEquals("pending", requests.status(asked.request.id, "A1").state)
+        requests.answer(asked.request.id, JsonPrimitive(true))
+        val result = requests.status(asked.request.id, "A1")
         assertEquals("answered", result.state)
         assertEquals("""{"kind":"confirm","value":true}""", Wire.encode(result.response!!))
-        refused("request belongs to another agent") { runBlocking { requests.awaitRequest(request.id, "A2") } }
+        refused("request belongs to another agent") { requests.status(asked.request.id, "A2") }
     }
 
     @Test
-    fun `an answer that lands before the park still wakes it`() = runBlocking {
-        holdMs = 10_000
-        // Answer from inside the request.created dispatch, before requestInput parks.
-        val stop = bus.subscribe { e ->
-            if (e.type == "request.created") requests.answer(e.payload["requestId"]!!.jsString!!, JsonPrimitive(true))
-        }
-        val started = System.nanoTime()
-        val result = requests.requestInput("A1", NewRequest(kind = "confirm", question = "Now?"))
-        stop()
-        assertEquals("answered", result.state)
-        assertTrue(System.nanoTime() - started < 5_000_000_000L)
-    }
-
-    @Test
-    fun `a hold ends at the request's own deadline`() = runBlocking {
-        holdMs = 10_000
+    fun `status times a request out at its own deadline`() {
         val request = ask { copy(timeoutS = 5.0) }
         now += 5_000
-        assertEquals("timeout", requests.awaitRequest(request.id, "A1").state)
+        assertEquals("timeout", requests.status(request.id, "A1").state)
     }
 
     @Test

@@ -340,17 +340,17 @@ class McpToolsTest : ParityTest() {
                 owner.get("/api/snapshot/requests").obj()["requests"].arr.firstOrNull { it["question"].s == question }?.get("id").str
             }
             owner.post("/api/requests/$id/answer", obj("value" to true))
-            val answered = held.await()
+            val answered = alpha.outcome(id, held)
             assertEquals("answered", answered.structured["state"].s)
             assertEquals(obj("kind" to "confirm", "value" to true), answered.structured["response"])
-            assertEquals("Your owner answered: yes.", answered.text.lines().first())
+            assertEquals(awaited("Your owner answered: yes."), answered.text.lines().first())
         }
 
         // A request that nobody answers: edit it, await it, withdraw it. It must expire well after the hold.
         val pending = alpha.tool("request_input", obj("kind" to "confirm", "question" to "Later? ${Parity.suffix()}", "project" to project.slug, "timeout_s" to 3600))
-        // (held for HOLD_S, 55 s by default, then pending)
+        // (held for HOLD_S, 55 s by default, then pending; the Kotlin server returns pending at once)
         assertEquals("pending", pending.structured["state"].s)
-        assertEquals(1000, pending.structured["poll_after_ms"].int)
+        if (!Parity.kotlin) assertEquals(1000, pending.structured["poll_after_ms"].int)
         val id = pending.structured["request_id"].s
 
         beta.refused("await_request", obj("request_id" to id), "invalid_argument", "request belongs to another agent")

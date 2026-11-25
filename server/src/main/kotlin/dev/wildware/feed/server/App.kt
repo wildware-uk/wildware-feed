@@ -212,7 +212,7 @@ class App(val config: Config, val db: Database, val clock: () -> Long = System::
     val mediaEdge = config.mediaEdge?.let { dev.wildware.feed.server.media.MediaEdge(it.url, it.secret) }
 
     /** Owner requests, the bell, push subscriptions and app state (the request area). */
-    val requests = Requests(db, bus, reads, clock) { config.holdSeconds * 1000L }.also { it.people = people }
+    val requests = Requests(db, bus, reads, clock).also { it.people = people }
 
     /** Feedback and feature requests (migration 067): an agent's waits on one of [requests]. */
     val feedback = dev.wildware.feed.server.domain.Feedback(this).also { fb -> requests.onSettled = { request, state -> fb.settled(request, state) } }

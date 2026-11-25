@@ -129,9 +129,11 @@ class ToolDiscoveryTest {
             assertFalse("{{tools}}" in text)
         }
         assertContains(discovery, "call_tool({name, arguments})")
-        for (everyday in listOf("acknowledge {", "post_message {", "get_messages {", "request_input {", "await_request {", "heartbeat {", "read_doc {")) {
+        for (everyday in listOf("acknowledge {", "post_message {", "get_messages {", "request_input {", "heartbeat {", "read_doc {")) {
             assertContains(discovery, everyday)
         }
+        // Nothing teaches the retired wait any more.
+        for (text in listOf(discovery, all)) assertFalse("await_request" in text, text)
         assertFalse("call_tool" in all)
     }
 
@@ -270,7 +272,7 @@ class ToolDiscoveryTest {
         same(asked, direct(scoutToken, "request_input", form("Which other?")))
         val requestId = asked.data()["request_id"]!!.jsonPrimitive.content
 
-        // A long wait: await_request holds until the server's hold time, then says it is still pending.
+        // The retired await_request, through call_tool, answers at once as the direct call does.
         val waited = viaCall(scoutToken, "await_request", args("request_id" to requestId))
         assertEquals(direct(scoutToken, "await_request", args("request_id" to requestId)).data()["state"], waited.data()["state"])
         assertNull(waited["isError"], waited.toString())
@@ -281,6 +283,33 @@ class ToolDiscoveryTest {
 
         val upload = buildJsonObject { put("filename", "shot.png"); put("mime", "image/png"); put("bytes", 1000) }
         same(viaCall(scoutToken, "create_upload", upload), direct(scoutToken, "create_upload", upload))
+    }
+
+    @Test
+    fun `await_request is in no list, and an older session calling it hears where the request stands at once`() = withApp {
+        assertFalse("await_request" in names(tools()) + names(tools("/mcp?tools=all")))
+        val listed = direct(scoutToken, "list_tools").data().toString()
+        assertFalse("await_request" in listed, listed)
+        val described = direct(scoutToken, "describe_tools", buildJsonObject { put("names", buildJsonArray { add(JsonPrimitive("await_request")) }) })
+        assertEquals(listOf("await_request"), described.data()["unknown"]!!.jsonArray.map { it.jsonPrimitive.content })
+        for (tool in tools("/mcp?tools=all")) {
+            assertFalse("await_request" in tool.toString(), tool.jsonObject["name"].toString())
+        }
+
+        viaCall(scoutToken, "create_project", args("name" to "Web", "slug" to "web"))
+        val started = System.nanoTime()
+        val asked = direct(scoutToken, "request_input", args("kind" to "confirm", "question" to "Ship it?", "channel" to "web"))
+        val requestId = asked.data()["request_id"]!!.jsonPrimitive.content
+        assertEquals("pending", asked.data()["state"]!!.jsonPrimitive.content)
+        for (legacy in listOf(direct(scoutToken, "await_request", args("request_id" to requestId)), viaCall(scoutToken, "await_request", args("request_id" to requestId)))) {
+            assertNull(legacy["isError"], legacy.toString())
+            assertEquals("pending", legacy.data()["state"]!!.jsonPrimitive.content)
+            assertContains(legacy.text(), "await_request is retired and never waits now.")
+            assertContains(legacy.text(), "get_messages({request_id})")
+        }
+        assertTrue(System.nanoTime() - started < 5_000_000_000L, "nothing waited")
+        // Bad arguments still get the schema's error.
+        assertContains(direct(scoutToken, "await_request").text(), "Invalid arguments for tool await_request")
     }
 
     @Test

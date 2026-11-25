@@ -301,7 +301,32 @@ instructions, are the only differences from the TS server's, listed for `tools/l
 else items `JSON.stringify`-ed joined by `, ` (no trailing period); form object →
 `<JSON.stringify(action)> on text of <text.length> characters.`; string → `JSON.stringify(value)` (quoted, no period).
 
-## 4. Long-poll (`request_input`, `await_request`)
+### 3.2a No waiting (Kotlin only)
+
+The Kotlin server never holds a request call. The long-poll in section 4 locked agents up: while
+they looped on `await_request` they answered no follow-up in the question's own thread, and the
+plugin's channel already hands them the answer as an `answer` event.
+
+- `request_input` (and `request_secret`, `request_secret_access`, `send_feedback`, which ask the same
+  way) returns at once: `pending` with `{state:"pending", request_id, request}` (no `poll_after_ms`),
+  summary `Asked. Nobody has answered yet, and that is not a refusal. Don't wait for it: carry on with
+  other work and answer your messages. The answer arrives as a channel answer event with request_id
+  "<id>"; if you need it later and missed it, read it with get_messages({request_id: "<id>"}).`
+- `await_request` is retired: no list shows it (`tools/list`, `?tools=all`, `list_tools`,
+  `describe_tools`), and no description or instructions mention it. Its schema stays in
+  `resources/mcp/retired-tools.json`, so an older session that calls it (directly or through
+  `call_tool`) still gets an answer, at once: the request's current state as in section 3.2 (lazy
+  timeout included), with ` await_request is retired and never waits now. Don't call it again: …`
+  appended to the summary line. Errors as before.
+- `get_messages({request_id})`: the thread's `card` carries `state`, and for the asking agent, once
+  answered, `response` (`{kind, value}`), `answered_at` and, on a team, `answered_by {user_id, name}`. Another agent reading the thread gets no
+  `response`.
+- The heartbeat's and stream's `pending_approvals` count is unchanged. `HOLD_S` still parses, but
+  nothing waits on it.
+- `tools-list-kotlin-changes.json` records it: a `remove` entry for `await_request`, then `replace`
+  entries for each description.
+
+## 4. Long-poll (`request_input`, `await_request`) (TS server; the Kotlin server has none, §3.2a)
 
 - `HOLD_S`: env, int 1..59, default 55 (`src/config.ts:88`); `holdMs = HOLD_S*1000` passed in `ToolDeps`
   (`src/mcp/env.ts:30`, `src/mcp/server.ts:141`). Domain fallback if absent: `DEFAULT_HOLD_MS = 55000`
@@ -822,6 +847,7 @@ then `resolveCard`: missing or deleted → `not_found` `no such <kind>: <id>` (`
   `invalid_argument` `request belongs to another agent` (`src/domain/requests.ts:864-868`).
 - Settled requests return immediately (no error) with their final state; else holds (section 4).
 - Only write: lazy timeout.
+- Kotlin server: retired and unlisted, never holds (§3.2a).
 
 ### 7.30 `edit_request` — `src/mcp/tools/edit-request.ts`
 

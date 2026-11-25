@@ -2566,5 +2566,142 @@
     "taskSupport": "forbidden"
    }
   }
+ },
+ {
+  "tool": "await_request",
+  "why": "request_input returns at once and await_request is retired: the answer arrives as a channel answer event, and get_messages({request_id}) reads it.",
+  "remove": true
+ },
+ {
+  "tool": "get_messages",
+  "path": [
+   "inputSchema",
+   "properties",
+   "request_id",
+   "description"
+  ],
+  "why": "request_input returns at once and await_request is retired: the answer arrives as a channel answer event, and get_messages({request_id}) reads it.",
+  "replace": "A question from request_input, to read it and its whole discussion instead of what is new.",
+  "with": "A question from request_input, to read it, where it stands (state, and the answer once there is one) and its whole discussion instead of what is new."
+ },
+ {
+  "tool": "get_messages",
+  "path": [
+   "description"
+  ],
+  "why": "request_input returns at once and await_request is retired: the answer arrives as a channel answer event, and get_messages({request_id}) reads it.",
+  "replace": "  Use it when an @mention brings you into a thread you were not in. It moves no cursor,",
+  "with": "  Use it when an @mention brings you into a thread you were not in. With request_id, the\n  card also says where your own question stands: its state and, once answered, its\n  response and answered_at, so you can read an answer you missed. It moves no cursor,"
+ },
+ {
+  "tool": "post_message",
+  "path": [
+   "inputSchema",
+   "properties",
+   "request_id",
+   "description"
+  ],
+  "why": "request_input returns at once and await_request is retired: the answer arrives as a channel answer event, and get_messages({request_id}) reads it.",
+  "replace": "A question of your own your owner has replied to instead of answering, from a message`s request_id. Your reply joins that question`s discussion, where they are looking. The question stays open: keep waiting on it with await_request.",
+  "with": "A question of your own your owner has replied to instead of answering, from a message`s request_id. Your reply joins that question`s discussion, where they are looking. The question stays open: its answer arrives later as an answer event."
+ },
+ {
+  "tool": "post_message",
+  "path": [
+   "description"
+  ],
+  "why": "request_input returns at once and await_request is retired: the answer arrives as a channel answer event, and get_messages({request_id}) reads it.",
+  "replace": "  keep await_request running, and expect the button to be pressed once you have\n  answered what they asked. Do not name a card as well; the question is the anchor.",
+  "with": "  its answer arrives as an answer event once you have answered what they asked. Do not name a card as well; the question is the anchor."
+ },
+ {
+  "tool": "request_input",
+  "path": [
+   "description"
+  ],
+  "why": "request_input returns at once and await_request is retired: the answer arrives as a channel answer event, and get_messages({request_id}) reads it.",
+  "replace": "Stop and ask the human who owns this dashboard for something only they can supply, then\nwait for the answer.",
+  "with": "Ask the human who owns this dashboard for something only they can supply. It returns at\nonce; the answer reaches you later as a channel event."
+ },
+ {
+  "tool": "request_input",
+  "path": [
+   "description"
+  ],
+  "why": "request_input returns at once and await_request is retired: the answer arrives as a channel answer event, and get_messages({request_id}) reads it.",
+  "replace": "HOW THE WAITING WORKS. READ THIS BEFORE YOU CALL IT.\n\nA human is slower than your tool timeout, so this call does not hold open until they\nclick. It parks for up to 55 seconds and then returns one of these:\n\n  { \"state\": \"answered\", \"request_id\", \"response\": { \"kind\", \"value\" }, \"answered_at\" }\n  { \"state\": \"pending\",  \"request_id\", \"poll_after_ms\" }",
+  "with": "HOW THE ANSWER REACHES YOU. READ THIS BEFORE YOU CALL IT.\n\nThis call does not wait for your owner. It returns at once with\n{ \"state\": \"pending\", \"request_id\" }. DON'T WAIT FOR THE ANSWER: carry on with other\nwork, and keep answering the messages that reach you. When your owner decides, the\nanswer arrives as a channel answer event carrying the request_id, the state and the\nanswer itself, and that is when you act on it. If you need it later and missed the\nevent (after a restart, say), read it with get_messages({ request_id }): the card there\nhas the question's state and, once answered, its response.\n\nThe state ends as one of these:\n\n  { \"state\": \"answered\", \"request_id\", \"response\": { \"kind\", \"value\" }, \"answered_at\" }"
+ },
+ {
+  "tool": "request_input",
+  "path": [
+   "description"
+  ],
+  "why": "request_input returns at once and await_request is retired: the answer arrives as a channel answer event, and get_messages({request_id}) reads it.",
+  "replace": "If state is \"pending\" NOBODY HAS ANSWERED YET AND YOU ARE NOT FINISHED WAITING. Call\nawait_request({ request_id }) with the id you were given, and keep calling it for as\nlong as it keeps answering \"pending\". Each call parks for another 55 seconds, so a loop\nof them costs nothing while it waits. Stop looping only when state is \"answered\",\n\"timeout\" or \"cancelled\".\n\nYour owner can also reply to the question rather than answer it — \"why do you want to\ndo that?\". That arrives as a message carrying this request_id; answer it with\npost_message({ request_id }) and keep waiting. Talking is not answering, and the state\nstays \"pending\" until they decide.\n\nThe wait survives your own restart: the request lives in the dashboard database, not in\nthis connection. If you crash mid-wait, call await_request with the request_id when you\ncome back and you resume exactly where you were.",
+  "with": "Your owner can also reply to the question rather than answer it — \"why do you want to\ndo that?\". That arrives as a message carrying this request_id; answer it with\npost_message({ request_id }). Talking is not answering, and the question stays open\nuntil they decide.\n\nThe request lives in the dashboard database, not in this connection, so it survives\nyour own restart: its request_id is all you need."
+ },
+ {
+  "tool": "edit_request",
+  "path": [
+   "description"
+  ],
+  "why": "request_input returns at once and await_request is retired: the answer arrives as a channel answer event, and get_messages({request_id}) reads it.",
+  "replace": "Your wait is unaffected. Nothing is settled by an edit, so keep the await_request loop\nrunning exactly as before. The card stays where it is and is marked as edited, because",
+  "with": "Nothing is settled by an edit: the answer still arrives as a channel answer event on the\nsame request_id. The card stays where it is and is marked as edited, because"
+ },
+ {
+  "tool": "edit_request",
+  "path": [
+   "description"
+  ],
+  "why": "request_input returns at once and await_request is retired: the answer arrives as a channel answer event, and get_messages({request_id}) reads it.",
+  "replace": "editing, that answer stands and await_request will give it to you.",
+  "with": "editing, that answer stands: it arrives as an answer event, and get_messages({ request_id })\nshows it."
+ },
+ {
+  "tool": "withdraw_request",
+  "path": [
+   "description"
+  ],
+  "why": "request_input returns at once and await_request is retired: the answer arrives as a channel answer event, and get_messages({request_id}) reads it.",
+  "replace": "do not withdraw — keep waiting with await_request.",
+  "with": "do not withdraw: leave it up and carry on, and the answer arrives as an answer event."
+ },
+ {
+  "tool": "withdraw_request",
+  "path": [
+   "description"
+  ],
+  "why": "request_input returns at once and await_request is retired: the answer arrives as a channel answer event, and get_messages({request_id}) reads it.",
+  "replace": "rather than retrying: if they answered while you were withdrawing, that answer stands and\nawait_request will give it to you.",
+  "with": "rather than retrying: if they answered while you were withdrawing, that answer stands: it\narrives as an answer event, and get_messages({ request_id }) shows it."
+ },
+ {
+  "tool": "request_secret",
+  "path": [
+   "description"
+  ],
+  "why": "request_input returns at once and await_request is retired: the answer arrives as a channel answer event, and get_messages({request_id}) reads it.",
+  "replace": "It waits like request_input: it answers within about a minute either way. On { state:\n\"pending\" } call await_request with the request_id, and keep calling it while the state\nis \"pending\". On \"answered\", response.value is the secret's NAME, never its value. With fields it",
+  "with": "Like request_input, it returns at once with { state: \"pending\", request_id }. Don't wait:\ncarry on, and the outcome arrives as a channel answer event on that request_id\n(get_messages({ request_id }) reads it later). On \"answered\", response.value is the secret's NAME, never its value. With fields it"
+ },
+ {
+  "tool": "send_feedback",
+  "path": [
+   "description"
+  ],
+  "why": "request_input returns at once and await_request is retired: the answer arrives as a channel answer event, and get_messages({request_id}) reads it.",
+  "replace": "your owner's choice as an answer event on request_id, or with await_request({request_id}):",
+  "with": "your owner's choice as an answer event on request_id (get_messages({request_id}) reads it later):"
+ },
+ {
+  "tool": "request_secret_access",
+  "path": [
+   "description"
+  ],
+  "why": "request_input returns at once and await_request is retired: the answer arrives as a channel answer event, and get_messages({request_id}) reads it.",
+  "replace": "It waits like request_input: it answers within about a minute either way. On { state:\n\"pending\" } call await_request with the request_id, and keep calling it while the state\nis \"pending\". On \"answered\", response.value is true when they allowed it and false when",
+  "with": "Like request_input, it returns at once with { state: \"pending\", request_id }. Don't wait:\ncarry on, and the outcome arrives as a channel answer event on that request_id\n(get_messages({ request_id }) reads it later). On \"answered\", response.value is true when they allowed it and false when"
  }
 ]

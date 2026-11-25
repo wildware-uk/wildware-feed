@@ -91,8 +91,16 @@ class ToolRegistry {
         Json.parseToJsonElement(ToolRegistry::class.java.getResource("/mcp/tools-list.json")!!.readText()) as JsonArray
     }
 
+    /**
+     * Tools no list shows any more (`/mcp/retired-tools.json`: name and inputSchema), still answered
+     * when an older session calls one by name. Today only `await_request`.
+     */
+    private val retired: JsonArray by lazy {
+        Json.parseToJsonElement(ToolRegistry::class.java.getResource("/mcp/retired-tools.json")!!.readText()) as JsonArray
+    }
+
     val schemas: Map<String, JsonObject> by lazy {
-        advertised.associate { it.jsonObject["name"]!!.jsonPrimitive.content to it.jsonObject["inputSchema"]!!.jsonObject }
+        (advertised + retired).associate { it.jsonObject["name"]!!.jsonPrimitive.content to it.jsonObject["inputSchema"]!!.jsonObject }
     }
 
     fun has(name: String) = name in handlers

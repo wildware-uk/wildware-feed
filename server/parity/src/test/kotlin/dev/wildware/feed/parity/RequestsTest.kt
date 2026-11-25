@@ -15,8 +15,8 @@ import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
 
 /**
- * request_input end to end: the agent asks (and is held), the owner answers, dismisses, or lets it
- * expire; the agent withdraws or edits. Spec: server/spec/03-owner-api-requests-devices.md §1-2, 9.
+ * request_input end to end: the agent asks (held on the TS server, back at once on the Kotlin one),
+ * the owner answers, dismisses, or lets it expire; the agent withdraws or edits. Spec: server/spec/03-owner-api-requests-devices.md §1-2, 9.
  */
 class RequestsTest : ParityTest() {
     private suspend fun HttpResponse.expectError(status: Int, error: String, message: String) {
@@ -31,7 +31,8 @@ class RequestsTest : ParityTest() {
 
     /**
      * Ask [args] as [agent] while it is held, find the pending request, run [block] with its id and
-     * the held call. Whatever [block] leaves pending is dismissed so the held call returns.
+     * the held call. Whatever [block] leaves pending is dismissed so the held call returns (on the
+     * Kotlin server the call returns at once, and the request is dismissed all the same).
      */
     private suspend fun <T> asking(
         args: JsonObject,
@@ -44,7 +45,7 @@ class RequestsTest : ParityTest() {
         try {
             block(request["id"].s, held)
         } finally {
-            if (!held.isCompleted) owner.delete("/api/requests/${request["id"].s}")
+            if (!held.isCompleted || (Parity.kotlin && pendingRequest(question) != null)) owner.delete("/api/requests/${request["id"].s}")
             withTimeout(70.seconds) { held.await() }
         }
     }
@@ -73,7 +74,7 @@ class RequestsTest : ParityTest() {
                 request.keys.toList(),
             )
 
-            val result = withTimeout(10.seconds) { held.await() }
+            val result = withTimeout(10.seconds) { alpha.outcome(id, held) }
             assertTrue(!result.isError, result.raw.toString())
             assertEquals("answered", result.structured["state"].s)
 
@@ -156,7 +157,7 @@ class RequestsTest : ParityTest() {
             assertNotNull(request["answeredAt"].str)
             assertTrue(request["answer"].isNull)
             owner.delete("/api/requests/$id").expectError(409, "conflict", "request $id was dismissed")
-            assertEquals("cancelled", held.await().structured["state"].s)
+            assertEquals("cancelled", alpha.outcome(id, held).structured["state"].s)
         }
     }
 
@@ -171,6 +172,8 @@ class RequestsTest : ParityTest() {
         var state = started.structured["state"].s
         val giveUp = System.currentTimeMillis() + 10_000
         while (state == "pending" && System.currentTimeMillis() < giveUp) {
+            // The Kotlin server never holds: ask once a second rather than spending the rate limit.
+            if (Parity.kotlin) delay(1_000)
             state = alpha.ok("await_request", obj("request_id" to id))["state"].s
         }
         assertEquals("timeout", state, "a hold shorter than HOLD_S ends at the deadline, and the request times out")
@@ -193,7 +196,7 @@ class RequestsTest : ParityTest() {
             val withdrawn = alpha.ok("withdraw_request", obj("request_id" to id))
             assertEquals("withdrawn", withdrawn["state"].s)
             answer(id, true).expectError(409, "conflict", "request $id was withdrawn")
-            assertEquals("withdrawn", held.await().structured["state"].s)
+            assertEquals("withdrawn", alpha.outcome(id, held).structured["state"].s)
         }
     }
 
