@@ -233,6 +233,7 @@ private fun AssignedChips(ui: FeedUi, board: BoardState) {
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        Chip("Needs attention", selected = board.attention) { ui.emit(FeedEvent.BoardAttention(!board.attention)) }
         Chip("Assigned to me", selected = board.assigned == AssignedFilter.Mine) { pick(AssignedFilter.Mine) }
         Chip("Unassigned", selected = board.assigned == AssignedFilter.Nobody) { pick(AssignedFilter.Nobody) }
         board.assignees.filter { it.principal != "member:$me" }.forEach { a ->
@@ -486,6 +487,7 @@ private fun BoardCardFace(
             UnreadBadge(unread)
             MetaText(card.age)
         }
+        PrChips(card.prs, Modifier.padding(top = 6.dp, end = 8.dp))
         if (onRemove != null && card.canMove && boardColumnOf(card.status) == WorkStatus.Done) {
             Row(Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 if (card.removed) MetaText(if (card.removedByAge) "Left the board by age" else "Removed from the board", Modifier.weight(1f))

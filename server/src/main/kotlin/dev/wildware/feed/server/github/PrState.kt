@@ -142,22 +142,25 @@ object PrState {
     /** `@` in GitHub's words must not @mention anyone here: a zero-width space after it. */
     private fun quiet(text: String) = text.replace("@", "@​")
 
-    /** "CI failed on #423: build (android), lint — <link>. Please fix and push." */
+    /**
+     * "CI failed on #423 (acme/app): build (android), lint — <link>", then "@rover Please fix it and
+     * push." The first line is what people see in the thread; the agent reads it all.
+     */
     fun redLine(owner: String, repo: String, number: Long, failing: List<Check>, prUrl: String): String {
         val names = failing.take(MAX_NAMED).joinToString(", ") { quiet(it.name) } +
             if (failing.size > MAX_NAMED) " and ${failing.size - MAX_NAMED} more" else ""
         val link = failing.firstNotNullOfOrNull { it.url } ?: prUrl
-        return "@$owner CI failed on #$number ($repo): $names — $link\nPlease fix it and push. You'll hear here when it is green again."
+        return "CI failed on #$number ($repo): $names — $link\n@$owner Please fix it and push. You'll hear here when it is green again."
     }
 
-    fun greenLine(owner: String, repo: String, number: Long): String = "@$owner CI is green again on #$number ($repo)."
+    fun greenLine(owner: String, repo: String, number: Long): String = "CI is green again on #$number ($repo).\n@$owner It passes now."
 
     /** "Changes requested on #423 by sam: <the review's first words> — <link>" */
     fun changesLine(owner: String, repo: String, number: Long, reviewer: String, body: String?, url: String): String {
         val said = body?.trim()?.takeIf { it.isNotEmpty() }?.let { quiet(cut(it, 400)) }
-        return "@$owner Changes requested on #$number ($repo) by ${quiet(reviewer)}" +
-            (said?.let { ":\n> ${it.replace("\n", "\n> ")}\n" } ?: " ") +
-            "— $url\nPlease address the review and push."
+        return "Changes requested on #$number ($repo) by ${quiet(reviewer)} — $url\n" +
+            (said?.let { "> ${it.replace("\n", "\n> ")}\n" } ?: "") +
+            "@$owner Please address the review and push."
     }
 
     private fun cut(text: String, max: Int) = if (text.length <= max) text else text.substring(0, max).trimEnd() + "…"

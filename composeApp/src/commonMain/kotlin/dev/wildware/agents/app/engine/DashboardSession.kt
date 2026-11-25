@@ -1,6 +1,9 @@
 package dev.wildware.agents.app.engine
 
 import dev.wildware.agents.channelMedia
+import dev.wildware.agents.connectGitHub
+import dev.wildware.agents.disconnectGitHub
+import dev.wildware.agents.githubStatus
 import dev.wildware.agents.UpdateCard
 import kotlinx.coroutines.flow.distinctUntilChanged
 import dev.wildware.agents.CardKinds
@@ -159,6 +162,8 @@ class DashboardSession(
     val retention: StateFlow<RetentionSettings> = mutableRetention
 
     private val mutablePlan = MutableStateFlow(dev.wildware.agents.app.feed.PlanState())
+
+    private val mutableGitHub = MutableStateFlow(dev.wildware.agents.app.feed.GitHubSettings())
 
     /** Whether the app may link to buying a plan, now ([AppPlatform.buyingLinks]). */
     private val buyingLinks = platform.buyingLinks
@@ -465,6 +470,7 @@ class DashboardSession(
             shown.copy(board = onBoard, assign = assigning, plan = plan, upgrade = upgrade, upsell = offer)
         }.combine(docs.state) { shown, onDocs -> shown.copy(docs = onDocs) }
             .combine(mediaTab.state) { shown, onMedia -> shown.copy(media = onMedia) }
+            .combine(mutableGitHub) { shown, github -> shown.copy(github = github) }
     }
         .stateIn(scope, SharingStarted.Eagerly, mapper.map(feed.state.value, emptyList(), emptyList(), emptyList(), null))
 
@@ -990,6 +996,47 @@ class DashboardSession(
     }
 
     /**
+     * Reads the team's GitHub (server migration 079). A dashboard without it (too old, or not set
+     * up) leaves it unavailable, and Settings doesn't offer it.
+     */
+    private suspend fun loadGitHub() {
+        mutableGitHub.value = try {
+            mutableGitHub.value.copy(status = client.githubStatus(), loaded = true, problem = null)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failed: Throwable) {
+            dev.wildware.agents.app.feed.GitHubSettings(loaded = true)
+        }
+    }
+
+    private suspend fun connectGitHub() {
+        mutableGitHub.value = mutableGitHub.value.copy(busy = true, problem = null)
+        mutableGitHub.value = try {
+            mutableGitHub.value.copy(busy = false, connectUrl = client.connectGitHub())
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (refused: DashboardException) {
+            mutableGitHub.value.copy(busy = false, problem = "Couldn't start connecting GitHub. ${refused.message}")
+        } catch (failed: Throwable) {
+            mutableGitHub.value.copy(busy = false, problem = "Couldn't start connecting GitHub. Check the connection and try again.")
+        }
+    }
+
+    private suspend fun disconnectGitHub(id: Long) {
+        mutableGitHub.value = mutableGitHub.value.copy(busy = true, problem = null)
+        try {
+            client.disconnectGitHub(id)
+            loadGitHub()
+            mutableGitHub.value = mutableGitHub.value.copy(busy = false)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failed: Throwable) {
+            val words = (failed as? DashboardException)?.message ?: "Check the connection and try again."
+            mutableGitHub.value = mutableGitHub.value.copy(busy = false, problem = "Couldn't disconnect it. $words")
+        }
+    }
+
+    /**
      * Reads how long the dashboard keeps media. A dashboard that refuses (not this person's to see,
      * or too old to have it) hides the setting rather than showing an error.
      */
@@ -1071,6 +1118,7 @@ class DashboardSession(
         dashboard.start()
         scope.launch { loadAlerts() }
         scope.launch { loadRetention() }
+        scope.launch { loadGitHub() }
         scope.launch { loadTeam() }
         // The open channel's agents, for the members list: read whenever another channel opens.
         scope.launch { selected.collect { slug -> if (slug != null) loadMembers(slug, group = false) } }
@@ -1251,6 +1299,7 @@ class DashboardSession(
             is FeedEvent.BoardAutoRemove -> board.setAutoRemove(event.days)
             is FeedEvent.BoardMore -> board.more(event.status)
             is FeedEvent.BoardAssigned -> board.filter(event.filter)
+            is FeedEvent.BoardAttention -> board.attention(event.on)
             is FeedEvent.Assign -> cardRef(event.targetId)?.takeIf { it.kind != CardKinds.Request }?.let { card ->
                 assign.open(card, (state.value.item(event.targetId) as? dev.wildware.agents.app.feed.Threaded)?.title.orEmpty())
             }
@@ -1266,6 +1315,10 @@ class DashboardSession(
             is FeedEvent.ClearNotifications -> dashboard.markNotificationsSeen(null)
             is FeedEvent.SetAlertPrefs -> saveAlerts(event.prefs)
             is FeedEvent.ReadMediaRetention -> scope.launch { loadRetention() }
+            is FeedEvent.ReadGitHub -> scope.launch { loadGitHub() }
+            is FeedEvent.ConnectGitHub -> scope.launch { connectGitHub() }
+            is FeedEvent.GitHubPageOpened -> mutableGitHub.value = mutableGitHub.value.copy(connectUrl = null)
+            is FeedEvent.DisconnectGitHub -> scope.launch { disconnectGitHub(event.installationId) }
             is FeedEvent.ReadPlan -> scope.launch { loadPlan() }
             is FeedEvent.DismissUpgrade -> mutableUpgrade.value = null
             is FeedEvent.DismissUpsell -> {

@@ -512,6 +512,8 @@ sealed interface FeedItem {
         val blocks: List<CardBlock> = emptyList(),
         /** Secrets the agent attached, drawn as locked chips the owner opens in place. */
         val secrets: List<SharedSecret> = emptyList(),
+        /** Pull requests an agent linked, drawn as chips with their CI and reviews (server migration 079). */
+        val prs: List<dev.wildware.agents.PrView> = emptyList(),
     ) : Threaded {
         override val starter: Author get() = Author.AgentAuthor(agent)
     }
@@ -736,6 +738,8 @@ data class FeedState(
     val media: MediaTabState = MediaTabState(),
     /** The hosted team's plan, read when Settings opens. */
     val plan: PlanState = PlanState(),
+    /** The team's GitHub: whether the server has it, and which accounts are connected. */
+    val github: GitHubSettings = GitHubSettings(),
     /** A free-plan refusal still to answer: its words and an "Upgrade" link, until put away. */
     val upgrade: dev.wildware.agents.PlanLimitHit? = null,
     /** Offers of the Team plan this person may see ([Upsell]): none for a member, a paid or self-hosted team, or where the app may not link to buying. */
@@ -782,6 +786,19 @@ data class AlertSettings(val prefs: AlertPrefs? = null, val loaded: Boolean = fa
  */
 @Immutable
 data class PlanState(val plan: dev.wildware.agents.TeamPlan? = null, val loaded: Boolean = false)
+
+/**
+ * The team's GitHub (server migration 079), as Settings shows it. [connectUrl] is GitHub's install
+ * page, waiting to be opened in the browser.
+ */
+@Immutable
+data class GitHubSettings(
+    val status: dev.wildware.agents.GitHubStatus = dev.wildware.agents.GitHubStatus(),
+    val loaded: Boolean = false,
+    val busy: Boolean = false,
+    val problem: String? = null,
+    val connectUrl: String? = null,
+)
 
 @Immutable
 data class RetentionSettings(

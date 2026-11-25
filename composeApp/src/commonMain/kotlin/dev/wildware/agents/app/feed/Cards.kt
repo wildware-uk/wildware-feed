@@ -387,6 +387,7 @@ fun UpdateCard(
                     Embeds(item.embeds, Modifier.padding(top = 10.dp))
                     CardBlocks(item.blocks, Modifier.padding(top = 10.dp))
                     SharedSecretChips(item.secrets, Modifier.padding(top = 10.dp))
+                    PrChips(item.prs, Modifier.padding(top = 10.dp))
                     LinkedCards(item.refs, Modifier.padding(top = 10.dp))
                     AppLinks(item.apps, Modifier.padding(top = 10.dp))
                     CardDetails(item.id, ui?.fieldsFor(item.id, item.fields) ?: item.fields, Modifier.padding(top = 8.dp))

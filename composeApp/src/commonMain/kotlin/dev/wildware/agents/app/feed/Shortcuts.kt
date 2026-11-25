@@ -139,7 +139,7 @@ fun keyboardShortcuts(mac: Boolean, web: Boolean): List<ShortcutGroup> {
 
 /** Whether a sheet, menu, picker or dialog is over the feed. */
 internal val FeedUi.overlayOpen: Boolean
-    get() = tour.on || viewer != null || playing != null || commandOpen || bellOpen || alertsOpen || retentionOpen ||
+    get() = tour.on || viewer != null || playing != null || commandOpen || bellOpen || alertsOpen || retentionOpen || githubOpen ||
         devicesOpen || secretsOpen || feedbackOpen || peopleOpen || connectOpen || statusPick != null || state.assign != null || menu != null || selecting != null || boardMenu != null ||
         tagging != null || deleting != null || editing != null || projectDialog != null || agentOpen != null || personOpen != null || shortcutsOpen
 
@@ -160,6 +160,7 @@ internal fun FeedUi.closeTopOverlay(): Boolean {
         tagging != null -> tagging = null
         alertsOpen -> alertsOpen = false
         retentionOpen -> retentionOpen = false
+        githubOpen -> githubOpen = false
         devicesOpen -> devicesOpen = false
         secretsOpen -> secretsOpen = false
         feedbackOpen -> feedbackOpen = false

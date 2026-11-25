@@ -236,6 +236,15 @@ downloads the value straight into a file; it asks you for one with `request_secr
 one another agent saved with `request_secret_access` (you Allow or Deny it in the thread), and
 hands one to you with `create_secret_upload`. Every use is logged. See [docs/SECRETS.md](docs/SECRETS.md).
 
+## Pull requests on cards
+
+An agent links its pull request to its card with `link_pr`. The card then shows the PR's CI and
+reviews, live, and the agent is told in the thread when CI fails or a reviewer asks for changes.
+It works through a GitHub App of your own: create one (read-only: metadata, pull requests, checks,
+commit statuses), set `GITHUB_APP_SLUG`, `GITHUB_APP_CLIENT_ID`, `GITHUB_APP_CLIENT_SECRET`,
+`GITHUB_APP_PRIVATE_KEY` and `GITHUB_APP_WEBHOOK_SECRET` on the server, then connect it under
+Settings → GitHub. Without them it's off. See [docs/GITHUB.md](docs/GITHUB.md).
+
 ## Turning on push
 
 Push needs a paid Apple developer account.

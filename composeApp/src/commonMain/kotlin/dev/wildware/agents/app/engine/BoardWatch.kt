@@ -70,7 +70,10 @@ class BoardWatch(
             extra.clear()
             afters.clear()
             more.clear()
-            mutable.value = BoardState(scope = scope, showRemoved = mutable.value.showRemoved, autoRemoveDays = mutable.value.autoRemoveDays, assigned = mutable.value.assigned)
+            mutable.value = BoardState(
+                scope = scope, showRemoved = mutable.value.showRemoved, autoRemoveDays = mutable.value.autoRemoveDays,
+                assigned = mutable.value.assigned, attention = mutable.value.attention,
+            )
         }
         live = this.scope.launch {
             load()
@@ -85,6 +88,15 @@ class BoardWatch(
         extra.clear()
         // The cards another filter showed go at once; the read fills the columns again.
         publish(mutable.value.copy(assigned = filter))
+        scope.launch { load() }
+    }
+
+    /** Keeps only the cards whose pull request needs someone (CI failing or changes requested), or every card again. */
+    fun attention(on: Boolean) {
+        if (mutable.value.attention == on) return
+        first = emptyMap()
+        extra.clear()
+        publish(mutable.value.copy(attention = on))
         scope.launch { load() }
     }
 
@@ -151,7 +163,7 @@ class BoardWatch(
         mutable.value = board.copy(columns = board.columns.map { if (it.status == column.status) it.copy(loadingMore = true) else it })
         scope.launch {
             try {
-                val page = client.board(boardScope, removed = board.showRemoved, column = column.status.wire, after = after, limit = Page, assigned = board.assigned.wire)
+                val page = client.board(boardScope, removed = board.showRemoved, column = column.status.wire, after = after, limit = Page, assigned = board.assigned.wire, attention = board.attention)
                 val read = page.columns.firstOrNull() ?: return@launch
                 afters[column.status] = read.after
                 extra[column.status] = extra[column.status].orEmpty() + read.cards
@@ -175,18 +187,19 @@ class BoardWatch(
         val boardScope = mutable.value.scope ?: return
         val showRemoved = mutable.value.showRemoved
         val assigned = mutable.value.assigned
+        val attention = mutable.value.attention
         // A re-read covers as many cards as are showing, so a page read further down stays.
         val showing = BoardStatuses.maxOf { (first[it]?.size ?: 0) + (extra[it]?.size ?: 0) }.coerceIn(Page, MaxRead)
         mutable.value = mutable.value.copy(loading = true)
         val read: BoardSnapshot = try {
-            client.board(boardScope, removed = showRemoved, limit = showing, assigned = assigned.wire)
+            client.board(boardScope, removed = showRemoved, limit = showing, assigned = assigned.wire, attention = attention)
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (failed: Throwable) {
             mutable.value = mutable.value.copy(loading = false, loaded = true, problem = problemOf(failed, "read the board"))
             return
         }
-        if (mutable.value.scope != boardScope || mutable.value.assigned != assigned) return
+        if (mutable.value.scope != boardScope || mutable.value.assigned != assigned || mutable.value.attention != attention) return
         first = read.columns.associate { statusOf(it.status) to it.cards }
         extra.clear()
         read.columns.forEach { c -> afters[statusOf(c.status)] = c.after; more[statusOf(c.status)] = c.more }
@@ -231,6 +244,7 @@ class BoardWatch(
             age = boardAge(now() - (v.statusAt ?: v.createdAt)), waiting = v.waiting, replies = v.replies,
             removed = v.removed, removedByAge = v.removedBy == "age", canMove = v.canMove,
             assignees = v.assignees.map(::assigneeOf),
+            prs = v.prs,
         )
     }
 

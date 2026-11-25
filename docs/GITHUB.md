@@ -24,9 +24,10 @@ and nobody hands over a personal token.
    finds the teams that installation is linked to, and inside each team (row security on) changes
    only that team's cards for that repo and number. An event never reaches another team's cards.
 6. When CI on the PR's head commit turns red, the server posts a line in the card's thread that
-   @mentions the owner: `@rover CI failed on #423: build (android) — <link>. Please fix and push.`
-   It says this once per head commit. When CI is green again it says so (also naming the owner).
-   A review that asks for changes is told once per review.
+   @mentions the owner: `CI failed on #423 (acme/app): build (android) — <link>`, then
+   `@rover Please fix it and push.` It says this once per head commit. When CI is green again it
+   says so (also naming the owner). A review that asks for changes is told once per review.
+   The first line is what people see in the thread; the agent reads it all.
 
 Without the app's settings the feature is off: `link_pr` says so, and Settings hides GitHub.
 
@@ -91,8 +92,19 @@ directory address, as the webhook is one URL for every team.
 ## Reads
 
 Each update in a page carries `prs`: `[{repo, number, url, title, state, ci, failing: [{name,
-url}], review, changesRequested, owner}]`. The board's cards carry the same. The feed and the
-board can keep only cards that need attention (CI failing or changes requested).
+url}], review, changesRequested, owner, ownerName}]`. The board's cards carry the same.
+`GET /api/board?attention=1` keeps only cards that need attention (CI failing or changes
+requested, while the PR is open): the board's **Needs attention** filter.
+
+## In the app
+
+- Each update shows a chip per PR, such as `#423 · CI failing · 1 change requested`: red when it
+  needs someone, amber while CI runs, green when it passes, the accent colour once merged. A tap
+  opens the PR. The board's cards show the same chips.
+- The board has a **Needs attention** filter.
+- **Settings → GitHub** lists the connected accounts. An owner connects one (GitHub opens in the
+  browser) or disconnects it. It shows only when the server has GitHub set up.
+- GitHub's thread lines show as short system lines, from "GitHub".
 
 ## The GitHub App
 

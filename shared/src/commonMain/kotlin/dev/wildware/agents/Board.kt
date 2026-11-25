@@ -50,6 +50,8 @@ data class BoardCardView(
     val canMove: Boolean = true,
     /** Who it is assigned to (server migration 074), oldest first. */
     val assignees: List<AssigneeView> = emptyList(),
+    /** Pull requests linked to it (server migration 079). */
+    val prs: List<PrView> = emptyList(),
 )
 
 @Serializable
@@ -73,9 +75,13 @@ sealed interface BoardScope {
  * The board for [scope]. With [column], only that column's next page after [after]. [removed] also
  * lists the finished cards taken off the board, marked as removed. [assigned] keeps the cards
  * assigned to "me", to nobody ("none"), or to one person or agent (a principal or a name).
+ * [attention] keeps the cards whose pull request has CI failing or changes requested (server 079).
  */
 @Throws(Exception::class)
-suspend fun DashboardClient.board(scope: BoardScope, removed: Boolean = false, column: String? = null, after: String? = null, limit: Int = 50, assigned: String? = null): BoardSnapshot =
+suspend fun DashboardClient.board(
+    scope: BoardScope, removed: Boolean = false, column: String? = null, after: String? = null, limit: Int = 50, assigned: String? = null,
+    attention: Boolean = false,
+): BoardSnapshot =
     http.get("api/board") {
         authorise()
         when (scope) {
@@ -87,6 +93,7 @@ suspend fun DashboardClient.board(scope: BoardScope, removed: Boolean = false, c
         if (column != null) parameter("column", column)
         if (after != null) parameter("after", after)
         if (assigned != null) parameter("assigned", assigned)
+        if (attention) parameter("attention", "1")
         parameter("limit", limit)
     }.decoded()
 

@@ -269,6 +269,7 @@ private fun FeedScreenBody(
             ui.editing?.let { EditMessageDialog(ui, it) }
             if (ui.alertsOpen) AlertSettingsSheet(ui, if (phone) safeArea else SafeArea())
             if (ui.retentionOpen) RetentionSettingsSheet(ui, if (phone) safeArea else SafeArea())
+            if (ui.githubOpen) GitHubSettingsSheet(ui, if (phone) safeArea else SafeArea())
             ui.projectDialog?.let { ProjectDialogView(ui, it) }
             ui.agentOpen?.let { AgentDialog(ui, it) }
             ui.personOpen?.let { PersonProfileDialog(ui, it) }

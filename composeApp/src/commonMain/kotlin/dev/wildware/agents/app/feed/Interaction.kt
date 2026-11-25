@@ -191,6 +191,9 @@ sealed interface FeedEvent {
     data class BoardMore(val status: WorkStatus) : FeedEvent
     /** Keep only the board's cards assigned to me, to nobody, or to one person or agent. */
     data class BoardAssigned(val filter: AssignedFilter) : FeedEvent
+
+    /** Only the cards whose pull request needs someone: CI failing or changes requested (server 079). */
+    data class BoardAttention(val on: Boolean) : FeedEvent
     /** "Assign…" on a card in the feed or its thread: the picker opens for it. */
     data class Assign(val targetId: String) : FeedEvent
     /** "Assign…" on a board card, or A on a focused one: the picker opens for it. */
@@ -203,6 +206,14 @@ sealed interface FeedEvent {
     data class SetAlertPrefs(val prefs: AlertPrefs?) : FeedEvent
     /** Read how long the dashboard keeps media again, after a read that failed. */
     data object ReadMediaRetention : FeedEvent
+    /** Read the team's GitHub again (server migration 079). */
+    data object ReadGitHub : FeedEvent
+    /** Ask the dashboard for GitHub's install page, to open in the browser. */
+    data object ConnectGitHub : FeedEvent
+    /** The install page was opened. */
+    data object GitHubPageOpened : FeedEvent
+    /** Unlink a GitHub installation from the team. */
+    data class DisconnectGitHub(val installationId: Long) : FeedEvent
     /** Read the team's plan and its limits, for Settings. */
     data object ReadPlan : FeedEvent
     /** Put away the "Upgrade" prompt a free-plan refusal raised. */
@@ -719,6 +730,8 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
     var alertsOpen by mutableStateOf(preview.alertsOpen)
     /** How long the dashboard keeps media. */
     var retentionOpen by mutableStateOf(preview.retentionOpen)
+    /** The team's GitHub: pull requests on cards. */
+    var githubOpen by mutableStateOf(false)
 
     /** The Devices sheet: every device signed in as the owner, to revoke a lost one. */
     var devicesOpen by mutableStateOf(preview.devicesOpen)

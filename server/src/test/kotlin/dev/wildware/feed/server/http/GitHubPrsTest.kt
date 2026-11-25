@@ -208,7 +208,7 @@ class GitHubPrsTest {
                 assertEquals("failing", pr(app, alpha)["ci"])
                 assertEquals(1, lines(app, alpha).size)
                 val red = lines(app, alpha).single()
-                assertTrue(red.startsWith("@rover CI failed on #42 (acme/app): build (android) — https://github.com/acme/app/runs/100"), red)
+                assertTrue(red.startsWith("CI failed on #42 (acme/app): build (android) — https://github.com/acme/app/runs/100\n@rover Please fix"), red)
                 hook("check_run", failing)
                 hook("check_run", checkRun(101, "lint", "a1", "completed", "timed_out"))
                 assertEquals(1, lines(app, alpha).size)
@@ -231,7 +231,7 @@ class GitHubPrsTest {
                 hook("check_run", checkRun(104, "build", "a1", "completed", "success"))
                 assertEquals("passing", pr(app, alpha)["ci"])
                 assertEquals(2, lines(app, alpha).size)
-                assertEquals("@rover CI is green again on #42 (acme/app).", lines(app, alpha)[1])
+                assertEquals("CI is green again on #42 (acme/app).\n@rover It passes now.", lines(app, alpha)[1])
                 // A late delivery of the old failed run can't make it red again.
                 hook("check_run", failing)
                 assertEquals("passing", pr(app, alpha)["ci"])
@@ -253,7 +253,8 @@ class GitHubPrsTest {
                 hook("pull_request_review", review(9, "changes_requested"))
                 assertEquals(4, lines(app, alpha).size)
                 val asked = lines(app, alpha)[3]
-                assertTrue(asked.startsWith("@rover Changes requested on #42 (acme/app) by sam"), asked)
+                assertTrue(asked.startsWith("Changes requested on #42 (acme/app) by sam — https://github.com/acme/app/pull/42#r9\n"), asked)
+                assertTrue(asked.endsWith("@rover Please address the review and push."), asked)
                 assertFalse("@rover's" in asked, "GitHub's own words must not @mention anyone: $asked")
                 assertEquals("changes_requested", pr(app, alpha)["review"])
                 tool(alpha, "set_status", buildJsonObject { put("update_id", alpha.updateId); put("status", "in_progress") })

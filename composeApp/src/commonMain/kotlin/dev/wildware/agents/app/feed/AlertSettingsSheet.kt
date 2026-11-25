@@ -136,6 +136,7 @@ fun AlertSettingsSheet(ui: FeedUi, safeArea: SafeArea) {
             // The hosted team's plan, then the dashboard's own settings, for whoever may change them.
             PlanEntry(ui)
             KeepMediaEntry(ui)
+            GitHubEntry(ui)
             SecretsEntry(ui)
             DevicesEntry(ui)
             PeopleEntry(ui)

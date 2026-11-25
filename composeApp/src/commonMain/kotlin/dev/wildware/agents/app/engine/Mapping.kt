@@ -78,6 +78,12 @@ import dev.wildware.agents.FeedState as EngineFeed
 /** The owner, as the screen shows them. The dashboard has no name for its owner. */
 internal val OwnerAuthor = Author.Owner("You")
 
+/** Who writes a line from GitHub about a linked PR (server migration 079): the message's author. */
+internal const val GitHubAuthor = "github"
+
+/** GitHub, drawn as an author of thread lines: never online, never a teammate to open. */
+internal val GitHubAgent = Agent(id = GitHubAuthor, name = "GitHub", role = "GitHub", presence = Presence.Offline, hue = 0)
+
 /**
  * Turns what the engine knows into what the feed screen draws. Pure: the same inputs always give
  * the same screen, so it is tested without a server or a screen.
@@ -291,6 +297,7 @@ internal class FeedMapper(
                 refs = update.refs.linked(agents, project, update.projectId),
                 blocks = update.blocks.cardBlocks(CardKinds.Update, update.id),
                 secrets = update.secrets.shared(CardKinds.Update, update.id),
+                prs = update.prs,
             )
         }
         is PostCard -> cardTime(createdAt, activityAt, post.message.editedAt).let { time -> FeedItem.Post(
@@ -467,7 +474,7 @@ internal class FeedMapper(
                 sending = line.sending,
                 uploaded = line.uploaded,
                 voice = line.message.isVoice,
-                assignment = line.message.source == "assignment" || line.message.source == "status",
+                assignment = line.message.source == "assignment" || line.message.source == "status" || line.message.source == GitHubAuthor,
                 undoUntil = line.undoUntil,
                 words = line.words,
                 questions = line.questions.map { it.toQuestion(agents, project, index) },
@@ -508,8 +515,11 @@ internal class FeedMapper(
     /** You, with your picture when you have one. */
     private fun owner(): Author.Owner = team.me?.avatarMediaId?.let { Author.Owner(OwnerAuthor.name, it) } ?: OwnerAuthor
 
-    private fun author(line: ThreadLine, agents: AgentDirectory): Author =
-        line.message.agentId?.let { Author.AgentAuthor(agents.agent(it, line.authorName)) } ?: person(line.message.personId)
+    private fun author(line: ThreadLine, agents: AgentDirectory): Author = when {
+        // A line from GitHub about a linked PR (server migration 079): GitHub's, not a person's.
+        line.message.author == GitHubAuthor -> Author.AgentAuthor(GitHubAgent)
+        else -> line.message.agentId?.let { Author.AgentAuthor(agents.agent(it, line.authorName)) } ?: person(line.message.personId)
+    }
 
     /** You, or another person by name ("Sam", "Sam (left)") on a team. */
     private fun person(id: String?): Author {

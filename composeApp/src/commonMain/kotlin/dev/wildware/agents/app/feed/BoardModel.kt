@@ -52,6 +52,8 @@ data class BoardCard(
     val canMove: Boolean = true,
     /** Who it is assigned to, oldest first (server migration 074). */
     val assignees: List<Assignee> = emptyList(),
+    /** Pull requests linked to it, with their CI and reviews (server migration 079). */
+    val prs: List<dev.wildware.agents.PrView> = emptyList(),
 ) {
     /** What a screen reader says for it. */
     val spoken: String
@@ -61,6 +63,7 @@ data class BoardCard(
             channel?.let { "in $it" },
             who?.let { if (whoMore > 0) "$it and $whoMore more on it" else "$it on it" },
             assignees.takeIf { it.isNotEmpty() }?.let { a -> "assigned to " + a.joinToString(", ") { it.name } },
+            prs.takeIf { it.isNotEmpty() }?.joinToString(", ") { it.label.replace(" · ", ", ") },
             "$age in ${boardColumnOf(status).label}",
             "$waiting waiting".takeIf { waiting > 0 },
             "removed from the board".takeIf { removed },
@@ -91,6 +94,8 @@ data class BoardState(
     val assigned: AssignedFilter = AssignedFilter.All,
     /** Everyone seen assigned on this board, for its filter chips. */
     val assignees: List<Assignee> = emptyList(),
+    /** Only the cards whose pull request needs someone: CI failing or changes requested. */
+    val attention: Boolean = false,
     val loaded: Boolean = false,
     val loading: Boolean = false,
     val problem: String? = null,
