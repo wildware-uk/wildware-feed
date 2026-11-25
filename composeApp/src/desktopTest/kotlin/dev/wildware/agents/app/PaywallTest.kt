@@ -149,7 +149,8 @@ class PaywallTest {
         feed(FakeFeed.state.copy(plan = PlanState(free, loaded = true), team = team("owner")), store, us = true)
         onNode(hasContentDescription("Team 5, 5 logins: Team $29.00 + Apple service charge $5.99 = $34.99 a month")).assertExists()
         onNode(hasContentDescription("Team 10, 10 logins: Team $59.00 + Apple service charge $10.99 = $69.99 a month")).assertExists()
-        onNode(hasText(Paywall.TRANSFER)).performClick()
+        onNode(hasText(Paywall.TRANSFER)).assertExists()
+        onNode(hasText(Paywall.TRANSFER_BUTTON)).performClick()
         waitForIdle()
         assertEquals(listOf("https://billing.test/teams/acme"), opened)
         onAllNodes(hasText(Paywall.SUBSCRIBE))[0].performClick()
@@ -158,10 +159,32 @@ class PaywallTest {
     }
 
     @Test
+    fun onAPhoneTheTransferLineIsShownWhole() = runComposeUiTest {
+        // An iPhone is 390 points wide: the sentence must wrap, not be cut off.
+        setContent {
+            CompositionLocalProvider(LocalUriHandler provides uris, LocalAppStore provides AppStoreUi(FakeStore(usd), MutableStateFlow(true))) {
+                AgentTheme(dark = true) {
+                    Box(Modifier.size(390.dp, 844.dp)) {
+                        FeedScreen(FakeFeed.state.copy(plan = PlanState(free, loaded = true), team = team("owner")), preview = ScreenPreview(paywallOpen = true), onEvent = { events += it })
+                    }
+                }
+            }
+        }
+        val node = onNode(hasText(Paywall.TRANSFER)).fetchSemanticsNode()
+        val layouts = mutableListOf<androidx.compose.ui.text.TextLayoutResult>()
+        node.config[androidx.compose.ui.semantics.SemanticsActions.GetTextLayoutResult].action!!.invoke(layouts)
+        val layout = layouts.single()
+        assertTrue(!layout.hasVisualOverflow, "the line is cut off")
+        assertEquals(Paywall.TRANSFER, layout.layoutInput.text.text)
+        onNode(hasText(Paywall.TRANSFER_BUTTON)).assertExists()
+    }
+
+    @Test
     fun elsewhereTheOwnerSeesOnlyThePricesAndNothingThatLeadsToTheWebsite() = runComposeUiTest {
         feed(FakeFeed.state.copy(plan = PlanState(free, loaded = true), team = team("owner")), FakeStore(gbp), us = false)
         onNode(hasContentDescription("Team 5, 5 logins: £34.99 a month, includes Apple's service charge")).assertExists()
         onNode(hasText(Paywall.TRANSFER)).assertDoesNotExist()
+        onNode(hasText(Paywall.TRANSFER_BUTTON)).assertDoesNotExist()
         val inPaywall = hasAnyAncestor(SemanticsMatcher.expectValue(SemanticsProperties.PaneTitle, Paywall.TITLE))
         onNode(hasText("15%", substring = true) and inPaywall).assertDoesNotExist()
         onNode(hasText("website", substring = true) and inPaywall).assertDoesNotExist()

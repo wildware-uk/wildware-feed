@@ -46,6 +46,8 @@ object Paywall {
     const val TITLE = "Upgrade to Team"
     const val LEAD = "Team gives you room for more people, as many agents as you like, more room for files, and all your history."
     const val TRANSFER = "Transfer your payment over to our website to save 15%"
+    /** The short button under [TRANSFER]: the sentence itself wraps, a button's text would not. */
+    const val TRANSFER_BUTTON = "Go to our website"
     const val SERVICE_CHARGE = "Apple service charge"
     const val INCLUDES = "includes Apple's service charge"
     const val MEMBERS = "Only the team's owner or an admin can change its plan."
@@ -193,7 +195,8 @@ fun PaywallSheet(ui: FeedUi, safeArea: SafeArea) {
             if (Paywall.canBuy(role) && plan != null && (plan.free || plan.paidByApple)) {
                 // The US App Store only (guidelines 3.1.1, 3.1.3): nowhere else may the app point to the website.
                 Paywall.transferLink(links, plan)?.let { url ->
-                    AppButton(Paywall.TRANSFER, ButtonTone.Secondary, icon = Icons.External) { runCatching { uris.openUri(url) } }
+                    Text(Paywall.TRANSFER, color = colors.text, style = AgentTheme.type.bodyStrong)
+                    AppButton(Paywall.TRANSFER_BUTTON, ButtonTone.Secondary, icon = Icons.External) { runCatching { uris.openUri(url) } }
                 }
                 Text(Paywall.FINE_PRINT, color = colors.textMuted, style = AgentTheme.type.body)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
