@@ -42,6 +42,7 @@ class ToolDiscoveryTest {
         dataDir = dir, adminPasswordHash = Passwords.hash("owner password"), sessionSecret = "s".repeat(32), tokenSecret = "t".repeat(32),
         publicBaseUrl = "http://127.0.0.1", maxImageBytes = 1_000_000, maxVideoBytes = 1_000_000, maxFileBytes = 1_000_000, holdSeconds = 1,
         apns = null, port = 0, host = "127.0.0.1", origin = "http://127.0.0.1",
+        secretsKeys = Config.SecretsKeys("k".repeat(40)),
     )
 
     private class Ctx(val app: App, val client: HttpClient) {
@@ -248,6 +249,47 @@ class ToolDiscoveryTest {
         assertContains(notObject.text(), "Invalid arguments for tool call_tool: Invalid input: expected record, received string at arguments")
         val noName = direct(scoutToken, "call_tool", JsonObject(emptyMap()))
         assertContains(noName.text(), "Invalid arguments for tool call_tool")
+    }
+
+    @Test
+    fun `call_tool runs forms, waits, secrets and uploads as the direct call does`() = withApp {
+        viaCall(scoutToken, "create_project", args("name" to "Web", "slug" to "web"))
+        fun form(question: String) = buildJsonObject {
+            put("kind", "form"); put("question", question); put("channel", "web")
+            put("fields", buildJsonArray {
+                add(buildJsonObject { put("id", "name"); put("label", "Name"); put("type", "text"); put("required", true) })
+                add(buildJsonObject { put("id", "size"); put("label", "Size"); put("type", "select"); put("options", buildJsonArray { add(JsonPrimitive("S")); add(JsonPrimitive("L")) }) })
+            })
+        }
+        fun same(through: JsonObject, direct: JsonObject) {
+            assertNull(through["isError"], through.toString())
+            assertNull(direct["isError"], direct.toString())
+            assertEquals(direct.data().keys, through.data().keys)
+        }
+        val asked = viaCall(scoutToken, "request_input", form("Which one?"))
+        same(asked, direct(scoutToken, "request_input", form("Which other?")))
+        val requestId = asked.data()["request_id"]!!.jsonPrimitive.content
+
+        // A long wait: await_request holds until the server's hold time, then says it is still pending.
+        val waited = viaCall(scoutToken, "await_request", args("request_id" to requestId))
+        assertEquals(direct(scoutToken, "await_request", args("request_id" to requestId)).data()["state"], waited.data()["state"])
+        assertNull(waited["isError"], waited.toString())
+
+        val secret = viaCall(scoutToken, "request_secret", args("name" to "STRIPE_KEY", "question" to "The Stripe key, please", "channel" to "web"))
+        same(secret, direct(scoutToken, "request_secret", args("name" to "OTHER_KEY", "question" to "Another key", "channel" to "web")))
+        assertEquals(direct(scoutToken, "secret_url", args("name" to "NO_SUCH")), viaCall(scoutToken, "secret_url", args("name" to "NO_SUCH")))
+
+        val upload = buildJsonObject { put("filename", "shot.png"); put("mime", "image/png"); put("bytes", 1000) }
+        same(viaCall(scoutToken, "create_upload", upload), direct(scoutToken, "create_upload", upload))
+    }
+
+    @Test
+    fun `the server does not promise tool list change notices it cannot send`() = withApp {
+        val init = buildJsonObject { put("protocolVersion", "2025-06-18"); put("capabilities", JsonObject(emptyMap())) }
+        for (path in listOf("/mcp", "/mcp?tools=all")) {
+            val tools = rpc(scoutToken, "initialize", init, path)["result"]!!.jsonObject["capabilities"]!!.jsonObject["tools"]!!.jsonObject
+            assertEquals(JsonPrimitive(false), tools["listChanged"], path)
+        }
     }
 
     @Test

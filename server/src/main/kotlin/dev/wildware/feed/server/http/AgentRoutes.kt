@@ -183,7 +183,10 @@ private suspend fun answer(app: App, agent: Agents.Agent, request: JsonObject, a
             val asked = params?.get("protocolVersion")?.jsonPrimitive?.contentOrNull
             result(buildJsonObject {
                 put("protocolVersion", JsonPrimitive(if (asked in Mcp.SUPPORTED) asked else Mcp.SUPPORTED.first()))
-                put("capabilities", buildJsonObject { put("tools", buildJsonObject { put("listChanged", JsonPrimitive(true)) }) })
+                // No listChanged: these are plain POSTs with no stream back, so the server could never
+                // send notifications/tools/list_changed. Plain /mcp's three tools never change anyway:
+                // list_tools answers from the live server, so a new tool is usable without a restart.
+                put("capabilities", buildJsonObject { put("tools", buildJsonObject { put("listChanged", JsonPrimitive(false)) }) })
                 put("serverInfo", buildJsonObject { put("name", JsonPrimitive("agent-dashboard")); put("version", JsonPrimitive("0.1.0")) })
                 put("instructions", JsonPrimitive(if (all) instructionsAll else instructions))
             })
