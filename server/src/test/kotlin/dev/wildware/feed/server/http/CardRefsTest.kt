@@ -171,7 +171,7 @@ class CardRefsTest {
             .o("update").s("id")!!
         val items = read(c.key, "/api/snapshot/updates").o("updates").a("items")
         val byId = items.associateBy { it.jsonObject.s("id") }
-        assertEquals(listOf("refs", "blocks", "secrets"), byId[later]!!.jsonObject.keys.toList().takeLast(3), "then secrets (migration 066)")
+        assertEquals(listOf("refs", "blocks", "secrets", "prs"), byId[later]!!.jsonObject.keys.toList().takeLast(4), "then secrets (migration 066), then pull requests (079)")
         assertEquals("see these", byId[later]!!.jsonObject.a("refs").single().jsonObject.s("text"))
         assertEquals(JsonArray(emptyList()), byId[update]!!.jsonObject["refs"], "an update that points at nothing has an empty list")
     }

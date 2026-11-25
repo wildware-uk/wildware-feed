@@ -246,17 +246,16 @@ class CardPrs(private val feed: Feed) {
         /** Each update's PRs in [ids], oldest linked first, as reads show them. */
         fun views(db: Database, ids: List<String>): Map<String, List<JsonObject>> {
             if (ids.isEmpty()) return emptyMap()
-            val rows = rowsFor(db, ids)
-            if (rows.isEmpty()) return emptyMap()
-            val names = db.query("SELECT id, name FROM agents WHERE team_id = :team") { it.getString(1) to it.getString(2) }.toMap()
-            return rows.groupBy { it.updateId }.mapValues { (_, prs) -> prs.map { it.json(it.ownerAgent?.let(names::get)) } }
-        }
-
-        fun rowsFor(db: Database, ids: List<String>): List<Row> = ids.distinct().chunked(CHUNK).flatMap { chunk ->
-            db.query(
-                "SELECT $COLUMNS FROM card_prs WHERE team_id = :team AND update_id IN (${chunk.joinToString(", ") { "?" }}) ORDER BY seq",
-                *chunk.toTypedArray(),
-            ) { row(it) }
+            // One query for the page, whatever its size: each PR with its owner's name.
+            val rows = ids.distinct().chunked(CHUNK).flatMap { chunk ->
+                db.query(
+                    "SELECT ${COLUMNS.split(", ").joinToString(", ") { "p.$it" }}, a.name AS owner_name FROM card_prs AS p " +
+                        "LEFT JOIN agents AS a ON a.team_id = p.team_id AND p.owner = 'agent:' || a.id " +
+                        "WHERE p.team_id = :team AND p.update_id IN (${chunk.joinToString(", ") { "?" }}) ORDER BY p.seq",
+                    *chunk.toTypedArray(),
+                ) { row(it) to it.getString("owner_name") }
+            }
+            return rows.groupBy { it.first.updateId }.mapValues { (_, prs) -> prs.map { (r, name) -> r.json(name) } }
         }
 
         internal fun row(rs: ResultSet) = Row(
