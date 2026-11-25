@@ -120,6 +120,15 @@ Places where the Kotlin server cannot match the TS server exactly, kept small an
 - **Thumbnails** are WebP at quality 80, but made by ffmpeg's libwebp rather than sharp, so their
   bytes differ; widths, heights, variants and types match. Without ffmpeg an image is `ready` with
   only `original`. An animated WebP original fails to derive (ffmpeg cannot decode it).
+- **Video playback copies** (migration 078): every video gets an mp4 of at most 1280x720
+  (`playback.mp4`, H.264 `-crf 23 -maxrate 2500k -bufsize 5000k`, AAC, faststart), served as the
+  `video` variant, so phones stream a small file. One that won't play as uploaded is ready once it is
+  made, in place of the TS server's full-size `video.mp4`; one that will (h264 mp4) is ready with its
+  poster as before and gets its copy afterwards, when no upload is waiting. Videos from before get
+  theirs the same way, once each (`media.playback_tried_at`), newest first (`PlaybackCopyTest`).
+- **Media from the edge** (MEDIA_EDGE_URL, docs/HOSTING.md §4): `/media/<id>/<variant>` makes every
+  check it always made, then answers `302` to a signed link on the edge Worker (`media-edge/`)
+  instead of the bytes. `/api/agent/media/<id>` still sends the bytes (`MediaEdgeTest`).
 - **Notification text** (iOS alert bodies) is made from markdown with commonmark-java instead of
   markdown-it. Ordinary markdown gives the same text; unusual constructs may differ.
 

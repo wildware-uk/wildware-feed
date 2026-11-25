@@ -17,8 +17,8 @@ class DatabaseTest {
         // 60 the owner adds and removes agents, 61 send keys, 62 one-time codes know their email, 63 a repeat send is found fast,
         // 64 a team takes over home, 65 a message knows it was spoken, 66 a secret shared in a thread, 67 feedback,
         // 68 per channel and per project permissions, 69 channels and projects keep their order,
-        // 70 the board, 71 people delete their own account, 72 row security covers later tables, 73 a removed person's agents are revoked, 74 work is assigned, 75 teams have a plan, 76 channels keep docs, 77 members describe themselves.
-        assertEquals((1..77).toList(), Migrations.all.map { it.version })
+        // 70 the board, 71 people delete their own account, 72 row security covers later tables, 73 a removed person's agents are revoked, 74 work is assigned, 75 teams have a plan, 76 channels keep docs, 77 members describe themselves, 78 videos get a playback copy.
+        assertEquals((1..78).toList(), Migrations.all.map { it.version })
         for (m in Migrations.all) assertEquals(m.checksum, Migrations.checksum(m.sql), "migration ${m.version}")
         assertEquals(listOf(16, 25, 26, 31, 34, 38), Migrations.all.filter { it.rebuildsTables }.map { it.version })
     }

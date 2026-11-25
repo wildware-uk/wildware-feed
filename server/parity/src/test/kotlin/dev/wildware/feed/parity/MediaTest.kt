@@ -242,7 +242,12 @@ class MediaTest : ParityTest() {
         val (_, mp4) = readyOnUpdate(Media.clip("mp4", 1.0), "clip.mp4", "video/mp4")
         assertEquals("ready", mp4["status"].s)
         assertEquals("video", mp4["kind"].s)
-        assertEquals(arr("original", "poster"), mp4["variants"])
+        // The Kotlin server also makes every video a playback copy (`video`), after it is ready (migration 078).
+        if (Parity.kotlin) {
+            assertTrue(mp4["variants"].arr.map { it.s }.containsAll(listOf("original", "poster")), mp4["variants"].toString())
+        } else {
+            assertEquals(arr("original", "poster"), mp4["variants"])
+        }
         assertTrue(mp4["durationMs"].int in 900..1100, "duration ${mp4["durationMs"]}")
         val poster = owner.get("/media/${mp4["id"].s}/poster")
         assertEquals("image/jpeg", poster.headers[HttpHeaders.ContentType])

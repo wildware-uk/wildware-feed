@@ -184,5 +184,11 @@
   "name": "members-describe-themselves",
   "file": "077-members-describe-themselves.sql",
   "checksum": "eaa20981e8221d84f35b1d6d9ada1af62abc454c1339915a89d906ae934011b1"
+ },
+ {
+  "version": 78,
+  "name": "video-playback-copy",
+  "file": "078-video-playback-copy.sql",
+  "checksum": "73bcc0af03eed69b85e7ae4d5c083b538ccdff08e58ebaa66b600cfda6d99dfe"
  }
 ]

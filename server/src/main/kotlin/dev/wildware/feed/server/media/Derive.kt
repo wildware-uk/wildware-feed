@@ -113,8 +113,10 @@ class FfmpegTools(
 
 /**
  * Turning uploaded originals into what cards show (spec/07 §5): WebP thumbnails at 640 and 1600 px
- * for images, a poster (and an mp4 when the original will not play in a browser) for video, a
- * duration for audio. Thumbnails are encoded by ffmpeg's libwebp at quality 80 after undoing the EXIF
+ * for images, a poster and a playback copy for video (an mp4 of at most 1280x720, see [playbackArgs]),
+ * a duration for audio. A video that already plays in a browser is ready with its poster and gets
+ * its playback copy after, when nothing else is waiting ([tick]); one that doesn't is ready once
+ * its copy is made. Thumbnails are encoded by ffmpeg's libwebp at quality 80 after undoing the EXIF
  * orientation, so their bytes differ from the TS server's but their sizes and types do not. Without
  * ffmpeg, an image is ready with its original only (spec/README.md, known differences).
  */
@@ -142,6 +144,12 @@ class Derive(
     /** How many of each team's media are queued or being derived now. */
     private val inFlight = ConcurrentHashMap<String, java.util.concurrent.atomic.AtomicInteger>()
 
+    /** How many jobs are queued or running, every team's: playback copies wait for none. */
+    private val running = java.util.concurrent.atomic.AtomicInteger()
+
+    /** Teams found with no playback copy to make, until when they aren't asked again. */
+    private val playbackIdleUntil = ConcurrentHashMap<String, Long>()
+
     /** For tests: told the team and how many of its media are in flight, each time one is queued. */
     internal var onQueued: ((team: String, inFlight: Int) -> Unit)? = null
 
@@ -158,21 +166,80 @@ class Derive(
         var added = 0
         for (id in ids) {
             if (added >= room) break
-            if (!queued.add(id)) continue
+            if (!queue(team, id, count) { process(id) }) continue
             added++
-            onQueued?.invoke(team, count.incrementAndGet())
-            pool.execute {
-                try {
-                    // The worker thread works for the team that queued it.
-                    Tenant.with(team) { process(id) }
-                } catch (e: Exception) {
-                    System.err.println("derive $id failed: $e")
-                } finally {
-                    queued.remove(id)
-                    count.decrementAndGet()
-                }
+        }
+        // Playback copies come last: one at a time, only while no upload anywhere is waiting. A team
+        // with none to make is asked again in a while, or as soon as it has something new.
+        if (ids.isNotEmpty()) {
+            playbackIdleUntil.remove(team)
+        } else if (running.get() == 0 && clock() >= (playbackIdleUntil[team] ?: 0L)) {
+            val id = nextPlayback()
+            if (id == null) playbackIdleUntil[team] = clock() + PLAYBACK_IDLE_MS else queue(team, id, count) { playback(id) }
+        }
+    }
+
+    /** Runs [job] for [team] on the pool, unless [id] is queued already. */
+    private fun queue(team: String, id: String, count: java.util.concurrent.atomic.AtomicInteger, job: () -> Unit): Boolean {
+        if (!queued.add(id)) return false
+        running.incrementAndGet()
+        onQueued?.invoke(team, count.incrementAndGet())
+        pool.execute {
+            try {
+                // The worker thread works for the team that queued it.
+                Tenant.with(team) { job() }
+            } catch (e: Exception) {
+                System.err.println("derive $id failed: $e")
+            } finally {
+                queued.remove(id)
+                count.decrementAndGet()
+                running.decrementAndGet()
             }
         }
+        return true
+    }
+
+    /**
+     * The newest ready video of this team with no playback copy of 720p or less, not tried before
+     * (migration 078): one made before every video had one, or one that plays as uploaded.
+     */
+    internal fun nextPlayback(): String? = db.one(
+        "SELECT m.id FROM media AS m WHERE m.team_id = :team AND m.kind = 'video' AND m.status = 'ready' AND m.sha256 <> '' " +
+            "AND m.removed_at IS NULL AND m.playback_tried_at IS NULL AND NOT EXISTS (" +
+            "SELECT 1 FROM derivatives AS d WHERE d.team_id = :team AND d.media_id = m.id AND d.kind = 'mp4' AND " +
+            "((d.width <= $PLAYBACK_LONG AND d.height <= $PLAYBACK_SHORT) OR (d.width <= $PLAYBACK_SHORT AND d.height <= $PLAYBACK_LONG))" +
+            ") ORDER BY m.seq DESC LIMIT 1",
+    ) { it.getString(1) }
+
+    /**
+     * Makes a ready video's playback copy and puts it in place of any older mp4 (which is then
+     * removed). Tried once, whatever happens, so a video that can't be converted isn't tried again.
+     */
+    fun playback(id: String) {
+        val claimed = db.update("UPDATE media SET playback_tried_at = ? WHERE team_id = :team AND id = ? AND playback_tried_at IS NULL", clock(), id)
+        if (claimed == 0) return
+        val media = db.one("SELECT id, kind, mime, sha256, status FROM media WHERE team_id = :team AND id = ? AND removed_at IS NULL", id) {
+            Row(it.getString(1), it.getString(2), it.getString(3), it.getString(4), it.getString(5))
+        } ?: return
+        if (media.kind != "video" || media.status != "ready" || media.sha256.isEmpty() || !tools.available || !Mime.isAllowed(media.mime)) return
+        val older = db.query("SELECT path FROM derivatives WHERE team_id = :team AND media_id = ? AND kind = 'mp4'", id) { it.getString(1) }
+        val made = try {
+            withFiles(media) { source, work -> Measured(listOf(playbackCopy(source, work)), null, null, null) }
+        } catch (e: Exception) {
+            System.err.println("playback copy $id failed: ${reason(e)}")
+            return
+        }
+        val copy = made.files.single()
+        val path = paths.relative(id, copy.name)
+        db.update("DELETE FROM derivatives WHERE team_id = :team AND media_id = ? AND kind = 'mp4' AND path <> ?", id, path)
+        db.update(
+            "INSERT INTO derivatives (team_id, id, media_id, kind, path, bytes, width, height) VALUES (:team, ?, ?, ?, ?, ?, ?, ?) " +
+                "ON CONFLICT (media_id, kind, coalesce(width, -1)) DO UPDATE SET path = excluded.path, bytes = excluded.bytes, height = excluded.height",
+            Ulid.next(clock()), id, copy.kind, path, copy.bytes, copy.width, copy.height,
+        )
+        for (old in older) if (old != path) runCatching { paths.store.delete(old) }
+        // Tells the apps the card's media changed, so they switch to the copy.
+        ready(id, null, null, null)
     }
 
     fun close() = pool.shutdownNow()
@@ -357,24 +424,55 @@ class Derive(
         if (!wrote) throw IllegalStateException("ffmpeg produced no poster frame from this video")
         val posterDims = runCatching { javax.imageio.ImageIO.read(poster.toFile())?.let { it.width to it.height } }.getOrNull()
         files += Produced("poster", posterDims?.first ?: probe.width, posterDims?.second ?: probe.height, "poster.jpg", Files.size(poster))
-        if (!FfmpegTools.webPlayable(media.mime, probe)) {
-            val video = work.resolve("video.mp4")
-            tools.ffmpeg(
-                listOf(
-                    "-y", "-i", source.toString(), "-map", "0:v:0", "-map", "0:a?", "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
-                    "-pix_fmt", "yuv420p", "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2", "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart",
-                    video.toString(),
-                ),
-            )
-            if (!Files.isRegularFile(video) || Files.size(video) == 0L) throw IllegalStateException("ffmpeg produced no mp4 from this video")
-            val transcoded = tools.probe(video)
-            files += Produced("mp4", transcoded.width, transcoded.height, "video.mp4", Files.size(video))
-        }
+        // One that plays as uploaded is ready now; its playback copy is made after ([tick]).
+        if (!FfmpegTools.webPlayable(media.mime, probe)) files += playbackCopy(source, work)
         return Measured(files, probe.width ?: posterDims?.first, probe.height ?: posterDims?.second, probe.durationMs)
+    }
+
+    private fun playbackCopy(source: Path, work: Path): Produced {
+        val video = work.resolve(PLAYBACK_NAME)
+        tools.ffmpeg(playbackArgs(source, video))
+        if (!Files.isRegularFile(video) || Files.size(video) == 0L) throw IllegalStateException("ffmpeg produced no mp4 from this video")
+        val transcoded = tools.probe(video)
+        return Produced("mp4", transcoded.width, transcoded.height, PLAYBACK_NAME, Files.size(video))
     }
 
     companion object {
         val THUMB_WIDTHS = listOf(640, 1600)
+
+        /**
+         * The playback copy's name. Not `video.mp4`, the full-size transcode older servers made: a
+         * new name is a new key, so nothing cached under the old one is mistaken for it.
+         */
+        const val PLAYBACK_NAME = "playback.mp4"
+
+        /** The playback copy fits in 1280x720, or 720x1280 when the video stands upright. */
+        const val PLAYBACK_LONG = 1280
+        const val PLAYBACK_SHORT = 720
+
+        /** How long a team with no playback copy to make waits before it is asked again. */
+        const val PLAYBACK_IDLE_MS = 60_000L
+
+        /**
+         * Scales to fit [PLAYBACK_LONG] by [PLAYBACK_SHORT] either way up, never enlarging, keeping
+         * the shape, to even sides (H.264 needs them). ffmpeg has already turned the frames upright.
+         */
+        val PLAYBACK_SCALE: String = run {
+            val f = "min(1,min($PLAYBACK_LONG/max(iw,ih),$PLAYBACK_SHORT/min(iw,ih)))"
+            "scale=w='max(2,2*trunc(iw*$f/2))':h='max(2,2*trunc(ih*$f/2))'"
+        }
+
+        /**
+         * H.264 and AAC in an mp4 with its index first (it starts playing before it has all arrived),
+         * at a quality ffmpeg picks (`-crf 23`) but never over 2.5 Mbit/s, so a phone streams it
+         * smoothly. `veryfast` keeps a one-thread worker from taking all day.
+         */
+        fun playbackArgs(source: Path, target: Path): List<String> = listOf(
+            "-y", "-i", source.toString(), "-map", "0:v:0", "-map", "0:a?",
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-maxrate", "2500k", "-bufsize", "5000k", "-pix_fmt", "yuv420p",
+            "-vf", PLAYBACK_SCALE, "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart",
+            target.toString(),
+        )
 
         /** A profile picture's side, in pixels (migration 077). */
         const val AVATAR_SIZE = 256
