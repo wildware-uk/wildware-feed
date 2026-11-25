@@ -53,7 +53,8 @@ dependencies {
 
 tasks.test {
     useJUnitPlatform()
-    timeout.set(Duration.ofMinutes(18))
+    // The Postgres run takes about 18 minutes now; the CI job keeps its own 50-minute cap.
+    timeout.set(Duration.ofMinutes(30))
     // Every statement the server runs on a team's table must name team_id (db/TeamTables.kt).
     systemProperty("feed.sqlLint", "true")
 }

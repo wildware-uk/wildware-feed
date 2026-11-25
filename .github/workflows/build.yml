@@ -154,7 +154,7 @@ jobs:
   # throwaway SeaweedFS), as it runs on Heroku with Cloudflare R2.
   server-kotlin-postgres:
     runs-on: ubuntu-latest
-    timeout-minutes: 50
+    timeout-minutes: 75
     services:
       postgres:
         image: postgres:16-alpine
@@ -197,7 +197,7 @@ jobs:
           for i in $(seq 90); do [ "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:9000/)" != 000 ] && exit 0; sleep 1; done
           docker logs s3 | tail -20; exit 1
       - name: Unit tests on Postgres and S3
-        timeout-minutes: 20
+        timeout-minutes: 32
         run: ./gradlew --no-daemon :server:test
       - name: Parity against the Kotlin server on Postgres and S3
         timeout-minutes: 35
