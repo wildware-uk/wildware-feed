@@ -24,7 +24,7 @@ jobs:
       ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
       ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Ask Apple for the certificate
         timeout-minutes: 2
         env:
@@ -40,7 +40,7 @@ jobs:
           mkdir -p out
           python3 .github/scripts/asc.py create-cert "$RUNNER_TEMP/request.csr" out/signing.cer
           rm -f "$ASC_KEY_PATH"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: signing-certificate
           path: out/signing.cer

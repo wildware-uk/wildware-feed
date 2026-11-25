@@ -33,7 +33,7 @@ jobs:
           ffmpeg -loglevel error -f lavfi -i testsrc=size=2560x1440:rate=30 -f lavfi -i sine=f=440:sample_rate=48000 -t 12 $enc -crf 23 screen1440p.mp4
           ffmpeg -loglevel error -f lavfi -i testsrc2=size=1920x1080:rate=30 -f lavfi -i sine=f=440:sample_rate=48000 -t 120 $enc -crf 28 -movflags +faststart long1080p30.mp4
           ls -la
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         timeout-minutes: 5
         with:
           name: clips
@@ -48,13 +48,13 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: 21
-      - uses: gradle/actions/setup-gradle@v4
-      - uses: actions/download-artifact@v4
+      - uses: gradle/actions/setup-gradle@v6
+      - uses: actions/download-artifact@v8
         timeout-minutes: 5
         with:
           name: clips
@@ -77,7 +77,7 @@ jobs:
         shell: bash
         run: cat composeApp/build/video-bench.txt || true
       - if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         timeout-minutes: 5
         with:
           name: video-bench-${{ matrix.os }}

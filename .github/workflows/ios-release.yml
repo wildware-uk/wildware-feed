@@ -50,7 +50,7 @@ jobs:
       version: ${{ steps.version.outputs.version }}
       build: ${{ steps.version.outputs.build }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Check the secrets are there
         timeout-minutes: 1
@@ -154,12 +154,12 @@ jobs:
       SENTRY_DSN_APP: ${{ secrets.SENTRY_DSN_APP }}
       SENTRY_ENVIRONMENT: production
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: 21
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
 
       - run: brew install xcodegen
         timeout-minutes: 5
@@ -369,7 +369,7 @@ jobs:
 
       - name: Keep the .ipa
         if: github.event.inputs.upload == 'false'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         timeout-minutes: 5
         with:
           name: Wildware-Feed-${{ needs.check.outputs.version }}-${{ needs.check.outputs.build }}-ipa
@@ -452,7 +452,7 @@ jobs:
           true
 
       - if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         timeout-minutes: 5
         with:
           name: xcodebuild-logs
@@ -469,7 +469,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Set What to Test
         timeout-minutes: 25
         env:
