@@ -225,6 +225,9 @@ fun AgentsApp(
                         LocalSounds provides platform.sounds.takeIf { it.available },
                         LocalTeams provides teamsUi.takeIf { !screen.demo },
                         LocalTourSeen provides tour,
+                        dev.wildware.agents.app.feed.LocalAppStore provides remember(platform) {
+                            platform.appStore?.let { dev.wildware.agents.app.feed.AppStoreUi(it, platform.buyingLinks) }
+                        },
                     ) {
                         FeedScreen(state, safeArea, navigator = navigator, onAwayFromTop = session::holdArrivals) { event ->
                             when (event) {

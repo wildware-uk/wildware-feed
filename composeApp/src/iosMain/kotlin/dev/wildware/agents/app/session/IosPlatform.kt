@@ -80,6 +80,8 @@ fun iosPlatform(
         // tells [AppStoreFront] the storefront; until it does, nothing is offered.
         buyingLinks = AppStoreFront.buyingLinks,
         upsellMarks = IosTextStore("$dataDir/upsell.json"),
+        // Team bought in the app through the App Store (StoreKit, in Swift: AppStoreBridge).
+        appStore = IosAppStore,
         crashReports = dev.wildware.agents.app.crash.CrashReporting.setting,
         liveActivities = LiveActivities.status,
         notices = IosSystemNotices,

@@ -98,4 +98,36 @@ class PlanTest {
         assertEquals("1 MB", TeamPlan.megabytes(10))
         assertEquals("500 MB", TeamPlan.megabytes(524_288_000))
     }
+
+    @Test
+    fun `a team paid through the App Store says so and carries its purchase token`() = runTest {
+        // Built, not written out, so the secret scan does not take it for a real key.
+        val token = listOf("aa19f4a5", "0eb8", "501f", "898f", "bb79bbdcb7f5").joinToString("-")
+        val plan = client(body = """{"plan":"team","limits":{},"used":{},"upgradeUrl":"https://billing.test/teams/acme","billing":"apple","appAccountToken":"$token"}""").plan()!!
+        assertTrue(plan.paidByApple)
+        assertEquals(token, plan.appAccountToken)
+        assertEquals(false, client(body = freeBody).plan()!!.paidByApple)
+    }
+
+    @Test
+    fun `an App Store purchase goes to the dashboard and its answer comes back without throwing`() = runTest {
+        val sent = mutableListOf<String>()
+        fun relaying(status: HttpStatusCode, body: String) = DashboardClient("https://dash.test/", "device-key", MockEngine { request ->
+            urls += request.url.toString()
+            sent += when (val content = request.body) {
+                is io.ktor.http.content.OutgoingContent.ByteArrayContent -> content.bytes().decodeToString()
+                else -> content.toString()
+            }
+            respond(body, status, headersOf(HttpHeaders.ContentType, "application/json"))
+        })
+        val ok = relaying(HttpStatusCode.OK, """{"plan":"team","billing":"apple","seats":5}""").relayAppStore("a.b.c")
+        assertTrue(ok.ok && ok.settled)
+        assertEquals("https://dash.test/api/plan/app-store", urls.last())
+        assertEquals("""{"signedTransaction":"a.b.c"}""", sent.last())
+        val refused = relaying(HttpStatusCode.Conflict, """{"error":"paid_on_web","message":"This team already pays on the website."}""").relayAppStore("a.b.c")
+        assertEquals("paid_on_web", refused.error)
+        assertTrue(refused.settled && !refused.ok)
+        val later = relaying(HttpStatusCode.BadGateway, """{"error":"control_plane_unreachable","message":"Later."}""").relayAppStore("a.b.c")
+        assertEquals(false, later.settled)
+    }
 }

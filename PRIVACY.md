@@ -94,7 +94,10 @@ We use it only to run the service: we don't sell it, use it for advertising or u
 models. It is
 kept while your team exists and deleted with it. The team's owner can delete the team from their
 account page, and anyone can ask us to delete their data by opening an issue (below) or writing to
-the team's owner. Buying and billing for a hosted team happen on our website, never in the app.
+the team's owner. Buying and billing for a hosted team happen on our website, or in the iPhone app
+through Apple's in-app purchase. Bought in the app, Apple takes the payment; we keep which App Store
+subscription pays for which team, which plan it is and when it renews or ends, never your card or
+your Apple ID.
 
 ## Permissions
 

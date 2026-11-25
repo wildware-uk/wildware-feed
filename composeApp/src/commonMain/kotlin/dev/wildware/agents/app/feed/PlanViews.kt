@@ -32,9 +32,9 @@ import dev.wildware.agents.app.design.Icons
 
 /**
  * The team's plan in Settings, for a hosted team: "Free plan" with its limits and what is used,
- * and, for an owner or admin where the app may link to buying ([Upsell]), a note once files are
- * nearly full and "Upgrade", which opens the billing site in the browser (nothing is bought in the
- * app); or just "Team plan". Nothing at all on a self-hosted dashboard, which has no plan.
+ * and, for an owner or admin where Team may be offered ([Upsell]), a note once files are nearly
+ * full and "Upgrade": the billing site in the browser, or on iPhone the App Store paywall
+ * ([PaywallSheet]); or just "Team plan", with "Manage subscription" when the App Store bills it. Nothing at all on a self-hosted dashboard, which has no plan.
  */
 @Composable
 internal fun PlanEntry(ui: FeedUi) {
@@ -48,13 +48,42 @@ internal fun PlanEntry(ui: FeedUi) {
         Text(plan.title, color = colors.text, style = AgentTheme.type.bodyStrong)
         for (line in plan.lines) Text(line, color = colors.textMuted, style = AgentTheme.type.body)
         val url = offer?.let(::upgradeLink)
-        if (url != null) {
+        val upgrade = rememberUpgrade(url)
+        if (url != null && upgrade != null) {
             Upsell.storageNote(offer)?.let { Text(it, color = colors.text, style = AgentTheme.type.body) }
-            val uris = LocalUriHandler.current
-            AppButton("Upgrade", ButtonTone.Primary, Modifier.padding(top = 6.dp), icon = Icons.External) { runCatching { uris.openUri(url) } }
+            AppButton("Upgrade", ButtonTone.Primary, Modifier.padding(top = 6.dp), icon = upgradeIcon()) { upgrade() }
+        }
+        // Paid through the App Store: changed or cancelled there, by whoever may buy.
+        val store = LocalAppStore.current
+        if (plan.paidByApple && Paywall.canBuy(ui.state.team.me?.role)) {
+            Text("Paid through the App Store.", color = colors.textMuted, style = AgentTheme.type.body)
+            if (store != null) AppButton(Paywall.MANAGE, ButtonTone.Secondary, Modifier.padding(top = 6.dp)) { store.store.manage() }
         }
     }
 }
+
+/**
+ * Opens the paywall where the app sells Team itself (the iPhone, through the App Store): set where
+ * the feed is drawn, null elsewhere.
+ */
+val LocalOpenPaywall = androidx.compose.runtime.staticCompositionLocalOf<(() -> Unit)?> { null }
+
+/**
+ * What "Upgrade" does: the paywall where the app sells Team itself (iPhone, [LocalOpenPaywall]),
+ * else the billing site at [url] in the browser. Null when there is nothing to do.
+ */
+@Composable
+internal fun rememberUpgrade(url: String?): (() -> Unit)? {
+    val paywall = LocalOpenPaywall.current
+    val uris = LocalUriHandler.current
+    if (paywall != null) return paywall
+    if (url == null) return null
+    return { runCatching { uris.openUri(url) } }
+}
+
+/** The "opens elsewhere" mark on "Upgrade", only when it opens the browser. */
+@Composable
+private fun upgradeIcon() = if (LocalOpenPaywall.current == null) Icons.External else null
 
 /**
  * A slim note about the plan: [text], "Upgrade" to [url] when there is one, and a close button
@@ -64,7 +93,7 @@ internal fun PlanEntry(ui: FeedUi) {
 internal fun PlanNote(text: String, url: String?, modifier: Modifier = Modifier, onDismiss: (() -> Unit)? = null) {
     val colors = AgentTheme.colors
     val shape = AgentTheme.shapes.medium
-    val uris = LocalUriHandler.current
+    val upgrade = rememberUpgrade(url)
     Row(
         modifier
             .fillMaxWidth()
@@ -76,8 +105,8 @@ internal fun PlanNote(text: String, url: String?, modifier: Modifier = Modifier,
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(text, Modifier.weight(1f).padding(vertical = 6.dp), color = colors.text, style = AgentTheme.type.body)
-        if (url != null) {
-            AppButton("Upgrade", ButtonTone.Secondary, Modifier.padding(start = 8.dp), icon = Icons.External) { runCatching { uris.openUri(url) } }
+        if (url != null && upgrade != null) {
+            AppButton("Upgrade", ButtonTone.Secondary, Modifier.padding(start = 8.dp), icon = upgradeIcon()) { upgrade() }
         }
         if (onDismiss != null) IconAction(Icons.Close, "Hide", onClick = onDismiss)
     }
@@ -125,9 +154,9 @@ fun UpsellPopup(ui: FeedUi, safeArea: SafeArea) {
     val refusal by remember(ui) { derivedStateOf { ui.state.upgrade } }
     val offer = upsell.offer?.takeIf { upsell.popup && refusal == null } ?: return
     val url = upgradeLink(offer) ?: return
+    val upgrade = rememberUpgrade(url) ?: return
     val colors = AgentTheme.colors
     val shape = AgentTheme.shapes.large
-    val uris = LocalUriHandler.current
     Box(Modifier.fillMaxSize().padding(bottom = safeArea.bottom + 24.dp), contentAlignment = Alignment.BottomCenter) {
         Column(
             Modifier
@@ -146,8 +175,8 @@ fun UpsellPopup(ui: FeedUi, safeArea: SafeArea) {
                 for (line in Upsell.popupLines(offer)) Text("•  $line", color = colors.textMuted, style = AgentTheme.type.body)
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                AppButton("Upgrade", ButtonTone.Primary, icon = Icons.External) {
-                    runCatching { uris.openUri(url) }
+                AppButton("Upgrade", ButtonTone.Primary, icon = upgradeIcon()) {
+                    upgrade()
                     ui.emit(FeedEvent.DismissUpsell)
                 }
                 AppButton("Not now", ButtonTone.Quiet) { ui.emit(FeedEvent.DismissUpsell) }
@@ -175,8 +204,8 @@ fun UpgradePrompt(ui: FeedUi, safeArea: SafeArea) {
     val hit = refusal ?: return
     val colors = AgentTheme.colors
     val shape = AgentTheme.shapes.large
-    val uris = LocalUriHandler.current
     val url = upgradeLink(hit)
+    val upgrade = rememberUpgrade(url)
     // With nowhere to upgrade (a member, an iPhone outside the US App Store) it names no plan.
     val title = if (url != null) "The free plan is full" else "No room for that"
     Box(Modifier.fillMaxSize().padding(bottom = safeArea.bottom + 24.dp), contentAlignment = Alignment.BottomCenter) {
@@ -195,9 +224,9 @@ fun UpgradePrompt(ui: FeedUi, safeArea: SafeArea) {
             Text(title, color = colors.text, style = AgentTheme.type.bodyStrong)
             Text(hit.message, Modifier.semantics { liveRegion = LiveRegionMode.Polite }, color = colors.textMuted, style = AgentTheme.type.body)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                if (url != null) {
-                    AppButton("Upgrade", ButtonTone.Primary, icon = Icons.External) {
-                        runCatching { uris.openUri(url) }
+                if (url != null && upgrade != null) {
+                    AppButton("Upgrade", ButtonTone.Primary, icon = upgradeIcon()) {
+                        upgrade()
                         ui.emit(FeedEvent.DismissUpgrade)
                     }
                 }

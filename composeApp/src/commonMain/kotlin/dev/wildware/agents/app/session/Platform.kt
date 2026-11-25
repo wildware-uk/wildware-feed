@@ -60,14 +60,20 @@ class AppPlatform(
      */
     val linksToSignUp: Boolean = true,
     /**
-     * Whether the app may offer the Team plan and link to buying it on the website ([Upsell]). True
-     * on desktop, Android and the web. In the iPhone and iPad app, only while the App Store
-     * storefront is the United States: guidelines 3.1.1 and 3.1.3 allow such a link nowhere else, so
-     * elsewhere the app offers nothing and links nowhere. It can change while the app runs.
+     * Whether the app may link to buying the Team plan on the website ([Upsell]). True on desktop,
+     * Android and the web. In the iPhone and iPad app, only while the App Store storefront is the
+     * United States: guidelines 3.1.1 and 3.1.3 allow such a link nowhere else. There Team is still
+     * offered, bought through the App Store ([appStore]). It can change while the app runs.
      */
     val buyingLinks: kotlinx.coroutines.flow.StateFlow<Boolean> = kotlinx.coroutines.flow.MutableStateFlow(true),
     /** When each team last saw the "Get more with Team" popup, on this device ([UpsellMarks]). Kept across sign-outs. */
     val upsellMarks: TextStore = MemoryTextStore(),
+    /**
+     * Buying Team inside the app with Apple's in-app purchase: the iPhone and iPad app only. There,
+     * "Upgrade" opens the paywall on every storefront, and [buyingLinks] decides only whether it may
+     * also point to the website. Null elsewhere, where "Upgrade" opens the billing site.
+     */
+    val appStore: AppStorePurchases? = null,
     /** A server this app can run itself ("This computer"), or null where it can't (phones). */
     val localServer: dev.wildware.agents.app.local.LocalServerHost? = null,
     /** "Send crash reports", in a build that sends them (`CrashReporting.start`); null in any other. */
@@ -127,10 +133,11 @@ class AppPlatform(
             guidedTour: Boolean = false,
             buyingLinks: kotlinx.coroutines.flow.StateFlow<Boolean> = kotlinx.coroutines.flow.MutableStateFlow(true),
             upsellMarks: TextStore = MemoryTextStore(),
+            appStore: AppStorePurchases? = null,
         ) = AppPlatform(
             sessions, MemoryTextStore(), MemoryOutboxStorage(), engine, deviceName, imageCacheDir = null,
             filePicker = filePicker, media = media, postTarget = postTarget, linksToSignUp = linksToSignUp,
-            guidedTour = guidedTour, buyingLinks = buyingLinks, upsellMarks = upsellMarks,
+            guidedTour = guidedTour, buyingLinks = buyingLinks, upsellMarks = upsellMarks, appStore = appStore,
         )
     }
 }
