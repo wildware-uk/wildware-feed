@@ -551,5 +551,12 @@
   "file": "079-teams-say-who-bills.sql",
   "rebuildsTables": false,
   "checksum": "14b8381c2f392940ab0cee956be45734d3c5b9f35375def9efb21eadc363233d"
+ },
+ {
+  "version": 79,
+  "name": "github-prs",
+  "file": "079-github-prs.sql",
+  "rebuildsTables": false,
+  "checksum": "e0dea39ced2265fd64f63de3924c90a14d36c36cd1889077f80976c1eac2c10a"
  }
 ]

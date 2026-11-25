@@ -20,6 +20,7 @@ import dev.wildware.feed.server.mcp.registerSubscriptionTools
 import dev.wildware.feed.server.mcp.registerSecretTools
 import dev.wildware.feed.server.mcp.registerFeedbackTools
 import dev.wildware.feed.server.mcp.registerBlockTools
+import dev.wildware.feed.server.mcp.registerGitHubTools
 import dev.wildware.feed.server.push.startApplePush
 
 /**
@@ -56,6 +57,14 @@ class App(val config: Config, val db: Database, val clock: () -> Long = System::
     /** The people of the team and their invites (migration 055). */
     val people = dev.wildware.feed.server.domain.People(db, config.tokenSecret, config.adminPasswordHash, clock)
     val reads = Reads(db, clock)
+
+    /** GitHub on cards (docs/GITHUB.md), when the app's settings are set (GITHUB_APP_*); tests put in their own. */
+    @Volatile var github: dev.wildware.feed.server.github.GitHub? = config.github?.let {
+        dev.wildware.feed.server.github.GitHub(it.slug, it.webhookSecret, dev.wildware.feed.server.github.HttpGitHubApi(it, clock), config.tokenSecret, clock)
+    }
+
+    /** The GitHub App installations each team linked. */
+    val githubInstalls = dev.wildware.feed.server.github.GitHubInstalls(db, clock)
 
     /** What each person and agent says about themselves (migration 077). */
     val profiles = dev.wildware.feed.server.domain.Profiles(db)
@@ -318,6 +327,7 @@ class App(val config: Config, val db: Database, val clock: () -> Long = System::
         tools.registerFeedbackTools(this)
         tools.registerBlockTools(this)
         tools.registerMemberTools(this)
+        tools.registerGitHubTools(this)
     }
 
     override fun close() {

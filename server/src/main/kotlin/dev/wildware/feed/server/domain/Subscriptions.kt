@@ -658,10 +658,10 @@ class Subscriptions(private val db: Database, private val clock: () -> Long = Sy
         }
 
         /**
-         * A line saying who was assigned, or that assigned work moved (migration 074), reaches only
-         * the agents it names: one that names none reaches no agent at all.
+         * A line saying who was assigned, or that assigned work moved (migration 074), or a line from
+         * GitHub (079), reaches only the agents it names: one that names none reaches no agent at all.
          */
-        private const val NOT_ASSIGNMENT = "coalesce(m.source, '') NOT IN ('${Messages.ASSIGNMENT}', '${Messages.STATUS_LINE}')"
+        private const val NOT_ASSIGNMENT = "coalesce(m.source, '') NOT IN ('${Messages.ASSIGNMENT}', '${Messages.STATUS_LINE}', '${Messages.GITHUB}')"
 
         /** [NAMES_READER] as a set: the messages that name the agent. */
         private const val NAMES_READER_SET = "m.id IN (SELECT mm.message_id FROM message_mentions AS mm WHERE mm.team_id = :team AND mm.agent_id = ?)"

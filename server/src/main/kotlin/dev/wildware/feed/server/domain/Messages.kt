@@ -55,6 +55,8 @@ class Messages(private val feed: Feed) {
         val assignment: Boolean = false,
         /** The server's line saying assigned work moved (migration 074): source [STATUS_LINE]. */
         val statusLine: Boolean = false,
+        /** A line from GitHub about a linked PR (migration 079): author and source [GITHUB]. */
+        val github: Boolean = false,
     )
 
     class Page(val messages: List<MessageRow>, val cursor: String, val unread: Long, val markedRead: Boolean)
@@ -70,6 +72,7 @@ class Messages(private val feed: Feed) {
     /** `assertAuthor`: an agent author must exist. */
     private fun checkAuthor(author: String) {
         if (author == HUMAN) return
+        if (author == GITHUB) return
         val agentId = author.removePrefix(AGENT_PREFIX)
         if (!agentExists(agentId)) throw notFound("no such agent: $agentId")
     }
@@ -85,6 +88,7 @@ class Messages(private val feed: Feed) {
         val source = when {
             input.assignment -> ASSIGNMENT
             input.statusLine -> STATUS_LINE
+            input.github -> GITHUB
             else -> input.source
         }
         // A send tried again (its answer was lost on the way back): the first message, not a copy.
@@ -308,6 +312,7 @@ class Messages(private val feed: Feed) {
      */
     fun authorName(author: String, userId: String? = null): String? {
         if (author == HUMAN) return People.teamName(db, userId)
+        if (author == GITHUB) return GITHUB_NAME
         if (!author.startsWith(AGENT_PREFIX)) return null
         val id = author.removePrefix(AGENT_PREFIX).ifEmpty { return null }
         return db.one("SELECT name FROM agents WHERE team_id = :team AND id = ?", id) { it.getString(1) }
@@ -469,8 +474,15 @@ class Messages(private val feed: Feed) {
         /** A line the server writes when assigned work moves, for the agents waiting on it (migration 074). */
         const val STATUS_LINE = "status"
 
+        /**
+         * A line from GitHub about a PR linked to the card (migration 079, docs/GITHUB.md): CI went red
+         * or green, or a review asked for changes. Its author is [GITHUB] too, which no client can post as.
+         */
+        const val GITHUB = "github"
+        const val GITHUB_NAME = "GitHub"
+
         /** The server's own lines: they reach only the agents they name, and ring no bell unless they assign. */
-        val SYSTEM_SOURCES = listOf(ASSIGNMENT, STATUS_LINE)
+        val SYSTEM_SOURCES = listOf(ASSIGNMENT, STATUS_LINE, GITHUB)
         private val SOURCES = setOf(VOICE)
 
         /** The line agents read under a voice note's words. People never see it, and it is never stored. */

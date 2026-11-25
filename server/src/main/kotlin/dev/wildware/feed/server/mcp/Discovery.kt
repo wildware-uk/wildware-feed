@@ -40,7 +40,7 @@ object Discovery {
     val AREAS: Map<String, List<String>> = linkedMapOf(
         "messages" to listOf("get_messages", "acknowledge", "post_message", "edit_message", "delete_message", "react"),
         "updates" to listOf("post_update", "edit_update", "delete_update", "update_block", "get_blocks"),
-        "work" to listOf("set_status", "list_work", "assign_work", "list_tags", "tag_card", "set_card_field", "get_card_fields"),
+        "work" to listOf("set_status", "list_work", "assign_work", "link_pr", "list_tags", "tag_card", "set_card_field", "get_card_fields"),
         "requests" to listOf("request_input", "edit_request", "withdraw_request"),
         "docs" to listOf("list_docs", "read_doc", "search_docs", "create_doc", "edit_doc"),
         "people" to listOf("list_members", "set_profile"),

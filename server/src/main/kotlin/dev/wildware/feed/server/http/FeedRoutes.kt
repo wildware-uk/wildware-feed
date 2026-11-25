@@ -224,7 +224,9 @@ fun Route.feedRoutes(app: App) {
                     else -> app.feed.assignees.resolve(asked, Viewer.MEMBER + call.person.id).principal
                 }
             }
-            call.respondOwner(200, board.read(scope, column, Board.Cursor.parse(params["after"]), limit, removed, assigned))
+            // Only cards whose pull request needs someone: CI failing or changes asked for (migration 079).
+            val attention = params["attention"] == "1" || params["attention"] == "true"
+            call.respondOwner(200, board.read(scope, column, Board.Cursor.parse(params["after"]), limit, removed, assigned, attention))
         },
     )
 

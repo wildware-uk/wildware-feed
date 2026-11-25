@@ -40,6 +40,7 @@ object Access {
         "GET /api/cards/{kind}/{id}/blocks" to M,
         "GET /api/cards/{kind}/{id}/assignees" to M,
         "GET /api/projects/{reference}/agents" to M,
+        "GET /api/github" to M, // whether GitHub is connected, and to which accounts (docs/GITHUB.md)
         "GET /api/groups/{reference}/agents" to M,
 
         // Taking part: posting, reacting, answering, tagging, pins, work states, app state.
@@ -140,6 +141,8 @@ object Access {
         "POST /api/secrets/{id}/reveal" to A,
         "POST /api/requests/{id}/secret" to A,
         "POST /api/cards/{kind}/{id}/secrets/{name}/reveal" to A, // a secret an agent attached to a post
+        "POST /api/github/connect" to O, // GitHub's install page, with a state for this team
+        "DELETE /api/github/installations/{id}" to O,
 
         // Permissions (spec/15): anyone who can read a channel sees who else can; changing it needs Manage there.
         "GET /api/projects/{reference}/access" to M,

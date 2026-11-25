@@ -10,10 +10,10 @@ package dev.wildware.feed.server.db
  * and sweeps. On Postgres, row security ([setRowSecurity]) catches what the lint can't see.
  */
 object TeamTables {
-    /** Every team-owned table (058 gave each a `team_id`; 055 made memberships and invites, 059 auth_codes, with one; 067 made feedback with one; 074 card_assignees; 076 docs, doc_versions and doc_links). */
+    /** Every team-owned table (058 gave each a `team_id`; 055 made memberships and invites, 059 auth_codes, with one; 067 made feedback with one; 074 card_assignees; 076 docs, doc_versions and doc_links; 079 github_installations and card_prs). */
     val ALL: List<String> = listOf(
-        "access_audit", "acknowledgements", "agent_pairings", "agents", "app_views", "approvals", "apps", "auth_codes", "card_blocks", "card_fields", "card_refs", "card_secrets",
-        "card_assignees", "card_tags", "channel_access", "derivatives", "doc_links", "doc_versions", "docs", "embed_types", "embeds", "feedback", "group_subscriptions", "invites", "media", "memberships",
+        "access_audit", "acknowledgements", "agent_pairings", "agents", "app_views", "approvals", "apps", "auth_codes", "card_blocks", "card_fields", "card_prs", "card_refs", "card_secrets",
+        "card_assignees", "card_tags", "channel_access", "derivatives", "doc_links", "doc_versions", "docs", "embed_types", "embeds", "feedback", "github_installations", "group_subscriptions", "invites", "media", "memberships",
         "message_deliveries", "message_mentions", "messages", "notifications", "oauth_clients", "oauth_grants",
         "oauth_tokens", "owner_devices", "project_groups", "project_subscriptions", "projects", "reactions",
         "read_cursors", "secret_agents", "secret_audit", "secret_grants", "secrets", "server_settings", "sessions",

@@ -59,6 +59,8 @@ object Suspension {
         "/api/devices/sign-in", "/api/devices/sign-out", "/api/devices/ticket", "/auth/ticket", "/oauth/token", "/oauth/revoke",
         "/api/notifications/seen", "/api/notifications/cards-seen", "/api/notifications/handled", "/api/devices/current",
         "/setup", "/mcp",
+        // GitHub's webhook: it serves every team, and skips a suspended one itself (docs/GITHUB.md).
+        "/github",
         // Feedback stays open: a suspended team may well have something to tell the product team.
         "/api/feedback",
     )

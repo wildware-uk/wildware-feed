@@ -103,6 +103,11 @@ data class Config(
      * redirects to a link signed under the secret. Null: the server sends the bytes itself.
      */
     val mediaEdge: MediaEdgeConfig? = null,
+    /**
+     * GITHUB_APP_*: the GitHub App that puts pull requests on cards (docs/GITHUB.md). Null: GitHub
+     * is off. [toString] leaves its secrets out.
+     */
+    val github: GitHub? = null,
 ) {
     /** Many teams ([teamDomain] set). */
     val multiTeam: Boolean get() = teamDomain != null
@@ -122,6 +127,11 @@ data class Config(
     }
 
     /** Where the media edge is and the secret its links are signed under. [toString] leaves the secret out. */
+    /** The GitHub App: its URL name, client id and secret, private key (PEM text) and webhook secret. */
+    data class GitHub(val slug: String, val clientId: String, val clientSecret: String, val privateKey: String, val webhookSecret: String) {
+        override fun toString() = "GitHub(slug=$slug)"
+    }
+
     data class MediaEdgeConfig(val url: String, val secret: String) {
         override fun toString() = "MediaEdgeConfig(url=$url)"
     }
@@ -286,6 +296,25 @@ data class Config(
                 issues += "CONTROL_PLANE_ORIGIN: CONTROL_PLANE_ORIGIN must be an origin, such as https://feed.example.com"
             }
 
+            val githubNames = listOf("GITHUB_APP_SLUG", "GITHUB_APP_CLIENT_ID", "GITHUB_APP_CLIENT_SECRET", "GITHUB_APP_PRIVATE_KEY", "GITHUB_APP_WEBHOOK_SECRET")
+            val githubValues = githubNames.associateWith { get(it)?.trim()?.takeIf { v -> v.isNotEmpty() } }
+            val github = when {
+                githubValues.values.all { it == null } -> null
+                githubValues.values.any { it == null } -> {
+                    issues += "GITHUB_APP_*: set all of ${githubNames.joinToString(", ")}, or none (missing: ${githubValues.filterValues { it == null }.keys.joinToString(", ")})"
+                    null
+                }
+                else -> {
+                    val webhookSecret = githubValues["GITHUB_APP_WEBHOOK_SECRET"]!!
+                    if (webhookSecret.length < MIN_SECRET_LENGTH) issues += "GITHUB_APP_WEBHOOK_SECRET: must be at least $MIN_SECRET_LENGTH characters"
+                    val key = githubValues["GITHUB_APP_PRIVATE_KEY"]!!
+                    if (runCatching { dev.wildware.feed.server.github.HttpGitHubApi.loadKey(key) }.isFailure) {
+                        issues += "GITHUB_APP_PRIVATE_KEY: not an RSA private key in PEM form (the app's .pem file)"
+                    }
+                    GitHub(githubValues["GITHUB_APP_SLUG"]!!, githubValues["GITHUB_APP_CLIENT_ID"]!!, githubValues["GITHUB_APP_CLIENT_SECRET"]!!, key, webhookSecret)
+                }
+            }
+
             if (issues.isNotEmpty()) throw Invalid(issues)
 
             val port = env["PORT"]?.takeIf { it.isNotBlank() }?.toIntOrNull() ?: 3000
@@ -324,6 +353,7 @@ data class Config(
                 cloudflareOriginSecret = originSecret,
                 feedbackRecipient = get("FEEDBACK_RECIPIENT")?.trim()?.takeIf { it.isNotEmpty() }?.take(60),
                 mediaEdge = if (edgeUrl != null && edgeSecret != null) MediaEdgeConfig(edgeUrl, edgeSecret) else null,
+                github = github,
             )
         }
 

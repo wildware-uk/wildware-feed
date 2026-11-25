@@ -105,6 +105,7 @@ class Reads(private val db: Database, private val clock: () -> Long = System::cu
         val refs = refsFor("update", ids)
         val blocks = blocksFor("update", ids)
         val secrets = secretsFor("update", ids)
+        val prs = dev.wildware.feed.server.github.CardPrs.views(db, ids)
         val items = updates.zip(ids).map { (update, id) ->
             val extra = mutableListOf<Pair<String, JsonElement>>(
                 "media" to JsonArray(media[id].orEmpty()),
@@ -116,6 +117,8 @@ class Reads(private val db: Database, private val clock: () -> Long = System::cu
                 "blocks" to JsonArray(blocks[id].orEmpty()),
                 // Migration 066: secrets the agent attached, by name, and whether each can still be opened.
                 "secrets" to JsonArray(secrets[id].orEmpty()),
+                // Migration 079: the pull requests linked to it, with their CI and reviews.
+                "prs" to JsonArray(prs[id].orEmpty()),
             )
             update.plus(*extra.toTypedArray())
         }

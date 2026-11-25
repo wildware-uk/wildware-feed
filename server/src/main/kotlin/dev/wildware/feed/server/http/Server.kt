@@ -111,7 +111,8 @@ fun Application.feed(app: App, placeOf: (ApplicationCall) -> Place = { Hosts.pla
             Place.Nowhere -> return@intercept noTeam()
             // The directory answers the admin API and says what it is; it holds no team.
             Place.Directory -> {
-                if (!admin && path != "/api/server") return@intercept noTeam()
+                // GitHub's webhook and the install's way back serve every team from one address (docs/GITHUB.md).
+                if (!admin && path != "/api/server" && path != WEBHOOK && path != CALLBACK) return@intercept noTeam()
                 call.attributes.put(DirectoryKey, Unit)
                 proceed()
             }
@@ -161,6 +162,7 @@ fun Application.feed(app: App, placeOf: (ApplicationCall) -> Place = { Hosts.pla
         oauthRoutes(app)
         ticketRoutes(app)
         adminRoutes(app)
+        githubRoutes(app)
 
         // Anything else. Under /api the guard has already turned strangers away: the owner gets a
         // JSON 404 (decided fix 12b). Elsewhere it is the web app, when this server has it, or a 404.

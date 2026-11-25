@@ -18,6 +18,8 @@ object Guard {
     private val PUBLIC = listOf(
         "/api/devices/sign-in", "/api/devices/sign-out", "/api/server", "/api/pair", "/.well-known", "/oauth",
         "/api/invite", "/join", "/api/devices/ticket", "/auth/ticket", "/setup", "/admin",
+        // GitHub's webhook (signed) and the install's way back (a signed state): docs/GITHUB.md.
+        "/github",
     )
 
     fun normalise(path: String): String = if (path == "/") path else path.trimEnd('/').ifEmpty { "/" }
@@ -44,7 +46,7 @@ object Guard {
     }
 
     /** What the server answers itself, under the site's root. */
-    private val SERVER_ROUTES = listOf("/api", "/mcp", "/media", "/apps", "/oauth", "/.well-known", "/join", "/admin", "/auth", "/setup")
+    private val SERVER_ROUTES = listOf("/api", "/mcp", "/media", "/apps", "/oauth", "/.well-known", "/join", "/admin", "/auth", "/setup", "/github")
 
     /** `Authorization: Bearer <one token>` (case-insensitive), else null. */
     fun bearer(header: String?): String? =

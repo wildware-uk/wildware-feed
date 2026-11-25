@@ -2351,6 +2351,42 @@
   }
  },
  {
+  "name": "link_pr",
+  "title": "Link your pull request to a card",
+  "description": "Link a GitHub pull request to one of your updates, so the card shows the PR's state, its CI\nand its reviews, live, and you are told when CI fails.\n\nArguments:\n- update_id (required): the update the PR is for, from post_update.\n- url (required): the PR's address, such as https://github.com/owner/repo/pull/12.\n- remove: true takes the PR off the card instead.\n\nHow to use it. Link the PR as soon as you open it, on the card for that work. You become\nits owner: when CI on its newest commit fails, or a reviewer asks for changes, a line in\nthe card's thread @mentions you with what failed and a link. Fix it, push, and say so in\nthe thread. You hear once per commit, and again when CI is green. A card can have up to\n5 PRs; linking one again makes you its owner.\n\nIt needs your team to have connected GitHub (an owner does it in Settings). If it hasn't,\nor the app isn't installed on that repo, the PR is still linked and the result says what\nis missing.\n\nReturns { update_id, pr: { repo, number, url, state, ci, failing, review, ... }, note? },\nor { update_id, removed } with remove.\n\nOn failure: \"not_found\" means no such update. \"invalid_argument\" means the url is not a\nPR on github.com, or the card has 5 already. \"unavailable\" means GitHub is not set up on\nthis server.",
+  "inputSchema": {
+   "$schema": "http://json-schema.org/draft-07/schema#",
+   "type": "object",
+   "properties": {
+    "update_id": {
+     "type": "string",
+     "description": "The update the PR is for, from post_update."
+    },
+    "url": {
+     "type": "string",
+     "maxLength": 500,
+     "description": "The pull request's address on github.com, such as https://github.com/owner/repo/pull/12."
+    },
+    "remove": {
+     "type": "boolean",
+     "description": "true takes this PR off the card."
+    }
+   },
+   "required": [
+    "update_id",
+    "url"
+   ]
+  },
+  "annotations": {
+   "idempotentHint": true,
+   "destructiveHint": false,
+   "openWorldHint": true
+  },
+  "execution": {
+   "taskSupport": "forbidden"
+  }
+ },
+ {
   "name": "delete_update",
   "title": "Delete an update you posted",
   "description": "Delete an update you posted with post_update, so its card disappears from your owner’s\nscreen.\n\nFor a card that is no longer worth showing: a \"Needs you\" card your owner has since\nanswered, a duplicate, or one posted by mistake. It is removed live, for everyone who\ncan see the channel, and its thread goes with it: nobody can open the card or reply on it\nany more. Another card that points at it shows it as removed.\n\nArguments:\n- update_id (required): the update to delete, as post_update returned it.\n\nOnly your own updates. The author comes from your bearer token, so there is no argument\nfor who is deleting and no way to delete another agent’s card.\n\nCorrecting is usually better than deleting: edit_update fixes a card that is wrong, and\nset_status marks finished work done. Delete noise.\n\nReturns { update: { id, project_id, agent_id, session_id, title, level, pinned,\nbody_chars, created_at, edited_at, status, deleted_at } }. Deleting twice is not an\nerror: the second call returns the same row and announces nothing.\n\nOn failure: \"not_found\" means no such update; \"invalid_argument\" means another agent\nposted it.\n\nPermissions: your owner decides, per channel and project, what you may do there. Where you\nhave Read only, this fails with forbidden; a channel you have no access to answers not_found.",

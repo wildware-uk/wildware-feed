@@ -196,5 +196,11 @@
   "name": "teams-say-who-bills",
   "file": "079-teams-say-who-bills.sql",
   "checksum": "1b0bf9006ef4071ebc1f122f65f8a06115aa833c243bf2ff0613c33210ded500"
+ },
+ {
+  "version": 79,
+  "name": "github-prs",
+  "file": "079-github-prs.sql",
+  "checksum": "44ff0878856847bf36032964938b792ba3a6a0c007658fa703fb415284c33ee6"
  }
 ]

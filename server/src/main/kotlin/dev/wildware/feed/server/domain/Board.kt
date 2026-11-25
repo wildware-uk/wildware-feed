@@ -50,13 +50,17 @@ class Board(private val feed: Feed) {
      * The board for [scope]: each column's first [limit] cards, newest move first. With [column] only
      * that column, after [after]. [removed] also lists the finished cards taken off the board, marked.
      * [assigned] (migration 074) keeps only the cards assigned to that principal, or with [UNASSIGNED]
-     * the cards assigned to nobody.
+     * the cards assigned to nobody. [attention] (migration 079) keeps only the cards with a pull
+     * request whose CI is failing or that has changes asked for.
      */
-    fun read(scope: Scope, column: String? = null, after: Cursor? = null, limit: Int = PAGE, removed: Boolean = false, assigned: String? = null): JsonObject {
+    fun read(
+        scope: Scope, column: String? = null, after: Cursor? = null, limit: Int = PAGE, removed: Boolean = false, assigned: String? = null,
+        attention: Boolean = false,
+    ): JsonObject {
         if (column != null && column !in COLUMNS) throw invalid("column must be one of: ${COLUMNS.joinToString(", ")}")
         val days = autoRemoveDays()
         val columns = (if (column != null) listOf(column) else COLUMNS).map { col ->
-            val page = cards(scope, col, after.takeIf { column != null }, limit.coerceIn(1, PAGE_MAX), removed, days, assigned)
+            val page = cards(scope, col, after.takeIf { column != null }, limit.coerceIn(1, PAGE_MAX), removed, days, assigned, attention)
             buildJsonObject {
                 put("status", col)
                 put("cards", JsonArray(page.rows.map { it.json }))
@@ -73,7 +77,7 @@ class Board(private val feed: Feed) {
     private class Row(val id: String, val movedAt: Long, val json: JsonObject)
     private class Page(val rows: List<Row>, val more: Boolean)
 
-    private fun cards(scope: Scope, column: String, after: Cursor?, limit: Int, removed: Boolean, days: Int?, assigned: String?): Page {
+    private fun cards(scope: Scope, column: String, after: Cursor?, limit: Int, removed: Boolean, days: Int?, assigned: String?, attention: Boolean): Page {
         val ids = scope.projectIds
         if (ids != null && ids.isEmpty()) return Page(emptyList(), false)
         val states = if (column == DONE) FINISHED else listOf(column)
@@ -93,6 +97,7 @@ class Board(private val feed: Feed) {
                 args.add(assigned)
             }
         }
+        if (attention) where.append(" AND ").append(dev.wildware.feed.server.github.CardPrs.attentionSql("id"))
         // The finished cards still on the board: not removed, and finished (or put back) recently enough.
         val cutoff = days?.let { feed.now() - it * DAY_MS }
         if (column == DONE && !removed) {
@@ -205,6 +210,7 @@ class Board(private val feed: Feed) {
 
         val canPost = channels.associateWith { feed.access.level(it).rank >= ChannelAccess.Level.POST.rank }
         val assignees = feed.assignees.let { a -> a.forCards("update", updates) + a.forCards("message", messages) }
+        val prs = dev.wildware.feed.server.github.CardPrs.views(db, updates)
         return cards.map { c ->
             val thread = threads[c.id]
             val agentAuthor = if (c.kind == "update") c.author else c.author?.takeIf { it.startsWith("agent:") }?.removePrefix("agent:")
@@ -238,6 +244,7 @@ class Board(private val feed: Feed) {
                 put("author", if (c.kind == "update") "agent:${c.author}" else c.author)
                 put("on", JsonArray(on))
                 put("assignees", JsonArray(assignees[c.id].orEmpty().map { it.json }))
+                put("prs", JsonArray(prs[c.id].orEmpty()))
                 put("replies", thread?.count ?: 0)
                 put("lastReplyAt", thread?.lastAt)
                 put("waiting", waiting[c.id] ?: 0)
