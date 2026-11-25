@@ -64,7 +64,7 @@ class UpsellTest {
     fun agentsAndPeopleNotesOnlyOnceFull() {
         assertNull(Upsell.agentsNote(free.copy(used = PlanUse(agents = 2)), offer = true))
         assertEquals("3 of 3 agents on the free plan. Team lets you connect as many as you like.", Upsell.agentsNote(free.copy(used = PlanUse(agents = 3)), offer = true))
-        assertEquals("3 of 3 agents on the free plan. Remove one before you connect another.", Upsell.agentsNote(free.copy(used = PlanUse(agents = 3)), offer = false))
+        assertEquals("3 of 3 agents in use. Remove one before you connect another.", Upsell.agentsNote(free.copy(used = PlanUse(agents = 3)), offer = false))
         assertNull(Upsell.peopleNote(free, offer = true))
         assertEquals(
             "2 of 2 people on the free plan, counting invites still waiting. Team gives you room for more.",
@@ -113,10 +113,12 @@ class UpsellTest {
         assertEquals(hit, Upsell.refusal(hit, offer = true))
         val plain = Upsell.refusal(hit, offer = false)
         assertNull(plain.upgradeUrl)
-        assertFalse("upgrade" in plain.message.lowercase() || "team" in plain.message.lowercase(), plain.message)
-        for (limit in listOf("people", "agents", "storage", null)) {
+        assertEquals("This team has no room for more agents. Remove one to add another.", plain.message)
+        assertEquals("This team has used all its room for files. Delete some to add more.", Upsell.plainRefusal("storage"))
+        // Nothing that sells: no upgrade, no plan, no website.
+        for (limit in listOf("people", "agents", "storage", "something new", null)) {
             val words = Upsell.plainRefusal(limit).lowercase()
-            assertFalse("upgrade" in words || "team" in words || "website" in words, words)
+            assertFalse(listOf("upgrade", "plan", "website", "buy", "pay").any { it in words }, words)
         }
     }
 }
