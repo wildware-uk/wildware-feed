@@ -624,7 +624,7 @@ class Subscriptions(private val db: Database, private val clock: () -> Long = Sy
         private const val CRITICAL = "critical"
 
         /** The owner named in a message, as the apps read it: `@you` or `@owner`. */
-        private val OWNER_MENTION = Regex("(?<![\\w@])@(you|owner)\\b", RegexOption.IGNORE_CASE)
+        val OWNER_MENTION = Regex("(?<![\\w@])@(you|owner)\\b", RegexOption.IGNORE_CASE)
         const val LIST_LIMIT = 100
         private const val TITLE_MAX = 80
 

@@ -27,7 +27,7 @@ data class DesktopNotice(
     val focusId: String?,
     /** Marked critical and allowed to page this device: Android's "Critical" channel, through Do Not Disturb. */
     val critical: Boolean = false,
-    /** The sound it goes with ([Sound]): its kind's, or [Sound.Critical] for anything marked critical. Null for the app's own notices. */
+    /** The sound it goes with ([Sound]): its kind's; a critical update's is the grid's critical row. Null for the app's own notices. */
     val sound: Sound? = null,
 )
 
@@ -93,7 +93,7 @@ class NotificationRules(private val maxBody: Int = 140) {
         for (pairing in joining) {
             if (!seen.add(pairingKey(pairing.id))) continue
             val from = pairing.host?.let { "From $it. " }.orEmpty()
-            notices += DesktopNotice(pairingKey(pairing.id), "${pairing.name} wants to join", "${from}Code ${pairing.code}. Allow or deny it in the app.", null, sound = Sound.Question)
+            notices += DesktopNotice(pairingKey(pairing.id), "${pairing.name} wants to join", "${from}Code ${pairing.code}. Allow or deny it in the app.", null, sound = Sound.Permission)
         }
         for (card in waiting) {
             if (!seen.add(requestKey(card.id))) continue
@@ -113,7 +113,7 @@ class NotificationRules(private val maxBody: Int = 140) {
             val slug = slugOf(update.projectId)
             if (!AlertPrefs.allows(prefs, AlertPrefs.Update, update.level, update.priority, update.agentId, slug)) continue
             val text = update.title?.takeIf { it.isNotBlank() } ?: update.body
-            notices += DesktopNotice(updateKey(card.id), title(card.agentName, card.projectName), plain(text), card.id, critical = AlertPrefs.pages(prefs, update.priority, update.agentId, slug), sound = Sound.Critical)
+            notices += DesktopNotice(updateKey(card.id), title(card.agentName, card.projectName), plain(text), card.id, critical = AlertPrefs.pages(prefs, update.priority, update.agentId, slug), sound = Sound.grid(update.priority, update.level))
         }
         for (thread in threads) {
             for (line in thread.lines) {
@@ -126,10 +126,11 @@ class NotificationRules(private val maxBody: Int = 140) {
                 val chosen = follows.chosen(thread.kind, thread.cardId)
                 if (chosen == false) continue
                 if (chosen == null && follows.level(thread.projectId) == NotifyLevel.Muted) continue
-                if (chosen == null && !answersMe(message, thread, me) && !mentionsOwner(message.body) && !me.named(message.body)) continue
+                val named = mentionsOwner(message.body) || me.named(message.body)
+                if (chosen == null && !answersMe(message, thread, me) && !named) continue
                 if (!AlertPrefs.allows(prefs, AlertPrefs.Message)) continue
                 val author = if (message.agentId != null) line.authorName else me.nameOf(message.personId)
-                notices += DesktopNotice(messageKey(message.id), title(author, thread.projectName), plain(message.body), thread.cardId, sound = Sound.Message)
+                notices += DesktopNotice(messageKey(message.id), title(author, thread.projectName), plain(message.body), thread.cardId, sound = if (named) Sound.Mention else Sound.Message)
             }
         }
         watermark = maxOf(watermark, threads.flatMap { it.lines }.maxOfOrNull { it.message.createdAt } ?: Long.MIN_VALUE)

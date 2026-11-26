@@ -69,7 +69,7 @@ class DesktopIntegrationTest {
         val paged = NotificationRules()
         paged.next(true, emptyList(), feed(), AlertPrefs(critical = true), slugs)
         assertEquals(
-            listOf(DesktopNotice("update-u9", "Builder · Mega", "Production is down", "u9", critical = true, sound = Sound.Critical)),
+            listOf(DesktopNotice("update-u9", "Builder · Mega", "Production is down", "u9", critical = true, sound = Sound.CriticalInfo)),
             paged.next(true, emptyList(), feed(criticalUpdate("u9")), AlertPrefs(critical = true), slugs),
         )
 
@@ -91,7 +91,7 @@ class DesktopIntegrationTest {
         val asking = dev.wildware.agents.PairingView(id = "pr1", name = "laptop-personal", host = "laptop", code = "K7Q-3MD")
         val onlyQuestions = AlertPrefs(types = listOf(AlertPrefs.Request))
         assertEquals(
-            listOf(DesktopNotice("pairing-pr1", "laptop-personal wants to join", "From laptop. Code K7Q-3MD. Allow or deny it in the app.", null, sound = Sound.Question)),
+            listOf(DesktopNotice("pairing-pr1", "laptop-personal wants to join", "From laptop. Code K7Q-3MD. Allow or deny it in the app.", null, sound = Sound.Permission)),
             rules.next(true, emptyList(), feed(), onlyQuestions, slugs, listOf(first, asking)),
         )
         assertTrue(rules.next(true, emptyList(), feed(), onlyQuestions, slugs, listOf(first, asking)).isEmpty())

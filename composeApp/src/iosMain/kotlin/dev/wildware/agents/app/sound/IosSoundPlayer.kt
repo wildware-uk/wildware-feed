@@ -52,7 +52,7 @@ class IosSoundPlayer : SoundPlayer {
         main.launch {
             val choices = players[sound] ?: return@launch
             val player = choices.firstOrNull { !it.playing } ?: choices.first()
-            val loud = sound == Sound.Critical && ambient && AVAudioSession.sharedInstance().category == AVAudioSessionCategoryAmbient
+            val loud = sound.critical && ambient && AVAudioSession.sharedInstance().category == AVAudioSessionCategoryAmbient
             if (loud) {
                 AVAudioSession.sharedInstance().setCategory(AVAudioSessionCategoryPlayback, withOptions = AVAudioSessionCategoryOptionMixWithOthers, error = null)
                 AVAudioSession.sharedInstance().setActive(true, error = null)

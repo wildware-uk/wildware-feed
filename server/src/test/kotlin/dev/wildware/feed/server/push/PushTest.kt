@@ -69,7 +69,7 @@ class PushTest {
             extra = listOf("agentName" to JsonPrimitive("Ada")),
         )
         assertEquals(
-            """{"aps":{"alert":{"title":"t","body":"b"},"sound":"default","thread-id":"web","category":"UPDATE","interruption-level":"active"},"url":"u","tag":"update-U1","markdown":"b","reply":{"update":"U1"},"agentName":"Ada"}""",
+            """{"aps":{"alert":{"title":"t","body":"b"},"sound":"medium-info.wav","thread-id":"web","category":"UPDATE","interruption-level":"active"},"url":"u","tag":"update-U1","markdown":"b","reply":{"update":"U1"},"agentName":"Ada"}""",
             Wire.encode(Apns.alertPayload(update)),
         )
     }
@@ -137,6 +137,20 @@ class PushTest {
         )!!
         assertEquals(PushMessage("Ada posted an update", "Done with it", "https://dashboard.example.com/projects/web?focus=U1", "update-U1"), alert.message)
         assertEquals("web", alert.threadId)
+    }
+
+    @Test
+    fun `a message that names the owner plays the mention sound`() {
+        app.db.update("INSERT INTO agents (id, name, token_hash, created_at) VALUES ('A1', 'Ada', 'x', 1)")
+        app.db.update("INSERT INTO projects (id, slug, name, created_at, updated_at) VALUES ('P1', 'web', 'Web', 1, 1)")
+        app.db.update("INSERT INTO messages (id, project_id, author, body, created_at) VALUES ('M1', 'P1', 'agent:A1', '@you have a look', 1)")
+        app.db.update("INSERT INTO messages (id, project_id, author, body, created_at) VALUES ('M2', 'P1', 'agent:A1', 'have a look', 2)")
+        val apns = Apns(app, apnsConfig) { ApnsResponse(200, null) }
+        fun alert(id: String) = apns.alertFor(
+            dev.wildware.feed.server.events.AppEvent("message.created", 1, "", kotlinx.serialization.json.buildJsonObject { put("messageId", JsonPrimitive(id)) }),
+        )!!
+        assertEquals("mention.wav", Apns.soundFor(alert("M1")))
+        assertEquals("message.wav", Apns.soundFor(alert("M2")))
     }
 
     @Test
@@ -250,11 +264,11 @@ class PushTest {
         )
         assertEquals("time-sensitive", Apns.CRITICAL_STYLE)
         assertEquals(
-            """{"aps":{"alert":{"title":"Production is down","body":"Every request fails"},"sound":"critical.wav","thread-id":"web","category":"UPDATE","interruption-level":"active"},"url":"u","tag":"update-U1","markdown":"b","priority":"critical"}""",
+            """{"aps":{"alert":{"title":"Production is down","body":"Every request fails"},"sound":"critical-error.wav","thread-id":"web","category":"UPDATE","interruption-level":"active"},"url":"u","tag":"update-U1","markdown":"b","priority":"critical"}""",
             Wire.encode(Apns.alertPayload(alert)),
         )
         assertEquals(
-            """{"aps":{"alert":{"title":"Production is down","body":"Every request fails"},"sound":"critical.wav","thread-id":"web","category":"UPDATE","interruption-level":"time-sensitive"},"url":"u","tag":"update-U1","markdown":"b","priority":"critical"}""",
+            """{"aps":{"alert":{"title":"Production is down","body":"Every request fails"},"sound":"critical-error.wav","thread-id":"web","category":"UPDATE","interruption-level":"time-sensitive"},"url":"u","tag":"update-U1","markdown":"b","priority":"critical"}""",
             Wire.encode(Apns.alertPayload(alert, page = Apns.CRITICAL_STYLE)),
         )
         assertEquals(
@@ -272,13 +286,51 @@ class PushTest {
         val about = dev.wildware.feed.server.domain.AlertPrefs::About
         assertEquals("\"question.wav\"", sound("REQUEST", about("request", null, "medium", null, null)))
         assertEquals("\"critical.wav\"", sound("REQUEST", about("request", null, "critical", null, null)))
-        assertEquals("\"question.wav\"", sound("PAIRING", about("pairing", null, null, null, null)))
+        assertEquals("\"permission.wav\"", sound("PAIRING", about("pairing", null, null, null, null)))
         assertEquals("\"message.wav\"", sound("MESSAGE", about("message", null, null, null, null)))
         assertEquals("\"message.wav\"", sound("MESSAGE", about("comment", null, null, null, null)))
-        assertEquals("\"error.wav\"", sound("UPDATE", about("update", "error", "high", null, null)))
-        assertEquals("\"done.wav\"", sound("UPDATE", about("update", "success", null, null, null)))
-        assertEquals("\"default\"", sound("UPDATE", about("update", "info", null, null, null)))
-        assertEquals("\"critical.wav\"", sound("UPDATE", about("update", "success", "critical", null, null)))
+        val mention = Apns.Alert(PushMessage("t", "b", "u", "tag"), "MESSAGE", "web", "P1", "b", about = about("message", null, null, null, null), mention = true)
+        assertEquals("mention.wav", Apns.soundFor(mention))
+        // An update: the grid sound for its priority and level, medium and info when it has none.
+        assertEquals("\"high-error.wav\"", sound("UPDATE", about("update", "error", "high", null, null)))
+        assertEquals("\"medium-success.wav\"", sound("UPDATE", about("update", "success", null, null, null)))
+        assertEquals("\"medium-info.wav\"", sound("UPDATE", about("update", null, null, null, null)))
+        assertEquals("\"low-warning.wav\"", sound("UPDATE", about("update", "warn", "low", null, null)))
+        assertEquals("\"critical-success.wav\"", sound("UPDATE", about("update", "success", "critical", null, null)))
+    }
+
+    @Test
+    fun `every update's priority and level has its own grid sound`() {
+        val names = buildSet {
+            for (priority in listOf("low", "medium", "high", "critical")) {
+                for (level in listOf("info", "success", "warn", "error")) add(Apns.gridSound(priority, level))
+            }
+        }
+        assertEquals(16, names.size)
+        assertEquals("critical-warning.wav", Apns.gridSound("critical", "warn"))
+        assertEquals("medium-info.wav", Apns.gridSound("unheard-of", "unheard-of"))
+    }
+
+    @Test
+    fun `every sound a push names is in the iPhone app`() {
+        val bundled = java.io.File("../iosApp/Sounds").list()!!.toSet()
+        val named = buildSet {
+            for (priority in listOf(null, "low", "medium", "high", "critical")) {
+                for (level in listOf(null, "info", "success", "warn", "error")) add(Apns.gridSound(priority, level))
+            }
+            for (category in listOf("REQUEST", "PAIRING", "MESSAGE")) {
+                for (priority in listOf(null, "critical")) {
+                    for (mention in listOf(false, true)) {
+                        val about = dev.wildware.feed.server.domain.AlertPrefs.About(category.lowercase(), priority = priority)
+                        add(Apns.soundFor(Apns.Alert(PushMessage("t", "b", "u", "tag"), category, "web", "P1", "b", about = about, mention = mention)))
+                    }
+                }
+            }
+            add(Apns.CRITICAL_SOUND)
+        }
+        assertEquals(emptySet(), named - bundled)
+        // An older app has only these: a question, a reply and a critical page still play its own.
+        assertTrue(bundled.containsAll(listOf("question.wav", "message.wav", "done.wav", "error.wav", "critical.wav")))
     }
 
     @Test

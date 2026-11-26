@@ -141,6 +141,8 @@ class Apns(
         val followed: Boolean = true,
         /** The person who did it (migration 055): their own phones are not told. */
         val actor: String? = null,
+        /** A message that names the owner (`@you`, `@owner`): it plays the mention sound. */
+        val mention: Boolean = false,
         /** Only owners and admins are told (an agent asking to join is theirs to allow). */
         val admins: Boolean = false,
     ) {
@@ -209,6 +211,7 @@ class Apns(
                     about = dev.wildware.feed.server.domain.AlertPrefs.About(if (built.answered) "message" else "comment"),
                     followed = follows.hearsMessage(who, messageId, built.answered),
                     actor = built.actor,
+                    mention = dev.wildware.feed.server.domain.Subscriptions.OWNER_MENTION.containsMatchIn(built.body),
                 )
             }
             "pairing.created" -> {
@@ -399,21 +402,36 @@ class Apns(
          */
         const val CRITICAL_STYLE = "time-sensitive"
 
-        /** The app's critical sound, bundled in the iPhone app beside the others ([soundFor]). */
+        /** The critical page's sound: a question marked critical, or any alert sent as Apple's critical alert. */
         const val CRITICAL_SOUND = "critical.wav"
 
         /**
-         * The sound an alert plays: one of the app's own sounds (composeApp's `Sound`, bundled in the
-         * iPhone app as `<name>.wav`), or the system's default for any other update. An older app
-         * without the file plays the default sound.
+         * The sound an alert plays: one of the app's own (composeApp's `Sound`, bundled in the iPhone
+         * app as `iosApp/Sounds/<file>.wav`). An update plays the grid sound for its priority and level
+         * ([gridSound]); a question, an agent asking to join, a reply and a mention each their moment.
+         *
+         * An older app bundles only `question`, `message`, `done`, `error` and `critical`, and the
+         * server can't tell which app a phone runs. So a question and a reply keep their old names
+         * (the new app holds the new sounds under them), and an older app plays the system's default
+         * for the new names: updates, mentions and agents asking to join.
          */
-        fun soundFor(alert: Alert): String = when {
-            alert.about.priority == "critical" -> CRITICAL_SOUND
-            alert.category == "REQUEST" || alert.category == "PAIRING" -> "question.wav"
-            alert.category == "UPDATE" && alert.about.level == "error" -> "error.wav"
-            alert.category == "UPDATE" && alert.about.level == "success" -> "done.wav"
-            alert.category == "MESSAGE" -> "message.wav"
+        fun soundFor(alert: Alert): String = when (alert.category) {
+            "UPDATE" -> gridSound(alert.about.priority, alert.about.level)
+            "REQUEST" -> if (alert.about.priority == "critical") CRITICAL_SOUND else "question.wav"
+            "PAIRING" -> "permission.wav"
+            "MESSAGE" -> if (alert.mention) "mention.wav" else "message.wav"
             else -> "default"
+        }
+
+        /** `<priority>-<level>.wav`, as the app's `Sound.grid`: no priority is medium, no level is info. */
+        fun gridSound(priority: String?, level: String?): String {
+            val row = if (priority in listOf("low", "high", "critical")) priority else "medium"
+            val column = when (level) {
+                "success", "error" -> level
+                "warn" -> "warning"
+                else -> "info"
+            }
+            return "$row-$column.wav"
         }
 
         /**

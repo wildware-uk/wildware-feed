@@ -18,6 +18,7 @@ import dev.wildware.agents.app.engine.AppScreen
 import dev.wildware.agents.app.engine.DashboardSession
 import dev.wildware.agents.app.engine.NoticeCleanup
 import dev.wildware.agents.app.engine.SystemNotices
+import dev.wildware.agents.app.sound.Sound
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
@@ -27,14 +28,17 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 
 /**
- * The notification channels, which the owner can each turn off or quieten in Settings. Each alert
- * channel plays the app's own sound (`res/raw`, the in-app `Sound`s). Android fixes a channel's
- * sound when it is made, so a channel whose sound changed has a new id; [create] deletes the old
- * ones.
+ * The notification channels, which the owner can each turn off or quieten in Settings. Android
+ * gives a channel one sound, fixed when it is made, so there is one alert channel per sound the
+ * phone notifies with (`res/raw`, copies of the in-app `Sound`s): questions, agents asking to join,
+ * replies, mentions and critical alerts. Updates notify only when critical, so the grid's other
+ * rows never need a channel. A channel whose sound changed gets a new id; [create] deletes the old.
  */
 object Channels {
-    const val Questions = "questions-v2"
-    const val Replies = "replies-v3"
+    const val Questions = "questions-v3"
+    const val Joins = "joins"
+    const val Replies = "replies-v4"
+    const val Mentions = "mentions"
     const val Connection = "connection"
 
     /**
@@ -42,10 +46,22 @@ object Channels {
      * break through Do Not Disturb; Android leaves the final say to the owner, in the channel's own
      * settings, which the alert settings open ([openCriticalSettings]).
      */
-    const val Critical = "critical-v2"
+    const val Critical = "critical-v3"
 
     /** Channels whose sound has since changed. */
-    private val Retired = listOf("questions", "replies", "critical", "replies-v2")
+    val Retired = listOf("questions", "replies", "critical", "replies-v2", "questions-v2", "replies-v3", "critical-v2")
+
+    /** Each alert channel's sound: `res/raw/<name>.ogg`. */
+    val Sounds = mapOf(Questions to "question", Joins to "permission", Replies to "message", Mentions to "mention", Critical to "critical")
+
+    /** The channel for [notice]: by its sound, as each channel has one. */
+    fun of(notice: DesktopNotice): String = when {
+        notice.critical -> Critical
+        notice.sound == Sound.Permission -> Joins
+        notice.sound == Sound.Question || notice.sound == Sound.Critical -> Questions
+        notice.sound == Sound.Mention -> Mentions
+        else -> Replies
+    }
 
     /** The system's settings for the "Critical" channel, where Do Not Disturb can be overridden. */
     fun openCriticalSettings(context: Context) {
@@ -56,8 +72,9 @@ object Channels {
         runCatching { context.startActivity(intent) }
     }
 
-    /** `res/raw/[name]`, as a channel's sound: a notification's, or an alarm's for [alarm]. */
-    private fun NotificationChannel.sound(context: Context, name: String, alarm: Boolean = false) = apply {
+    /** The channel's sound from [Sounds], as a notification's, or an alarm's for [alarm]. */
+    private fun NotificationChannel.sound(context: Context, alarm: Boolean = false) = apply {
+        val name = Sounds.getValue(id)
         val uri = android.net.Uri.parse("${android.content.ContentResolver.SCHEME_ANDROID_RESOURCE}://${context.packageName}/raw/$name")
         val usage = if (alarm) android.media.AudioAttributes.USAGE_ALARM else android.media.AudioAttributes.USAGE_NOTIFICATION
         setSound(uri, android.media.AudioAttributes.Builder().setUsage(usage).setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION).build())
@@ -70,12 +87,18 @@ object Channels {
             listOf(
                 NotificationChannel(Questions, context.getString(R.string.channel_questions), NotificationManager.IMPORTANCE_HIGH)
                     .apply { description = context.getString(R.string.channel_questions_about) }
-                    .sound(context, "question"),
+                    .sound(context),
+                NotificationChannel(Joins, context.getString(R.string.channel_joins), NotificationManager.IMPORTANCE_HIGH)
+                    .apply { description = context.getString(R.string.channel_joins_about) }
+                    .sound(context),
                 NotificationChannel(Replies, context.getString(R.string.channel_replies), NotificationManager.IMPORTANCE_DEFAULT)
                     .apply { description = context.getString(R.string.channel_replies_about) }
-                    .sound(context, "message"),
+                    .sound(context),
+                NotificationChannel(Mentions, context.getString(R.string.channel_mentions), NotificationManager.IMPORTANCE_DEFAULT)
+                    .apply { description = context.getString(R.string.channel_mentions_about) }
+                    .sound(context),
                 NotificationChannel(Critical, context.getString(R.string.channel_critical), NotificationManager.IMPORTANCE_HIGH)
-                    .sound(context, "critical", alarm = true)
+                    .sound(context, alarm = true)
                     .apply {
                         description = context.getString(R.string.channel_critical_about)
                         setBypassDnd(true)
@@ -106,7 +129,7 @@ class AndroidNotifier(private val context: Context) : SystemNotices {
         ) {
             return
         }
-        // An agent asking to join waits on the owner as a question does: the same loud channel.
+        // An agent asking to join waits on the owner as a question does: as high a priority.
         val question = notice.key.startsWith("request-") || notice.key.startsWith("pairing-") || notice.key.startsWith("team:")
         val open = PendingIntent.getActivity(
             context,
@@ -114,11 +137,7 @@ class AndroidNotifier(private val context: Context) : SystemNotices {
             MainActivity.openCard(context, notice.focusId, server, project),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
-        val channel = when {
-            notice.critical -> Channels.Critical
-            question -> Channels.Questions
-            else -> Channels.Replies
-        }
+        val channel = Channels.of(notice)
         val notification = NotificationCompat.Builder(context, channel)
             .setSmallIcon(R.drawable.ic_stat_agents)
             .setContentTitle(notice.title)

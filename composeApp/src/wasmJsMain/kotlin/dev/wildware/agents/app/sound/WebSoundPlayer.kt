@@ -1,8 +1,6 @@
 package dev.wildware.agents.app.sound
 
 import dev.wildware.agents.app.resources.Res
-import kotlinx.coroutines.MainScope
-import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.ExperimentalResourceApi
 
 /** Sets up one Web Audio context; the browser lets it sound only after the first tap or key, so that wakes it. */
@@ -18,41 +16,40 @@ private fun soundsInit(): Unit = js(
 }""",
 )
 
-private fun soundsLoad(name: String, url: String): Unit = js(
+/** Plays [name], fetching and decoding it from [url] the first time; a first play that takes over a second is dropped. */
+private fun soundsPlay(name: String, url: String): Unit = js(
     """{
     const s = globalThis.feedSounds;
-    if (!s) return;
-    fetch(url).then(r => r.arrayBuffer()).then(b => s.ctx.decodeAudioData(b)).then(buf => { s.buffers[name] = buf; }).catch(() => {});
-}""",
-)
-
-private fun soundsPlay(name: String): Unit = js(
-    """{
-    const s = globalThis.feedSounds;
-    if (!s) return;
-    const buf = s.buffers[name];
-    if (!buf || s.ctx.state !== 'running') return;
-    const src = s.ctx.createBufferSource();
-    src.buffer = buf;
-    src.connect(s.ctx.destination);
-    src.start();
+    if (!s || s.ctx.state !== 'running') return;
+    const start = (buf) => {
+        const src = s.ctx.createBufferSource();
+        src.buffer = buf;
+        src.connect(s.ctx.destination);
+        src.start();
+    };
+    if (s.buffers[name]) { start(s.buffers[name]); return; }
+    if (s.buffers[name] === null) return;
+    s.buffers[name] = null;
+    const asked = Date.now();
+    fetch(url).then(r => r.arrayBuffer()).then(b => s.ctx.decodeAudioData(b)).then(buf => {
+        s.buffers[name] = buf;
+        if (Date.now() - asked < 1000 && s.ctx.state === 'running') start(buf);
+    }).catch(() => { delete s.buffers[name]; });
 }""",
 )
 
 /**
- * Web Audio: each sound fetched and decoded once, then played from memory, as many at once as
- * happen. Until the owner first taps or types on the page the browser keeps it quiet.
+ * Web Audio: each sound fetched and decoded the first time it plays, then played from memory, as
+ * many at once as happen. Only the sounds that play are downloaded. Until the owner first taps or
+ * types on the page the browser keeps it quiet.
  */
 class WebSoundPlayer : SoundPlayer {
     init {
         runCatching { soundsInit() }
-        @OptIn(ExperimentalResourceApi::class)
-        MainScope().launch {
-            for (sound in Sound.entries) runCatching { soundsLoad(sound.file, Res.getUri(sound.resource)) }
-        }
     }
 
+    @OptIn(ExperimentalResourceApi::class)
     override fun play(sound: Sound) {
-        runCatching { soundsPlay(sound.file) }
+        runCatching { soundsPlay(sound.file, Res.getUri(sound.resource)) }
     }
 }

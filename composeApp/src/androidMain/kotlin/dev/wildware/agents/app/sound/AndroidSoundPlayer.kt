@@ -40,7 +40,7 @@ class AndroidSoundPlayer(private val context: Context, private val onScreen: () 
             val file = File(context.cacheDir, "sounds/${sound.file}.wav")
             file.parentFile?.mkdirs()
             file.writeBytes(runBlocking { Res.readBytes(sound.resource) })
-            ids[sound] = (if (sound == Sound.Critical) alarm else normal).load(file.path, 1)
+            ids[sound] = (if (sound.critical) alarm else normal).load(file.path, 1)
         }
     }
 
@@ -56,7 +56,7 @@ class AndroidSoundPlayer(private val context: Context, private val onScreen: () 
         if (!onScreen()) return
         worker.execute {
             val id = ids[sound] ?: return@execute
-            (if (sound == Sound.Critical) alarm else normal).play(id, 1f, 1f, 1, 0, 1f)
+            (if (sound.critical) alarm else normal).play(id, 1f, 1f, 1, 0, 1f)
         }
     }
 }

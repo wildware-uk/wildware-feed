@@ -3,15 +3,19 @@ package dev.wildware.agents.app.sound
 import dev.wildware.agents.BlockView
 import dev.wildware.agents.ChecklistItem
 import dev.wildware.agents.FeedCard
+import dev.wildware.agents.AlertPrefs
+import dev.wildware.agents.CardRef
 import dev.wildware.agents.FeedState
 import dev.wildware.agents.Follows
 import dev.wildware.agents.MemoryTextStore
 import dev.wildware.agents.MessageView
 import dev.wildware.agents.NotifyLevel
+import dev.wildware.agents.OutboxFile
 import dev.wildware.agents.OutboxItem
 import dev.wildware.agents.OutboxKind
 import dev.wildware.agents.PollOption
 import dev.wildware.agents.PostCard
+import dev.wildware.agents.ReactionView
 import dev.wildware.agents.RequestCard
 import dev.wildware.agents.RequestView
 import dev.wildware.agents.StreamStatus
@@ -31,8 +35,14 @@ class SoundRulesTest {
     private fun owner(id: String, at: Long, updateId: String? = null) =
         MessageView(id = id, author = "human", body = "mine", createdAt = at, updateId = updateId, projectId = "p1")
 
-    private fun line(message: MessageView, blocks: List<BlockView> = emptyList()) =
-        ThreadLine(message, "Builder", null, emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), blocks = blocks)
+    private fun line(message: MessageView, blocks: List<BlockView> = emptyList(), reactions: List<ReactionView> = emptyList()) =
+        ThreadLine(message, "Builder", null, emptyList(), emptyList(), reactions, emptyList(), emptyList(), emptyList(), blocks = blocks)
+
+    private fun reaction(id: String, messageId: String, actor: String = "agent:a1", at: Long = 3_000) =
+        ReactionView(id, card = CardRef("message", "p1"), messageId = messageId, actor = actor, emoji = "👍", createdAt = at)
+
+    private fun post(head: MessageView, at: Long = 1_000, replies: List<ThreadLine> = emptyList(), reactions: List<ReactionView> = emptyList()) =
+        PostCard(line(head, reactions = reactions), "Mega", at, replies, 0, emptyList(), emptyList(), emptyList())
 
     private fun update(
         id: String,
@@ -59,7 +69,8 @@ class SoundRulesTest {
 
     private fun poll(votes: Int) = BlockView("b2", BlockView.Poll, options = listOf(PollOption("o1", "Yes", votes = votes)))
 
-    private fun item(id: String, kind: OutboxKind = OutboxKind.Message, gaveUp: Boolean = false) = OutboxItem(id, 0, kind, "To Mega", gaveUp = gaveUp)
+    private fun item(id: String, kind: OutboxKind = OutboxKind.Message, gaveUp: Boolean = false, files: Int = 0, claimed: Boolean = false) =
+        OutboxItem(id, 0, kind, "To Mega", gaveUp = gaveUp, files = List(files) { OutboxFile("f$it", "f$it.png", "image/png") }, claimedUntilMillis = if (claimed) 99 else 0)
 
     /** A clock past the settling after the first read, so changes sound. */
     private var now = 0L
@@ -70,7 +81,8 @@ class SoundRulesTest {
         outbox: List<OutboxItem> = emptyList(),
         live: Boolean = true,
         follows: Follows = Follows(),
-    ) = SoundSnapshot(now, ready = true, live = live, waiting = waiting, feed = feed, outbox = outbox, follows = follows)
+        prefs: AlertPrefs? = null,
+    ) = SoundSnapshot(now, ready = true, live = live, waiting = waiting, feed = feed, outbox = outbox, prefs = prefs, follows = follows)
 
     /** Reads [first] as the dashboard at sign-in, then lets the settling pass. */
     private fun rules(first: SoundSnapshot = snapshot()): SoundRules {
@@ -97,17 +109,49 @@ class SoundRulesTest {
     }
 
     @Test
-    fun `an error update sounds the error and a success update the done sound`() {
+    fun `a new update sounds the grid sound for its priority and level`() {
         val rules = rules(snapshot(feed(update("u0"))))
-        assertEquals(listOf(Sound.Error), rules.next(snapshot(feed(update("u0"), update("u1", at = 2_000, level = "error")))))
-        assertEquals(listOf(Sound.Done), rules.next(snapshot(feed(update("u0"), update("u1", at = 2_000, level = "error"), update("u2", at = 3_000, level = "success")))))
+        val cards = mutableListOf(update("u0"))
+        var at = 2_000L
+        for (priority in listOf("low", "medium", "high")) {
+            for (level in listOf("info", "success", "warn", "error")) {
+                cards += update("u${at}", at = at, level = level, priority = priority)
+                at += 1_000
+                val column = if (level == "warn") "warning" else level
+                assertEquals(listOf(Sound.entries.single { it.file == "$priority-$column" }), rules.next(snapshot(feed(*cards.toTypedArray()))))
+            }
+        }
+        // No priority is medium.
+        cards += update("u-none", at = at, level = "success")
+        assertEquals(listOf(Sound.MediumSuccess), rules.next(snapshot(feed(*cards.toTypedArray()))))
     }
 
     @Test
-    fun `an info update makes no sound and older history loaded later makes none`() {
+    fun `older history loaded later makes no sound`() {
         val rules = rules(snapshot(feed(update("u5", at = 5_000))))
-        assertEquals(emptyList(), rules.next(snapshot(feed(update("u5", at = 5_000), update("u6", at = 6_000)))))
+        assertEquals(listOf(Sound.MediumInfo), rules.next(snapshot(feed(update("u5", at = 5_000), update("u6", at = 6_000)))))
         assertEquals(emptyList(), rules.next(snapshot(feed(update("u5", at = 5_000), update("u6", at = 6_000), update("u1", at = 1_000, level = "error")))))
+    }
+
+    @Test
+    fun `an update the device's choice of alerts leaves out makes no sound`() {
+        val onlyHigh = AlertPrefs(priorities = listOf("high"))
+        val rules = rules(snapshot(feed(update("u0")), prefs = onlyHigh))
+        assertEquals(emptyList(), rules.next(snapshot(feed(update("u0"), update("u1", at = 2_000, priority = "low")), prefs = onlyHigh)))
+        assertEquals(listOf(Sound.HighError), rules.next(snapshot(feed(update("u0"), update("u1", at = 2_000, priority = "low"), update("u2", at = 3_000, level = "error", priority = "high")), prefs = onlyHigh)))
+    }
+
+    @Test
+    fun `a project followed for replies only makes no sound for its updates`() {
+        val replies = Follows(levels = mapOf("p1" to NotifyLevel.Replies))
+        val rules = rules(snapshot(feed(update("u0")), follows = replies))
+        assertEquals(emptyList(), rules.next(snapshot(feed(update("u0"), update("u1", at = 2_000, level = "error")), follows = replies)))
+    }
+
+    @Test
+    fun `a critical update sounds the grid's critical row with its notice`() {
+        val rules = rules(snapshot(feed(update("u0"))))
+        assertEquals(listOf(Sound.CriticalWarning), rules.next(snapshot(feed(update("u0"), update("u1", at = 2_000, level = "warn", priority = "critical")))))
     }
 
     @Test
@@ -135,9 +179,35 @@ class SoundRulesTest {
     @Test
     fun `a reply to the owner sounds the message sound`() {
         val head = owner("p1", 1_000)
-        val rules = rules(snapshot(feed(PostCard(line(head), "Mega", 1_000, emptyList(), 0, emptyList(), emptyList(), emptyList()))))
+        val rules = rules(snapshot(feed(post(head))))
         val answer = line(agent("m1", 2_000, replyTo = "p1"))
-        assertEquals(listOf(Sound.Message), rules.next(snapshot(feed(PostCard(line(head), "Mega", 2_000, listOf(answer), 0, emptyList(), emptyList(), emptyList())))))
+        assertEquals(listOf(Sound.Message), rules.next(snapshot(feed(post(head, 2_000, listOf(answer))))))
+    }
+
+    @Test
+    fun `a line that names the owner sounds the mention sound`() {
+        val rules = rules(snapshot(feed(update("u1"))))
+        val named = line(agent("m1", 2_000, updateId = "u1").copy(body = "@you have a look"))
+        assertEquals(listOf(Sound.Mention), rules.next(snapshot(feed(update("u1", replies = listOf(named))))))
+    }
+
+    @Test
+    fun `an agent asking to join sounds the permission request`() {
+        val rules = rules()
+        val joining = dev.wildware.agents.PairingView(id = "pr1", name = "laptop", code = "K7Q-3MD")
+        assertEquals(listOf(Sound.Permission), rules.next(snapshot().copy(joining = listOf(joining))))
+    }
+
+    @Test
+    fun `someone else's reaction to the owner's line sounds once but the owner's own and others' lines do not`() {
+        val head = owner("p1", 1_000)
+        val theirs = agent("m1", 1_500, replyTo = "p1")
+        val rules = rules(snapshot(feed(post(head, replies = listOf(line(theirs))))))
+        assertEquals(listOf(Sound.Reaction), rules.next(snapshot(feed(post(head, reactions = listOf(reaction("x1", "p1")), replies = listOf(line(theirs)))))))
+        assertEquals(emptyList(), rules.next(snapshot(feed(post(head, reactions = listOf(reaction("x1", "p1")), replies = listOf(line(theirs)))))))
+        val own = reaction("x2", "p1", actor = "human", at = 4_000)
+        val onTheirs = reaction("x3", "m1", at = 4_000)
+        assertEquals(emptyList(), rules.next(snapshot(feed(post(head, reactions = listOf(reaction("x1", "p1"), own), replies = listOf(line(theirs, reactions = listOf(onTheirs))))))))
     }
 
     @Test
@@ -145,6 +215,22 @@ class SoundRulesTest {
         val rules = rules(snapshot(outbox = listOf(item("o1"), item("o2"))))
         assertEquals(emptyList(), rules.next(snapshot(outbox = listOf(item("o2")))))
         assertEquals(listOf(Sound.Error), rules.next(snapshot(outbox = listOf(item("o2", gaveUp = true)))))
+    }
+
+    @Test
+    fun `answering a question sounds the answer as it is given`() {
+        val rules = rules()
+        assertEquals(listOf(Sound.Answered), rules.next(snapshot(outbox = listOf(item("a1", OutboxKind.Answer)))))
+        assertEquals(listOf(Sound.Answered), rules.next(snapshot(outbox = listOf(item("a1", OutboxKind.Answer), item("a2", OutboxKind.RequestAnswer)))))
+        assertEquals(emptyList(), rules.next(snapshot(outbox = listOf(item("a1", OutboxKind.Answer), item("a2", OutboxKind.RequestAnswer), item("d1", OutboxKind.Dismiss)))))
+    }
+
+    @Test
+    fun `files sent sound the upload once they reach the dashboard`() {
+        val rules = rules(snapshot(outbox = listOf(item("o1", files = 1), item("o2", files = 1), item("o3"))))
+        // Taken out before it was sent (an undo): no sound.
+        assertEquals(emptyList(), rules.next(snapshot(outbox = listOf(item("o2", files = 1, claimed = true), item("o3", claimed = true)))))
+        assertEquals(listOf(Sound.Uploaded), rules.next(snapshot(outbox = emptyList())))
     }
 
     @Test
@@ -157,13 +243,9 @@ class SoundRulesTest {
         now += 100
         assertEquals(emptyList(), rules.next(snapshot(feed(update("u1", at = 2_000, level = "error"), update("u2", at = 3_000, level = "error")), waiting = listOf(question("r9", "critical")))))
         now += 10_000
-        assertEquals(listOf(Sound.Error), rules.next(snapshot(feed(update("u1", at = 2_000, level = "error"), update("u2", at = 3_000, level = "error"), update("u3", at = 4_000, level = "error")), waiting = listOf(question("r9", "critical")))))
+        assertEquals(listOf(Sound.MediumError), rules.next(snapshot(feed(update("u1", at = 2_000, level = "error"), update("u2", at = 3_000, level = "error"), update("u3", at = 4_000, level = "error")), waiting = listOf(question("r9", "critical")))))
     }
 
-    @Test
-    fun `only questions and messages and critical and errors and done have sounds`() {
-        assertEquals(setOf(Sound.Question, Sound.Message, Sound.Critical, Sound.Error, Sound.Done), Sound.entries.toSet())
-    }
 
     @Test
     fun `coming back to the app catches up quietly`() {
@@ -200,8 +282,8 @@ class SoundBoardTest {
     @Test
     fun `a burst plays only its most important sound`() {
         val player = FakePlayer()
-        SoundBoard(player, MemoryTextStore(), clock = { now }).play(listOf(Sound.Done, Sound.Question, Sound.Error))
-        assertEquals(listOf(Sound.Error), player.played)
+        SoundBoard(player, MemoryTextStore(), clock = { now }).play(listOf(Sound.Done, Sound.Question, Sound.Error, Sound.HighError))
+        assertEquals(listOf(Sound.Question), player.played)
     }
 
     @Test
@@ -239,14 +321,28 @@ class SoundBoardTest {
     }
 
     @Test
-    fun `while the owner is using the app only critical sounds play`() {
+    fun `a quiet device plays a critical update's sound but not the owner's own`() {
+        val player = FakePlayer()
+        val board = SoundBoard(player, MemoryTextStore(), quiet = { true }, clock = { now })
+        board.play(Sound.Answered)
+        board.play(Sound.HighError)
+        board.play(Sound.CriticalError)
+        assertEquals(listOf(Sound.CriticalError), player.played)
+    }
+
+    @Test
+    fun `while the owner is using the app only critical sounds and their own play`() {
         val player = FakePlayer()
         val board = SoundBoard(player, MemoryTextStore(), clock = { now })
         board.activity.focus(true)
         board.play(Sound.Message)
         board.play(Sound.Question)
+        board.play(Sound.MediumInfo)
         board.play(Sound.Critical)
-        assertEquals(listOf(Sound.Critical), player.played)
+        board.play(Sound.Answered)
+        board.play(Sound.Uploaded)
+        board.play(Sound.Error)
+        assertEquals(listOf(Sound.Critical, Sound.Answered, Sound.Uploaded, Sound.Error), player.played)
     }
 
     @Test

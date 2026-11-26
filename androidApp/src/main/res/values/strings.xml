@@ -4,8 +4,12 @@
     <string name="share_label">Send to a project</string>
     <string name="channel_questions">Questions</string>
     <string name="channel_questions_about">An agent asks you something.</string>
-    <string name="channel_replies">Replies and mentions</string>
-    <string name="channel_replies_about">An agent answers you or mentions you.</string>
+    <string name="channel_joins">Agents asking to join</string>
+    <string name="channel_joins_about">An agent asks to join the dashboard. Allow or deny it.</string>
+    <string name="channel_replies">Replies</string>
+    <string name="channel_replies_about">An agent answers you, or writes in a thread you follow.</string>
+    <string name="channel_mentions">Mentions</string>
+    <string name="channel_mentions_about">An agent or teammate names you.</string>
     <string name="channel_critical">Critical alerts</string>
     <string name="channel_critical_about">Something an agent marked critical. Allow it to override Do Not Disturb to be paged at any hour.</string>
     <string name="channel_connection">Staying connected</string>
