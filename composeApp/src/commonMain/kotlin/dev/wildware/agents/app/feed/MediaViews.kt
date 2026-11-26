@@ -81,7 +81,8 @@ class InlinePlay(val url: String, val slot: VideoSlot?)
 
 /**
  * What a tap on a grid tile does: a picture opens the viewer (looking through the pictures only),
- * a video plays right there, in [slot] only.
+ * a video plays right there, in [slot] only. On a phone a video sharing its grid opens full screen:
+ * its tile is too small to watch in, and too small for the iPhone player's own full-screen button.
  */
 @Composable
 internal fun rememberTileOpener(attachments: List<Attachment>, slot: VideoSlot): (Int) -> Unit {
@@ -89,7 +90,8 @@ internal fun rememberTileOpener(attachments: List<Attachment>, slot: VideoSlot):
     val handler = LocalMediaHandler.current
     val auth = LocalMediaAuth.current
     val scope = rememberCoroutineScope()
-    return remember(attachments, slot, ui, handler, auth) {
+    val phone = LocalIsPhone.current
+    return remember(attachments, slot, ui, handler, auth, phone) {
         { i ->
             val tile = attachments[i]
             val video = tile.video
@@ -98,6 +100,7 @@ internal fun rememberTileOpener(attachments: List<Attachment>, slot: VideoSlot):
             when {
                 tile.isPlaceholder -> if (pictures.isNotEmpty()) ui?.viewer = Gallery(pictures, 0)
                 video == null -> ui?.viewer = Gallery(pictures, pictures.indexOf(tile))
+                playsVideoInApp && phone && attachments.size > 1 -> ui?.playing = video
                 playsVideoInApp -> ui?.inlineVideo = InlinePlay(video.url, slot)
                 handler != null -> scope.launch {
                     ui?.toast = "Opening the video…"
