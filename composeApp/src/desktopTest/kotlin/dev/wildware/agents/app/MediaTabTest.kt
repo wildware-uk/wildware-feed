@@ -179,10 +179,13 @@ class MediaTabTest {
     }
 
     @Test
-    fun goToTheMessageLeavesTheTabForItsCard() = runDesktopComposeUiTest(width = 1440, height = 900) {
+    fun goToTheMessageOpensItsCardAndBackComesBackToTheTab() = runDesktopComposeUiTest(width = 1440, height = 900) {
         openMedia()
         waitForNode(hasContentDescription("Go to the message")).performClick()
         waitForNone(hasText("MEDIA  ·  CHANNEL"))
         waitForNode(hasText("Why is the Mac build slow?"))
+        // Back is to the Media tab it was opened from, not the feed.
+        waitForNode(hasText("Back to media")).performClick()
+        waitForNode(hasText("MEDIA  ·  CHANNEL"))
     }
 }

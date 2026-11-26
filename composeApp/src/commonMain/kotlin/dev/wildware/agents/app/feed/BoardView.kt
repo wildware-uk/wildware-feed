@@ -40,6 +40,7 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -389,10 +390,20 @@ private fun BoardCardItem(ui: FeedUi, card: BoardCard, multi: Boolean, drag: Boa
     var coords by remember { mutableStateOf<LayoutCoordinates?>(null) }
     val dragging = drag?.card?.id == card.id
     val moves = if (card.canMove) BoardStatuses.filter { it != boardColumnOf(card.status) } else emptyList()
+    // Its modal (or its thread on its own) just closed: the keyboard and a screen reader come back to it.
+    val refocus = remember(card.id) { FocusRequester() }
+    val comingBack by remember(card.id) { derivedStateOf { ui.boardRefocus == card.id } }
+    if (comingBack) LaunchedEffect(Unit) {
+        // A frame first, so whatever the closing put the keyboard on has let go of it.
+        withFrameNanos { }
+        runCatching { refocus.requestFocus() }
+        if (ui.boardRefocus == card.id) ui.boardRefocus = null
+    }
     Box(
         modifier
             .fillMaxWidth()
             .onGloballyPositioned { coords = it }
+            .focusRequester(refocus)
             .alpha(if (dragging) 0.35f else if (card.removed) 0.6f else 1f)
             .semantics(mergeDescendants = true) {
                 contentDescription = card.spoken + if (unread > 0) ", $unread unread" else ""

@@ -3,7 +3,7 @@
 // the feed; only the board stops showing it, for everyone in the team.
 import { expect, test } from '@playwright/test';
 import { Team } from '../lib/team.mjs';
-import { expectGone, expectShown, find, has, nextResponse, openChannel, signedIn, tap } from '../lib/ui.mjs';
+import { expectGone, expectShown, find, has, nextResponse, openChannel, signedIn, tap, tapTarget } from '../lib/ui.mjs';
 
 test.describe.configure({ mode: 'serial' });
 let team;
@@ -73,4 +73,24 @@ test('the owner drags a card to Done on the board and removes it from the board'
     expect(JSON.stringify(feed)).toContain('Write the release notes');
     // The other card is still to do.
     expect((await boardOf('sprint')).todo).toEqual(['Fix the flaky upload test']);
+});
+
+test('clicking a card opens it in a modal over the board, and closing it leaves the board as it was', async ({ browser }) => {
+    const page = await signedIn(browser, team.owner);
+    await openChannel(page, 'Sprint');
+    await tap(page, await roleOf(page, ['tab', 'button'], 'Board'), 'Board');
+    await expectShown(page, 'BOARD  ·  CHANNEL');
+
+    // The card and its comments, over the board: not the thread on its own.
+    const card = await find(page, await roleOf(page, ['button', 'group'], /^Fix the flaky upload test/), /^Fix the flaky upload test/);
+    await tapTarget(page, card, 'the card');
+    await expectShown(page, 'Open full thread');
+    await expectShown(page, 'BOARD  ·  CHANNEL');
+    expect(await has(page, 'button', 'Back to feed'), 'not the card on its own').toBe(false);
+
+    // × closes it: still on the board, the card still in To do.
+    await tap(page, 'button', 'Close card');
+    await expectGone(page, 'Open full thread');
+    await expectShown(page, 'BOARD  ·  CHANNEL');
+    await expectShown(page, 'Fix the flaky upload test');
 });

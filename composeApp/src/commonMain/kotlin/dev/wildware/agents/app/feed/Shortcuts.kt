@@ -120,7 +120,7 @@ fun keyboardShortcuts(mac: Boolean, web: Boolean): List<ShortcutGroup> {
             listOf(
                 Shortcut("↑  ↓  ←  →", "Move between cards"),
                 Shortcut("$cmd$shift←  $cmd$shift→", "Move the card a column"),
-                Shortcut("Enter", "Open the card's thread"),
+                Shortcut("Enter", "Open the card and its comments"),
                 Shortcut("Delete", "Remove a Done card from the board"),
                 Shortcut("A", "Assign the card to people or agents"),
             ),
@@ -141,7 +141,8 @@ fun keyboardShortcuts(mac: Boolean, web: Boolean): List<ShortcutGroup> {
 internal val FeedUi.overlayOpen: Boolean
     get() = tour.on || viewer != null || playing != null || commandOpen || bellOpen || alertsOpen || retentionOpen || githubOpen ||
         devicesOpen || secretsOpen || feedbackOpen || peopleOpen || connectOpen || statusPick != null || state.assign != null || menu != null || selecting != null || boardMenu != null ||
-        tagging != null || deleting != null || editing != null || projectDialog != null || agentOpen != null || personOpen != null || shortcutsOpen
+        tagging != null || deleting != null || editing != null || projectDialog != null || agentOpen != null || personOpen != null || shortcutsOpen ||
+        boardCard != null
 
 /** Closes whatever is on top of the feed; false when nothing was. */
 internal fun FeedUi.closeTopOverlay(): Boolean {
@@ -172,6 +173,8 @@ internal fun FeedUi.closeTopOverlay(): Boolean {
         agentOpen != null -> agentOpen = null
         selecting != null -> selecting = null
         menu != null -> menu = null
+        // Under any menu or picker opened from it.
+        boardCard != null -> closeBoardCard()
         else -> return false
     }
     return true

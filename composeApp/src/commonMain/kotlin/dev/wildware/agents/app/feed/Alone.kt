@@ -30,7 +30,7 @@ import dev.wildware.agents.app.design.Icons
 /**
  * The card open on its own, over the feed on a wide screen: a card the feed hadn't paged to, read
  * by itself with its whole thread, so opening it never pages or scrolls the feed under it. "Back to
- * feed" puts it away, and the feed is just as it was; "Show in feed" appears once the feed has the
+ * feed" (or board, or media: the tab it was opened over) puts it away, and that tab is just as it was; "Show in feed" appears once the feed has the
  * card too. (On a phone the thread screen shows it instead.)
  */
 @Composable
@@ -49,7 +49,8 @@ internal fun AloneView(ui: FeedUi, maxWidth: Dp, modifier: Modifier = Modifier) 
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Row(Modifier.widthIn(max = maxWidth).fillMaxWidth().padding(bottom = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                AppButton("Back to feed", ButtonTone.Quiet, icon = Icons.Back) { ui.closeAlone() }
+                // Back to the tab it was opened from: the feed, the board, Media.
+                AppButton("Back to ${ui.tabName.lowercase()}", ButtonTone.Quiet, icon = Icons.Back) { ui.closeAlone() }
                 Spacer(Modifier.weight(1f))
                 if (ui.state.item(item.id) != null) AppButton("Show in feed", ButtonTone.Quiet) { ui.showAloneInFeed() }
             }

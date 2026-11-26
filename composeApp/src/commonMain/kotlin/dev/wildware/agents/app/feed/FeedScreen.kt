@@ -246,6 +246,8 @@ private fun FeedScreenBody(
             LocalOpenPaywall provides openPaywall,
         ) {
             if (phone) PhoneFeed(ui, safeArea, startAt, widthPx) else DesktopFeed(ui, showRail = maxWidth >= RailBreakpoint, startAt)
+            // A board card's modal, over the board and under anything opened from it. A phone's is in PhoneFeed, under its menus.
+            if (!phone) BoardCardModalHost(ui, phone = false, safeArea = SafeArea())
             val motion = AgentTheme.motion
             // Pictures open by fading and growing into place; search drops in from above.
             Presence(ui.viewer, fadeIn(motion.normal()) + scaleIn(motion.settle(), initialScale = 0.92f), fadeOut(motion.fast())) {
@@ -356,9 +358,12 @@ private fun DesktopColumns(ui: FeedUi, showRail: Boolean, startAt: String?) {
         // Red, above the feed, until it is answered, read or put away: a page made visible.
         CriticalBanner(ui)
         // The board takes the feed's place; the feed keeps where it was scrolled to for coming back.
-        if (ui.docsOpen && !ui.boardOpen) DocsPane(ui, Modifier.weight(1f).fillMaxWidth()) else
-        if (ui.mediaOpen && !ui.boardOpen) MediaPane(ui, Modifier.weight(1f).fillMaxWidth()) else
-        if (ui.boardOpen) BoardPane(ui, Modifier.weight(1f).fillMaxWidth()) else Box(Modifier.weight(1f).fillMaxWidth()) {
+        Box(Modifier.weight(1f).fillMaxWidth()) {
+        // Under a card on its own the tab is hidden, so a screen reader doesn't reach past the card into it.
+        Box(Modifier.fillMaxSize().then(if (ui.aloneId != null) Modifier.clearAndSetSemantics { } else Modifier)) {
+        if (ui.docsOpen && !ui.boardOpen) DocsPane(ui, Modifier.fillMaxSize()) else
+        if (ui.mediaOpen && !ui.boardOpen) MediaPane(ui, Modifier.fillMaxSize()) else
+        if (ui.boardOpen) BoardPane(ui, Modifier.fillMaxSize()) else Box(Modifier.fillMaxSize()) {
             LazyColumn(
                 Modifier.fillMaxSize().closesComposer(ui).listActions(refresh, toTop, null),
                 state = list,
@@ -382,8 +387,11 @@ private fun DesktopColumns(ui: FeedUi, showRail: Boolean, startAt: String?) {
             // Only the slug is captured, so a new engine state doesn't redraw the composer.
             val postTo = if (state.current.slug == null) target?.slug else null
             if (target != null) DesktopComposer(ui, target, postTo, picking = state.current.slug == null, Modifier.align(Alignment.BottomCenter))
-            // A card the feed hadn't paged to, open on its own over the feed, which stays where it was.
-            AloneView(ui, FeedMaxWidth)
+        }
+        }
+        // A card the feed hadn't paged to, open on its own over the tab it was opened from (the feed,
+        // the board, Media), which stays where it was for coming back.
+        AloneView(ui, FeedMaxWidth)
         }
         }
         if (showRail) {
@@ -463,7 +471,7 @@ private fun PhoneFeed(ui: FeedUi, safeArea: SafeArea, startAt: String?, widthPx:
                 // Where the platform owns the left edge (the iPhone), its swipe opens the drawer instead.
                 enabled = !LocalSystemBack.current.ownsLeftEdge,
                 // Only on the feed itself: not under a thread, a menu, the drawer or the picture viewer.
-                canStart = { ui.phoneThread == null && ui.drawer.value == 0f && ui.viewer == null && ui.menu == null },
+                canStart = { ui.phoneThread == null && ui.boardCard == null && ui.drawer.value == 0f && ui.viewer == null && ui.menu == null },
                 onCommit = {},
             ),
     ) {
@@ -550,6 +558,8 @@ private fun PhoneFeed(ui: FeedUi, safeArea: SafeArea, startAt: String?, widthPx:
             }
         }
         ui.phoneThread?.let { CompositionLocalProvider(LocalDocChannel provides it.channelSlug) { PhoneThreadScreen(ui, it, widthPx, safeArea) } }
+        // A board card's modal: a sheet over the board, under the card's menu.
+        BoardCardModalHost(ui, phone = true, safeArea = safeArea)
         ProjectsDrawer(ui, ui.drawer, drawerWidthPx, safeArea)
         // The menu's sheet rises from the bottom over a fading scrim, and sinks back when closed.
         val motion = AgentTheme.motion

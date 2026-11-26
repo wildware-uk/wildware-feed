@@ -37,12 +37,15 @@ val FeedUi.place: Place
     get() {
         val asked = askedProject
         val project = if (asked != null) asked.slug else state.current.slug
-        val open = threadId?.takeIf { !isPhone || phoneThreadOpen }
+        // A board card's modal isn't a place: closing it leaves the owner where they were.
+        val open = threadId?.takeIf { (!isPhone || phoneThreadOpen) && it != boardCard }
         return Place(project, open)
     }
 
 /** Back one place: in a browser, through its history; elsewhere through the feed's own. */
 fun FeedUi.goBack() {
+    // A board card's modal closes first, the board under it just as it was.
+    if (boardCard != null) return closeBoardCard()
     browser?.let { it.back(); return }
     history.back()?.let(::show)
     noteHistory()
@@ -66,6 +69,7 @@ fun FeedUi.arriveFromBrowser(place: Place) {
 internal fun FeedUi.show(place: Place) {
     menu = null
     cursor = null
+    closeBoardCard(refocus = false)
     if (place.project != this.place.project) emit(FeedEvent.SelectProject(place.project))
     val thread = place.thread
     if (thread == null) {

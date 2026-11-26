@@ -659,7 +659,7 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
 
     /** "Go to message" on a file in the Media tab: the card it is on, open with its thread. */
     fun openMediaCard(cardId: String) {
-        mediaOpen = false
+        // The Media tab stays under it, so Back comes back here.
         viewer = null
         openAlone(cardId)
     }
@@ -690,14 +690,67 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
     /** A [[link]] waiting for the Docs tab to show its channel: (channel, title). */
     var pendingDocLink by mutableStateOf<Pair<String, String>?>(null)
 
+    /** The tab showing in the main pane, as its toggle names it: "Feed", "Board", "Docs" or "Media". */
+    val tabName: String
+        get() = when {
+            docsOpen -> "Docs"
+            mediaOpen -> "Media"
+            boardOpen -> "Board"
+            else -> "Feed"
+        }
+
     /**
-     * Opens a board card's thread on its own ([openAlone]): read by itself with its thread, without
-     * paging the feed down to it. The board steps aside for it; the feed stays where it was.
+     * The board card open in its modal over the board, by id: the card and its comments. The board
+     * stays just as it was under it.
+     */
+    var boardCard by mutableStateOf<String?>(null)
+        private set
+
+    /** The board card the keyboard goes back to once its modal closes. */
+    var boardRefocus by mutableStateOf<String?>(null)
+
+    /**
+     * Opens a board card in its modal over the board ([BoardCardModal.kt]). One the feed on screen
+     * hasn't loaded is read by itself, as a link to it would be; the feed doesn't move.
      */
     internal fun openBoardCard(card: BoardCard) {
         boardMenu = null
-        boardOpen = false
-        openAlone(card.id)
+        boardFocus = card.id
+        boardRefocus = null
+        missingLink = false
+        boardCard = card.id
+        expandedThreads.add(card.id)
+        // Its reply box is the open thread's, so a Reply on a comment answers there; never the phone's thread screen.
+        threadId = card.id
+        replyingTo = null
+        if (state.item(card.id) != null) return
+        val asked = ++aloneAsked
+        emit(FeedEvent.OpenAlone(card.id) { cardId ->
+            if (asked != aloneAsked || boardCard != card.id || cardId != null) return@OpenAlone
+            closeBoardCard()
+            toast = "That card couldn't be opened."
+        })
+    }
+
+    /** Puts the board card's modal away: the board is as it was, the keyboard back on that card. */
+    fun closeBoardCard(refocus: Boolean = true) {
+        val id = boardCard ?: return
+        boardCard = null
+        if (threadId == id) threadId = null
+        replyingTo = null
+        // The card read by itself for the modal is let go, unless it is open on its own too.
+        if (aloneId == null && state.item(id) == null) {
+            aloneAsked++
+            emit(FeedEvent.CloseAlone)
+        }
+        if (refocus) boardRefocus = id
+    }
+
+    /** "Open full thread" in a board card's modal: the card on its own, full size. Back comes back to the board. */
+    fun openBoardCardThread() {
+        val id = boardCard ?: return
+        closeBoardCard(refocus = false)
+        openAlone(id)
     }
     var showArchived by mutableStateOf(false)
     var commandOpen by mutableStateOf(preview.command != null)
@@ -908,13 +961,15 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
         })
     }
 
-    /** Puts the card on its own away: back to the feed, just as it was. */
+    /** Puts the card on its own away: back to the tab it was opened from (the feed, the board…), just as it was. */
     fun closeAlone() {
         val id = aloneId ?: return
         aloneAsked++
         aloneId = null
         if (threadId == id) threadId = null
         emit(FeedEvent.CloseAlone)
+        // Opened from the board: the keyboard goes back to its card there.
+        if (boardOpen && state.board.card(id) != null) boardRefocus = id
     }
 
     /** "Show in feed": the card on its own, once the feed has it too, shown there instead. */
@@ -924,6 +979,10 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
         aloneId = null
         emit(FeedEvent.CloseAlone)
         if (isPhone) phoneThreadOpen = false
+        // In the feed, so the feed is what shows, whichever tab it was opened from.
+        boardOpen = false
+        docsOpen = false
+        mediaOpen = false
         reveal(id)
         highlighted = id
     }
@@ -1282,7 +1341,11 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
             }
             is FeedEvent.Answer, is FeedEvent.AnswerText, is FeedEvent.AnswerForm, is FeedEvent.AnswerFields, is FeedEvent.DismissQuestion -> picks.remove(questionIdOf(event))
             // "Reply" on a card opens its thread; on a line in a thread it answers that line.
-            is FeedEvent.Reply -> if (state.item(event.targetId) is Threaded) {
+            // The board card's modal has its own reply box: Reply on the card puts the cursor there.
+            is FeedEvent.Reply -> if (event.targetId == boardCard) {
+                replyingTo = null
+                mentionAsk = MentionAsk(event.targetId, mention = null, focus = true)
+            } else if (state.item(event.targetId) is Threaded) {
                 openThread(event.targetId, phone = isPhone)
             } else {
                 // A line in a thread: open that card's reply box (it may be inline, not yet open) to answer it.

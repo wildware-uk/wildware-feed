@@ -153,7 +153,7 @@ class BoardTest {
     }
 
     @Test
-    fun clickingACardOpensItOnItsOwnWithoutPagingTheFeed() = runDesktopComposeUiTest(width = 1440, height = 900) {
+    fun clickingACardOpensItInAModalWithoutPagingTheFeed() = runDesktopComposeUiTest(width = 1440, height = 900) {
         // A card the feed never loaded: the board has it, the feed doesn't.
         val json = Json { encodeDefaults = true; explicitNulls = false }
         val old = UpdateView(id = "u-old", seq = 1, projectId = "p1", agentId = "a1", title = "Something from last month", body = "The old plan.", createdAt = FakeServer.now() - 40L * 24 * 3600_000)
@@ -165,11 +165,15 @@ class BoardTest {
         openBoard()
         val pages = server.count("/api/snapshot/updates")
         waitForNode(hasTestTag("board-card-u-old")).performClick()
-        waitForNode(hasText("Back to feed"))
+        waitForNode(hasTestTag("board-card-modal"))
         waitForNode(hasText("The old plan."))
-        assertTrue(onAllNodes(hasTestTag("board-column-todo")).fetchSemanticsNodes().isEmpty(), "the board steps aside")
+        assertTrue(onAllNodes(hasTestTag("board-column-todo")).fetchSemanticsNodes().isNotEmpty(), "the board stays under it")
         assertEquals(1, server.count("/api/threads/u-old"), "read once, by itself")
         assertEquals(pages, server.count("/api/snapshot/updates"), "no feed page was read to find it")
+        // Open full thread: the card on its own, and Back to the board.
+        waitForNode(hasText("Open full thread")).performClick()
+        waitForNode(hasText("Back to board")).performClick()
+        waitForNode(hasTestTag("board-column-todo"))
     }
 
     @Test

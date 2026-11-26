@@ -254,7 +254,7 @@ fun WithMenu(target: MenuTarget, modifier: Modifier = Modifier, content: @Compos
 }
 
 @Composable
-private fun Scrim(alpha: () -> Float, label: String, onTap: () -> Unit) {
+internal fun Scrim(alpha: () -> Float, label: String, onTap: () -> Unit) {
     Box(
         Modifier
             .fillMaxSize()
@@ -270,7 +270,7 @@ private fun Scrim(alpha: () -> Float, label: String, onTap: () -> Unit) {
 }
 
 @Composable
-private fun DragHandle() {
+internal fun DragHandle() {
     Box(
         Modifier
             .padding(top = 8.dp, bottom = 6.dp)
@@ -689,11 +689,12 @@ fun PhoneThreadScreen(ui: FeedUi, item: Threaded, widthPx: Float, safeArea: Safe
             ) {
                 val shape = AgentTheme.shapes.pill
                 Row(
-                    Modifier.clip(shape).pressable("Back to ${ui.state.current.name}", shape, onClick = back).padding(end = 8.dp),
+                    Modifier.clip(shape).pressable(if (ui.tabName == "Feed") "Back to ${ui.state.current.name}" else "Back to ${ui.tabName.lowercase()}", shape, onClick = back).padding(end = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Icon(Icons.Back, null, tint = colors.accent, modifier = Modifier.padding(start = 8.dp).size(20.dp))
-                    Text("Feed", Modifier.padding(start = 4.dp), color = colors.accent, style = AgentTheme.type.label)
+                    // The tab under it, which Back comes back to: the feed, or the board or Media it was opened from.
+                    Text(ui.tabName, Modifier.padding(start = 4.dp), color = colors.accent, style = AgentTheme.type.label)
                 }
                 Text(
                     "Thread",
