@@ -92,6 +92,8 @@ enum class TourTarget {
     Views,
     /** Where the owner's settings open: their name in the sidebar, their picture on a phone. */
     Settings,
+    /** Never pointed at: the phone's feed heading, which the bubble keeps clear of so it stays readable. */
+    Heading,
 }
 
 /** One step: what it lights up (the first of [targets] on screen) and what it says. */
@@ -204,6 +206,14 @@ class Tour {
 
     internal fun forget(target: TourTarget, owner: Any) {
         if (places[target]?.owner === owner) places.remove(target)
+    }
+
+    /** Where the bubble mustn't cover, inside the tour layer: the feed's heading, when it is on screen. */
+    internal fun keepClear(): Rect? {
+        val frame = frame
+        if (frame.isEmpty) return null
+        val seen = places[TourTarget.Heading]?.bounds?.intersect(frame) ?: return null
+        return if (seen.isEmpty) null else seen.translate(-frame.left, -frame.top)
     }
 
     /**
@@ -404,7 +414,7 @@ private fun TourOverlay(ui: FeedUi, tour: Tour, step: TourStep, safeArea: SafeAr
         )
         val showing = shownStep
         if (found && showing != null) {
-            BubblePlacement(hole, pad, safeArea, phone = ui.isPhone) {
+            BubblePlacement(hole, pad, safeArea, phone = ui.isPhone, keepClear = tour::keepClear) {
                 TourBubble(ui, tour, showing, focus)
             }
         }
@@ -413,11 +423,19 @@ private fun TourOverlay(ui: FeedUi, tour: Tour, step: TourStep, safeArea: SafeAr
 
 /**
  * Puts the bubble beside the hole: under it if there is room, else over it, else to its side, else
- * at the foot of the screen. Worked out while laying out, so the hole gliding moves it without
+ * at the foot of the screen. Under the hole, it also goes below [keepClear] (the feed's heading)
+ * where it would cover it. Worked out while laying out, so the hole gliding moves it without
  * redrawing it.
  */
 @Composable
-private fun BubblePlacement(hole: Animatable<Rect, *>, pad: Float, safeArea: SafeArea, phone: Boolean, content: @Composable () -> Unit) {
+private fun BubblePlacement(
+    hole: Animatable<Rect, *>,
+    pad: Float,
+    safeArea: SafeArea,
+    phone: Boolean,
+    keepClear: () -> Rect?,
+    content: @Composable () -> Unit,
+) {
     Layout(content, Modifier.fillMaxSize()) { measurables, constraints ->
         val margin = 12.dp.roundToPx()
         val gap = 10.dp.roundToPx()
@@ -430,8 +448,13 @@ private fun BubblePlacement(hole: Animatable<Rect, *>, pad: Float, safeArea: Saf
         val h = bubble.height
         val centred = (r.center.x - w / 2f).roundToInt().coerceIn(margin, (constraints.maxWidth - margin - w).coerceAtLeast(margin))
         val beside = (r.top.roundToInt()).coerceIn(top, (bottom - h).coerceAtLeast(top))
+        // Under the hole, or under the heading when the bubble there would cover it.
+        val clear = keepClear()
+        val under = (r.bottom + gap).let { y ->
+            if (clear != null && clear.overlaps(Rect(centred.toFloat(), y, centred + w.toFloat(), y + h))) maxOf(y, clear.bottom + gap) else y
+        }
         val (x, y) = when {
-            r.bottom + gap + h <= bottom -> centred to (r.bottom + gap).roundToInt()
+            under + h <= bottom -> centred to under.roundToInt()
             r.top - gap - h >= top -> centred to (r.top - gap - h).roundToInt()
             r.right + gap + w <= constraints.maxWidth - margin -> (r.right + gap).roundToInt() to beside
             r.left - gap - w >= margin -> (r.left - gap - w).roundToInt() to beside

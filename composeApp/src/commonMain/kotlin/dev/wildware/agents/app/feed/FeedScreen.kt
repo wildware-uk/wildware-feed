@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.mapNotNull
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -94,6 +95,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import dev.wildware.agents.app.design.AgentTheme
@@ -515,7 +517,9 @@ private fun PhoneFeed(ui: FeedUi, safeArea: SafeArea, startAt: String?, widthPx:
                     },
                 ) {
                     item(key = "bar") { PhoneTopBar(state, onProjects = openDrawer, onTapBar = toTop, onSearch = { ui.commandOpen = true }, onBell = { ui.bellOpen = !ui.bellOpen }, onAccount = { ui.alertsOpen = true }) }
-                    item(key = "header") { FeedHeader(ui, compact = true, Modifier.padding(top = 12.dp, bottom = 16.dp)) }
+                    item(key = "header") {
+                        FeedHeader(ui, compact = true, Modifier.testTag(FeedHeaderTag).tourTarget(ui.tour, TourTarget.Heading).padding(top = 12.dp, bottom = 16.dp))
+                    }
                     feedItems(ui, Density.Compact, list)
                 }
                 LoadOlderWhenNearEnd(ui, list)
@@ -634,6 +638,9 @@ private fun PhoneWaitingButton() {
     }
 }
 
+/** The phone's feed heading, for tests. */
+internal const val FeedHeaderTag = "feed-header"
+
 /** What an empty feed says: still loading, or really nothing here. */
 @Composable
 private fun EmptyFeed(state: FeedState, filter: FeedFilter, modifier: Modifier, onConnect: () -> Unit) {
@@ -652,9 +659,12 @@ private fun EmptyFeed(state: FeedState, filter: FeedFilter, modifier: Modifier, 
             style = AgentTheme.type.title,
         )
         Spacer(Modifier.height(4.dp))
-        MetaText(
+        // Wraps on a narrow phone rather than ending in "…".
+        Text(
             "Updates and questions from your agents will show up here.",
             color = colors.textMuted,
+            style = AgentTheme.type.meta,
+            textAlign = TextAlign.Center,
         )
         // A dashboard with no agent yet: the way to get the first one.
         if (filter == FeedFilter.All && state.agents.isEmpty()) {

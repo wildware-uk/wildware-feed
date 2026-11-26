@@ -7,7 +7,10 @@ import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.getBoundsInRoot
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasTestTag
@@ -27,6 +30,7 @@ import dev.wildware.agents.app.design.AgentTheme
 import dev.wildware.agents.app.engine.AppModel
 import dev.wildware.agents.app.engine.AppScreen
 import dev.wildware.agents.app.feed.FakeFeed
+import dev.wildware.agents.app.feed.FeedHeaderTag
 import dev.wildware.agents.app.feed.FeedScreen
 import dev.wildware.agents.app.feed.FeedState
 import dev.wildware.agents.app.feed.LocalTourSeen
@@ -200,6 +204,24 @@ class TourTest {
         onNodeWithText("Thread").assertDoesNotExist()
         press("Skip tour")
         waitUntil(timeoutMillis = 5_000) { !bubbleShowing() }
+    }
+
+    @Test
+    fun `on a phone a new team's first step and empty feed are readable`() = runDesktopComposeUiTest(390, 844) {
+        // A brand-new team: nothing posted, nothing waiting.
+        showFeed(FakeFeed.state.copy(sections = emptyList(), openThread = null), accessibility = AccessibilityPrefs(reduceMotion = true))
+        waitForStep("1 of ", "Channels")
+        waitForIdle()
+        // The bubble sits under the feed's heading, not over it.
+        val bubble = onNodeWithTag(TourBubbleTag).getBoundsInRoot()
+        val heading = onNodeWithTag(FeedHeaderTag).getBoundsInRoot()
+        assertTrue(bubble.top >= heading.bottom, "the bubble ($bubble) covers the heading ($heading)")
+        // The empty feed's line wraps rather than ending in "…".
+        val line = onNodeWithText("Updates and questions from your agents will show up here.").fetchSemanticsNode()
+        val layout = mutableListOf<TextLayoutResult>()
+        line.config[SemanticsActions.GetTextLayoutResult].action?.invoke(layout)
+        assertFalse(layout.single().hasVisualOverflow, "the line is cut off")
+        shot("tour-phone-new-team")
     }
 
     @Test
