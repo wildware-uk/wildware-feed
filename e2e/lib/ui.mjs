@@ -12,17 +12,20 @@ test.afterEach(async () => {
     open.clear();
 });
 
-/** A browser of its own for one person, at a client address of its own; closed after the test. */
-export async function newBrowser(browser) {
+/**
+ * A browser of its own for one person, at a client address of its own; closed after the test.
+ * [viewport] sets its size; [tour] leaves the guided tour on, as a new customer has it.
+ */
+export async function newBrowser(browser, { viewport = { width: 1280, height: 1000 }, tour = false } = {}) {
     const context = await browser.newContext({
-        viewport: { width: 1280, height: 1000 },
+        viewport,
         colorScheme: 'light',
         ignoreHTTPSErrors: local,
         extraHTTPHeaders: local ? { 'x-journey-client': someAddress() } : {},
     });
     open.add(context);
     // The guided tour would cover the screen after a first sign-in: these tests take it as seen.
-    await context.addInitScript(() => localStorage.setItem('feed.tour', 'off'));
+    if (!tour) await context.addInitScript(() => localStorage.setItem('feed.tour', 'off'));
     const page = await context.newPage();
     const errors = [];
     page.on('pageerror', (e) => errors.push(e.message));

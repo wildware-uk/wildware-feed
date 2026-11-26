@@ -8,6 +8,7 @@ deletes it at the end, so files run side by side and a staging server stays clea
 |---|---|
 | `auth` | Setup link sets the owner's password (once); "Open" signs the browser in; the sign-in form: Email box, password alone, email and password, a wrong password, signing out; the home team |
 | `apps` | The phone and desktop apps' sign-ins over HTTP (password alone, with email, a ticket, a member) and no team's password or key opening another |
+| `new-team` | A brand-new team's first open, with the guided tour on, by "Open" and by the sign-in form, on a desktop and a phone; a browser without WebGL 2 says why the app can't draw instead of a blank screen |
 | `people` | Invite from the People sheet; the invitee joins in their own browser and sees the feed; role change; removing someone signs them out |
 | `channels` | Make a channel and post; an agent's update shows live; rename; remove an agent from a channel; projects |
 | `arrange` | Drag a channel into a project with the mouse; the channel menu's Move to project; both stick after a reload |
