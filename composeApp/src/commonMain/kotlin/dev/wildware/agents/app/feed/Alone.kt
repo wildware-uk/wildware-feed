@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.height
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
@@ -37,6 +39,10 @@ import dev.wildware.agents.app.design.Icons
 internal fun AloneView(ui: FeedUi, maxWidth: Dp, modifier: Modifier = Modifier) {
     val item = ui.alone ?: return
     val colors = AgentTheme.colors
+    val scroll = rememberScrollState()
+    // Its reply box, held still while written in when the card above it changes.
+    val keeper = remember(scroll) { BoxKeeper(scrolledTo = { scroll.value.toFloat() }, scrollBy = { scroll.dispatchRawDelta(it) }) }
+    val writing = ui.isWriting(item.id)
     Box(
         modifier
             .fillMaxSize()
@@ -45,7 +51,7 @@ internal fun AloneView(ui: FeedUi, maxWidth: Dp, modifier: Modifier = Modifier) 
             .onKeyEvent { e -> if (e.key == Key.Escape && e.type == KeyEventType.KeyUp) { ui.closeAlone(); true } else false },
     ) {
         Column(
-            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(start = 36.dp, end = 36.dp, top = 20.dp, bottom = 48.dp),
+            Modifier.fillMaxSize().verticalScroll(scroll).padding(start = 36.dp, end = 36.dp, top = 20.dp, bottom = 48.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Row(Modifier.widthIn(max = maxWidth).fillMaxWidth().padding(bottom = 16.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -55,10 +61,12 @@ internal fun AloneView(ui: FeedUi, maxWidth: Dp, modifier: Modifier = Modifier) 
                 if (ui.state.item(item.id) != null) AppButton("Show in feed", ButtonTone.Quiet) { ui.showAloneInFeed() }
             }
             key(item.id) {
-                androidx.compose.runtime.CompositionLocalProvider(LocalDocChannel provides item.channelSlug) {
+                androidx.compose.runtime.CompositionLocalProvider(LocalDocChannel provides item.channelSlug, LocalBoxKeeper provides keeper) {
                     FeedItemView(item, selected = false, density = Density.Comfortable, modifier = Modifier.widthIn(max = maxWidth).fillMaxWidth())
                 }
             }
+            // Room to scroll into while writing, so the card growing above the box can be made up for.
+            if (writing) Spacer(Modifier.height(with(androidx.compose.ui.platform.LocalDensity.current) { scroll.viewportSize.toDp() }))
         }
     }
 }

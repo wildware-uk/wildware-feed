@@ -58,6 +58,10 @@ import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import kotlinx.coroutines.delay
 import androidx.compose.runtime.remember
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.layout.layout
+import androidx.compose.foundation.ScrollState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -760,12 +764,14 @@ fun PhoneThreadScreen(ui: FeedUi, item: Threaded, widthPx: Float, safeArea: Safe
                     if (motion.reduced) scroll.scrollTo(repliesAt[0]) else scroll.animateScrollTo(repliesAt[0])
                 }
             }
+            // While the owner writes, nothing above the box moves it: an ack line, an edit, a reaction.
+            val writing = ui.isWriting(item.id)
             Column(
                 // Clear of the keyboard and the home indicator, as the box at the foot used to be.
                 Modifier.weight(1f).safePadding(safeArea, bottom = 0.dp).verticalScroll(scroll).padding(horizontal = 16.dp),
             ) {
                 // A touch on the card or the replies puts the open box away; one on the box itself never does.
-                Column(Modifier.closesComposer(ui)) {
+                Column(Modifier.closesComposer(ui).keepsBelowStill(scroll, writing)) {
                     Spacer(Modifier.height(8.dp))
                     // Lit while it is open to edit in the box below.
                     CompositionLocalProvider(LocalLit provides (ui.boxEditing == item.id)) {
@@ -790,9 +796,49 @@ fun PhoneThreadScreen(ui: FeedUi, item: Threaded, widthPx: Float, safeArea: Safe
                         if (i == order.newLineAfter) NewDivider(item.unreadReplies, newAbove = true)
                     }
                     Spacer(Modifier.height(12.dp))
+                    // Room to scroll into while writing, so the card above growing can always be made up for.
+                    if (writing) Spacer(Modifier.height(with(LocalDensity.current) { scroll.viewportSize.toDp() }))
                 }
             }
         }
+    }
+}
+
+/** What [keepsBelowStill] remembers between measures. */
+private class HeldAbove {
+    /** The height it last took, or -1 before the first measure. */
+    var shown = -1
+    /** The height it holds while [keepsBelowStill] is on: what it had then, or more once it grew. */
+    var base = -1
+}
+
+/**
+ * Keeps what sits under this part of a scrolling column still on screen while [hold] is on, as the
+ * part changes height: an ack line or a reaction coming, an edit. Grown, the column scrolls by as
+ * much; shrunk, the part keeps its height, with the room at its top. Done as it is measured, before
+ * anything is drawn, so nothing moves even for a frame. The column needs room under its end to
+ * scroll into.
+ */
+@Composable
+internal fun Modifier.keepsBelowStill(scroll: ScrollState, hold: Boolean): Modifier {
+    val held = remember { HeldAbove() }
+    val holding by rememberUpdatedState(hold)
+    return layout { measurable, constraints ->
+        val placeable = measurable.measure(constraints)
+        val content = placeable.height
+        val was = held.shown
+        val shown = if (holding && was >= 0) {
+            if (held.base < 0) held.base = was
+            if (content > held.base) held.base = content
+            held.base
+        } else {
+            held.base = -1
+            content
+        }
+        // Read by the column as it places what it holds, after this measure: the same frame.
+        if (holding && was >= 0 && shown > was) scroll.dispatchRawDelta((shown - was).toFloat())
+        held.shown = shown
+        layout(placeable.width, shown) { placeable.place(0, shown - content) }
     }
 }
 
@@ -800,7 +846,9 @@ fun PhoneThreadScreen(ui: FeedUi, item: Threaded, widthPx: Float, safeArea: Safe
 @Composable
 fun ThreadComposer(ui: FeedUi?, threadId: String, modifier: Modifier = Modifier, focus: FocusRequester? = null) {
     val colors = AgentTheme.colors
-    Column(modifier.tourTarget(ui?.tour, TourTarget.Reply)) {
+    val keeper = LocalBoxKeeper.current
+    val placed = if (keeper == null || ui == null) Modifier else Modifier.onGloballyPositioned { keeper.placed(threadId, ui.isWriting(threadId), it) }
+    Column(modifier.tourTarget(ui?.tour, TourTarget.Reply).then(placed)) {
         val replying = ui?.replyingTo
         val motion = AgentTheme.motion
         // "Replying to …" opens above the box, pushing it up smoothly, and folds away when done.

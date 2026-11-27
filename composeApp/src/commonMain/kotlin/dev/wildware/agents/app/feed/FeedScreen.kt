@@ -367,6 +367,15 @@ private fun DesktopColumns(ui: FeedUi, showRail: Boolean, startAt: String?) {
         if (ui.docsOpen && !ui.boardOpen) DocsPane(ui, Modifier.fillMaxSize()) else
         if (ui.mediaOpen && !ui.boardOpen) MediaPane(ui, Modifier.fillMaxSize()) else
         if (ui.boardOpen) BoardPane(ui, Modifier.fillMaxSize()) else Box(Modifier.fillMaxSize()) {
+            // A card's own reply box, held still while written in when the card above it changes.
+            val keeper = remember(ui, list) {
+                BoxKeeper(
+                    scrolledTo = { id -> list.layoutInfo.visibleItemsInfo.firstOrNull { it.key == id }?.let { -it.offset.toFloat() } },
+                    scrollBy = { list.dispatchRawDelta(it) },
+                    paused = { ui.following != null || ui.revealing != null },
+                )
+            }
+            CompositionLocalProvider(LocalBoxKeeper provides keeper) {
             LazyColumn(
                 Modifier.fillMaxSize().closesComposer(ui).listActions(refresh, toTop, null),
                 state = list,
@@ -378,6 +387,7 @@ private fun DesktopColumns(ui: FeedUi, showRail: Boolean, startAt: String?) {
                     FeedHeader(ui, compact = false, Modifier.widthIn(max = FeedMaxWidth).fillMaxWidth().padding(bottom = 20.dp))
                 }
                 feedItems(ui, Density.Comfortable, list)
+            }
             }
             LoadOlderWhenNearEnd(ui, list)
             ScrollToRevealed(ui, list, itemsBefore = 1)

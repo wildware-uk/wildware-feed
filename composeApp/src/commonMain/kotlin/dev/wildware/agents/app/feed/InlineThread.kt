@@ -20,6 +20,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
@@ -193,3 +195,35 @@ private fun TextAction(label: String, onClick: () -> Unit) {
         style = AgentTheme.type.label,
     )
 }
+
+/**
+ * Keeps a reply box still on screen while the owner writes in it, for the list or column it
+ * scrolls in: when what is above the box inside its card changes height (an ack line, an edit, a
+ * reaction), the list scrolls by as much. The box tells it where it is each time it is placed.
+ *
+ * [scrolledTo] is how far the list has scrolled past the card holding thread [String] (null when
+ * it isn't on screen); [scrollBy] scrolls; [paused] says when to leave the list alone.
+ */
+internal class BoxKeeper(
+    private val scrolledTo: (String) -> Float?,
+    private val scrollBy: (Float) -> Unit,
+    private val paused: () -> Boolean = { false },
+) {
+    /** Where the box sat inside what scrolls, by thread, at its last placing while being written in. */
+    private val spots = HashMap<String, Float>()
+
+    fun placed(threadId: String, writing: Boolean, at: LayoutCoordinates) {
+        val scrolled = scrolledTo(threadId)
+        if (!writing || scrolled == null || !at.isAttached) {
+            spots.remove(threadId)
+            return
+        }
+        val now = at.positionInRoot().y + scrolled
+        val was = spots[threadId]
+        spots[threadId] = now
+        if (was != null && now != was && !paused()) scrollBy(now - was)
+    }
+}
+
+/** The [BoxKeeper] of the list or column the reply boxes here scroll in, if it keeps them still. */
+internal val LocalBoxKeeper = staticCompositionLocalOf<BoxKeeper?> { null }

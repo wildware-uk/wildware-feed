@@ -23,6 +23,7 @@ import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextRange
 import dev.wildware.agents.app.design.AgentTheme
+import dev.wildware.agents.app.feed.Acks
 import dev.wildware.agents.app.feed.Agent
 import dev.wildware.agents.app.feed.Author
 import dev.wildware.agents.app.feed.BoardCard
@@ -36,6 +37,7 @@ import dev.wildware.agents.app.feed.FeedSection
 import dev.wildware.agents.app.feed.FeedState
 import dev.wildware.agents.app.feed.Level
 import dev.wildware.agents.app.feed.Presence
+import dev.wildware.agents.app.feed.Reaction
 import dev.wildware.agents.app.feed.Reply
 import dev.wildware.agents.app.feed.ScreenPreview
 import dev.wildware.agents.app.feed.WorkStatus
@@ -245,5 +247,81 @@ class TypingStaysPutTest {
         waitForIdle()
         onNode(hasText("The very newest comment.", substring = true)).assertIsDisplayed()
         assertTrue(onAllNodes(hasText("New message", substring = true)).fetchSemanticsNodes().isEmpty(), "no pill when not typing")
+    }
+
+    /** The owner's own post, as the head of a thread: the card agents ack, react to and that gets edited. */
+    private fun post(replies: Int = 2) = FeedItem.Post(
+        "p1", "9:41", FakeFeed.state.owner, project, "Can someone look at why the badge count is off on the watch?",
+        replies = List(replies) { reply("p1", it) },
+    )
+
+    private fun ComposeUiTest.phoneThread(state: MutableState<FeedState>) {
+        setContent { AgentTheme(dark = false) { FeedScreen(state.value, preview = ScreenPreview(threadOpen = true)) } }
+        waitForIdle()
+    }
+
+    private fun MutableState<FeedState>.head(next: FeedItem.Post) {
+        value = feed(emptyList(), open = next).copy(sections = listOf(FeedSection("Today", listOf(next))))
+    }
+
+    /** On a phone, the head card above the box changes: [changes] in turn, each leaving the box where it was. */
+    private fun ComposeUiTest.onAPhoneTheHeadCard(start: FeedItem.Post, vararg changes: FeedItem.Post) {
+        val state = mutableStateOf(feed(emptyList()))
+        state.head(start)
+        phoneThread(state)
+        write()
+        val before = box()
+        for (next in changes) {
+            state.head(next)
+            assertStill(before)
+        }
+    }
+
+    private val thinking = Acks(thinking = listOf(agent))
+
+    @Test
+    fun onAPhoneAnAckLineComingAndGoingOnTheHeadCardLeavesTheBoxAlone() = runDesktopComposeUiTest(390, 844) {
+        val start = post()
+        onAPhoneTheHeadCard(start, start.copy(acks = thinking), start.copy(acks = Acks(done = listOf(agent))), start)
+    }
+
+    @Test
+    fun onAPhoneAnEditToTheHeadCardLeavesTheBoxAlone() = runDesktopComposeUiTest(390, 844) {
+        val start = post()
+        val longer = start.copy(body = start.body + "\n\n" + "It shows one more than it should after a restart. ".repeat(8), edited = "Edited just now")
+        onAPhoneTheHeadCard(start, longer, start)
+    }
+
+    @Test
+    fun onAPhoneAReactionOnTheHeadCardLeavesTheBoxAlone() = runDesktopComposeUiTest(390, 844) {
+        val start = post()
+        onAPhoneTheHeadCard(start, start.copy(reactions = listOf(Reaction("👀", 1, mine = false, spoken = "eyes"))))
+    }
+
+    @Test
+    fun onAPhoneTheFirstReplyLeavesTheBoxAlone() = runDesktopComposeUiTest(390, 844) {
+        val start = post(replies = 0)
+        onAPhoneTheHeadCard(start, start.copy(replies = listOf(reply("p1", 0)), acks = thinking), start.copy(replies = List(2) { reply("p1", it) }))
+    }
+
+    @Test
+    fun onAPhoneAHeadCardChangeInALongThreadLeavesTheBoxAlone() = runDesktopComposeUiTest(390, 844) {
+        val start = post(replies = 14)
+        onAPhoneTheHeadCard(start, start.copy(acks = thinking), start.copy(acks = thinking, reactions = listOf(Reaction("👍", 2, mine = false, spoken = "thumbs up"))), start)
+    }
+
+    @Test
+    fun onADesktopAnAckLineOnTheCardBeingAnsweredLeavesTheBoxAlone() = runDesktopComposeUiTest(1440, 900) {
+        val others = (1..6).map { card(it) }
+        val mine = post()
+        val state = mutableStateOf(FakeFeed.state.copy(openThread = mine, sections = listOf(FeedSection("Today", others.take(3) + listOf(mine) + others.drop(3)))))
+        setContent { AgentTheme(dark = false) { FeedScreen(state.value, startAt = "c3") } }
+        waitForIdle()
+        write()
+        val before = box()
+        for (next in listOf(mine.copy(acks = thinking), mine.copy(acks = thinking, reactions = listOf(Reaction("👀", 1, mine = false, spoken = "eyes"))), mine)) {
+            state.value = state.value.copy(openThread = next, sections = listOf(FeedSection("Today", others.take(3) + listOf(next) + others.drop(3))))
+            assertStill(before)
+        }
     }
 }
