@@ -162,7 +162,25 @@ class TypingStaysPutTest {
     }
 
     @Test
-    fun onADesktopSendingStillFollowsTheCardToTheTop() = runDesktopComposeUiTest(1440, 900) {
+    fun onADesktopACardRemovedOrChangedWhileWritingShowsSoAtOnce() = runDesktopComposeUiTest(1440, 900) {
+        val state = mutableStateOf(feed(cards, open = cards[4]))
+        desktopFeed(state, startAt = "c4")
+        write()
+        onNode(hasText("Card number 4")).assertIsDisplayed()
+        // Card 4, just above the box, is deleted; card 6, below it, is renamed and marked done.
+        val changed = cards[5].copy(title = "Card number 6, now done", status = WorkStatus.Done)
+        state.value = feed(cards.filter { it.id != "c4" }.map { if (it.id == "c6") changed else it }, open = cards[4])
+        waitForIdle()
+        // Only arrivals and moves wait while the owner writes: a removal or a change shows at once.
+        onNode(hasText("Card number 4")).assertDoesNotExist()
+        onNode(hasText("Card number 6, now done")).assertIsDisplayed()
+        onNode(hasText("Card number 6")).assertDoesNotExist()
+        onNode(replyBox).assertIsFocused()
+        assertEquals(draft, box().text, "what was written is kept")
+    }
+
+    @Test
+    fun onADesktopSendingStillFollowsTheCardToTheTop() =runDesktopComposeUiTest(1440, 900) {
         val state = mutableStateOf(feed(cards, open = cards[4]))
         desktopFeed(state, startAt = "c4")
         write()
