@@ -175,6 +175,9 @@ class QuickRepliesTest {
         assertEquals(200, owner("DELETE", "/api/messages/${reply.s("id")}").first)
         val after = owner("GET", "/api/messages?update=$updateId").second.a("messages").map { it.jsonObject }.first { it.s("id") == askedId }
         assertEquals(0, after.o("replies").a("answers").size)
+        val (spent, why) = owner("POST", "/api/messages/$askedId/reply", """{"button":"Try another","sendKey":"tap-1"}""")
+        assertEquals(409, spent, "the unsent answer's key is not handed back")
+        assertEquals("that sendKey was used for an earlier send: make a new one", why.s("message"))
         assertEquals(201, owner("POST", "/api/messages/$askedId/reply", """{"button":"Try another","sendKey":"tap-3"}""").first)
     }
 

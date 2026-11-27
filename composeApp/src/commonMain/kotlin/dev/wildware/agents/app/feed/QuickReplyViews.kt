@@ -46,8 +46,9 @@ fun QuickReplyBar(quick: QuickReplies?, modifier: Modifier = Modifier) {
     if (quick == null) return
     val ui = LocalFeedUi.current
     val colors = AgentTheme.colors
-    // One key per message: a second tap, or a try again after an answer lost on the way, sends the same reply.
-    val sendKey = remember(quick.messageId) { "qr-${quick.messageId}-${Random.nextLong().toULong().toString(36)}" }
+    // One key per answer: a second tap, or a try again after an answer lost on the way, sends the same
+    // reply. An answer unsent (mine back to null) gets a fresh one, so the next tap is a new send.
+    val sendKey = remember(quick.messageId, quick.mine) { "qr-${quick.messageId}-${Random.nextLong().toULong().toString(36)}" }
     var pending by remember(quick.messageId) { mutableStateOf<String?>(null) }
     var failed by remember(quick.messageId) { mutableStateOf(false) }
     LaunchedEffect(quick.mine) { if (quick.mine != null) pending = null }

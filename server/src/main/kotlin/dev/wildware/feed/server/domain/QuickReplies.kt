@@ -74,6 +74,10 @@ object QuickReplies {
             if (sendKey != null && earlier.second == sendKey) return@op feed.messages.find(earlier.first)!!
             throw conflict(ANSWERED)
         }
+        // A key already spent on some other send (an answer since unsent, say) would hand that back.
+        if (sendKey != null && feed.db.one("SELECT id FROM messages WHERE team_id = :team AND user_id = ? AND send_key = ?", personId, sendKey) { it.getString(1) } != null) {
+            throw conflict("that sendKey was used for an earlier send: make a new one")
+        }
         val reply = feed.messages.post(
             Messages.Post(
                 author = Messages.HUMAN, body = body(buttons, fields, value), answers = target.id, userId = personId, sendKey = sendKey,
