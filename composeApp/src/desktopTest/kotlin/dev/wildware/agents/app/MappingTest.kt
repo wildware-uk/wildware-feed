@@ -7,6 +7,8 @@ import dev.wildware.agents.DeliveryView
 import dev.wildware.agents.PostCard
 import dev.wildware.agents.CardRef
 import dev.wildware.agents.MessageView
+import dev.wildware.agents.QuickAnswerView
+import dev.wildware.agents.QuickRepliesView
 import dev.wildware.agents.MediaView
 import dev.wildware.agents.RequestConfig
 import dev.wildware.agents.OutboxItem
@@ -89,6 +91,24 @@ class MappingTest {
         assertEquals("2d ago", mapper.relativeLabel(noon - 2 * 24 * 60 * minute))
         // Past a month, the day itself.
         assertEquals("Saturday 4 October 2025", mapper.relativeLabel(noon - 410L * 24 * 60 * minute))
+    }
+
+    @Test
+    fun quickRepliesOnALineSayWhatYouChose() {
+        val asked = line("m1", "agent:a1", noon).let { l ->
+            l.copy(message = l.message.copy(replies = QuickRepliesView(
+                buttons = listOf("Ship it", "Try another"),
+                answers = listOf(QuickAnswerView(userId = "founder", button = "Ship it", messageId = "m2"), QuickAnswerView(userId = "p2", name = "Kim", button = "Try another", messageId = "m3")),
+            )))
+        }
+        val open = line("m4", "agent:a1", noon).let { l -> l.copy(message = l.message.copy(replies = QuickRepliesView(buttons = listOf("Yes")))) }
+        val item = mapper.map(feed(listOf(update("u1", noon, "T", "B", replies = listOf(asked, open)))), listOf(mega), emptyList(), emptyList(), null)
+            .sections.single().items.single() as FeedItem.Update
+        val quick = item.replies[0].quickReplies!!
+        assertEquals("m1", quick.messageId)
+        assertEquals("Ship it", quick.mine)
+        assertEquals(listOf("You" to "Ship it", "Kim" to "Try another"), quick.answers.map { it.who to it.button })
+        assertEquals(null, item.replies[1].quickReplies!!.mine)
     }
 
     @Test

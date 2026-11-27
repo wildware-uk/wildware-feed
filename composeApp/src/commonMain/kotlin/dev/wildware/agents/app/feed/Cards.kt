@@ -1166,6 +1166,7 @@ fun PostCard(item: FeedItem.Post, modifier: Modifier = Modifier, density: Densit
                 if (holding) UndoVoiceNote(item.id, item.undoUntil, Modifier.padding(top = 4.dp), choice)
                 PostMedia(item.attachments, item.sounds, item.files, item.embeds)
                 CardBlocks(item.blocks, Modifier.padding(top = 10.dp))
+                QuickReplyBar(item.quickReplies, Modifier.padding(top = 10.dp))
                 SharedSecretChips(item.secrets, Modifier.padding(top = 10.dp))
                 LinkedCards(item.refs, Modifier.padding(top = 10.dp))
                 AppLinks(item.apps, Modifier.padding(top = 10.dp))

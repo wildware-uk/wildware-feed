@@ -334,6 +334,7 @@ internal class FeedMapper(
             refs = post.refs.linked(agents, project, projectId),
             blocks = post.blocks.cardBlocks(CardKinds.Message, id),
             secrets = post.secrets.shared(CardKinds.Message, id),
+            quickReplies = post.message.replies?.quick(id),
         ) }
     }
 
@@ -490,6 +491,7 @@ internal class FeedMapper(
                 refs = line.refs.linked(agents, project, line.message.projectId),
                 blocks = line.blocks.cardBlocks(CardKinds.Message, line.message.id),
                 secrets = line.secrets.shared(CardKinds.Message, line.message.id),
+                quickReplies = line.message.replies?.quick(line.message.id),
             )
         }
     }
@@ -558,6 +560,22 @@ internal class FeedMapper(
     /** The secrets an agent attached to a card, as chips. */
     private fun List<SharedSecretView>.shared(kind: String, cardId: String): List<SharedSecret> =
         map { SharedSecret(kind, cardId, it.name, it.available) }
+
+    /** Quick replies on message [id], with who you are, so the screen knows your answer. */
+    private fun dev.wildware.agents.QuickRepliesView.quick(id: String): dev.wildware.agents.app.feed.QuickReplies {
+        val me = team.me?.id ?: dev.wildware.agents.FounderId
+        val form = fields?.let { FieldsForm(it, buttons, FormFill.understands(it)) }
+        return dev.wildware.agents.app.feed.QuickReplies(
+            messageId = id,
+            buttons = buttons,
+            form = form,
+            answers = answers.map { a ->
+                val mine = a.userId == me
+                dev.wildware.agents.app.feed.QuickAnswer(if (mine) "You" else a.name ?: "Someone", a.button, mine)
+            },
+            mine = answerOf(me)?.button,
+        )
+    }
 
     /** The blocks on a card, with who you are, so the screen knows your tick and your vote. */
     private fun List<dev.wildware.agents.BlockView>.cardBlocks(kind: String, id: String): List<dev.wildware.agents.app.feed.CardBlock> {

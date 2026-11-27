@@ -318,6 +318,12 @@ data class MessageView(
     val userId: String? = null,
     /** How it was written: [VoiceNote.Source] for a voice note, null when typed. */
     val source: String? = null,
+    /** Quick-reply buttons or a small form an agent put on it, with who chose what (docs/QUICK_REPLIES.md). */
+    val replies: QuickRepliesView? = null,
+    /** On a person's quick reply: the message whose buttons or form it answers. */
+    val replyFor: String? = null,
+    /** On a person's quick reply: what they chose, `{ button, values? }`. */
+    val replyValue: JsonObject? = null,
 ) {
     /** Said aloud and transcribed, not typed: drawn with a small mic. */
     val isVoice: Boolean get() = source == VoiceNote.Source

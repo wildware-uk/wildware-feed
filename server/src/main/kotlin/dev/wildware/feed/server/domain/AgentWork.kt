@@ -28,6 +28,9 @@ class AgentWork(private val db: Database, private val bus: Bus, private val cloc
         val userId: String? = null,
         /** How it was written (migration 065): [Messages.VOICE] for a voice note. */
         val source: String? = null,
+        /** A person's quick reply (migration 081): the message it answers, and what they chose. */
+        val replyFor: String? = null,
+        val replyValue: kotlinx.serialization.json.JsonObject? = null,
     )
 
     private val subscriptions = Subscriptions(db, clock)
@@ -226,10 +229,12 @@ class AgentWork(private val db: Database, private val bus: Bus, private val cloc
         createdAt = rs.getLong("created_at"), deletedAt = rs.getLong("deleted_at").let { if (rs.wasNull()) null else it },
         userId = rs.getString("user_id") ?: People.FOUNDER.takeIf { rs.getString("author") == "human" },
         source = rs.getString("source"),
+        replyFor = rs.getString("reply_for"),
+        replyValue = rs.getString("reply_value")?.let { Js.parse(it) as? kotlinx.serialization.json.JsonObject },
     )
 
     companion object {
         val OPEN = listOf("todo", "in_progress", "blocked")
-        private val LINE = listOf("seq", "id", "project_id", "update_id", "task_id", "reply_to", "answers", "request_id", "author", "body", "created_at", "deleted_at", "user_id", "source")
+        private val LINE = listOf("seq", "id", "project_id", "update_id", "task_id", "reply_to", "answers", "request_id", "author", "body", "created_at", "deleted_at", "user_id", "source", "reply_for", "reply_value")
     }
 }

@@ -48,6 +48,7 @@ object Access {
         "DELETE /api/messages/{id}" to M, // your own; anyone's for an admin (Messages.delete)
         "PATCH /api/messages/{id}" to M, // your own only, whatever your role (Messages.edit)
         "POST /api/messages/{id}/reactions" to M,
+        "POST /api/messages/{id}/reply" to M, // a quick reply: one answer per person (migration 081)
         "POST /api/media" to M,
         "PATCH /api/updates/{id}" to M, // pinned, and nothing else
         "POST /api/projects/{reference}/tags" to M,

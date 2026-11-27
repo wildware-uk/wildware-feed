@@ -73,6 +73,15 @@ class MessageRow(val json: JsonObject) {
     /** How it was written (migration 065): [Messages.VOICE], or null when typed. */
     val source get() = json.text("source")
 
+    /** The quick-reply buttons or form it offers, with who chose what (migration 081); null for none. */
+    val replies get() = json["replies"] as? kotlinx.serialization.json.JsonObject
+
+    /** On a person's quick reply (migration 081): the message whose buttons or form it answers. */
+    val replyFor get() = json.text("replyFor")
+
+    /** On a person's quick reply: what they chose, `{ button, values? }`. */
+    val replyValue get() = json["replyValue"] as? kotlinx.serialization.json.JsonObject
+
     /** The person who wrote it (migration 055), or null for an agent. */
     val userId: String? get() = json.text("userId") ?: People.FOUNDER.takeIf { author == "human" }
 

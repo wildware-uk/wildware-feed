@@ -4,7 +4,8 @@ gives up to 20 tools' full descriptions and arguments. call_tool({name, argument
 exactly as calling it directly would: call_tool({name: "acknowledge", arguments: {message_id,
 state: "thinking"}}). Describe a tool before you first use it, except these everyday ones:
 - acknowledge {state: "thinking" | "read" | "done", message_id} (or update_id or request_id)
-- post_message {body, plus its thread: update_id, message_id or request_id; or channel}
+- post_message {body, plus its thread: update_id, message_id or request_id; or channel},
+  buttons? (up to 4 quick-reply labels; a tap comes back as their reply, nothing waits)
 - get_messages {} for what is new; {message_id}, {update_id} or {request_id} for a whole thread
 - request_input {kind: "text" | "confirm" | "buttons" | "choice" | "multi_choice" | "form",
   question, detail?, options? (strings, for buttons, choice, multi_choice and form), channel?};

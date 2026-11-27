@@ -16,6 +16,7 @@ import dev.wildware.feed.server.domain.Given
 import dev.wildware.feed.server.domain.JsText
 import dev.wildware.feed.server.domain.MessageRow
 import dev.wildware.feed.server.domain.Messages
+import dev.wildware.feed.server.domain.QuickReplies
 import dev.wildware.feed.server.domain.ProjectRow
 import dev.wildware.feed.server.domain.Projects
 import dev.wildware.feed.server.domain.GroupRow
@@ -366,10 +367,14 @@ fun ToolRegistry.registerFeedTools(app: App) {
                 refs = refsArg(call.args),
                 blocks = call.list("blocks"),
                 secrets = call.texts("secrets"),
+                buttons = call.args["buttons"]?.takeIf { it !is JsonNull },
+                fields = call.args["fields"]?.takeIf { it !is JsonNull },
             ),
         )
         val apps = if (call.list("apps").isNullOrEmpty()) emptyList() else FeedAttachments.appsOn(app.db, CardRef("message", message.id))
-        ToolResult.ok("Replied. It is on your owner’s screen now.", buildJsonObject {
+        val said = if (message.replies == null) "Replied. It is on your owner’s screen now."
+        else "Replied, with quick replies. It is on your owner’s screen now; nothing waits on it. If they tap one, it reaches you as their reply in this thread."
+        ToolResult.ok(said, buildJsonObject {
             put("message", FeedViews.message(message))
             if (apps.isNotEmpty()) put("apps", FeedViews.apps(apps))
             refsView(app, CardRef("message", message.id), call.args)?.let { put("refs", it) }
@@ -633,6 +638,10 @@ internal object FeedViews {
         put("created_at", Wire.isoOf(m.createdAt))
         m.deletedAt?.let { put("deleted_at", Wire.isoOf(it)) }
         m.editedAt?.let { put("edited_at", Wire.isoOf(it)) }
+        // Quick replies (migration 081): the buttons or form offered, with who chose what; or, on a
+        // person's answer, which message it answers and what they chose.
+        m.replies?.let { put("replies", QuickReplies.forAgents(it)) }
+        m.replyFor?.let { put("reply", QuickReplies.replyForAgents(it, m.replyValue)) }
     }
 
     fun reaction(r: ReactionRow): JsonObject = buildJsonObject {

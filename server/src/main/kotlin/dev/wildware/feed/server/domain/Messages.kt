@@ -1,6 +1,7 @@
 package dev.wildware.feed.server.domain
 
 import dev.wildware.feed.server.db.Ulid
+import dev.wildware.feed.server.http.Wire
 import kotlinx.serialization.json.JsonObjectBuilder
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -57,6 +58,14 @@ class Messages(private val feed: Feed) {
         val statusLine: Boolean = false,
         /** A line from GitHub about a linked PR (migration 080): author and source [GITHUB]. */
         val github: Boolean = false,
+        /** Quick-reply buttons an agent offers (migration 081, docs/QUICK_REPLIES.md): at most 4 labels. */
+        val buttons: kotlinx.serialization.json.JsonElement? = null,
+        /** A small form an agent offers instead (migration 081): request_input's form fields. */
+        val fields: kotlinx.serialization.json.JsonElement? = null,
+        /** A person's quick reply (set by [QuickReplies.answer] only): the message it answers. */
+        val replyFor: String? = null,
+        /** What that person chose, `{ button, values? }`. */
+        val replyValue: kotlinx.serialization.json.JsonObject? = null,
     )
 
     class Page(val messages: List<MessageRow>, val cursor: String, val unread: Long, val markedRead: Boolean)
@@ -150,7 +159,7 @@ class Messages(private val feed: Feed) {
         // A send tried again with no key: the owner's app from before send keys, or an agent's MCP client resending
         // when the server was slow to answer. Checked before the attachments, which the first copy already holds.
         val agentPost = author.startsWith(AGENT_PREFIX) && input.embeds.isNullOrEmpty() && input.apps.isNullOrEmpty() &&
-            input.refs.isNullOrEmpty() && input.blocks.isNullOrEmpty() && input.secrets.isNullOrEmpty()
+            input.refs.isNullOrEmpty() && input.blocks.isNullOrEmpty() && input.secrets.isNullOrEmpty() && input.buttons == null && input.fields == null
         if ((input.guardRepeats && person != null) || agentPost) {
             repeatOf(author, person, body, projectId, updateId, if (request) null else anchor, requestId, input.mediaIds.orEmpty())?.let { first ->
                 // Give the old copy this send's key, so the next try of it is caught by the key alone.
@@ -165,15 +174,22 @@ class Messages(private val feed: Feed) {
         val refs = cardRefs.check(author, input.refs)
         val blocks = feed.blocks.check(input.blocks, if (author.startsWith(AGENT_PREFIX)) author.removePrefix(AGENT_PREFIX) else null)
         val secrets = cardSecrets.check(if (author.startsWith(AGENT_PREFIX)) author.removePrefix(AGENT_PREFIX) else null, input.secrets)
+        val replies = QuickReplies.check(input.buttons, input.fields)
+        if (replies != null && !author.startsWith(AGENT_PREFIX)) throw invalid("only an agent's message carries quick replies")
+        if (input.replyFor != null && person == null) throw invalid("only a person answers quick replies")
 
         val id = Ulid.next()
         val inserted = db.update(
-            "INSERT INTO messages (team_id, id, project_id, update_id, task_id, author, body, created_at, reply_to, answers, request_id, user_id, send_key, source) " +
-                "VALUES (:team, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
+            "INSERT INTO messages (team_id, id, project_id, update_id, task_id, author, body, created_at, reply_to, answers, request_id, user_id, send_key, source, " +
+                "replies, reply_for, reply_value) VALUES (:team, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
             id, projectId, updateId, author, body, feed.now(), if (request) null else anchor, answersId, requestId, person, sendKey, source,
+            replies?.let(Wire::encode), input.replyFor, input.replyValue?.let(Wire::encode),
         )
-        // Two tries of one send arrived together and the other got there first.
-        if (inserted == 0) return@op sentAlready(person, sendKey) ?: throw IllegalStateException("message $id was not stored")
+        // Two tries of one send arrived together and the other got there first; or, for a quick reply,
+        // the same person answered from somewhere else a moment ago (one answer each, by index).
+        if (inserted == 0) {
+            return@op sentAlready(person, sendKey) ?: if (input.replyFor != null) throw conflict(QuickReplies.ANSWERED) else throw IllegalStateException("message $id was not stored")
+        }
         val message = find(id)!!
         followed(subscriptions.afterPost(message, Mentions.record(db, message.id, message.body, message.author, feed.now()), Mentions.mentionedPeople(db, message.body)))
 
@@ -285,6 +301,8 @@ class Messages(private val feed: Feed) {
         }
         db.update("UPDATE messages SET deleted_at = ? WHERE team_id = :team AND id = ? AND deleted_at IS NULL", at, message.id)
         for (reply in replies) db.update("UPDATE messages SET deleted_at = ? WHERE team_id = :team AND id = ? AND deleted_at IS NULL", at, reply)
+        // An unsent quick reply takes the choice back (migration 081): the offer's answers drop it.
+        message.replyFor?.let { QuickReplies.refresh(feed, it) }
         feed.publish("message.deleted", buildJsonObject {
             put("messageId", message.id)
             put("projectId", message.projectId)

@@ -32,6 +32,18 @@ sealed interface FeedEvent {
     /** A form with fields, filled in: `{ action, values }` as [dev.wildware.agents.FormFill.answer] makes it. */
     data class AnswerFields(val questionId: String, val value: kotlinx.serialization.json.JsonObject) : FeedEvent
     data class DismissQuestion(val questionId: String) : FeedEvent
+    /**
+     * A tap on an agent's quick replies on [messageId] (docs/QUICK_REPLIES.md), with a form's
+     * [values] by field id. Sent as your reply in that thread. [sendKey] is the same on every try of
+     * one tap, so it sends once; [sent] hears whether the dashboard took it.
+     */
+    data class QuickReply(
+        val messageId: String,
+        val button: String,
+        val values: kotlinx.serialization.json.JsonObject?,
+        val sendKey: String,
+        val sent: (Boolean) -> Unit,
+    ) : FeedEvent
     /** Let an agent that asked to join in, under [name]. */
     data class AllowAgent(val pairingId: String, val name: String) : FeedEvent
     /** Turn an agent that asked to join away. */

@@ -344,7 +344,30 @@ data class Reply(
     val blocks: List<CardBlock> = emptyList(),
     /** Secrets the agent attached, drawn as locked chips the owner opens in place. */
     val secrets: List<SharedSecret> = emptyList(),
+    /** Buttons or a small form the agent put on it; a tap is your reply here. Null for none. */
+    val quickReplies: QuickReplies? = null,
 )
+
+/**
+ * Quick-reply buttons, or a small form, an agent put on a message (docs/QUICK_REPLIES.md). Not a
+ * question: nothing waits on it and it never reaches "Waiting on you". A tap is sent as your own
+ * reply in the same thread.
+ */
+@Immutable
+data class QuickReplies(
+    val messageId: String,
+    val buttons: List<String>,
+    /** A form to fill in, its [FieldsForm.actions] the buttons; null for plain buttons. */
+    val form: FieldsForm? = null,
+    /** Who chose what, oldest first. */
+    val answers: List<QuickAnswer> = emptyList(),
+    /** The button you pressed, once you have answered; then the buttons are done with. */
+    val mine: String? = null,
+)
+
+/** One answer to quick replies: [who] is "You" for yours, else the person's name. */
+@Immutable
+data class QuickAnswer(val who: String, val button: String, val mine: Boolean)
 
 /**
  * How many options a question that gathers picks takes, both ends included. [bounded] when the agent
@@ -656,6 +679,8 @@ sealed interface FeedItem {
         val blocks: List<CardBlock> = emptyList(),
         /** Secrets the agent attached, drawn as locked chips the owner opens in place. */
         val secrets: List<SharedSecret> = emptyList(),
+        /** Buttons or a small form the agent put on it; a tap is your reply under it. Null for none. */
+        val quickReplies: QuickReplies? = null,
     ) : Threaded {
         override val title: String get() = body.lineSequence().first().take(120)
         override val starter: Author get() = author

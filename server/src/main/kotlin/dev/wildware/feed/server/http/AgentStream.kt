@@ -5,6 +5,7 @@ import dev.wildware.feed.server.db.Tenant
 import dev.wildware.feed.server.domain.AgentWork
 import dev.wildware.feed.server.domain.Agents
 import dev.wildware.feed.server.domain.Messages
+import dev.wildware.feed.server.domain.QuickReplies
 import dev.wildware.feed.server.domain.Subscriptions
 import dev.wildware.feed.server.domain.ThreadReads
 import dev.wildware.feed.server.events.AppEvent
@@ -282,6 +283,8 @@ internal fun messageItem(app: App, m: AgentWork.Line, agentId: String): JsonObje
         val hint = ThreadReads.hint(app.db, agentId, m.id, m.seq, m.updateId, m.requestId, m.replyTo, m.taskId)
         put("body", JsonPrimitive(Messages.forAgents(m.body, m.source) + (hint?.let { "\n\n$it" } ?: "")))
         m.source?.let { put("source", JsonPrimitive(it)) }
+        // A person's quick reply (migration 081): which message it answers and what they chose.
+        m.replyFor?.let { put("reply", QuickReplies.replyForAgents(it, m.replyValue)) }
         put("created_at", JsonPrimitive(Wire.isoOf(m.createdAt)))
         put("media", JsonArray(media))
         if (hint != null) {

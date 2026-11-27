@@ -607,6 +607,23 @@ class DashboardClient(
             })
         }.decoded<BlockBody>().block
 
+    /**
+     * Answers an agent's quick replies on [messageId] (docs/QUICK_REPLIES.md): [button] pressed, with
+     * [values] by field id for a form. The dashboard posts it as the owner's reply in that thread and
+     * answers with the reply. The same [sendKey] again gets that same reply back, so a double tap or a
+     * retry sends once.
+     */
+    @Throws(Exception::class)
+    suspend fun quickReply(messageId: String, button: String, values: JsonObject? = null, sendKey: String? = null): MessageView =
+        http.post("api/messages/${messageId.encodeURLPathPart()}/reply") {
+            authorise()
+            jsonBody(buildJsonObject {
+                put("button", button)
+                if (values != null) put("values", values)
+                if (sendKey != null) put("sendKey", sendKey)
+            })
+        }.decoded<QuickReplyBody>().message
+
     /** Uploads one file and returns it unattached: send its id with [postMessage] to attach it. */
     @Throws(Exception::class)
     suspend fun uploadMedia(attachment: Attachment): MediaView = uploadMedia(attachment, null)

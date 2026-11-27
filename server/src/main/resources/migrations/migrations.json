@@ -558,5 +558,12 @@
   "file": "080-github-prs.sql",
   "rebuildsTables": false,
   "checksum": "580c12095a945e492a7e123d3ea483aead690b6b5e8a92a4fe67f2946b1fe0be"
+ },
+ {
+  "version": 81,
+  "name": "messages-carry-quick-replies",
+  "file": "081-messages-carry-quick-replies.sql",
+  "rebuildsTables": false,
+  "checksum": "7ca4bdc0ece2a5b3cc231e4009bb812afcf090c27ac5c359e5af8769a5b554cb"
  }
 ]

@@ -950,6 +950,7 @@ fun ReplyView(reply: Reply, modifier: Modifier = Modifier) {
             if (holding) UndoVoiceNote(reply.id, reply.undoUntil, Modifier.padding(top = 2.dp), choice)
             PostMedia(reply.attachments, reply.sounds, reply.files, reply.embeds)
             CardBlocks(reply.blocks, Modifier.padding(top = 8.dp))
+            QuickReplyBar(reply.quickReplies, Modifier.padding(top = 8.dp))
             SharedSecretChips(reply.secrets, Modifier.padding(top = 8.dp))
             LinkedCards(reply.refs, Modifier.padding(top = 8.dp))
             if (reply.undelivered) NotDelivered(Modifier.padding(top = 6.dp))

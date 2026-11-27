@@ -1,6 +1,7 @@
 package dev.wildware.agents
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.serialization.json.JsonObject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -328,6 +329,27 @@ class Dashboard internal constructor(
             } finally {
                 blocks.settle(card, blockId, "vote")
             }
+        }
+    }
+
+    /**
+     * Answers an agent's quick replies on [messageId] (docs/QUICK_REPLIES.md): [button] pressed, with
+     * a form's [values]. It goes up as the owner's reply in that thread; the reply and the answered
+     * message come back through the live stream like any other. [sendKey] is the same on every try of
+     * one tap, so it is sent once. [sent] hears whether the dashboard took it.
+     */
+    fun quickReply(messageId: String, button: String, values: JsonObject?, sendKey: String, sent: (Boolean) -> Unit = {}) {
+        confined.launch {
+            val ok = try {
+                client.quickReply(messageId, button, values, sendKey)
+                true
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Throwable) {
+                // Offline, or refused (answered already from another device): the screen says so.
+                false
+            }
+            sent(ok)
         }
     }
 

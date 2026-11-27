@@ -24,7 +24,7 @@ internal object Rows {
      */
     const val PROJECT_ORDER = "position IS NOT NULL, position, pinned DESC, seq DESC"
     const val UPDATE = "seq, id, project_id, agent_id, session_id, title, body, level, pinned, created_at, deleted_at, edited_at, priority, task_id, status, status_at"
-    const val MESSAGE = "seq, id, project_id, update_id, task_id, author, body, created_at, reply_to, deleted_at, answers, request_id, edited_at, pinned, status, status_at, user_id, source"
+    const val MESSAGE = "seq, id, project_id, update_id, task_id, author, body, created_at, reply_to, deleted_at, answers, request_id, edited_at, pinned, status, status_at, user_id, source, replies, reply_for, reply_value"
     const val ACK = "seq, id, agent_id, message_id, task_id, update_id, request_id, state, created_at, updated_at"
     const val REACTION = "seq, id, message_id, update_id, request_id, task_id, actor, emoji, created_at, user_id"
     const val TAG = "seq, id, project_id, name, slug, colour, agent_id, created_at"
@@ -118,6 +118,11 @@ internal object Rows {
         person(rs, "userId", "user_id")
         // How it was written (migration 065): "voice" for a voice note; left out when typed.
         rs.getString("source")?.let { put("source", it) }
+        // Quick replies (migration 081, docs/QUICK_REPLIES.md): the buttons or form an agent's message
+        // offers, with who chose what; and on a person's answer, the message it answers and the choice.
+        rs.getString("replies")?.let { put("replies", Js.parse(it)) }
+        rs.getString("reply_for")?.let { put("replyFor", it) }
+        rs.getString("reply_value")?.let { put("replyValue", Js.parse(it)) }
     }
 
     /**

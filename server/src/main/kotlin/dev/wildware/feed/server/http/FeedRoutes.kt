@@ -8,6 +8,7 @@ import dev.wildware.feed.server.domain.Given
 import dev.wildware.feed.server.domain.Groups
 import dev.wildware.feed.server.domain.groups
 import dev.wildware.feed.server.domain.Messages
+import dev.wildware.feed.server.domain.QuickReplies
 import dev.wildware.feed.server.domain.Projects
 import dev.wildware.feed.server.domain.Subscriptions
 import dev.wildware.feed.server.domain.feed
@@ -176,6 +177,32 @@ fun Route.feedRoutes(app: App) {
         },
         HttpMethod.Delete to {
             call.respondOwner(200, buildJsonObject { put("message", app.feed.messages.delete(param("id"), Messages.HUMAN, call.person).json) })
+        },
+    )
+
+    // Quick replies (migration 081, docs/QUICK_REPLIES.md): a tap on one of an agent's buttons, or its
+    // small form sent, becomes this person's reply in the thread. One answer each; the same sendKey
+    // again gets the same reply back.
+    endpoint(
+        "/api/messages/{id}/reply",
+        HttpMethod.Post to {
+            val body = call.jsonObjectBody()
+            body.keys.firstOrNull { it !in setOf("button", "values", "sendKey") }?.let { throw invalid("a quick reply takes button, values and sendKey, not \"$it\"") }
+            val button = text(body["button"], "button")
+            val values = body["values"]?.takeIf { it !is JsonNull }
+            val sendKey = if ("sendKey" in body) text(body["sendKey"], "sendKey").also {
+                if (it.isEmpty() || it.length > SEND_KEY_MAX || it.any { c -> c < ' ' || c > '~' }) {
+                    throw invalid("sendKey must be 1 to $SEND_KEY_MAX printable ASCII characters")
+                }
+            } else {
+                null
+            }
+            val reply = QuickReplies.answer(app.feed, param("id"), button, values, call.person.id, sendKey)
+            val answered = app.feed.messages.find(param("id"))
+            call.respondOwner(201, buildJsonObject {
+                put("message", reply.json)
+                answered?.let { put("answered", it.json) }
+            })
         },
     )
 

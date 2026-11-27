@@ -202,5 +202,11 @@
   "name": "github-prs",
   "file": "080-github-prs.sql",
   "checksum": "99a17e2f042fa088578994a920e5b555994649099498e98414c19bbafd7a59f5"
+ },
+ {
+  "version": 81,
+  "name": "messages-carry-quick-replies",
+  "file": "081-messages-carry-quick-replies.sql",
+  "checksum": "b4ec152b79de46da1e841b27d3c347c4105b03ee10b743e2d9466e3a7bcdc758"
  }
 ]
