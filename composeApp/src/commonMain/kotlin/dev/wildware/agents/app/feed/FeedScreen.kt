@@ -311,8 +311,26 @@ private fun Modifier.listActions(refresh: () -> Unit, toTop: () -> Unit, openPro
 }
 
 @Composable
-private fun DesktopFeed(ui: FeedUi, showRail: Boolean, startAt: String?) = CompositionLocalProvider(LocalInlineThreads provides true) {
-    DesktopColumns(ui, showRail, startAt)
+private fun DesktopFeed(ui: FeedUi, showRail: Boolean, startAt: String?) {
+    // A card's own reply box, held still while written in when the card above it changes. Provided
+    // here, not round the list, so a new state doesn't redraw the provider.
+    val feed = remember { FeedListRef() }
+    val keeper = remember(ui) {
+        BoxKeeper(
+            scrolledTo = { id -> feed.list?.layoutInfo?.visibleItemsInfo?.firstOrNull { it.key == id }?.let { -it.offset.toFloat() } },
+            scrollBy = { feed.list?.dispatchRawDelta(it) },
+            paused = { ui.following != null || ui.revealing != null },
+        )
+    }
+    CompositionLocalProvider(LocalInlineThreads provides true, LocalBoxKeeper provides keeper) {
+        DesktopColumns(ui, showRail, startAt, feed)
+    }
+}
+
+/** The desktop feed's list, for what is set up before it. */
+@Stable
+private class FeedListRef {
+    var list: LazyListState? = null
 }
 
 /**
@@ -321,12 +339,13 @@ private fun DesktopFeed(ui: FeedUi, showRail: Boolean, startAt: String?) = Compo
  * room. Threads sit under their cards, so there is no thread pane.
  */
 @Composable
-private fun DesktopColumns(ui: FeedUi, showRail: Boolean, startAt: String?) {
+private fun DesktopColumns(ui: FeedUi, showRail: Boolean, startAt: String?, feed: FeedListRef) {
     val state = ui.state
     val colors = AgentTheme.colors
     val motion = AgentTheme.motion
     val scope = rememberCoroutineScope()
     val list = rememberLazyListState(startIndex(state, startAt, itemsBefore = 1))
+    feed.list = list
     val toTop: () -> Unit = { scope.launch { if (motion.reduced) list.scrollToItem(0) else list.animateScrollToItem(0) } }
     val refresh: () -> Unit = { ui.emit(FeedEvent.Refresh) }
     // The window listens for shortcuts from the start, before anything is clicked.
@@ -367,15 +386,6 @@ private fun DesktopColumns(ui: FeedUi, showRail: Boolean, startAt: String?) {
         if (ui.docsOpen && !ui.boardOpen) DocsPane(ui, Modifier.fillMaxSize()) else
         if (ui.mediaOpen && !ui.boardOpen) MediaPane(ui, Modifier.fillMaxSize()) else
         if (ui.boardOpen) BoardPane(ui, Modifier.fillMaxSize()) else Box(Modifier.fillMaxSize()) {
-            // A card's own reply box, held still while written in when the card above it changes.
-            val keeper = remember(ui, list) {
-                BoxKeeper(
-                    scrolledTo = { id -> list.layoutInfo.visibleItemsInfo.firstOrNull { it.key == id }?.let { -it.offset.toFloat() } },
-                    scrollBy = { list.dispatchRawDelta(it) },
-                    paused = { ui.following != null || ui.revealing != null },
-                )
-            }
-            CompositionLocalProvider(LocalBoxKeeper provides keeper) {
             LazyColumn(
                 Modifier.fillMaxSize().closesComposer(ui).listActions(refresh, toTop, null),
                 state = list,
@@ -387,7 +397,6 @@ private fun DesktopColumns(ui: FeedUi, showRail: Boolean, startAt: String?) {
                     FeedHeader(ui, compact = false, Modifier.widthIn(max = FeedMaxWidth).fillMaxWidth().padding(bottom = 20.dp))
                 }
                 feedItems(ui, Density.Comfortable, list)
-            }
             }
             LoadOlderWhenNearEnd(ui, list)
             ScrollToRevealed(ui, list, itemsBefore = 1)

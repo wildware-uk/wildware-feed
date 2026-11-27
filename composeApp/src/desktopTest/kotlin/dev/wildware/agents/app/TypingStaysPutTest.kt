@@ -37,6 +37,7 @@ import dev.wildware.agents.app.feed.FeedSection
 import dev.wildware.agents.app.feed.FeedState
 import dev.wildware.agents.app.feed.Level
 import dev.wildware.agents.app.feed.Presence
+import dev.wildware.agents.app.feed.QuickReplies
 import dev.wildware.agents.app.feed.Reaction
 import dev.wildware.agents.app.feed.Reply
 import dev.wildware.agents.app.feed.ScreenPreview
@@ -323,5 +324,23 @@ class TypingStaysPutTest {
             state.value = state.value.copy(openThread = next, sections = listOf(FeedSection("Today", others.take(3) + listOf(next) + others.drop(3))))
             assertStill(before)
         }
+    }
+
+    @Test
+    fun onAPhoneQuickReplyButtonsOnTheHeadCardLeaveTheBoxAlone() = runDesktopComposeUiTest(390, 844) {
+        val start = post()
+        onAPhoneTheHeadCard(start, start.copy(quickReplies = QuickReplies(messageId = "p1", buttons = listOf("Ship it", "Try another"))), start)
+    }
+
+    @Test
+    fun onADesktopQuickReplyButtonsOnACommentInTheBoardCardLeaveTheBoxAlone() = runDesktopComposeUiTest(1440, 900) {
+        val few = card(1, replies = 2)
+        val state = mutableStateOf(feed(listOf(few), board = board("c1")))
+        boardModal(state, phone = false)
+        write()
+        val before = box()
+        val buttons = QuickReplies(messageId = few.replies.last().id, buttons = listOf("Ship it", "Try another"))
+        state.value = feed(listOf(few.copy(replies = few.replies.dropLast(1) + few.replies.last().copy(quickReplies = buttons))), board = board("c1"))
+        assertStill(before)
     }
 }
