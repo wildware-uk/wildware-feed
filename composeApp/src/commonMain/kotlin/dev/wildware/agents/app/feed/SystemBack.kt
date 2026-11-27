@@ -43,15 +43,16 @@ internal const val DrawerWidthFraction = 0.84f
 private const val CommitFraction = 1f / 3f
 
 /** What a back swipe is doing, fixed when it starts so it can't change meaning halfway through. */
-private enum class BackMode { Overlay, Composer, CloseDrawer, OpenDrawer, Thread, History }
+private enum class BackMode { Overlay, Composer, CloseDrawer, OpenDrawer, Thread, History, AllChannels }
 
 /**
  * What system back does on the feed, topmost thing first. It closes the picture viewer, search or
  * a menu. It slides the projects drawer shut, or the phone thread away, under the finger, the same
  * motion as the app's own swipes. Where the platform owns the left edge (the iPhone), a swipe at
  * the feed itself opens the drawer under the finger. Otherwise it goes back to the channel or
- * thread the owner was on before (the feed's history, as Back does on a desktop). With nowhere to go
- * back to, back is left to the system (Android leaves the app).
+ * thread the owner was on before (the feed's history, as Back does on a desktop). On a phone with
+ * nowhere to go back to, a channel goes up to All channels, the app's top. From there, back is left
+ * to the system (Android leaves the app).
  */
 @Composable
 internal fun FollowSystemBack(ui: FeedUi, widthPx: Float) {
@@ -74,6 +75,8 @@ internal fun FollowSystemBack(ui: FeedUi, widthPx: Float) {
         system.ownsLeftEdge && ui.isPhone -> BackMode.OpenDrawer
         // Somewhere to go back to (another channel, a thread): there, before back leaves the app.
         ui.canGoBack -> BackMode.History
+        // A channel the app opened on: back goes up to every channel's feed before it leaves the app.
+        ui.isPhone && ui.place.project != null -> BackMode.AllChannels
         else -> null
     }
 
@@ -84,7 +87,7 @@ internal fun FollowSystemBack(ui: FeedUi, widthPx: Float) {
     fun finish(mode: BackMode?, back: Boolean) {
         gesture[0] = null
         past[0] = false
-        if (back && feels && mode != null && mode != BackMode.Overlay && mode != BackMode.Composer && mode != BackMode.History) haptics.performHapticFeedback(HapticFeedbackType.GestureEnd)
+        if (back && feels && mode != null && mode != BackMode.Overlay && mode != BackMode.Composer && mode != BackMode.History && mode != BackMode.AllChannels) haptics.performHapticFeedback(HapticFeedbackType.GestureEnd)
         when (mode) {
             BackMode.Overlay -> if (back) ui.closeTopOverlay()
             BackMode.Composer -> if (back) ui.closeComposer()
@@ -98,6 +101,14 @@ internal fun FollowSystemBack(ui: FeedUi, widthPx: Float) {
                 }
             }
             BackMode.History -> if (back) ui.goBack()
+            BackMode.AllChannels -> if (back) {
+                ui.showAll()
+                // Up, not a step: All channels becomes the start, so back from it leaves the app
+                // rather than going round to the channel again.
+                ui.history.replace(ui.place)
+                ui.browser?.replace(ui.place)
+                ui.noteHistory()
+            }
             null -> Unit
         }
     }
@@ -110,7 +121,7 @@ internal fun FollowSystemBack(ui: FeedUi, widthPx: Float) {
                 BackMode.CloseDrawer -> swipe.progress.also { ui.drawer.value = 1f - it }
                 BackMode.OpenDrawer -> swipe.across(widthPx * DrawerWidthFraction).also { ui.drawer.value = it }
                 BackMode.Thread -> swipe.across(widthPx).also { ui.threadBack.value = it }
-                BackMode.Overlay, BackMode.Composer, BackMode.History, null -> null
+                BackMode.Overlay, BackMode.Composer, BackMode.History, BackMode.AllChannels, null -> null
             }
             if (feels && across != null && (across >= CommitFraction) != past[0]) {
                 past[0] = !past[0]

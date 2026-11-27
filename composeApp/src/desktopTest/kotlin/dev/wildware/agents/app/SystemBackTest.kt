@@ -62,11 +62,11 @@ class SystemBackTest {
         }
     }
 
-    private fun androidx.compose.ui.test.ComposeUiTest.phone(system: FakeSystemBack, preview: ScreenPreview = ScreenPreview()) = setContent {
+    private fun androidx.compose.ui.test.ComposeUiTest.phone(system: FakeSystemBack, preview: ScreenPreview = ScreenPreview(), feed: dev.wildware.agents.app.feed.FeedState = FakeFeed.state) = setContent {
         CompositionLocalProvider(LocalSystemBack provides system, androidx.compose.ui.platform.LocalHapticFeedback provides haptics) {
             AgentTheme(dark = true) {
                 Box(Modifier.size(390.dp, 844.dp)) {
-                    FeedScreen(FakeFeed.state.copy(openThread = FakeFeed.state.openThread), preview = preview)
+                    FeedScreen(feed.copy(openThread = feed.openThread), preview = preview)
                 }
             }
         }
@@ -139,14 +139,14 @@ class SystemBackTest {
             }
         }
         waitForIdle()
-        assertFalse(system.enabled, "with nowhere to go back to, back leaves the app")
+        // With no channel before it, back goes up to All channels (see PhoneBackToAllTest).
+        assertTrue(system.enabled)
         navigator.open("ios-companion", null)
         waitForIdle()
         assertTrue(system.enabled, "another channel was opened: back goes to the one before")
         system.back()
         waitForIdle()
         assertEquals(listOf<String?>("ios-companion", "agent-dashboard"), picked)
-        assertFalse(system.enabled)
     }
 
     @Test
@@ -202,7 +202,8 @@ class SystemBackTest {
     @Test
     fun onAndroidBackAtTheFeedIsLeftToTheSystem() = runComposeUiTest {
         val system = FakeSystemBack(ownsLeftEdge = false)
-        phone(system)
+        // All channels is the app's top; a channel goes up to it first (see PhoneBackToAllTest).
+        phone(system, feed = FakeFeed.allProjects.copy(openThread = null))
 
         // Back at the top of the app leaves it; the app's own edge drag opens the drawer instead.
         assertFalse(system.enabled)

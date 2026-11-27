@@ -43,6 +43,15 @@ fun FeedUi.showWaiting() {
     filter = FeedFilter.Waiting
 }
 
+/**
+ * Shows every channel's feed together, as it is with nothing picked: All channels, and every card
+ * on it rather than only the waiting ones [showWaiting] left.
+ */
+fun FeedUi.showAll() {
+    if (place.project != null) emit(FeedEvent.SelectProject(null))
+    if (filter == FeedFilter.Waiting) filter = FeedFilter.All
+}
+
 /** Whether the screen is showing every waiting question, as [showWaiting] leaves it. */
 val FeedUi.showingWaiting: Boolean get() = filter == FeedFilter.Waiting && state.current.slug == null
 

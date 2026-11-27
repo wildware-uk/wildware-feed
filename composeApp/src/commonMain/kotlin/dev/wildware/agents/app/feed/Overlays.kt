@@ -86,6 +86,7 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.paneTitle
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
@@ -429,6 +430,8 @@ fun ProjectsDrawer(ui: FeedUi, progress: EdgeProgress, widthPx: Float, safeArea:
                 TeamSwitcher(teams, close)
                 Spacer(Modifier.height(8.dp))
             }
+            // The way back to every channel's feed, as the sidebar has it at its top.
+            DrawerAllRow(ui, close)
             DrawerWaitingRow(ui, close)
             Spacer(Modifier.height(12.dp))
             // Hold a channel or a project to drag it; hold and let go for its menu.
@@ -455,33 +458,68 @@ fun ProjectsDrawer(ui: FeedUi, progress: EdgeProgress, widthPx: Float, safeArea:
     }
 }
 
+/** "All channels" in the drawer: every channel's feed together, with how many are unread. */
+@Composable
+private fun DrawerAllRow(ui: FeedUi, close: () -> Unit) {
+    val unread = ui.state.totalUnread
+    DrawerNavRow(
+        "All channels",
+        spoken = "All channels, $unread unread",
+        selected = ui.state.current.slug == null && !ui.showingWaiting,
+        icon = { Icon(Icons.Inbox, null, tint = AgentTheme.colors.textMuted, modifier = Modifier.size(18.dp)) },
+        badge = { UnreadBadge(unread) },
+    ) {
+        ui.showAll()
+        close()
+    }
+}
+
 /** "Waiting on you" in the drawer: every question from every project, with how many. */
 @Composable
 private fun DrawerWaitingRow(ui: FeedUi, close: () -> Unit) {
+    val count = ui.state.waitingTotal
+    DrawerNavRow(
+        "Waiting on you",
+        spoken = "Waiting on you, ${if (count == 0) "nothing" else questions(count)}",
+        selected = ui.showingWaiting,
+        icon = { Icon(Icons.Clock, null, tint = AgentTheme.colors.waiting, modifier = Modifier.size(18.dp)) },
+        badge = { WaitingBadge(count) },
+    ) {
+        ui.showWaiting()
+        close()
+    }
+}
+
+/** One of the drawer's rows above the channels: an icon, its name, and its count. */
+@Composable
+private fun DrawerNavRow(
+    label: String,
+    spoken: String,
+    selected: Boolean,
+    icon: @Composable () -> Unit,
+    badge: @Composable () -> Unit,
+    onClick: () -> Unit,
+) {
     val colors = AgentTheme.colors
     val shape = AgentTheme.shapes.medium
-    val count = ui.state.waitingTotal
-    val selected = ui.showingWaiting
     Row(
         Modifier
             .fillMaxWidth()
             .clip(shape)
             .background(if (selected) colors.text.copy(alpha = if (colors.isDark) 0.08f else 0.06f) else Color.Transparent)
-            .pressable("Waiting on you, ${if (count == 0) "nothing" else questions(count)}", shape, role = Role.Tab) {
-                ui.showWaiting()
-                close()
-            }
+            .pressable(spoken, shape, role = Role.Tab, onClick = onClick)
+            .semantics { this.selected = selected }
             .padding(horizontal = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(Icons.Clock, null, tint = colors.waiting, modifier = Modifier.size(18.dp))
+        icon()
         Text(
-            "Waiting on you",
+            label,
             Modifier.padding(start = 10.dp).weight(1f),
             color = if (selected) colors.text else colors.textMuted,
             style = AgentTheme.type.label,
         )
-        WaitingBadge(count)
+        badge()
     }
 }
 
