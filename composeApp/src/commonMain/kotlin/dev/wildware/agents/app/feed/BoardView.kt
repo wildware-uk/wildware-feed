@@ -43,6 +43,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.Measurable
+import androidx.compose.ui.layout.MeasureResult
+import androidx.compose.ui.layout.MeasureScope
+import androidx.compose.ui.node.LayoutModifierNode
+import androidx.compose.ui.node.ModifierNodeElement
+import androidx.compose.ui.node.invalidateMeasurement
+import androidx.compose.ui.platform.InspectorInfo
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
@@ -367,7 +375,7 @@ private fun BoardColumnView(ui: FeedUi, board: BoardState, column: BoardColumn, 
             MetaText(if (board.loaded) "Nothing here" else "Loading…", Modifier.padding(horizontal = 14.dp, vertical = 8.dp))
         }
         LazyColumn(
-            Modifier.fillMaxWidth().weight(1f),
+            Modifier.fillMaxWidth().weight(1f).measuresAgainWhen(column.cards),
             contentPadding = PaddingValues(start = 10.dp, end = 10.dp, bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
@@ -652,3 +660,34 @@ internal fun boardKey(ui: FeedUi, e: KeyEvent, open: (BoardCard) -> Unit): Boole
 
 /** Narrower than this, the columns scroll sideways rather than squeeze. */
 private val ColumnMin = 168.dp
+
+/**
+ * Measures again whenever [key] changes. A board column's list, after a card had been dragged on
+ * the board, now and then kept laying out the cards it had before (in the browser): a card taken
+ * off the board stayed drawn under "Nothing here" for good. Its cards changing now always measures
+ * it again, so it lays out the cards it has.
+ */
+private fun Modifier.measuresAgainWhen(key: Any?): Modifier = this then MeasuresAgainElement(key)
+
+private data class MeasuresAgainElement(val key: Any?) : ModifierNodeElement<MeasuresAgainNode>() {
+    override fun create() = MeasuresAgainNode(key)
+
+    override fun update(node: MeasuresAgainNode) {
+        if (node.key != key) {
+            node.key = key
+            node.invalidateMeasurement()
+        }
+    }
+
+    override fun InspectorInfo.inspectableProperties() {
+        name = "measuresAgainWhen"
+    }
+}
+
+private class MeasuresAgainNode(var key: Any?) : Modifier.Node(), LayoutModifierNode {
+    override fun MeasureScope.measure(measurable: Measurable, constraints: Constraints): MeasureResult {
+        val placeable = measurable.measure(constraints)
+        return layout(placeable.width, placeable.height) { placeable.place(0, 0) }
+    }
+}
+
