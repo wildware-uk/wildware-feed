@@ -157,6 +157,17 @@ class OutboxQueue @OptIn(ExperimentalTime::class) constructor(
         }
     }
 
+    /**
+     * Ends a held voice note's wait now, so it goes at once, its words as they are: "Send now".
+     * Only while it is still held, so a second tap, or one as the wait runs out, sends nothing more.
+     */
+    fun sendVoiceNow(id: String) {
+        confined.launch {
+            update { Outbox.holdVoice(it, id, clock(), clock()) }
+            kick()
+        }
+    }
+
     /** Settles an unsure word in a held voice note, then gives it a fresh [VoiceNote.UndoMillis] before it goes. */
     fun chooseWord(id: String, index: Int, choice: String?) {
         confined.launch {

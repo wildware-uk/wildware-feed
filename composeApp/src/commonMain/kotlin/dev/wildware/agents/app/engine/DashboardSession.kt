@@ -1478,6 +1478,7 @@ class DashboardSession(
             is FeedEvent.RetrySend -> outbox.retryNow(event.outboxId)
             is FeedEvent.DropUnsent -> outbox.remove(event.outboxId)
             is FeedEvent.PauseUnsent -> outbox.pauseVoice(event.outboxId)
+            is FeedEvent.SendUnsentNow -> outbox.sendVoiceNow(event.outboxId)
             is FeedEvent.ChooseWord -> outbox.chooseWord(event.outboxId, event.index, event.choice)
             is FeedEvent.ChooseSentWord -> dashboard.chooseSentWord(event.messageId, event.index, event.choice)?.let { text ->
                 actions.edit(CardRef(CardKinds.Message, event.messageId), text)

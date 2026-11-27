@@ -94,6 +94,60 @@ class VoiceSendTest {
     }
 
     @Test
+    fun `send now sends a waiting note at once and only once`() = runTest {
+        val server = FakeDashboard(testScheduler)
+        val (queue, actions) = setUp(server)
+
+        val id = actions.post(ProjectRef("mega", "Mega"), "Ship it", voice = OwnerActions.Voice(VoiceNote.UndoMillis))
+        runCurrent()
+        advanceTimeBy(1_000)
+        queue.sendVoiceNow(id)
+        queue.sendVoiceNow(id)
+        runCurrent()
+        assertEquals(1, server.writes.size, "it goes without waiting out the rest")
+
+        queue.sendVoiceNow(id)
+        advanceTimeBy(VoiceNote.UndoMillis * 2)
+        assertEquals(1, server.writes.size, "neither another tap nor the old deadline sends it again")
+        assertTrue(queue.items.value.isEmpty())
+    }
+
+    @Test
+    fun `send now as the wait runs out sends once`() = runTest {
+        val server = FakeDashboard(testScheduler)
+        val (queue, actions) = setUp(server)
+
+        val id = actions.post(ProjectRef("mega", "Mega"), "Ship it", voice = OwnerActions.Voice(VoiceNote.UndoMillis))
+        runCurrent()
+        advanceTimeBy(VoiceNote.UndoMillis)
+        queue.sendVoiceNow(id)
+        advanceTimeBy(VoiceNote.UndoMillis)
+        assertEquals(1, server.writes.size)
+    }
+
+    @Test
+    fun `send now on a paused note sends it with its words as they are`() = runTest {
+        val server = FakeDashboard(testScheduler)
+        val (queue, actions) = setUp(server)
+        val unsure = listOf(VoiceWord(8, 14, 0.3, listOf("Monday")))
+
+        val id = actions.post(ProjectRef("mega", "Mega"), "Ship on Friday", voice = OwnerActions.Voice(VoiceNote.UndoMillis, unsure))
+        runCurrent()
+        queue.pauseVoice(id)
+        advanceTimeBy(10_000)
+        assertTrue(server.writes.isEmpty())
+
+        queue.sendVoiceNow(id)
+        runCurrent()
+        assertEquals(
+            listOf("""{"project":"mega","source":"voice","body":"Ship on Friday","sendKey":"id1"}"""),
+            server.writes.map { it.second },
+        )
+        advanceTimeBy(VoiceNote.PauseMillis)
+        assertEquals(1, server.writes.size)
+    }
+
+    @Test
     fun `undo within the window sends nothing`() = runTest {
         val server = FakeDashboard(testScheduler)
         val (queue, actions) = setUp(server)

@@ -8,6 +8,9 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isPopup
+import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runComposeUiTest
 import dev.wildware.agents.VoiceNote
@@ -38,6 +41,7 @@ class VoiceWordChoiceTest {
         when (event) {
             is FeedEvent.PauseUnsent -> holdUntil.value = now + VoiceNote.PauseMillis
             is FeedEvent.ChooseWord -> holdUntil.value = now + VoiceNote.UndoMillis
+            is FeedEvent.SendUnsentNow -> holdUntil.value = now
             else -> Unit
         }
     }
@@ -100,11 +104,42 @@ class VoiceWordChoiceTest {
     }
 
     @Test
+    fun sendNowWhilePausedClosesTheChoicesAndSendsTheWordsAsTheyAre() = runComposeUiTest {
+        mainClock.autoAdvance = false
+        show()
+        mainClock.advanceTimeByFrame()
+        word().performClick()
+        mainClock.advanceTimeByFrame()
+        onNodeWithText("Paused").assertExists()
+        // The open menu covers the pill, so a finger meets the menu's own Send now; a screen reader still reaches this one.
+        onNode(hasText("Send now") and !hasAnyAncestor(isPopup())).performSemanticsAction(SemanticsActions.OnClick)
+        mainClock.advanceTimeByFrame()
+        assertEquals(listOf(FeedEvent.PauseUnsent("abc"), FeedEvent.SendUnsentNow("abc")), events)
+        onNodeWithText("Monday").assertDoesNotExist()
+        onNodeWithText("Undo").assertDoesNotExist()
+    }
+
+    @Test
+    fun theWordMenuCanSendNowToo() = runComposeUiTest {
+        mainClock.autoAdvance = false
+        show()
+        mainClock.advanceTimeByFrame()
+        word().performClick()
+        mainClock.advanceTimeByFrame()
+        onNode(hasText("Send now") and hasAnyAncestor(isPopup())).performClick()
+        mainClock.advanceTimeByFrame()
+        assertEquals(listOf(FeedEvent.PauseUnsent("abc"), FeedEvent.SendUnsentNow("abc")), events, "no word is chosen: it goes as it is")
+        onNodeWithText("Monday").assertDoesNotExist()
+        onNodeWithText("Undo").assertDoesNotExist()
+    }
+
+    @Test
     fun onceSentPickingAWordEditsTheMessage() = runComposeUiTest {
         show(sending = false, undoUntil = null)
         onNodeWithText("Undo").assertDoesNotExist()
         word().performClick()
         waitForIdle()
+        onNodeWithText("Send now").assertDoesNotExist()
         onNodeWithText("Monday").performClick()
         waitForIdle()
         assertEquals(listOf<FeedEvent>(FeedEvent.ChooseSentWord("outbox:abc", 0, "Monday")), events, "no pause: nothing is counting down")

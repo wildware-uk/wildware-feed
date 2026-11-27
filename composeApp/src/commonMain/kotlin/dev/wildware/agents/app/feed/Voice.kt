@@ -44,6 +44,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
@@ -331,7 +332,8 @@ internal fun rememberUndoOpen(until: Long?): Boolean {
  * send stuck on the network, so the line it sits under is drawn at full strength. Undo takes the
  * note out of the outbox, so nothing is sent. [lineId] is the line's, `outbox:<id>`. Show it only
  * while [rememberUndoOpen] says the window is open. While [choice] has a word's choices open it
- * stops and says "Paused".
+ * stops and says "Paused". Send now, beside it, ends the wait at once, closing any word's choices
+ * with the words as they are. Either button works once: after one, neither does anything more.
  */
 @Composable
 internal fun UndoVoiceNote(lineId: String, until: Long?, modifier: Modifier = Modifier, choice: WordChoice? = null) {
@@ -362,25 +364,60 @@ internal fun UndoVoiceNote(lineId: String, until: Long?, modifier: Modifier = Mo
     val seconds = ((left + 999) / 1_000).coerceAtLeast(1)
     val drain = colors.accentSoft
     val shape = AgentTheme.shapes.pill
-    val undo = { ui.emit(FeedEvent.DropUnsent(lineId.removePrefix(DraftPrefix))) }
-    // The whole pill is the Undo button: a full-size target around a small pill.
-    Box(modifier.clip(shape).pressable("Undo", shape, labelIsShown = true, onClick = undo), contentAlignment = Alignment.CenterStart) {
-        Row(
-            Modifier
-                .height(28.dp)
-                .clip(shape)
-                .background(colors.surfaceSunken)
-                // The time left, as a fill that shrinks to nothing at the deadline. Read while drawing, so it never recomposes.
-                .drawBehind { drawRect(drain, size = Size(size.width * drained.value, size.height)) }
-                .border(1.dp, colors.border, shape)
-                .padding(start = 10.dp, end = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
+    val outboxId = lineId.removePrefix(DraftPrefix)
+    // Set by the first tap on either button, so a second tap does nothing until the line moves on.
+    var settled by remember(lineId) { mutableStateOf(false) }
+    val undo = {
+        if (!settled) {
+            settled = true
+            ui.emit(FeedEvent.DropUnsent(outboxId))
+        }
+    }
+    val sendNow = {
+        if (!settled) {
+            settled = true
+            choice?.open = null
+            ui.emit(FeedEvent.SendUnsentNow(outboxId))
+        }
+    }
+    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+        // The whole pill is the Undo button: a full-size target around a small pill.
+        Box(Modifier.clip(shape).pressable("Undo", shape, labelIsShown = true, onClick = undo), contentAlignment = Alignment.CenterStart) {
+            Row(
+                Modifier
+                    .height(28.dp)
+                    .clip(shape)
+                    .background(colors.surfaceSunken)
+                    // The time left, as a fill that shrinks to nothing at the deadline. Read while drawing, so it never recomposes.
+                    .drawBehind { drawRect(drain, size = Size(size.width * drained.value, size.height)) }
+                    .border(1.dp, colors.border, shape)
+                    .padding(start = 10.dp, end = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(Icons.Mic, null, tint = colors.textMuted, modifier = Modifier.size(12.dp))
+                MetaText(if (paused) "Paused" else "Sending in ${seconds}s", Modifier.padding(start = 6.dp), color = colors.textMuted)
+                Text(
+                    "Undo",
+                    Modifier.padding(start = 10.dp),
+                    color = colors.accent,
+                    style = AgentTheme.type.meta.copy(fontWeight = FontWeight.SemiBold),
+                )
+            }
+        }
+        // Send now: a pill of its own beside it, with its own full-size target.
+        Box(
+            Modifier.padding(start = 4.dp).clip(shape).pressable("Send now", shape, labelIsShown = true, onClick = sendNow),
+            contentAlignment = Alignment.Center,
         ) {
-            Icon(Icons.Mic, null, tint = colors.textMuted, modifier = Modifier.size(12.dp))
-            MetaText(if (paused) "Paused" else "Sending in ${seconds}s", Modifier.padding(start = 6.dp), color = colors.textMuted)
             Text(
-                "Undo",
-                Modifier.padding(start = 10.dp),
+                "Send now",
+                Modifier
+                    .height(28.dp)
+                    .clip(shape)
+                    .background(colors.surfaceSunken)
+                    .border(1.dp, colors.border, shape)
+                    .padding(horizontal = 12.dp)
+                    .wrapContentHeight(Alignment.CenterVertically),
                 color = colors.accent,
                 style = AgentTheme.type.meta.copy(fontWeight = FontWeight.SemiBold),
             )
@@ -419,6 +456,11 @@ internal fun UnsureWords(lineId: String, text: String, words: List<VoiceWord>, c
     val settle = { index: Int, picked: String? ->
         choice.open = null
         ui?.emit(if (sent) FeedEvent.ChooseSentWord(lineId, index, picked) else FeedEvent.ChooseWord(outboxId, index, picked))
+    }
+    // In the menu too: a tap outside an open menu only closes it, so the pill's Send now can't be reached in one.
+    val sendNow = {
+        choice.open = null
+        ui?.emit(FeedEvent.SendUnsentNow(outboxId))
     }
     val onWord by rememberUpdatedState(open)
     // Only words that still fit the text: an older line may have changed under them.
@@ -491,6 +533,13 @@ internal fun UnsureWords(lineId: String, text: String, words: List<VoiceWord>, c
                     onClick = { settle(index, null) },
                     colors = MenuDefaults.itemColors(textColor = colors.textMuted, leadingIconColor = colors.textMuted),
                 )
+                if (!sent) {
+                    DropdownMenuItem(
+                        text = { Text("Send now", style = AgentTheme.type.label) },
+                        onClick = { sendNow() },
+                        colors = MenuDefaults.itemColors(textColor = colors.accent),
+                    )
+                }
             }
         }
     }

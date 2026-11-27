@@ -25,6 +25,7 @@ import dev.wildware.agents.OwnerActions
 import dev.wildware.agents.VoiceNote
 import dev.wildware.agents.VoiceReviewSetting
 import dev.wildware.agents.app.design.AgentTheme
+import dev.wildware.agents.app.design.MinTouchTarget
 import dev.wildware.agents.app.feed.Author
 import dev.wildware.agents.app.feed.Composer
 import dev.wildware.agents.app.feed.FakeFeed
@@ -141,6 +142,27 @@ class VoiceNoteUiTest {
         assertEquals(listOf<FeedEvent>(FeedEvent.DropUnsent("abc")), events)
         mainClock.advanceTimeBy(VoiceNote.UndoMillis + 100)
         onNodeWithText("Undo").assertDoesNotExist()
+    }
+
+    @Test
+    fun sendNowSendsTheNoteAtOnceAndOnlyOnce() = runComposeUiTest {
+        mainClock.autoAdvance = false
+        show(reply(voice = true, sending = true, undoUntil = now + VoiceNote.UndoMillis))
+        mainClock.advanceTimeByFrame()
+        onNodeWithText("Send now").performClick()
+        onNodeWithText("Send now").performClick()
+        onNodeWithText("Undo").performClick()
+        assertEquals(listOf<FeedEvent>(FeedEvent.SendUnsentNow("abc")), events, "one tap sends; the rest do nothing")
+    }
+
+    @Test
+    fun theSendNowButtonIsBigEnoughToTap() = runComposeUiTest {
+        mainClock.autoAdvance = false
+        show(reply(voice = true, sending = true, undoUntil = now + VoiceNote.UndoMillis))
+        mainClock.advanceTimeByFrame()
+        val bounds = onNodeWithText("Send now").fetchSemanticsNode().boundsInRoot
+        val size = with(density) { bounds.width.toDp() to bounds.height.toDp() }
+        assertTrue(size.first >= MinTouchTarget && size.second >= MinTouchTarget, size.toString())
     }
 
     private fun ComposeUiTest.composer(review: Boolean, sentVoice: MutableList<Pair<String, OwnerActions.Voice>>) = setContent {
