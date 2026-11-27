@@ -2,7 +2,7 @@
 // "Move to project…". Both stick after a reload.
 import { expect, test } from '@playwright/test';
 import { Team } from '../lib/team.mjs';
-import { expectShown, find, nextResponse, reload, signedIn, tap } from '../lib/ui.mjs';
+import { expectShown, find, nextResponse, reload, signedIn, stillBox, tap } from '../lib/ui.mjs';
 
 test.describe.configure({ mode: 'serial' });
 let team;
@@ -17,9 +17,26 @@ test.afterAll(async () => { await team?.delete(); });
 /** A channel as the server has it, by its slug. */
 const channel = async (slug) => (await team.owner.ok('GET', '/api/snapshot')).projects.find((p) => p.slug === slug);
 
-/** Where a side bar row is drawn: a channel by name, or a project's heading. */
-const rowBox = async (page, name, project = false) =>
-    (await find(page, 'button', new RegExp(`^${name}, ${project ? 'project' : ''}`))).boundingBox();
+/**
+ * Where a side bar row is drawn once it has stopped moving: a channel by name, or a project's
+ * heading. The tree can have a row before it is laid out (no box yet), and after a reload the rows
+ * settle as the channels and projects come in, so a box read at once can be none or on its way.
+ */
+const rowBox = async (page, name, project = false) => {
+    const row = await find(page, 'button', new RegExp(`^${name}, ${project ? 'project' : ''}`));
+    let box = null;
+    await expect.poll(async () => {
+        box = await stillBox(row);
+        return !!box && box.height > 0;
+    }, { timeout: 15_000, message: `the ${name} row should be drawn` }).toBe(true);
+    return box;
+};
+
+/** The rows' tops, top to bottom, by name: projects' headings as "project:Name". */
+const order = async (page, rows) => {
+    const tops = await Promise.all(rows.map(async (r) => [r, (await rowBox(page, r.replace(/^project:/, ''), r.startsWith('project:'))).y]));
+    return tops.sort((a, b) => a[1] - b[1]).map(([r]) => r);
+};
 
 test('the owner drags a channel into a project and it stays there after a reload', async ({ browser }) => {
     const page = await signedIn(browser, team.owner);
@@ -39,12 +56,8 @@ test('the owner drags a channel into a project and it stays there after a reload
 
     await reload(page);
     await expectShown(page, 'Ops');
-    const heading = await rowBox(page, 'Ops', true);
-    const beta = await rowBox(page, 'Beta');
-    const alpha = await rowBox(page, 'Alpha');
     // Under its project's heading, above the channels in no project.
-    expect(beta.y).toBeGreaterThan(heading.y);
-    expect(beta.y).toBeLessThan(alpha.y);
+    await expect.poll(() => order(page, ['project:Ops', 'Beta', 'Alpha']), { timeout: 15_000 }).toEqual(['project:Ops', 'Beta', 'Alpha']);
 });
 
 test("the channel menu's Move to project moves it, and it stays after a reload", async ({ browser }) => {
@@ -60,9 +73,6 @@ test("the channel menu's Move to project moves it, and it stays after a reload",
 
     await reload(page);
     await expectShown(page, 'Ops');
-    const heading = await rowBox(page, 'Ops', true);
-    const alpha = await rowBox(page, 'Alpha');
-    expect(alpha.y).toBeGreaterThan(heading.y);
-    // Moved in at the end: after Beta.
-    expect(alpha.y).toBeGreaterThan((await rowBox(page, 'Beta')).y);
+    // In its project, moved in at the end: after Beta.
+    await expect.poll(() => order(page, ['project:Ops', 'Beta', 'Alpha']), { timeout: 15_000 }).toEqual(['project:Ops', 'Beta', 'Alpha']);
 });
