@@ -2743,5 +2743,58 @@
   "why": "request_input returns at once and await_request is retired: the answer arrives as a channel answer event, and get_messages({request_id}) reads it.",
   "replace": "It waits like request_input: it answers within about a minute either way. On { state:\n\"pending\" } call await_request with the request_id, and keep calling it while the state\nis \"pending\". On \"answered\", response.value is true when they allowed it and false when",
   "with": "Like request_input, it returns at once with { state: \"pending\", request_id }. Don't wait:\ncarry on, and the outcome arrives as a channel answer event on that request_id\n(get_messages({ request_id }) reads it later). On \"answered\", response.value is true when they allowed it and false when"
+ },
+ {
+  "tool": "get_messages",
+  "path": [
+   "description"
+  ],
+  "why": "Voice notes: an agent starts its first reply to a voice note by saying back what it heard.",
+  "replace": "as the phone heard them and may hold mistakes. Read it for meaning, and ask if something\nlooks off",
+  "with": "as the phone heard them and may hold mistakes. Your first reply says back what you\nunderstood, in plain words (\"Here's what I heard: …\"), before you act; ask if something\nis unclear"
+ },
+ {
+  "tool": "post_message",
+  "path": [
+   "description"
+  ],
+  "why": "Quick replies (migration 081): buttons or a small form on any message, answered as the owner's reply in the thread, never urgent.",
+  "replace": "\nReturns { message: { id, project_id, update_id, reply_to, author, body,\ncreated_at",
+  "with": "- buttons (optional): up to 4 quick-reply labels under the message, e.g.\n  [\"👍 Ship it\", \"Try another\"]. Nothing waits on them: no \"Waiting on you\" entry, no\n  extra alert, and if your owner ignores them nothing happens. If they tap one, its\n  label arrives as their reply in this thread, answering your message, with\n  reply { to, button } on it. Use them to make the likely answer one tap. When you are\n  blocked until they answer, use request_input instead.\n- fields (optional): a small form under the message instead, with request_input's\n  form fields ({ id, label, type, ... }; see request_input). buttons are then its\n  submit buttons (\"Send\" if you leave them out). What they fill in arrives as their\n  reply: readable text in body, and reply { to, button, values } with each field by\n  id. Same rules: not urgent, nothing waits.\n  Each person answers once. Your message, read back, carries replies { buttons,\n  fields?, answers: [{ user_id, button, values?, message_id, answered_at }] }.\n\nReturns { message: { id, project_id, update_id, reply_to, author, body,\ncreated_at, replies?"
+ },
+ {
+  "tool": "post_message",
+  "path": [
+   "inputSchema",
+   "properties",
+   "buttons"
+  ],
+  "why": "Quick replies (migration 081): buttons or a small form on any message, answered as the owner's reply in the thread, never urgent.",
+  "now": {
+   "description": "Up to 4 quick-reply labels (each at most 80 characters) your owner can tap. A tap is sent as their reply in this thread, answering this message. Not urgent: nothing waits and no alert is added. To block on an answer use request_input.",
+   "maxItems": 4,
+   "type": "array",
+   "items": {
+    "type": "string"
+   }
+  }
+ },
+ {
+  "tool": "post_message",
+  "path": [
+   "inputSchema",
+   "properties",
+   "fields"
+  ],
+  "why": "Quick replies (migration 081): buttons or a small form on any message, answered as the owner's reply in the thread, never urgent.",
+  "now": {
+   "description": "A small form to fill in under the message, with request_input's form fields: each { id, label, type, hint?, required?, default?, options?, min?, max?, placeholder? }, type one of text, textarea, number, email, url, date, select, radio, checkbox, checkboxes, toggle. buttons become its submit buttons (\"Send\" if left out). What is sent arrives as their reply, with the values by field id. Not urgent: nothing waits.",
+   "maxItems": 20,
+   "type": "array",
+   "items": {
+    "type": "object",
+    "additionalProperties": {}
+   }
+  }
  }
 ]
