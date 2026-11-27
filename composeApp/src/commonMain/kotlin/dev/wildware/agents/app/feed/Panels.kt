@@ -559,6 +559,8 @@ fun Composer(
      * Null where there is nothing to edit.
      */
     lastOwn: (() -> EditAsk?)? = null,
+    /** Told when the box starts or stops being written in: the cursor in it, or words in it. Remember it: a new one is told afresh. */
+    onWriting: ((Boolean) -> Unit)? = null,
 ) {
     val colors = AgentTheme.colors
     val shape = AgentTheme.shapes.large
@@ -664,6 +666,16 @@ fun Composer(
     // the box's text, which is a new one for each draft: unkeyed, it kept watching the first, and
     // the mic stayed up while typing after a switch to another project or thread.
     val blank by remember(text) { derivedStateOf { text.text.isBlank() } }
+    if (onWriting != null) {
+        val writing = open || !blank
+        // Told as the frame is put together, before it is laid out, so nothing moves even for a frame.
+        // Keyed on the callback too (remembered by the caller), so a box that moves to another thread
+        // tells the old one it stopped.
+        DisposableEffect(writing, onWriting) {
+            onWriting(writing)
+            onDispose { if (writing) onWriting(false) }
+        }
+    }
     // The @mention under the cursor, if any: only the word at the cursor is read, so other typing
     // redraws nothing here.
     val typing by remember(text) { derivedStateOf { if (text.selection.collapsed) MentionText.at(text.text.toString(), text.selection.end) else null } }

@@ -62,6 +62,7 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
@@ -381,6 +382,7 @@ private fun DesktopColumns(ui: FeedUi, showRail: Boolean, startAt: String?) {
             LoadOlderWhenNearEnd(ui, list)
             ScrollToRevealed(ui, list, itemsBefore = 1)
             FollowRepliedCard(ui, list, itemsBefore = 1)
+            KeepWritingCardStill(ui, list, itemsBefore = 1)
             ScrollToTopWhenAsked(ui, list)
             HoldArrivalsWhileAway(ui, list)
             NewOrBackToTop(ui, list, scrolledPast = 3, Modifier.align(Alignment.TopCenter).padding(top = 14.dp), toTop)
@@ -755,6 +757,34 @@ private fun FollowRepliedCard(ui: FeedUi, list: LazyListState, itemsBefore: Int)
     }
 }
 
+/**
+ * While the owner writes a reply under a card, keeps that card where it is on screen as the feed
+ * changes around it: a card above it growing a reply, or one leaving. The feed's order already holds
+ * still meanwhile ([FeedUi.sections]). Asked for as the new cards go in, before the list is laid out
+ * with them, so nothing jumps even for a frame. The owner's own scrolling, and the feed following
+ * their sent reply or going to a card they asked for, are left alone.
+ */
+@Composable
+private fun KeepWritingCardStill(ui: FeedUi, list: LazyListState, itemsBefore: Int) {
+    val id = ui.threadId?.takeIf { ui.isWriting(it) } ?: return
+    val sections = ui.sections
+    // A tap on the pill lets the held cards in and goes to them: that once, the card isn't held still.
+    val letIn = ui.letInCount
+    val seen = remember { intArrayOf(letIn) }
+    SideEffect {
+        if (seen[0] != letIn) {
+            seen[0] = letIn
+            return@SideEffect
+        }
+        if (ui.following != null || ui.revealing != null || list.isScrollInProgress) return@SideEffect
+        // Where it was in the last layout, and where it is among the new cards.
+        val was = list.layoutInfo.visibleItemsInfo.firstOrNull { it.key == id } ?: return@SideEffect
+        val index = indexIn(sections, id, itemsBefore) ?: return@SideEffect
+        if (index == was.index && list.firstVisibleItemIndex == index && list.firstVisibleItemScrollOffset == -was.offset) return@SideEffect
+        list.requestScrollToItem(index, -was.offset)
+    }
+}
+
 /** The sections and their cards, hung off a timeline rail. */
 /**
  * "Back to top" once the owner is [scrolledPast] a few cards, or "3 new updates" as soon as updates
@@ -762,9 +792,14 @@ private fun FollowRepliedCard(ui: FeedUi, list: LazyListState, itemsBefore: Int)
  */
 @Composable
 private fun NewOrBackToTop(ui: FeedUi, list: LazyListState, scrolledPast: Int, modifier: Modifier, toTop: () -> Unit) {
-    val newCount by remember(ui) { derivedStateOf { ui.state.newCount } }
-    val shown by remember(list) { derivedStateOf { list.firstVisibleItemIndex > scrolledPast || newCount > 0 && list.awayFromTop() } }
-    BackToTopPill({ shown }, modifier, { newCount }, toTop)
+    // Cards held back while a reply is written count too, even at the top: they would have pushed the box down.
+    val held by remember(ui) { derivedStateOf { ui.heldBack } }
+    val newCount by remember(ui) { derivedStateOf { ui.state.newCount + held } }
+    val shown by remember(list) { derivedStateOf { list.firstVisibleItemIndex > scrolledPast || newCount > 0 && (held > 0 || list.awayFromTop()) } }
+    BackToTopPill({ shown }, modifier, { newCount }) {
+        if (held > 0) ui.letHeldIn()
+        toTop()
+    }
 }
 
 /** How far down the owner may be and still count as at the top, as the website allows. */

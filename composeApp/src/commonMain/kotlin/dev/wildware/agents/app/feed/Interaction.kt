@@ -1045,6 +1045,58 @@ class FeedUi(preview: ScreenPreview, private val source: State<FeedState>, var o
      */
     val sections: List<FeedSection>
         get() {
+            val live = liveSections
+            if (!holdsFeed) {
+                held = null
+                return live
+            }
+            val scope = HeldScope(filter, tagFilter, state.current.slug, letInSerial)
+            val keep = held?.takeIf { it.scope == scope } ?: HeldOrder(live, scope).also { held = it }
+            return keep.arrange(live)
+        }
+
+    /**
+     * Reply boxes on screen that are being written in (the cursor in them, or words), by box, each
+     * naming its thread. While any is, the feed holds still around it ([sections]), and a thread
+     * shows a pill for a new message rather than scrolling to it.
+     */
+    private val writers = mutableStateMapOf<Any, String>()
+
+    /** Box [box], in thread [threadId], has started or stopped being written in. */
+    fun writing(box: Any, threadId: String, on: Boolean) {
+        if (on) writers[box] = threadId else writers.remove(box)
+    }
+
+    /** Whether a box in thread [threadId] is being written in. */
+    fun isWriting(threadId: String): Boolean = threadId in writers.values
+
+    /**
+     * The feed's order is held while the owner writes a reply, so a new message (a reply that would
+     * take a card to the top, a card arriving) doesn't move the box out from under them. Their own
+     * reply lets go: the feed follows that card to its new place.
+     */
+    private val holdsFeed: Boolean get() = writers.isNotEmpty() && following == null
+
+    /** How many cards wait to show while the feed holds still for a reply being written. */
+    val heldBack: Int
+        get() {
+            sections // Brings the held order up to date with the newest cards first.
+            return if (holdsFeed) held?.waiting ?: 0 else 0
+        }
+
+    /** Lets the cards held back for a reply being written in, as a tap on the pill asks. */
+    fun letHeldIn() {
+        letInSerial++
+    }
+
+    /** How many times held cards were let in; the feed goes to them then rather than keeping the box still. */
+    val letInCount: Int get() = letInSerial
+
+    private var letInSerial by mutableIntStateOf(0)
+    private var held: HeldOrder? = null
+
+    private val liveSections: List<FeedSection>
+        get() {
             val from = state.sections
             val by = filter
             if (from === sectionsFrom && by == sectionsFilter && tagFilter == sectionsTag && tagsHere.toMap() == sectionsTags) return filteredSections
@@ -1511,4 +1563,29 @@ internal fun cardIndex(sections: List<FeedSection>, id: String): Int? {
         i++
     }
     return null
+}
+
+/** What a held feed order belongs to: a new filter, channel or a tap on the pill starts a new one. */
+private data class HeldScope(val filter: FeedFilter, val tag: String?, val slug: String?, val serial: Int)
+
+/**
+ * The feed's cards in the order they had when the owner started writing a reply. Each card is still
+ * its newest self; cards that left go, and cards that weren't there wait ([waiting]).
+ */
+private class HeldOrder(private val order: List<FeedSection>, val scope: HeldScope) {
+    private val ids = order.flatMapTo(HashSet()) { s -> s.items.map { it.id } }
+    private var from: List<FeedSection>? = null
+    private var shown: List<FeedSection> = order
+    var waiting = 0
+        private set
+
+    fun arrange(live: List<FeedSection>): List<FeedSection> {
+        if (live === from) return shown
+        val byId = HashMap<String, FeedItem>()
+        live.forEach { s -> s.items.forEach { byId[it.id] = it } }
+        shown = order.map { s -> s.copy(items = s.items.mapNotNull { byId[it.id] }) }.filter { it.items.isNotEmpty() }
+        waiting = byId.keys.count { it !in ids }
+        from = live
+        return shown
+    }
 }

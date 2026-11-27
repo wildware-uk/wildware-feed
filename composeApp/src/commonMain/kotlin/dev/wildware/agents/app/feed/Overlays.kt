@@ -834,6 +834,7 @@ fun ThreadComposer(ui: FeedUi?, threadId: String, modifier: Modifier = Modifier,
             lastOwn = ui?.let { u -> { LastOwn.inThread((u.cardOrLone(threadId) ?: u.state.openThread?.takeIf { it.id == threadId }) as? Threaded) } },
             ask = ui?.mentionAsk?.takeIf { it.threadId == threadId },
             onAsked = { ui?.mentionAsk = null },
+            onWriting = ui?.let { u -> remember(u, threadId) { val box = Any(); { on: Boolean -> u.writing(box, threadId, on) } } },
         )
     }
 }
@@ -852,6 +853,37 @@ fun BackToTopPill(shown: () -> Boolean, modifier: Modifier = Modifier, newCount:
         fadeOut(motion.fast()) + slideOutVertically(motion.fast()) { -it / 2 },
         modifier,
     ) { BackToTop(newCount = newCount(), onClick = onClick) }
+}
+
+/**
+ * "New message ↓" over a thread's foot: a message came in below while the owner was writing, so the
+ * thread stayed where it was. A tap goes down to it.
+ */
+@Composable
+fun NewMessagePill(shown: () -> Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    val motion = AgentTheme.motion
+    val colors = AgentTheme.colors
+    val shape = AgentTheme.shapes.pill
+    Presence(
+        Unit.takeIf { shown() },
+        fadeIn(motion.fast()) + slideInVertically(motion.pop()) { it } + scaleIn(motion.pop(), initialScale = 0.8f),
+        fadeOut(motion.fast()) + slideOutVertically(motion.fast()) { it / 2 },
+        modifier,
+    ) {
+        Row(
+            Modifier
+                .lift(AgentTheme.elevation.raised, shape)
+                .clip(shape)
+                .background(if (colors.isDark) colors.accent else colors.text)
+                .pressable("New message", shape, labelIsShown = true, onClick = onClick)
+                .padding(horizontal = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            val fg = if (colors.isDark) colors.onAccent else colors.background
+            Text("New message", color = fg, style = AgentTheme.type.label)
+            Icon(Icons.ArrowDown, null, tint = fg, modifier = Modifier.padding(start = 6.dp).size(16.dp))
+        }
+    }
 }
 
 /** A pill that appears once the feed is scrolled, to jump back to the top. */

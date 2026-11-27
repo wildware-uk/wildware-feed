@@ -28,11 +28,14 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -43,6 +46,8 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
@@ -54,8 +59,9 @@ import dev.wildware.agents.app.design.AgentTheme
 import dev.wildware.agents.app.design.Icons
 import dev.wildware.agents.app.design.gesture.DismissDrag
 import dev.wildware.agents.app.design.gesture.swipeDownToDismiss
-import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /*
  * A board card, opened from the board: the card and its comments in a modal over the board, which
@@ -82,6 +88,7 @@ internal fun BoardCardModalHost(ui: FeedUi, phone: Boolean, safeArea: SafeArea) 
 @Composable
 private fun BoardCardModal(ui: FeedUi, id: String, phone: Boolean, safeArea: SafeArea, panel: Modifier) {
     val colors = AgentTheme.colors
+    val density = LocalDensity.current
     val close = { ui.closeBoardCard() }
     val focus = remember { FocusRequester() }
     // The keyboard and a screen reader go into the modal as it opens.
@@ -90,6 +97,11 @@ private fun BoardCardModal(ui: FeedUi, id: String, phone: Boolean, safeArea: Saf
     // Where a swipe let go, so the sheet sinks from there rather than jumping back up first.
     var letGoAt by remember { mutableFloatStateOf(0f) }
     val shape = if (phone) RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp) else AgentTheme.shapes.large
+    // The dialog sits in the middle, so growing would move the reply box down. While the owner writes
+    // it keeps the height it had; a new comment scrolls in its comments instead. (The phone's sheet
+    // grows up from the foot, which leaves the box where it is.)
+    val tallPx = remember { intArrayOf(0) }
+    val held = if (phone || !ui.isWriting(id)) null else remember { with(density) { tallPx[0].toDp() } }
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val tall = maxHeight
         Scrim({ 0.45f }, "Close card", close)
@@ -102,6 +114,8 @@ private fun BoardCardModal(ui: FeedUi, id: String, phone: Boolean, safeArea: Saf
                             .offset { IntOffset(0, maxOf(drag.offsetPx, letGoAt).roundToInt()) }
                     } else {
                         Modifier.padding(24.dp).widthIn(max = 760.dp).fillMaxWidth().heightIn(max = tall - 48.dp)
+                            .then(if (held != null && held > 0.dp) Modifier.height(held) else Modifier)
+                            .onSizeChanged { tallPx[0] = it.height }
                     },
                 )
                 .lift(AgentTheme.elevation.overlay, shape)
@@ -156,11 +170,25 @@ private fun BoardCardModal(ui: FeedUi, id: String, phone: Boolean, safeArea: Saf
 private fun BoardCardBody(ui: FeedUi, item: Threaded, phone: Boolean, modifier: Modifier) {
     val motion = AgentTheme.motion
     val scroll = rememberScrollState()
-    // A new comment (the owner's own, or one arriving) brings the end into view, as a chat does.
-    val newest = item.replies.lastOrNull()?.id
-    LaunchedEffect(newest) {
+    val scope = rememberCoroutineScope()
+    val toEnd: () -> Unit = { scope.launch { if (motion.reduced) scroll.scrollTo(scroll.maxValue) else scroll.animateScrollTo(scroll.maxValue) } }
+    // A comment came in while the owner was writing, and the comments stayed where they were.
+    var missed by remember(item.id) { mutableStateOf(false) }
+    // A new comment (the owner's own, or one arriving) brings the end into view, as a chat does;
+    // while the owner is writing, someone else's waits under a pill instead, so nothing moves.
+    val newest = item.replies.lastOrNull()
+    LaunchedEffect(newest?.id) {
         if (newest == null) return@LaunchedEffect
+        if (ui.isWriting(item.id) && newest.author !is Author.Owner) {
+            missed = true
+            return@LaunchedEffect
+        }
+        missed = false
         if (motion.reduced) scroll.scrollTo(scroll.maxValue) else scroll.animateScrollTo(scroll.maxValue)
+    }
+    // Reaching the end by hand has seen it.
+    LaunchedEffect(item.id) {
+        snapshotFlow { scroll.maxValue > 0 && scroll.value >= scroll.maxValue }.collect { if (it) missed = false }
     }
     // Seen here is read: the badge clears once the new comments have been on screen a moment.
     if (item.unreadReplies > 0) {
@@ -169,7 +197,8 @@ private fun BoardCardBody(ui: FeedUi, item: Threaded, phone: Boolean, modifier: 
             ui.emit(FeedEvent.OpenThread(item.id))
         }
     }
-    Column(modifier.fillMaxWidth().verticalScroll(scroll).closesComposer(ui).padding(horizontal = if (phone) 12.dp else 16.dp)) {
+    Box(modifier.fillMaxWidth()) {
+    Column(Modifier.fillMaxWidth().semantics { testTag = "board-card-body" }.verticalScroll(scroll).closesComposer(ui).padding(horizontal = if (phone) 12.dp else 16.dp)) {
         Spacer(Modifier.height(4.dp))
         key(item.id) {
             FeedItemView(item, selected = false, density = if (phone) Density.Compact else Density.Comfortable, inThread = true)
@@ -190,6 +219,11 @@ private fun BoardCardBody(ui: FeedUi, item: Threaded, phone: Boolean, modifier: 
             key(reply.id) { InteractiveReply(reply) }
         }
         Spacer(Modifier.height(8.dp))
+    }
+    NewMessagePill({ missed && scroll.value < scroll.maxValue }, Modifier.align(Alignment.BottomCenter).padding(bottom = 8.dp)) {
+        missed = false
+        toEnd()
+    }
     }
 }
 
