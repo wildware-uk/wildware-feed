@@ -68,6 +68,9 @@ test("the owner opens a card's thread and replies; the agent gets the reply and 
     expect(thread.map((m) => m.body)).toEqual(expect.arrayContaining(['Go ahead on Saturday', 'Booked for Saturday 06:00']));
 });
 
+/** Longer than the browser's and Compose's double-click time (300 ms), with room for a slow machine. */
+const DoubleClickMillis = 600;
+
 // A click inside the thread's reply box, while it has the focus, keeps it. (It used to take it away:
 // the feed around the box took the click as a tap on the feed, so every other click lost what was
 // typed next.)
@@ -80,6 +83,9 @@ test('a click inside the focused thread reply box keeps the focus', async ({ bro
     await expectTyping(page);
     await page.keyboard.type('one ', { delay: 15 });
     for (const word of ['two ', 'three']) {
+        // Apart, as a person's clicks are: two at one spot inside the double-click time make a
+        // double-click, which selects a word (and the browser can lose the keys), not two clicks.
+        await page.waitForTimeout(DoubleClickMillis);
         await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
         await expectTyping(page);
         await page.keyboard.type(word, { delay: 15 });
