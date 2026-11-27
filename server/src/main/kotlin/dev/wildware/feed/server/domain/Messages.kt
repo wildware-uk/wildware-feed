@@ -505,7 +505,8 @@ class Messages(private val feed: Feed) {
 
         /** The line agents read under a voice note's words. People never see it, and it is never stored. */
         const val VOICE_HINT =
-            "(Transcribed from a voice note, so it may contain mistakes: read it for meaning, and ask if something looks off.)"
+            "(Transcribed from a voice note, so it may contain mistakes. Before you act, start your reply with what you understood, " +
+                "in plain words (\"Here's what I heard: …\"), and ask if something is unclear.)"
 
         /** [body] as an agent reads it: a voice note's words with [VOICE_HINT] under them; anything else as it is. */
         fun forAgents(body: String, source: String?): String = if (source == VOICE) "$body\n\n$VOICE_HINT" else body
