@@ -33,6 +33,8 @@ class AppPlatform(
     val settings: TextStore = MemoryTextStore(),
     /** Picks files to attach, or null where there is no picker yet. */
     val filePicker: FilePicker? = null,
+    /** A phone's file browser, for any file, beside [filePicker]'s photo picker. Null where [filePicker] takes any file. */
+    val documentPicker: FilePicker? = null,
     /** Records voice notes for the composer's mic, or null where there is no mic. */
     val voiceInput: VoiceInput? = null,
     /** "Review voice notes before sending", where [voiceInput] records them. */

@@ -51,8 +51,8 @@ import kotlinx.coroutines.withContext
 
 /**
  * The one screen: the Compose app, edge to edge. It also takes what Android hands the app (links,
- * shares, tapped notifications) and does the things only an activity can (the photo picker,
- * permission prompts) for the engine that lives in [AgentsApplication].
+ * shares, tapped notifications) and does the things only an activity can (the photo and
+ * documents pickers, permission prompts) for the engine that lives in [AgentsApplication].
  */
 class MainActivity : ComponentActivity() {
     private val app: AgentsApplication get() = application as AgentsApplication
@@ -61,6 +61,12 @@ class MainActivity : ComponentActivity() {
     private val pickMedia = registerForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(MaxPick)) { uris ->
         onPicked?.invoke(uris)
         onPicked = null
+    }
+
+    private var onDocuments: ((List<Uri>) -> Unit)? = null
+    private val pickDocuments = registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        onDocuments?.invoke(uris)
+        onDocuments = null
     }
 
     private var onPermission: ((Boolean) -> Unit)? = null
@@ -75,6 +81,10 @@ class MainActivity : ComponentActivity() {
         app.hooks.pickMedia = { picked ->
             onPicked = picked
             pickMedia.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo))
+        }
+        app.hooks.pickDocuments = { picked ->
+            onDocuments = picked
+            pickDocuments.launch(arrayOf("*/*"))
         }
         app.hooks.askPermission = { permission, result ->
             onPermission = result
@@ -109,6 +119,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         app.hooks.pickMedia = null
+        app.hooks.pickDocuments = null
         app.hooks.askPermission = null
         super.onDestroy()
     }
@@ -206,7 +217,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    /** Text, a link or pictures from another app's share sheet, into a project's composer. */
+    /** Text, a link or any files from another app's share sheet, into a project's composer. */
     private fun receiveShare(intent: Intent) {
         val text = Links.sharedText(intent.getStringExtra(Intent.EXTRA_SUBJECT), intent.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString())
         val uris = if (intent.action == Intent.ACTION_SEND_MULTIPLE) {

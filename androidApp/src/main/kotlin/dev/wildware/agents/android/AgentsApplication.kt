@@ -161,6 +161,7 @@ fun androidPlatform(context: Context, hooks: ActivityHooks, scope: CoroutineScop
         cardFolds = FileTextStore(cardFolds),
         postTarget = FileTextStore(postTarget),
         filePicker = AndroidPhotoPicker(hooks, context.contentResolver, scope),
+        documentPicker = AndroidDocumentPicker(hooks, context.contentResolver, scope),
         // No recogniser on the phone (some builds without Google's apps): no mic, rather than one that can't work.
         voiceInput = if (SpeechRecognizer.isRecognitionAvailable(context)) SpeechVoiceInput(context, hooks) else null,
         voiceReview = dev.wildware.agents.VoiceReviewSetting(FileTextStore(File(dir, "voice-review.txt"))),

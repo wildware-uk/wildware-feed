@@ -119,7 +119,7 @@ It doesn't, beyond oldest first.
 | **Composer** |||||||
 | 73 | Post to a project | Done | Textarea, Cmd/Ctrl+Enter, media-only OK | Yes (shown only when a project is open) | Yes | — | — |
 | 74 | Post from All projects | Done | "Choose a project" select (`Composer.svelte:170-189`) | Yes: the message box shows on All projects, saying which project it posts to, and can change it; it remembers where you last worked | Yes | — | P1 |
-| 75 | Attachments | Done | Paste, drop, Add file, progress bar, max 24 (`Attachments.svelte`, `uploads.svelte.ts`) | Yes; 25 MB cap; no progress bar | Yes | No upload progress | P2 |
+| 75 | Attachments | Done | Paste, drop, Add file, progress bar, max 24 (`Attachments.svelte`, `uploads.svelte.ts`) | Yes; any file on phones too (paperclip: Photos and videos, or Files); 25 MB cap, 10 MB for pictures; no progress bar | Yes | No upload progress | P2 |
 | 76 | Tags at post time | Done | Pick tags before posting | Yes: "#" by the message box picks tags (or makes one); they show above the box and go on the post once it is up | Yes | — | P2 |
 | 77 | Voice dictation | Done | — | Yes hold-to-talk (`Voice.kt`) | Yes if available | App only | — |
 | 78 | Share into the app | Done | — | Yes, iOS share extension | Desktop drop | App only | — |

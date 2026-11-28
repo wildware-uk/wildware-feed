@@ -11,6 +11,9 @@ class ActivityHooks {
     /** Opens the photo picker; the activity hands the chosen items to [onPicked]. */
     var pickMedia: ((onPicked: (List<Uri>) -> Unit) -> Unit)? = null
 
+    /** Opens the documents picker, for any file; the activity hands the chosen ones to [onPicked]. */
+    var pickDocuments: ((onPicked: (List<Uri>) -> Unit) -> Unit)? = null
+
     /** Asks for a runtime permission; [onResult] gets whether it was granted. */
     var askPermission: ((permission: String, onResult: (Boolean) -> Unit) -> Unit)? = null
 }

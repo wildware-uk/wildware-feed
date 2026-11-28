@@ -61,7 +61,8 @@
                 <data android:scheme="agents" android:host="invite" />
             </intent-filter>
 
-            <!-- The share sheet: text, links and pictures into a project's composer. -->
+            <!-- The share sheet: text, links and any files (pictures, videos, PDFs, logs, zips…)
+                 into a project's composer. -->
             <intent-filter android:label="@string/share_label">
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -71,7 +72,7 @@
                 <action android:name="android.intent.action.SEND" />
                 <action android:name="android.intent.action.SEND_MULTIPLE" />
                 <category android:name="android.intent.category.DEFAULT" />
-                <data android:mimeType="image/*" />
+                <data android:mimeType="*/*" />
             </intent-filter>
         </activity>
 

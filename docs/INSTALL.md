@@ -66,7 +66,8 @@ What it does on Android:
   is running. Android may stop a closed app after a while; to keep them coming, open the command bar
   (the search button) and pick **Stay connected in the background**. A quiet "Connected" notice then
   stays in the shade. Pushes that arrive with the app fully closed need Firebase (below).
-- **Share** text, links and pictures from any app: pick **Wildware Feed** in the share sheet. They
+- **Share** text, links and any files (pictures, videos, PDFs, logs, zips) from any app: pick
+  **Wildware Feed** in the share sheet. They
   land in the open project's composer to check and send; if every project is showing, the project
   list opens to pick one.
 - **Hold the mic** in the composer to talk; slide left to cancel. Android's own speech recogniser

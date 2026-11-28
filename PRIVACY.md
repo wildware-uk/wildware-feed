@@ -105,8 +105,9 @@ your Apple ID.
 - **Speech recognition:** to write down your voice notes.
 - **Face ID:** to confirm it is you before approving what an agent asks. The check happens on your
   device; the app never sees your face data.
-- **Photos:** none needed to send pictures: the app only receives the ones you pick. Saving a
-  picture to your library asks first, and only adds it; the app never reads your library.
+- **Photos and files:** none needed to send pictures, videos or files: the app only receives the
+  ones you pick or share to it. Saving a picture to your library asks first, and only adds it; the
+  app never reads your library or your files.
 - **Notifications:** for alerts from your server.
 
 ## Children

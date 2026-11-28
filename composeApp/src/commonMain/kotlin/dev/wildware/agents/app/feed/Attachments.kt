@@ -25,6 +25,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
+import dev.wildware.agents.Attachable
 import dev.wildware.agents.app.design.AgentTheme
 import dev.wildware.agents.app.design.Icons
 import dev.wildware.agents.app.design.pressable
@@ -34,18 +35,25 @@ class PendingFile(val name: String, val mimeType: String, val bytes: ByteArray) 
     val isImage: Boolean get() = mimeType.startsWith("image/")
 }
 
-/** The biggest file the composer takes. Larger ones are turned away with a message. */
-const val MaxFileBytes = 25L * 1024 * 1024
+/** The biggest file the composer takes. Larger ones are turned away with a message; pictures, past [Attachable.MaxImageBytes]. */
+const val MaxFileBytes = Attachable.MaxFileBytes
 
 /**
- * Picks files to attach: a file dialog on desktop, the photo picker on iPhone (handed in from
- * Swift). It calls [onPicked] once, with nothing if the owner cancels.
+ * Picks files to attach: a file dialog on desktop; on a phone, the photo picker here and its
+ * file browser in [LocalDocumentPicker] (both handed in from Swift or Android). It calls
+ * [onPicked] once, with nothing if the owner cancels.
  */
 fun interface FilePicker {
     fun pick(onPicked: (List<PendingFile>) -> Unit)
 }
 
 val LocalFilePicker = staticCompositionLocalOf<FilePicker?> { null }
+
+/**
+ * A phone's file browser (Files on iPhone, the documents picker on Android), for any file, beside
+ * its photo picker in [LocalFilePicker]. Null where the one picker takes any file already (desktop).
+ */
+val LocalDocumentPicker = staticCompositionLocalOf<FilePicker?> { null }
 
 /** Takes dropped files: on desktop, from the file manager. Elsewhere it does nothing. */
 expect fun Modifier.fileDropTarget(onHover: (Boolean) -> Unit, onFiles: (List<PendingFile>) -> Unit): Modifier
@@ -54,31 +62,7 @@ expect fun Modifier.fileDropTarget(onHover: (Boolean) -> Unit, onFiles: (List<Pe
 expect fun clipboardFiles(): List<PendingFile>?
 
 /** The type of a file from its name, for what the clipboard and drops don't say. */
-fun mimeTypeOf(name: String): String = when (name.substringAfterLast('.', "").lowercase()) {
-    "png" -> "image/png"
-    "jpg", "jpeg" -> "image/jpeg"
-    "gif" -> "image/gif"
-    "webp" -> "image/webp"
-    "heic" -> "image/heic"
-    "svg" -> "image/svg+xml"
-    "pdf" -> "application/pdf"
-    "txt", "log", "md" -> "text/plain"
-    "csv" -> "text/csv"
-    "html", "htm" -> "text/html"
-    "json" -> "application/json"
-    "xml" -> "application/xml"
-    "yaml", "yml" -> "application/yaml"
-    "zip" -> "application/zip"
-    "gz", "tgz" -> "application/gzip"
-    "mp4", "m4v" -> "video/mp4"
-    "mov" -> "video/quicktime"
-    "webm" -> "video/webm"
-    "mp3" -> "audio/mpeg"
-    "m4a", "aac" -> "audio/mp4"
-    "wav" -> "audio/wav"
-    "ogg", "oga", "opus" -> "audio/ogg"
-    else -> "application/octet-stream"
-}
+fun mimeTypeOf(name: String): String = Attachable.typeOf(name)
 
 /** The files waiting in the composer: a thumbnail for pictures, a chip for the rest, each with a remove button. */
 @Composable
@@ -120,5 +104,6 @@ fun AttachmentStrip(files: List<PendingFile>, onRemove: (PendingFile) -> Unit, m
     }
 }
 
-internal fun tooBig(file: PendingFile) = file.bytes.size > MaxFileBytes
+/** Why [file] can't go with a message (empty, or too big for the dashboard), or null when it can. */
+internal fun refusalOf(file: PendingFile): String? = Attachable.refusal(file.name, file.mimeType, file.bytes.size.toLong())
 

@@ -51,6 +51,7 @@ import dev.wildware.agents.app.feed.rememberPlatformMediaHandler
 import dev.wildware.agents.app.feed.LocalPushAlerts
 import dev.wildware.agents.app.feed.LocalLiveActivities
 import dev.wildware.agents.app.feed.LocalFilePicker
+import dev.wildware.agents.app.feed.LocalDocumentPicker
 import dev.wildware.agents.app.feed.LocalVoiceInput
 import dev.wildware.agents.app.feed.LocalVoiceReview
 import dev.wildware.agents.app.feed.FilePicker
@@ -213,6 +214,7 @@ fun AgentsApp(
                         LocalMediaAuth provides MediaAuth(session.client.serverUrl, session.client.authorizationHeader),
                         LocalDashboardAddress provides session.client.serverUrl,
                         LocalFilePicker provides platform.filePicker,
+                        LocalDocumentPicker provides platform.documentPicker,
                         LocalMediaHandler provides (platform.media ?: rememberPlatformMediaHandler(platform.httpEngine)),
                         LocalPushAlerts provides platform.pushAlerts,
                         LocalVoiceInput provides platform.voiceInput,

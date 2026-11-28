@@ -627,9 +627,9 @@ fun Composer(
         }
     }
     val add: (List<PendingFile>) -> Unit = { incoming ->
-        val (fits, big) = incoming.partition { !tooBig(it) }
-        files += fits
-        refused = big.firstOrNull()?.let { "${it.name} is over 25 MB, so it was left out." }
+        val reasons = incoming.map { it to refusalOf(it) }
+        files += reasons.filter { it.second == null }.map { it.first }
+        refused = reasons.firstNotNullOfOrNull { it.second }
     }
     if (focus != null && (preview.composerOpen || preview.composerListening)) {
         LaunchedEffect(Unit) {
@@ -756,7 +756,7 @@ fun Composer(
             if (open && LocalIsPhone.current) IconAction(Icons.ChevronDown, "Close the message box", onClick = close)
             // Files can't be added to a message already sent, so none while one is open to edit.
             if (picker != null && editing == null) {
-                IconAction(Icons.Paperclip, "Attach files") { picker.pick { picked -> add(picked) } }
+                AttachButton(picker, LocalDocumentPicker.current, add)
             } else {
                 Spacer(Modifier.width(8.dp))
             }
@@ -1050,6 +1050,45 @@ fun PostToPicker(ui: FeedUi, target: Project, modifier: Modifier = Modifier) {
                         open = false
                     },
                     modifier = Modifier.semantics { contentDescription = "Post to ${p.name}" },
+                    colors = MenuDefaults.itemColors(textColor = colors.text),
+                )
+            }
+        }
+    }
+}
+
+/**
+ * The composer's paperclip. With one picker (desktop's file dialog) it opens that. A phone has two,
+ * its photos and its files, so the paperclip asks which: "Photos and videos" or "Files".
+ */
+@Composable
+private fun AttachButton(photos: FilePicker, documents: FilePicker?, add: (List<PendingFile>) -> Unit) {
+    if (documents == null) {
+        IconAction(Icons.Paperclip, "Attach files") { photos.pick(add) }
+        return
+    }
+    val colors = AgentTheme.colors
+    var open by remember { mutableStateOf(false) }
+    Box {
+        IconAction(Icons.Paperclip, "Attach files") { open = true }
+        DropdownMenu(
+            expanded = open,
+            onDismissRequest = { open = false },
+            shape = AgentTheme.shapes.medium,
+            containerColor = colors.surfaceRaised,
+            border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
+        ) {
+            listOf(
+                Triple("Photos and videos", Icons.Image, photos),
+                Triple("Files", Icons.File, documents),
+            ).forEach { (label, icon, picker) ->
+                DropdownMenuItem(
+                    text = { Text(label, style = AgentTheme.type.label) },
+                    leadingIcon = { Icon(icon, null, tint = colors.textMuted, modifier = Modifier.size(18.dp)) },
+                    onClick = {
+                        open = false
+                        picker.pick(add)
+                    },
                     colors = MenuDefaults.itemColors(textColor = colors.text),
                 )
             }

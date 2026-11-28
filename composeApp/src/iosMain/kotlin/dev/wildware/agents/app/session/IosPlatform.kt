@@ -1,5 +1,6 @@
 package dev.wildware.agents.app.session
 
+import dev.wildware.agents.Attachable
 import dev.wildware.agents.Outbox
 import dev.wildware.agents.OutboxStorage
 import dev.wildware.agents.TextStore
@@ -40,13 +41,15 @@ import platform.posix.memcpy
  * with the widgets, extensions and watch. Read marks live in [dataDir], a folder in the app group
  * container. The outbox is [outboxDir], the one the share sheet, Siri and alert buttons queue
  * into too, so everything waiting shows in the app and the background sender sends it all.
- * [photoPicker] attaches pictures; [voiceInput] records the composer's voice notes.
+ * [photoPicker] attaches photos and videos, [documentPicker] any file from Files; [voiceInput]
+ * records the composer's voice notes.
  */
 fun iosPlatform(
     sessions: SessionStore,
     dataDir: String,
     outboxDir: String,
     photoPicker: FilePicker? = null,
+    documentPicker: FilePicker? = null,
     voiceInput: VoiceInput? = null,
 ): AppPlatform {
     val caches = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, true).firstOrNull() as? String
@@ -66,6 +69,7 @@ fun iosPlatform(
         deviceName = UIDevice.currentDevice.name,
         imageCacheDir = caches?.let { "$it/agents-images" },
         filePicker = photoPicker,
+        documentPicker = documentPicker,
         voiceInput = voiceInput,
         voiceReview = voiceInput?.let { dev.wildware.agents.VoiceReviewSetting(IosTextStore("$dataDir/voice-review.txt")) },
         outboxChanged = OutboxSignals.changes,
@@ -307,5 +311,11 @@ private fun NSData.toByteArray(): ByteArray {
     return bytes
 }
 
-/** A picked photo or file from Swift, which hands over its bytes as NSData. */
-fun pendingFile(name: String, mimeType: String, data: NSData): PendingFile = PendingFile(name, mimeType, data.toByteArray())
+/**
+ * A picked photo or file from Swift, which hands over its bytes as NSData. The name and type are
+ * made ones the dashboard takes ([Attachable]): what another app calls a file can be anything.
+ */
+fun pendingFile(name: String, mimeType: String, data: NSData): PendingFile {
+    val clean = Attachable.fileName(name)
+    return PendingFile(clean, Attachable.mimeType(mimeType, clean), data.toByteArray())
+}

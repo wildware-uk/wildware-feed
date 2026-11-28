@@ -16,7 +16,10 @@ iPhone app adds what only a native app can do:
   comes back, when you open the app, or in the background. The app's "Waiting to send" list shows all
   of it, wherever it came from; if the dashboard refuses something for good, you're told, and can try
   again or delete it there.
-- **Share sheet.** Share a screenshot, photo, link or text from any app into a project's feed.
+- **Share sheet.** Share a screenshot, photo, video, link, text or any file (a PDF, a log, a zip) from
+  any app into a project's feed: pick the project, add a note if you like.
+- **Any file.** The composer's paperclip offers **Photos and videos** or **Files**, for anything in
+  Files, iCloud Drive or another app's storage.
 - **Voice notes.** Hold the composer's mic to talk; slide left to cancel. The phone writes down what
   you said (Apple's on-device speech model) and puts the words in the box for you to check and send.
   A lock screen, Control Center and Action button control records without unlocking and posts
@@ -34,9 +37,11 @@ iPhone app adds what only a native app can do:
 The same Compose app on Android 8.0 and newer, edge to edge in the Obsidian look, with predictive
 back. Install the signed `.apk` from a release ([docs/INSTALL.md](docs/INSTALL.md#android)). It adds:
 
-- **Share sheet**: text, links and pictures from any app into a project's composer.
+- **Share sheet**: text, links and any files (pictures, videos, PDFs, logs, zips) from any app into a
+  project's composer.
 - **Hold-to-talk** with Android's speech recogniser (on the phone itself where it can).
-- **Photo picker** for the paperclip; no storage permission needed.
+- **Paperclip**: **Photos and videos** (the photo picker) or **Files** (the documents picker) for any
+  file; no storage permission needed.
 - **Notifications** for new questions and mentions while the app runs, by the desktop's rules, and an
   optional **Stay connected in the background** (command bar). Push with the app closed needs
   Firebase, which isn't set up yet.

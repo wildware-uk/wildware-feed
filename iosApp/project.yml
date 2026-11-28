@@ -260,10 +260,13 @@ targets:
           NSExtensionPointIdentifier: com.apple.share-services
           NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ShareViewController
           NSExtensionAttributes:
+            # Text, a link, and any files: photos, videos, PDFs, logs, zips (Share/ShareViewController.swift).
             NSExtensionActivationRule:
               NSExtensionActivationSupportsText: true
               NSExtensionActivationSupportsWebURLWithMaxCount: 1
-              NSExtensionActivationSupportsImageWithMaxCount: 4
+              NSExtensionActivationSupportsImageWithMaxCount: 10
+              NSExtensionActivationSupportsMovieWithMaxCount: 4
+              NSExtensionActivationSupportsFileWithMaxCount: 10
     entitlements:
       path: Share/Share.entitlements
       properties:

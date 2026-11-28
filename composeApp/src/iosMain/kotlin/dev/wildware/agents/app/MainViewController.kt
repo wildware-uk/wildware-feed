@@ -16,7 +16,8 @@ import platform.UIKit.UIViewController
  * the Keychain, so the device key never sits in a plain file, and [dataDir], a folder in the app
  * group for read marks. Swift keeps [navigator] to open cards from notifications,
  * widgets, search and Siri. [outboxDir] is the outbox the extensions share. [photoPicker] attaches
- * pictures (none means no paperclip); [voiceInput] records the mic's voice notes. [sample]
+ * photos and videos (none means no paperclip), [documentPicker] any file from Files; [voiceInput]
+ * records the mic's voice notes. [sample]
  * shows made-up data for screenshots, and never signs in.
  */
 @OptIn(ExperimentalComposeUiApi::class)
@@ -27,9 +28,10 @@ fun MainViewController(
     sample: Boolean,
     outboxDir: String,
     photoPicker: FilePicker? = null,
+    documentPicker: FilePicker? = null,
     voiceInput: VoiceInput? = null,
 ): UIViewController {
-    val platform = iosPlatform(sessions, dataDir, outboxDir, photoPicker, voiceInput)
+    val platform = iosPlatform(sessions, dataDir, outboxDir, photoPicker, documentPicker, voiceInput)
     return ComposeUIViewController(
         configure = {
             // The screens move their own text boxes above the keyboard, through the safe area below.

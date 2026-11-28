@@ -13,6 +13,7 @@ struct ComposeScreen: UIViewControllerRepresentable {
             sessions: KeychainSessionStore(), dataDir: folder, navigator: navigator, sample: Sample.isOn,
             outboxDir: OutboxQueue.folder.path(percentEncoded: false),
             photoPicker: PhotoPicker(),
+            documentPicker: DocumentPicker(),
             voiceInput: VoiceNoteInput()
         )
         controller.view.backgroundColor = .obsidian
